@@ -4,3 +4,7 @@ packages:
 # Keep package-manager writes inside this checkout.
 storeDir: .dsh-dev/pnpm-store
 cacheDir: .dsh-dev/pnpm-cache
+
+# esbuild uses its platform optional package directly; no install hook is needed.
+allowBuilds:
+  esbuild@0.25.12: false

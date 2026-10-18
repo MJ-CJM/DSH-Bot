@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "title": "DSH-Bot",
+    "description": "A multi-agent workspace for DeepSeek Harness. This first version adds the DSH-Bot composer badge."
+  },
+  "ui": {
+    "badge.label": "DSH-Bot",
+    "badge.description": "DSH-Bot is enabled"
+  }
+}

@@ -19,6 +19,7 @@
 - 文档或源码推导的能力与实际运行结果分开记录。空项目无测试时的检查通过不等于 API 运行验证。尚未实测的组合、作用域、Remote 或 UI 行为先在 T02 spike 核实，不假定计划中的示例一定适配锁定版本。
 - 开发依赖精确锁定：`@deepseek-ai/dsh-*` 为 `0.2.1-rc.2`，`@deepseek-ai/cordis` 为 `4.0.5`，`@deepseek-ai/schemastery` 为 `3.18.5`；框架包版本独立于 DSH，不得以 `latest` 或 `next` 代替开发版本锁定。peer 依赖声明宿主兼容范围：`@deepseek-ai/dsh-*` 使用 `>=0.2.1-rc.2 <0.3.0`，Cordis 使用 `^4.0.5`；若 Schemastery 的使用需要共享实例，其 peer 使用 `^3.18.5`，不精确锁定 peer 版本。
 - `engines.dsh` 使用 `>=0.2.1-rc.2 <0.3.0`。需要与宿主共享实例的包（如 Cordis 与 DSH 服务定义包）同时声明于 `peerDependencies` 和 `devDependencies`；需要独立版本的第三方依赖和无状态 DSH 工具包放入 `dependencies`。依据参考源码 `docs/user/develop/basic/publish.zh.md` 逐包判断。
+- peer 按 Host 构建产物的真实运行时 import 与共享实例需求声明；当前按项目约定保留 `@deepseek-ai/cordis`，其余仅类型导入的 Host 服务包及通过浏览器平台模块表提供的 Client 包、React 只放 `devDependencies`，等 Host 真正 runtime import 时再评估加入 peer。
 - UI 通过公开 slot 扩展，样式只使用 `--dsw-alias-*` 主题 token，不导入 DSH 内部 client 组件，不硬编码主题颜色。检查亮色与暗色主题。
 - UI 文案通过 locale 读取，`locale/en.json` 与 `locale/zh.json` 保持同一组键；插件标题、描述和新增 UI 文案均提供中英双份。
 - 运行任务所需检查及 `scripts/pnpm check`；需要复现依赖时运行 `scripts/pnpm install --frozen-lockfile`。保留 lockfile，报告安装和检查的实际结果。

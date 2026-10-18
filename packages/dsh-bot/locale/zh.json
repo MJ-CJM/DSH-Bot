@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "title": "DSH-Bot 多智能体",
+    "description": "面向 DeepSeek Harness 的多智能体工作区。当前版本提供 DSH-Bot 输入区徽标。"
+  },
+  "ui": {
+    "badge.label": "DSH-Bot",
+    "badge.description": "DSH-Bot 已启用"
+  }
+}
