@@ -1,5 +1,29 @@
 # DSH API 核实记录
 
+## T06：每 Bot 记忆服务、Agent 工具与静态提示词
+
+- 正式实现位于 `packages/dsh-bot/src/host/memory/{service,tools,prompt}.ts`。Host-only `dshBots.memoryFor(botId)` 从已有 `dsh_bot` 域创建绑定 Bot 的服务门面；所有操作经过注册表队列，执行时确认 Bot 仍存在，Host 卸载先排空已接受操作再关闭域。不另开领域、不从 spike 导入，也不新增 Remote 端点（UI 契约留给 T09）。服务直接复用 T03 的严格 schema、2 KiB UTF-8 限制、词法检索、归属校验和持久化。
+- `defineTool`、`ToolRunContext`、`ValueSchemaSpec` 均来自公开 `@deepseek-ai/dsh-tools` 根入口。四工具为 `memory_save/search/list/forget`；参数不含 botId/source，业务层 strict schema 还拒绝隐式开放工具根对象中的额外键。返回规范值分别为 `{id, deduplicated}`、MemoryRecord 数组、MemoryRecord 数组、null；`output.render` 仅渲染结果。工具闭包同时绑定服务与 Agent，保存来源为真实 `owner.session.id`、`by:'model'` 和当前时间，取消信号在队列实际执行前复查。开始持久写入后不承诺取消回滚。来源：`docs/cookbook/adding-a-tool.zh.md`；`core/tools/src/schema.ts:483-600`，`core/session/src/index.ts:546`。
+- 每个 preset 的 `agent/created` 回调读取最新记忆一次，再在原有双 owner `agent.ctx.effect` 内注册工具与 section，并由插件保存 disposer。Agent 销毁或插件卸载均清理；读取期间卸载不会补注册迟到资源。`bot.memory.enabled=false` 不读取记忆、不注册工具和 section。Bot 配置沿用 T05 的代际快照语义，存活旧 Agent 的 memory 开关与 prompt 不因 Bot 编辑自动改变。
+- `snapshot(injectLimit)` 在一个队列槽内同步分页，候选顺序为全部置顶、最近 injectLimit 条非置顶；各组沿用 updatedAt 降序、id 升序，置顶不占普通条数、不重复。格式化后总 JS UTF-16 长度（包括说明与截断标记）不超过 `maxInjectChars`，默认 4000；不切开有效 surrogate pair。预算不足时按该顺序逐条打包，放不下的整条略过，继续尝试后续较短记录；为固定英文尾行 `[N more memories available via memory_search]` 预留空间，N 为本次候选中未注入的整条数量（不含 injectLimit 之外的记录）。只有单条置顶连同标题本身就超出总预算时，才按 Unicode 码点缩短内容并重新 JSON.stringify，保留闭合引号/转义，并加 `[truncated]` 标记；该条不计入整条遗漏数。极小预算不足以容纳完整尾行时返回空文本；没有半截 JSON、说明或尾行。故“全部置顶”表示全部参与候选，不能保证超出总预算的置顶全文都可注入。空记忆或零预算不注册空 section，工具仍可用。
+- `systemPrompt.section({name:'dsh-bot:memory', order, text, interpolate:false})` 只注册静态字符串，不为记忆增加 assembly 监听器。关闭插值保证记忆中的 `{{...}}` 原样保留；保存、删除或后续工具查询不重算现有 Agent 的提示词。来源：`docs/subsystems/system-prompt.zh.md:44-70`；`core/system-prompt/src/index.ts:131-164,478`。Host Config 新增 `memorySectionOrder` 默认 100（校验 `0 < order < 800`，位于 persona prefix 0 与首个工具策略 PTC_ONLY 800 之间），`maxInjectChars` 为非负安全整数，`memoryListLimit` 默认 20、范围 1–200。memory 工具若在 Bot deny 列表中则不注册；继承工具继续使用 restrict，因为 rc.2 不允许 restrict 同层工具。
+- **宿主语义限制：** persona 的 `complete:true` 会令该 persona 成为唯一有效 section，记忆 section 也会被宿主遮蔽；本实现保留 DSH 的 complete 契约，不改写 assembly 绕过它。要同时注入记忆，应使用普通 persona prefix/suffix。当前快照采用词法、时间和置顶选择，不调用模型生成摘要，也不实现向量检索。
+- 依赖：`dsh-tools` 新增兼容 peer（已有精确 rc.2 dev），因为正式 Host 新增其 runtime import；system-prompt/agent 仍是类型导入。测试新增精确 rc.2 dev：agent-loop-testkit、llm-mock-server、llm-deepseek-api-key、session；适配器只连接测试中的 127.0.0.1 mock，dummy key 不用于真实服务。Windows 原生路径边界沿用 T02，未修改 install hook 策略。
+
+本轮运行结果与复现命令见 [T06 验收报告](acceptance/P1-T06.md)：评审补充后产品 145 tests、strict/build/lint 与 check:spikes 均通过；真实 AgentLoop 经 loopback HTTP mock 执行 memory_save，新 Agent 的实际请求含记忆，旧 Agent 后续请求保持原系统提示。评审补充另有真实隔离 profile 的空闲会话跨 Host 冷恢复证据（见下节），不把它扩大为恢复后模型请求或 Desktop/UI 验收。
+
+### T06 评审补充：去重、秘密保护与恢复语义
+
+- `MemoryStore.saveUnique` 在同一个 Domain 的共享写队列内完成匹配与落盘，因此不同 BotMemoryService / MemoryStore 实例的并发保存仍串行。对同 Bot 的内容按 **NFKC → trim → 连续空白合并为一个空格** 比较，不转小写、不做语义相似推断。命中时返回原 id / `deduplicated:true`，updatedAt 严格递增，tags 按已有顺序取并集，pinned 做 OR；保留原 content/kind/source/createdAt。新记录返回 `deduplicated:false`。既有历史重复不自动批量合并或删除，匹配多个时选 createdAt 最早、id 最小的记录。本锁仅覆盖同一 Host/Domain，沿用 T03 不支持跨 Host 并发写同一 JSON 域的边界。
+- 新增 `memory/rejected` 到 DshBotErrorCode、公开 RemoteErrorDetailsMap 和本文错误表。只在可信 source.by=model 的服务保存入口执行检查，早于业务 schema 解析和去重，避免超长错误回显密钥，也避免模型借命中用户手工记录来改变 tags/pinned。检查 content 及 tags 的 NFKC 文本：`sk-` 后至少 20 个字母/数字/下划线/连字符，`ghp_` 或 `github_pat_` 后至少 20 个字母/数字/下划线，`xoxb-`/`xoxp-` 后至少 20 个字母/数字/连字符，`AKIA` 加 16 个大写字母/数字，以及 `-----BEGIN … PRIVATE KEY-----`。短前缀说明和 PUBLIC KEY 不拒绝。这是保守签名匹配，有误报/漏报可能，不保证识别所有凭据，也不扫描或迁移已存数据。手工 `by:user` 路径不受此策略限制，T09 应另行选择允许并提示的交互。
+- rc.2 ToolRuntime 只将 `HarnessError` 转成结构化 error.info.code（`core/tools/src/index.ts:662-665`）。因此工具适配层仅把 `memory/rejected` 转成公开 `@deepseek-ai/dsh-llm` 根入口的 `HarnessError(message,code)`，不保留带原始输入的 cause；模型可见文本也包含固定 `memory/rejected`。服务/未来 Remote 仍抛 DshBotError，契约错误码不变。没有假造成功返回或仅靠描述警告。
+
+**冷恢复与 KV cache：** 同一个仍存活 Agent 的重复 resolve 使用现有对象，不重算记忆；Host 重启后或 Agent 销毁后冷恢复则会重算。SessionController 的 `resumeObserved` 读取持久 header 中的 preset id，重新 compose/mount 当前稳定 id 的定义，再调用 agents.resume；恢复也经过 `agent/created`，本插件不按 source 跳过，因此从当前存储读取新快照，而非恢复最初的 memory 文本。来源：`api/session-controller/src/agent.ts:387-401,420-444`，`core/agent/src/index.ts:192-202,536-555`。稳定 id 冷恢复还可能采用更新后的人设/开关配置，沿用 T02/T05 语义。
+
+已实测：扩展后的 composer-profile 在同一隔离 profile 启动两个独立 Host。第一进程保存记忆、新建 Agent、再保存另一条记忆，验证其快照不变并 flush；第二进程 resolve 同一个 sessionId，原先不是 live Agent，组装的 memory section 已包含两条记录。该测试没有发模型请求。恢复后的下一次真实请求如何持久化新 system/message 由 DSH AgentLoop 负责：`core/agent-loop/src/agent.ts:407-424` 调用 `SystemPromptProjection.project`，`runtime-context.ts:98-115` 按是否新 series、provider 的 in-history 能力决定替换或追加系统消息。插件不修改历史日志或直接操作 KV cache。**保证仅为同一存活 Agent 的 memory section 稳定；不保证跨冷恢复前缀相同、不保证提供商缓存命中率。** 本轮 HTTP mock 验证了存活 Agent 的 wire system 稳定，未将空闲冷恢复结果称为“冷恢复后继续请求/缓存命中”验证。
+
+**T09 提示约定：** 当 `bot.memory.enabled && bot.persona.complete === true` 时，应在 Bot 编辑器、记忆页显示非阻断提示：“完整人设会覆盖记忆提示词；记忆工具仍可用。要自动注入记忆，请关闭完整人设模式。” 英文对应 “Complete persona overrides injected memory. Memory tools remain available. Disable complete persona to inject memory automatically.” UI 应从 get/list 返回的 BotRecord 推导并本地化，不把此配置标记为 preset broken/missing，也不禁用开始聊天。当前 status 的职责仍是 preset 可用性，本次不改其 wire shape；若后续需要集中诊断，可经契约版本化增加独立 warnings（例如 memory/prompt-suppressed），不能复用 broken。上述是交给 T09 的 UI 设计约定，本轮未实现/验收 UI 提示。
+
 ## T05：运行时模板、Agent 策略和技能目录（2026-10-18）
 
 - `composeBotPreset(bot, ctx)` 默认使用 Host registry Config，亦接受显式第三参数供注册表启动和测试调用；异步调用公开 `agentPresets.readDocument(bot.template)`；用 `@deepseek-ai/cordis-plugin-include@1.0.10` 的 `entryListSchema` 和 `js-yaml@4.1.1` 解析，再调用 registry 根出口 `entryListProblem` 校验。`!!js` 保持 `{__jsExpr}`，不求值、不转字符串。锁定模板原文仅放测试 fixture，并校验 SHA256；正式代码无 vendored 模板、无同步脚本、无 spike import。来源：`preset/agent-preset-registry/src/index.ts:213-229`、`src/definition.ts`；`vendor/include/src/index.ts:9-23`。
@@ -233,6 +257,7 @@ Client 建议用无 runtime imports 的公开 `@deepseek-ai/dsh-typert-protocol/
 | `bot/invalid` | 输入参数不符合 schema，包含空记忆、字段上限、非法列表 limit；不用于底层 I/O |
 | `memory/not-found` | 记忆不存在或不属于指定 Bot，二者不作区分 |
 | `memory/too-large` | trim 后的记忆内容超过 2048 UTF-8 字节 |
+| `memory/rejected` | T06 评审新增：model 来源内容或 tags 命中常见凭据/私钥启发式规则，拒绝保存或合并；错误不回显命中内容 |
 | `store/unavailable` | already-open、closed、后端读写/关闭失败、持久记录校验失败等存储故障；原始错误保留于 cause |
 
 运行验证：`tests/store.spec.ts` 的 **24 项**测试使用公开 npm 包和真实 JSON 后端，通过 CRUD、严格校验、字节边界、多实例竞争、同毫秒 CAS、中文检索、隔离、分页、对象副本、落盘/重开和生命周期检查。评审补充覆盖默认级联与同 id 重建、显式保留、跨 Bot update/remove、可选字段清空后严格对象一致性、trim/字段上限/列表上限、分页只深克隆返回记录；在公开 KvUnit 上注入读写失败，验证 cause、未提交更新不改变内存、级联中途失败保留 Bot 及重试成功。各测试使用并清理独立仓库内 `.dsh-dev/t03-store-*`，不触碰 T02 的领域文件。独立服务测试不替代 Desktop 或完整 Web profile 验收；本轮未启动这些环境或真实模型会话。

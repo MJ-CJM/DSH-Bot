@@ -59,6 +59,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'bot/unavailable': Record<string, never>;
     'memory/not-found': Record<string, never>;
     'memory/too-large': Record<string, never>;
+    'memory/rejected': Record<string, never>;
     'store/unavailable': Record<string, never>;
   }
 }

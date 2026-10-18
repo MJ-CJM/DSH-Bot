@@ -6,6 +6,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools';
 import { describe, expect, it, vi } from 'vitest';
 import * as botContext from '../lib/host/bot-context.js';
+import { Config as RegistryConfig } from '../lib/host/registry.js';
 import { botCreateSchema, botSchema } from '../lib/shared/schema.js';
 
 async function fixture() {
@@ -13,7 +14,8 @@ async function fixture() {
   await ctx.plugin(SystemPrompt, {}).await();
   await ctx.plugin(ToolRuntime).await();
   const records = new Map(['alpha', 'beta'].map((id) => [id, botSchema.parse({
-    ...botCreateSchema.parse({ id, name: id, tools: { deny: id === 'alpha' ? ['inherited_tool'] : [] } }),
+    ...botCreateSchema.parse({ id, name: id, tools: { deny: id === 'alpha' ? ['inherited_tool'] : [] },
+      memory: { enabled: false, injectLimit: 20 } }),
     createdAt: 1, updatedAt: 1, schemaVersion: 1,
   })]));
   const presetBot = vi.fn((id: string) => {
@@ -26,7 +28,7 @@ async function fixture() {
   ctx.provide('llm', {
     listProviders: () => [...catalogs.keys()].map((id) => ({ id, name: id })), listModels,
   } as unknown as Context['llm']);
-  ctx.provide('dshBots', { presetBot } as unknown as Context['dshBots']);
+  ctx.provide('dshBots', { presetBot, config: RegistryConfig({}) } as unknown as Context['dshBots']);
   const modelStates = new WeakMap<object, { pending: ModelSelection | null }>();
   ctx.provide('sessionProjections', {
     stateOf: (session: object) => modelStates.get(session),

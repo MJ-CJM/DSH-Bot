@@ -185,11 +185,65 @@ describe('DshBotRegistry with JSON storage and a preset service double', () => {
   }));
 
   it('exports validated default configuration', () => {
-    expect(Config(undefined)).toMatchObject({ seedExamples: true, presetIdPrefix: 'bot-', presetOrder: 50 });
-    for (const input of [{ presetIdPrefix: '' }, { presetOrder: Number.NaN }, { seedExamples: 'true' }]) {
+    expect(Config(undefined)).toMatchObject({ seedExamples: true, presetIdPrefix: 'bot-', presetOrder: 50,
+      maxInjectChars: 4000, memorySectionOrder: 100, memoryListLimit: 20 });
+    expect(Config({ maxInjectChars: 0, memorySectionOrder: 500, memoryListLimit: 200 })).toMatchObject({
+      maxInjectChars: 0, memorySectionOrder: 500, memoryListLimit: 200,
+    });
+    for (const input of [{ presetIdPrefix: '' }, { presetOrder: Number.NaN }, { seedExamples: 'true' },
+      { maxInjectChars: -1 }, { maxInjectChars: 1.5 }, { maxInjectChars: Infinity },
+      { memorySectionOrder: 0 }, { memorySectionOrder: 800 }, { memorySectionOrder: Number.NaN },
+      { memoryListLimit: 0 }, { memoryListLimit: 201 }, { memoryListLimit: 1.5 }]) {
       expect(() => Config(input as never)).toThrow();
     }
   });
+
+  it('shares the domain with Bot-bound memory access and stops retained facades after deletion', async () => withFacility(async ({ start, memories }) => {
+    const { registry } = await start({ memoryListLimit: 1 });
+    await registry.create({ id: 'alpha', name: 'Alpha' });
+    await registry.create({ id: 'beta', name: 'Beta' });
+    const alpha = registry.memoryFor('alpha');
+    const beta = registry.memoryFor('beta');
+    const { id } = await alpha.save({ content: 'Private preference' });
+    await alpha.save({ content: 'New preference' });
+    expect(await alpha.list()).toHaveLength(1);
+    expect(memories().listByBot('alpha', { limit: 10 })).toHaveLength(2);
+    expect(await beta.list()).toEqual([]);
+    await expect(beta.forget({ id })).rejects.toMatchObject({ code: 'memory/not-found' });
+    await registry.remove('alpha', { deleteMemories: false });
+    await expect(alpha.list()).rejects.toMatchObject({ code: 'bot/not-found' });
+    await expect(alpha.save({ content: 'Late write' })).rejects.toMatchObject({ code: 'bot/not-found' });
+  }));
+
+  it('drains accepted memory writes before Host unload and rejects later facade calls', async () => withFacility(async ({ ctx, start, unit }) => {
+    const { registry, stop } = await start();
+    await registry.create({ id: 'alpha', name: 'Alpha' });
+    const memory = registry.memoryFor('alpha');
+    const entered = deferred();
+    const commit = deferred();
+    const write = unit().putRecord.bind(unit());
+    const writing = vi.spyOn(unit(), 'putRecord').mockImplementationOnce(async (...args) => {
+      entered.resolve();
+      await commit.promise;
+      await write(...args);
+    });
+    const saving = memory.save({ content: 'Accepted durable memory' });
+    await entered.promise;
+    const reading = memory.list();
+    let stopped = false;
+    const stopping = stop().then(() => { stopped = true; });
+    try {
+      await Promise.resolve();
+      expect(stopped).toBe(false);
+    } finally { commit.resolve(); }
+    const [{ id }, rows] = await Promise.all([saving, reading, stopping]);
+    writing.mockRestore();
+    expect(rows).toMatchObject([{ id, content: 'Accepted durable memory' }]);
+    await expect(memory.list()).rejects.toMatchObject({ code: 'bot/unavailable' });
+    const reopened = await openBotStores(ctx);
+    expect(reopened.memories.listByBot('alpha', { limit: 10 })).toMatchObject([{ id }]);
+    await reopened.close();
+  }));
 
   it('registers durable Bots on startup and releases presets and the domain on unload', async () => withFacility(async ({ ctx, start, presets }) => {
     const stores = await openBotStores(ctx);

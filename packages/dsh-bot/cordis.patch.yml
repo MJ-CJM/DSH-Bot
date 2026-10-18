@@ -6,3 +6,6 @@
         presetIdPrefix: bot-
         presetOrder: 50
         dataDir: $DSH_HOME/dsh-bot
+        maxInjectChars: 4000
+        memorySectionOrder: 100
+        memoryListLimit: 20

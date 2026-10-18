@@ -9,9 +9,11 @@ import Schema from '@deepseek-ai/schemastery';
 import { BOT_ID_PATTERN } from '../shared/ids.js';
 import type {} from './registry.js';
 import { DshBotError } from './errors.js';
+import { buildMemoryPrompt } from './memory/prompt.js';
+import { createMemoryTools, MEMORY_TOOL_NAMES } from './memory/tools.js';
 
 export const name = 'dsh-bot-context';
-export const inject = ['dshBots', 'tools', 'llm'];
+export const inject = ['dshBots', 'tools', 'llm', 'systemPrompt'];
 
 export interface Config {
   botId: string;
@@ -39,7 +41,10 @@ export function apply(ctx: Context, config: Config): void {
   // Never enqueue a Remote-style get here: preset activation is itself awaited
   // by registry writes. Copy now so retained generations keep their old policy.
   const bot = ctx.dshBots.presetBot(botId);
-  const deny = [...bot.tools.deny];
+  const memoryPolicy = { ...bot.memory };
+  const { maxInjectChars, memorySectionOrder } = ctx.dshBots.config;
+  const deniedMemory = new Set(bot.tools.deny.filter((name) => MEMORY_TOOL_NAMES.includes(name)));
+  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name));
   const model = bot.model ? {
     provider: bot.model.provider,
     model: bot.model.model,
@@ -76,6 +81,11 @@ export function apply(ctx: Context, config: Config): void {
     const offCreated = ctx.on('agent/created', async ({ agent }) => {
       if (bindings.has(agent)) throw new Error(`Agent ${agent.id} already has a Bot binding`);
       if (model && shouldUseBotModel(agent)) await validateModel();
+      const memory = memoryPolicy.enabled ? ctx.dshBots.memoryFor(botId) : undefined;
+      // Compute once, before registration. Neither saves nor later assemblies
+      // replace the cached system prefix of this live Agent.
+      const memoryText = memory
+        ? buildMemoryPrompt(await memory.snapshot(memoryPolicy.injectLimit), maxInjectChars) : '';
       if (stopped) throw new DshBotError('bot/unavailable', `Bot '${botId}' context is unloading`);
       const dispose = agent.ctx.effect(() => {
         const releases: Array<() => void> = [];
@@ -91,6 +101,16 @@ export function apply(ctx: Context, config: Config): void {
         try {
           // Do not silently ignore unknown, same-layer or reserved tool names.
           if (deny.length) releases.push(agent.ctx.tools.restrict({ deny }));
+          if (memory) {
+            // restrict() only hides inherited tools in rc.2. Omit denied local
+            // definitions so schema lookup and dispatch agree for memory tools.
+            for (const tool of createMemoryTools(memory, agent)) {
+              if (!deniedMemory.has(tool.name)) releases.push(agent.ctx.tools.register(tool));
+            }
+            if (memoryText) releases.push(agent.ctx.systemPrompt.section({
+              name: 'dsh-bot:memory', order: memorySectionOrder, text: memoryText, interpolate: false,
+            }));
+          }
           bindings.set(agent, binding);
           if (model) {
             // Only alter route variables, never text/tools or other assembly

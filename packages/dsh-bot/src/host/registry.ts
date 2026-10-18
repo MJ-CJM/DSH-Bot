@@ -8,13 +8,14 @@ import Schema from '@deepseek-ai/schemastery';
 import { botIdSchema } from '../shared/ids.js';
 import type { BotStatus, DshBotMethods } from '../shared/remote-contract.js';
 import {
-  type BotCreateInput, type BotPatch, type BotRecord, type BotRemoveOptions,
+  type BotCreateInput, type BotPatch, type BotRecord, type BotRemoveOptions, MEMORY_LIST_MAX_LIMIT,
   botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, normalizeBotPatch,
 } from '../shared/schema.js';
 import { DshBotError, parseInput } from './errors.js';
 import { composeBotPreset, ensureBotSkillsDirectory } from './composer.js';
 export { composeBotPreset } from './composer.js';
 import { openBotStores } from './store.js';
+import { BotMemoryService } from './memory/service.js';
 
 export interface Config {
   seedExamples: boolean;
@@ -22,6 +23,9 @@ export interface Config {
   presetOrder: number;
   /** Files such as skills; storageDomain retains its separately configured backend root. */
   dataDir: string;
+  maxInjectChars: number;
+  memorySectionOrder: number;
+  memoryListLimit: number;
 }
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
   seedExamples: Schema.boolean().default(true),
@@ -31,6 +35,21 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
     return value;
   }).default(50),
   dataDir: Schema.string().pattern(/\S/).default('$DSH_HOME/dsh-bot'),
+  maxInjectChars: Schema.transform(Schema.number(), (value) => {
+    if (!Number.isSafeInteger(value) || value < 0) throw new TypeError('maxInjectChars must be a nonnegative safe integer');
+    return value;
+  }).default(4000),
+  memorySectionOrder: Schema.transform(Schema.number(), (value) => {
+    // rc.2: persona prefix = 0, the first tool policy (PTC_ONLY) = 800.
+    if (!Number.isFinite(value) || value <= 0 || value >= 800) throw new TypeError('memorySectionOrder must be between 0 and 800');
+    return value;
+  }).default(100),
+  memoryListLimit: Schema.transform(Schema.number(), (value) => {
+    if (!Number.isInteger(value) || value < 1 || value > MEMORY_LIST_MAX_LIMIT) {
+      throw new TypeError(`memoryListLimit must be an integer from 1 to ${MEMORY_LIST_MAX_LIMIT}`);
+    }
+    return value;
+  }).default(20),
 });
 
 export interface BotChanged {
@@ -233,6 +252,18 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     const bot = this.activating.get(key) ?? this.leases.get(`${this.config.presetIdPrefix}${key}`)?.bot;
     if (!bot) throw new DshBotError('bot/unavailable', `No activating Bot preset for '${key}'`);
     return structuredClone(bot);
+  }
+
+  /** Host-only, Bot-bound access to the existing domain; never open a second store.
+   * Join the registry queue so unload drains accepted operations before closing it.
+   */
+  memoryFor(botId: string): BotMemoryService {
+    this.assertReady();
+    const key = parseInput(botIdSchema, botId);
+    return new BotMemoryService(this.stores.memories, key, (operation) => this.enqueue(() => {
+      this.stores.bots.get(key);
+      return operation();
+    }), this.config.memoryListLimit);
   }
 
   private async acquire(definition: PresetDefinition, bot: BotRecord): Promise<void> {

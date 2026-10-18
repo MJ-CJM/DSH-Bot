@@ -131,7 +131,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-async function probe(startupUrl) {
+async function probe(startupUrl, phase) {
   const base = new URL('/', startupUrl);
   const auth = await fetch(startupUrl, { redirect: 'manual', signal: AbortSignal.timeout(30_000) });
   const cookie = auth.headers.getSetCookie().map((value) => value.split(';', 1)[0]).join('; ');
@@ -158,6 +158,21 @@ async function probe(startupUrl) {
     await owner.await();
     const unmount = await ctx.effect(() => ctx.remote.$mount(remoteContribution));
     const bots = ctx.remote.dshBot;
+    if (phase === 'resume') {
+      await until(() => existsSync(responsePath), 'cold restored memory inspection');
+      const evidence = JSON.parse(readFileSync(responsePath, 'utf8'));
+      const prepared = JSON.parse(readFileSync(resolve(runDir, 'memory-prepare.json'), 'utf8'));
+      check('cold restore observer succeeds', evidence.ok);
+      check('restored session was not already live', evidence.wasLive, false);
+      check('cold restore uses the original session id', evidence.sessionId, prepared.sessionId);
+      check('cold restore rereads saved memory', evidence.memoryText.includes('T06_PROFILE_MEMORY'));
+      check('cold restore recomputes memory saved after the old snapshot', evidence.memoryText.includes('T06_AFTER_SNAPSHOT'));
+      check('restored Agent stays idle without a model request', evidence.status, 'idle');
+      check('cold restore never streams a model', evidence.streamCalls, 0);
+      save('memory-resume.json', evidence);
+      await unmount();
+      return;
+    }
     const raw = (endpoint, args = {}) => ctx.connection.rpc.call('/api', endpoint, { args }, AbortSignal.timeout(30_000));
     check('isolated registry begins empty', ok(await bots.list(), 'list'), []);
     const extraDir = resolve(runDir, 'extra-skills');
@@ -190,7 +205,20 @@ async function probe(startupUrl) {
     const evidence = JSON.parse(readFileSync(responsePath, 'utf8'));
     idleSessionsCreated = evidence.idleSessionsCreated ?? 0;
     check('Host inspection succeeds without prompts', evidence.ok);
-    check('Host creates five real idle sessions including standard and updated generation', idleSessionsCreated, 5);
+    check('Host creates six real idle sessions including a memory snapshot', idleSessionsCreated, 6);
+    const memory = evidence.memory;
+    check('profile memory_save succeeds', memory.firstSave.isError, false);
+    check('profile repeated save returns the original id', memory.duplicateSave.value,
+      { id: memory.firstSave.value.id, deduplicated: true });
+    check('profile secret save returns a structured rejection', memory.rejectedSave.error.info.code, 'memory/rejected');
+    check('profile secret save writes no record', memory.records.length, 2);
+    check('profile original Agent keeps its prompt snapshot', memory.originalUnchanged);
+    check('profile new Agent sees saved memory', memory.beforeShutdown.includes('T06_PROFILE_MEMORY'));
+    check('profile later saves do not mutate the new Agent snapshot', memory.afterLaterSave, memory.beforeShutdown);
+    check('profile old snapshot excludes later memory', memory.beforeShutdown.includes('T06_AFTER_SNAPSHOT'), false);
+    check('profile memory stays isolated from Beta', memory.otherBotMemory, '');
+    check('profile session is durably flushed before restart', memory.flushed);
+    save('memory-prepare.json', memory);
     const remoteSkills = [];
     for (const item of evidence.agents) {
       const catalog = ok(await raw('skills/list', { request: { sessionId: item.sessionId } }), `skills/list ${item.botId}`);
@@ -238,7 +266,7 @@ async function probe(startupUrl) {
   }
 }
 
-async function runHost() {
+async function runHost(phase = 'prepare') {
   console.log(`T05: starting isolated profile ${profile}`);
   const { child, completion } = launch(['--profile', profile, '--patch', patchPath, '--no-open', '--host', '127.0.0.1', '--port', '0']);
   let startupUrl;
@@ -246,7 +274,7 @@ async function runHost() {
   let fatal;
   let closed = false;
   completion.finally(() => { closed = true; }).catch(() => {});
-  attachLines(child, 'host.log', (line) => {
+  attachLines(child, `host-${phase}.log`, (line) => {
     const match = line.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=\S+)/);
     if (match) {
       startupUrl = new URL(match[1]);
@@ -259,13 +287,13 @@ async function runHost() {
     await until(() => Boolean(startupUrl && loaded) || closed || fatal, 'Web Host activation');
     assert.ok(startupUrl && loaded && !closed && !fatal, fatal ?? 'Host exited before readiness');
     check('formal Bot Host activates', loaded);
-    await probe(startupUrl);
+    await probe(startupUrl, phase);
   } finally {
     if (!closed) child.kill('SIGTERM');
     const timer = setTimeout(() => child.kill('SIGKILL'), 8_000);
     try {
       const result = await completion;
-      save('host-exit.json', result);
+      save(`host-${phase}-exit.json`, result);
       check('clean Host shutdown', result, { code: 0, signal: null });
     } finally { clearTimeout(timer); }
   }
@@ -300,6 +328,11 @@ try {
   const manifest = JSON.parse(readFileSync(resolve(profileDir, 'package.json'), 'utf8'));
   check('profile links formal package', manifest.dependencies['dsh-bot'], `link:${resolve(root, 'packages/dsh-bot')}`);
   await runHost();
+  const prepared = JSON.parse(readFileSync(resolve(runDir, 'memory-prepare.json'), 'utf8'));
+  renameSync(responsePath, resolve(runDir, 'host-probe-prepare.json'));
+  writeFileSync(`${requestPath}.tmp`, JSON.stringify({ phase: 'resume', sessionId: prepared.sessionId }));
+  renameSync(`${requestPath}.tmp`, requestPath);
+  await runHost('resume');
 } catch (error) {
   failure = redact(error.stack ?? error);
   process.exitCode = 1;

@@ -7,6 +7,9 @@ export const MEMORY_LIST_MAX_LIMIT = 200;
 export const BOT_NAME_MAX_CHARS = 64;
 export const PERSONA_PREFIX_MAX_BYTES = 16 * 1024;
 export const utf8Bytes = (text: string) => new TextEncoder().encode(text).byteLength;
+/** Equality only: preserve the original text in storage, including its case. */
+export const normalizeMemoryContent = (text: string) => text.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+export interface MemorySaveResult { id: string; deduplicated: boolean }
 export const timestampSchema = z.number().int().nonnegative();
 const nonempty = z.string().trim().min(1);
 // JSON omits undefined properties. Canonicalize records, but not patches:

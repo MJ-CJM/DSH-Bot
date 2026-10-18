@@ -7,11 +7,11 @@ import { DshBotError, type DshBotErrorCode, parseInput } from './errors.js';
 import { botIdSchema, memoryIdSchema } from '../shared/ids.js';
 import {
   botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, memoryAddSchema,
-  memoryListOptionsSchema, memoryPatchSchema, memorySchema, normalizeBotPatch, timestampSchema,
+  memoryListOptionsSchema, memoryPatchSchema, memorySchema, normalizeBotPatch, normalizeMemoryContent, timestampSchema,
 } from '../shared/schema.js';
 import type {
   BotCreateInput, BotPatch, BotRecord, BotRemoveOptions, MemoryAddInput, MemoryCursor,
-  MemoryListOptions, MemoryPatch, MemoryRecord,
+  MemoryListOptions, MemoryPatch, MemoryRecord, MemorySaveResult,
 } from '../shared/schema.js';
 
 const seedStateSchema = z.strictObject({ status: z.enum(['pending', 'complete']) });
@@ -179,16 +179,43 @@ export class MemoryStore {
   constructor(private readonly domain: BotDomain, private readonly search: MemorySearch = lexicalMemorySearch) {}
 
   async add(input: MemoryAddInput): Promise<MemoryRecord> {
+    return (await this.persist(input, false)).record;
+  }
+
+  /** Match and merge inside the domain writer, including across Store instances. */
+  async saveUnique(input: MemoryAddInput, signal?: AbortSignal): Promise<MemorySaveResult> {
+    const { record, deduplicated } = await this.persist(input, true, signal);
+    return { id: record.id, deduplicated };
+  }
+
+  private async persist(input: MemoryAddInput, deduplicate: boolean, signal?: AbortSignal): Promise<{
+    record: MemoryRecord; deduplicated: boolean;
+  }> {
     const fields = parseInput(memoryAddSchema, input);
     return write(this.domain, async () => {
+      signal?.throwIfAborted();
       if (!this.domain.table('bots').get(fields.botId)) throw missingBot(fields.botId);
       const table = this.domain.table('memories');
+      if (deduplicate) {
+        const normalized = normalizeMemoryContent(fields.content);
+        const existing = [...table.entries()].map(([, record]) => record)
+          .filter((record) => record.botId === fields.botId && normalizeMemoryContent(record.content) === normalized)
+          .sort((a, b) => a.createdAt - b.createdAt || compareId(a.id, b.id))[0];
+        if (existing) {
+          const record = parseInput(memorySchema, { ...existing,
+            tags: [...new Set([...existing.tags, ...fields.tags])], pinned: existing.pinned || fields.pinned,
+            updatedAt: nextTimestamp(existing.updatedAt),
+          });
+          await table.put(record.id, record);
+          return { record: structuredClone(record), deduplicated: true };
+        }
+      }
       let id = randomUUID();
       while (table.get(id)) id = randomUUID();
       const now = Date.now();
       const record = parseInput(memorySchema, { ...fields, id, createdAt: now, updatedAt: now });
       await table.put(id, record);
-      return structuredClone(record);
+      return { record: structuredClone(record), deduplicated: false };
     });
   }
 

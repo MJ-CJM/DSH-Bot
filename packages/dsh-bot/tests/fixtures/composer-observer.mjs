@@ -3,10 +3,10 @@ import { readFile, rename, writeFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import { format } from 'node:util';
 import { agentEvents } from '@deepseek-ai/dsh-agent';
-import { LlmAdapter } from '@deepseek-ai/dsh-llm';
+import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { getBotBinding } from 'dsh-bot/bot-context';
 
-export const inject = ['loader', 'sessionController', 'agents', 'agentPresets', 'agentDefaultModel', 'systemPrompt', 'skills', 'tools', 'llm'];
+export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel', 'systemPrompt', 'skills', 'tools', 'llm'];
 
 async function saveResult(path, value) {
   await writeFile(`${path}.tmp`, JSON.stringify(value, null, 2));
@@ -52,6 +52,21 @@ async function inspect(ctx, config, signal, calls) {
     }
   }
   if (signal.aborted) return;
+  const bots = ctx.get('dshBots');
+  if (!bots) throw new Error('Bot registry unavailable after Loader settlement');
+  await bots.waitUntilReady();
+  const memoryText = async (agent) => (await ctx.systemPrompt.assemble({ agent, scope: agent })).sections
+    .find((section) => section.name === 'dsh-bot:memory')?.text ?? '';
+  if (request.phase === 'resume') {
+    const wasLive = ctx.agents.get(request.sessionId) !== undefined;
+    const resolved = await ctx.sessionController.resolveAgent(request.sessionId);
+    if ('error' in resolved) throw resolved.error;
+    await saveResult(config.responsePath, {
+      ok: true, wasLive, sessionId: resolved.agent.id, memoryText: await memoryText(resolved.agent),
+      status: resolved.agent.status, streamCalls: calls.stream, promptsSent: 0,
+    });
+    return;
+  }
   const live = [];
   const create = async (preset) => {
     const created = await ctx.sessionController.create({ cwd: request.cwd, agentPreset: preset });
@@ -87,8 +102,6 @@ async function inspect(ctx, config, signal, calls) {
   }
   const plainAgent = await create('standard');
   const plain = await inspectAgent(plainAgent, null);
-  const bots = ctx.get('dshBots');
-  if (!bots) throw new Error('Bot registry unavailable after Loader settlement');
   await bots.update(request.ids[0], { tools: { deny: [] }, persona: { prefix: 'T05_ALPHA_UPDATED' } });
   const old = await inspectAgent(live[0], request.ids[0]);
   const freshAgent = await create(`bot-${request.ids[0]}`);
@@ -107,9 +120,26 @@ async function inspect(ctx, config, signal, calls) {
     }
   }
   const defaults = ctx.agentDefaultModel.currentSelection();
+  const execute = (name, args) => ctx.tools.execute({ name, arguments: args,
+    agent: live[0], callId: ToolCallId(`t06-profile-${name}-${Date.now()}`), signal });
+  const initialMemory = await memoryText(live[0]);
+  const firstSave = await execute('memory_save', { content: 'T06_PROFILE_MEMORY prefers concise answers', tags: ['first'] });
+  const duplicateSave = await execute('memory_save', { content: 'Ｔ０６_PROFILE_MEMORY\n prefers concise answers', tags: ['second'], pinned: true });
+  const rejectedSave = await execute('memory_save', { content: `ghp_${'t'.repeat(36)}` });
+  const memoryAgent = await create(`bot-${request.ids[0]}`);
+  const beforeShutdown = await memoryText(memoryAgent);
+  await bots.memoryFor(request.ids[0]).save({ content: 'T06_AFTER_SNAPSHOT additional durable fact' });
+  const memory = {
+    sessionId: memoryAgent.id, initialMemory, firstSave, duplicateSave, rejectedSave,
+    originalUnchanged: await memoryText(live[0]) === initialMemory,
+    beforeShutdown, afterLaterSave: await memoryText(memoryAgent),
+    otherBotMemory: await memoryText(live[1]),
+    records: await bots.memoryFor(request.ids[0]).list(),
+    flushed: await ctx.sessions.flush(memoryAgent.session),
+  };
   await saveResult(config.responsePath, {
     ok: true, agents, plain, generation: { old, fresh, oldAgentStillLive: ctx.agents.get(live[0].id) === live[0] },
-    invalidModels, streamCalls: calls.stream, idleSessionsCreated: 5,
+    invalidModels, memory, streamCalls: calls.stream, idleSessionsCreated: 6,
     defaultModel: { provider: defaults.provider, model: defaults.model }, promptsSent: 0,
   });
 }

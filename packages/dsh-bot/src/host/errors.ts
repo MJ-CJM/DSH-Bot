@@ -3,7 +3,7 @@ import type { z } from 'zod';
 import type {} from '../shared/remote-contract.js';
 
 export type DshBotErrorCode = 'bot/not-found' | 'bot/conflict' | 'bot/invalid'
-  | 'memory/not-found' | 'memory/too-large' | 'store/unavailable'
+  | 'memory/not-found' | 'memory/too-large' | 'memory/rejected' | 'store/unavailable'
   | 'bot/preset-failed' | 'bot/rollback-failed' | 'bot/unavailable';
 
 /** Preserve the Store's error vocabulary while using DSH's actual wire error. */
