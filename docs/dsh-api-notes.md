@@ -135,3 +135,41 @@ Client 建议用无 runtime imports 的公开 `@deepseek-ai/dsh-typert-protocol/
 最终证据 `.dsh-dev/t02-review/t02-mock-1792342631862/{dump.yml,host.log,session-result.json,result.json}`：Host 激活；`create({cwd,agentPreset:'bot-mock-spike'})`；`prompt` 返回 accepted=true；实际 `assistant/message` 文本 `T02_ROUTINE_MOCK_OK`；flush=true；mock 恰好一条 `/v1/messages`、behavior=success/outcome=completed。会话为 `session-cc048c8f-e320-4665-ac15-6e1d55159c66`。正常关闭退出 0，无浏览器，无真实模型调用。
 
 新增使用公开包：`@deepseek-ai/dsh-agent-default-model` 根入口（dev 精确 rc.2，type import），`currentSelection()` 用于验证默认 provider/model；`SessionRequestId` 与 `sessionController.prompt` 来自 `dsh-api-session-controller` 根入口；`ctx.fs` 的类型声明来自 `@deepseek-ai/dsh-fs` 根入口（dev 精确 rc.2）。源码 `core/agent-default-model/src/index.ts:67-73`、`api/session-controller/src/types.ts:344-359`、`src/index.ts:462-485`。prompt 回执只保证进入 Inbox，必须另等 assistant 事件；本例验证了文本回复，**工具调用、routine 调度/并发、错误重试和冷恢复后续执行仍未验证**。
+
+## T03：正式数据模型与访问层
+
+正式实现位于 `packages/dsh-bot/src/shared/{schema,ids}.ts` 和 `src/host/store.ts`，不导入 spike。领域为 `dsh_bot`、version 1、`bots` / `memories` 两表。类型从 Zod 推导；patch 只替换顶层可编辑字段，拒绝身份、时间戳、schemaVersion 和未知字段。内容 trim 后须非空，按 UTF-8 **2048 字节**校验；头像上限 **65536 字节**。Bot name trim 后最多 **64 个 Unicode 码点**，persona.prefix 按 UTF-8 最多 **16 KiB**；导出常量 `BOT_NAME_MAX_CHARS` / `PERSONA_PREFIX_MAX_BYTES`。创建 Bot 默认 memory 为 enabled=true / injectLimit=20，可通过 Bot 输入修改，不是 Host 配置项。这些固定 schema 上限是持久记录契约，不是可调 Host 配置；改变上限须复核既有数据。旧记录若不符合新增约束，open 会报 store/unavailable 并保留原始校验 cause，不自动删除或迁移。
+
+| 公开 API / 依赖 | 来源（相对锁定参考源码） | T03 用法 |
+| --- | --- | --- |
+| `defineDomain`、`domainTable`、`Domain`、`DomainError` | `packages/storage/storage-domain/src/index.ts:22-29`；`src/spec.ts` | 仅从已发布根入口导入；新增 storage-domain peer `>=0.2.1-rc.2 <0.3.0`，保留精确 rc.2 dev |
+| `KvTable.get/entries/put/delete/update` | `packages/storage/storage-domain/src/domain.ts:42-97,289-344` | 同步读、持久写；真实方法名为 delete。put/update 不校验，本层先 parse。update 回调内比较 expectedUpdatedAt；下一时间戳取 max(当前时间, 旧值+1) |
+| `ctx.storageDomain.open` / `domain.close` | `packages/storage/storage-domain/src/index.ts:103-174`；`src/domain.ts:222-239` | `openBotStores(ctx)` 在所属 Host context 的 effect 中打开一次，返回共享 stores；关闭先拒绝新写入并排空包内队列，再 close。重复打开映射 store/unavailable，不接管诊断 get() 返回的现有句柄 |
+| `Storage`、storage-json `apply`、storage-domain `apply` | `packages/storage/storage/src/index.ts`；`storage-json/src/index.ts`；`storage-domain/src/index.ts:223` | 测试挂载真实 Cordis 服务和 JSON 后端；storage/storage-json 仅为精确 rc.2 devDependency |
+| Zod 4.4.3 | 参考 storage-domain manifest；本仓库 workspace override | 正式 shared schema 增加精确普通 dependency，无共享自定义注册表。Client 尚未引入 schema，未来仍须从平台取得 Zod |
+
+接口约定与限制：
+
+- 同一 Domain 句柄上的 Store 实例共享写队列，保护 create 的检查/写入及记忆归属检查；对外返回深克隆。调用方必须经 Store 写入，不绕过它直接 put；该队列不协调多个 Host 进程。
+- Bot get 缺失时报 bot/not-found；`remove(id,{deleteMemories=true})` 默认在同一个共享写队列槽内先删除该 Bot 的记忆，再删除 Bot，避免正常删除后同 id 重建继承旧记忆。显式 false 保留按旧 botId 绑定的记忆，T04 须明确处理后续 id 复用策略。底层没有跨表事务，清理中途失败可能已删除部分记忆，但 Bot 保留且操作可重试；不能宣称崩溃时全量回滚。
+- 可选字段支持显式 undefined 清空；patch 保留此意图，最终记录递归去除 undefined 属性，与 JSON 落盘形态一致。省略字段不清空；不允许将必填字段设为 undefined。
+- `MemoryStore.add(input)` 要求 Bot 存在；`update(botId,id,patch)` / `remove(botId,id)` 校验归属，跨 Bot 与不存在统一报 memory/not-found。保留的记忆允许按 Bot id 读取和清理。
+- `listByBot(botId,{limit,query?,tag?,pinned?,before?})` 同步返回数组；limit 为 1–200 的整数，上限导出为 `MEMORY_LIST_MAX_LIMIT`，超出报 bot/invalid。先过滤、排序、切片，再只对返回页 structuredClone。排序为 pinned 降序、updatedAt 降序、id 升序；before 为末行的 `{pinned,updatedAt,id}`，表示排他的排序位置。并发编辑时不承诺跨页快照一致性。
+- 查询对内容做 NFKC/小写归一化，中文拆重叠二元组（单字保留），其它字母/数字按词拆分，全部 token 需被包含；空 token 查询等价不过滤。tag 独立精确匹配。`MemorySearch.matches` 是可替换的纯函数策略边界；自定义策略接收浅拷贝冻结视图（tags/source 也单独复制冻结），防止修改存储引用，不执行逐记录深克隆。当前未实现向量索引、相似度排序或异步检索。
+- 错误统一为 `DshBotError`；参数错误由 schema 映射，底层失败保留原始 cause。评审新增 store/unavailable，后续 T04 Remote/UI 契约必须包含该码，不将其展示成表单输入错误。
+- Cordis 重复调用同一 disposer 会跳过再次执行，不能据此认为首次异步清理已完成；本层另持有 closing Promise，显式 close 与 fiber 卸载共享同一次排空/关闭。
+
+构建 rootDir 扩展为 src，新增薄 `src/index.ts` 保持 `lib/index.js` 的 bundle 入口。T03 未将 store 挂载到生产 Host，接入留给 T04；Client 和 locale 未改变。
+
+错误码表（T03 评审后）：
+
+| code | 含义 |
+| --- | --- |
+| `bot/not-found` | Bot 不存在，包括向不存在的 Bot 新增记忆 |
+| `bot/conflict` | 重复创建 Bot，或 expectedUpdatedAt 乐观并发冲突 |
+| `bot/invalid` | 输入参数不符合 schema，包含空记忆、字段上限、非法列表 limit；不用于底层 I/O |
+| `memory/not-found` | 记忆不存在或不属于指定 Bot，二者不作区分 |
+| `memory/too-large` | trim 后的记忆内容超过 2048 UTF-8 字节 |
+| `store/unavailable` | already-open、closed、后端读写/关闭失败、持久记录校验失败等存储故障；原始错误保留于 cause |
+
+运行验证：`tests/store.spec.ts` 的 **24 项**测试使用公开 npm 包和真实 JSON 后端，通过 CRUD、严格校验、字节边界、多实例竞争、同毫秒 CAS、中文检索、隔离、分页、对象副本、落盘/重开和生命周期检查。评审补充覆盖默认级联与同 id 重建、显式保留、跨 Bot update/remove、可选字段清空后严格对象一致性、trim/字段上限/列表上限、分页只深克隆返回记录；在公开 KvUnit 上注入读写失败，验证 cause、未提交更新不改变内存、级联中途失败保留 Bot 及重试成功。各测试使用并清理独立仓库内 `.dsh-dev/t03-store-*`，不触碰 T02 的领域文件。独立服务测试不替代 Desktop 或完整 Web profile 验收；本轮未启动这些环境或真实模型会话。

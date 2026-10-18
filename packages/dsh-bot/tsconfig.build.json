@@ -2,11 +2,11 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "rootDir": "src/host",
+    "rootDir": "src",
     "outDir": "lib",
     "declaration": true,
     "sourceMap": true
   },
-  "include": ["src/host/**/*.ts"],
+  "include": ["src/index.ts", "src/host/**/*.ts", "src/shared/**/*.ts"],
   "exclude": ["src/**/*.test.*", "src/**/*.spec.*"]
 }
