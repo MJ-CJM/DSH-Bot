@@ -6,7 +6,7 @@ import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import Schema from '@deepseek-ai/schemastery';
 import { botIdSchema } from '../shared/ids.js';
-import type { BotStatus, DshBotMethods } from '../shared/remote-contract.js';
+import type { CatalogInfo, BotStatus, DshBotMethods } from '../shared/remote-contract.js';
 import {
   type BotCreateInput, type BotPatch, type BotRecord, type BotRemoveOptions, MEMORY_LIST_MAX_LIMIT,
   botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, normalizeBotPatch,
@@ -155,6 +155,7 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
           this.stopping = true;
           await this.tail;
         } });
+        for (const id of this.stores.bots.avatarWarnings()) this.ctx.logger.warn(`[dsh-bot] avatar/invalid bot=${id}: unsupported saved avatar hidden; replace or clear explicitly`);
         if (this.config.seedExamples) await this.stores.bots.seedExamples(examples);
         for (const bot of this.stores.bots.list()) {
           try {
@@ -232,18 +233,20 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       try { await this.ctx.agentPresets.readDocument(template); }
       catch (error) { templateErrors.set(template, `Cannot read template '${template}': ${messageOf(error)}`); }
     }
+    const avatarWarnings = new Set(this.stores.bots.avatarWarnings());
     return bots.map((bot): BotStatus => {
       const presetId = `${this.config.presetIdPrefix}${bot.id}`;
+      const identity = { id: bot.id, presetId, ...(avatarWarnings.has(bot.id) ? { warnings: ['avatar/invalid' as const] } : {}) };
       const row = roster.get(presetId);
       const templateError = templateErrors.get(bot.template);
-      if (templateError) return { id: bot.id, presetId, preset: { state: 'broken', reason: templateError } };
-      if (!row) return { id: bot.id, presetId, preset: {
+      if (templateError) return { ...identity, preset: { state: 'broken', reason: templateError } };
+      if (!row) return { ...identity, preset: {
         state: 'missing', reason: this.diagnostics.get(bot.id) ?? `Preset '${presetId}' is not registered`,
       } };
       const lease = this.leases.get(presetId);
       const reason = row.broken ?? (!lease ? 'Preset id is owned by another registration'
         : !sameBotConfig(lease.bot, bot) ? 'Preset differs from the stored Bot' : undefined);
-      return { id: bot.id, presetId, preset: reason === undefined ? { state: 'ok' } : { state: 'broken', reason } };
+      return { ...identity, preset: reason === undefined ? { state: 'ok' } : { state: 'broken', reason } };
     });
   }
 
@@ -335,6 +338,11 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
 
   @Remote
   async list(): Promise<BotRecord[]> { return this.enqueue(() => this.stores.bots.list()); }
+
+  @Remote
+  async catalogInfo(): Promise<CatalogInfo> {
+    return this.enqueue(() => ({ presetIdPrefix: this.config.presetIdPrefix }));
+  }
 
   @Remote
   async status(): Promise<BotStatus[]> { return this.enqueue(() => this.statusRows()); }

@@ -265,7 +265,7 @@ describe('bot_manage through published ToolRuntime, approval audit and JSON-back
   it('returns bounded list personas and compact avatars in both canonical values and rendered text without changing storage', async () => withFixture(async ({ ctx, registry, create, execute }) => {
     const owner = create();
     ctx.on('approval/request', async () => 'allowed-once');
-    const avatar = `data:image/png;base64,${'A'.repeat(64 * 1024 - 22)}`;
+    const avatar = `data:image/png;base64,${'A'.repeat(Math.floor((64 * 1024 - 22) / 4) * 4)}`;
     const prefix = '🧠'.repeat(201);
     const suffix = 'Suffix'.repeat(200);
     const created = await execute(owner.agent, { action: 'create', input: { id: 'alpha', name: 'Alpha', avatar, persona: { prefix, suffix, complete: false } } });

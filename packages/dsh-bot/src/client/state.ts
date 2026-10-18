@@ -7,8 +7,11 @@ import type { BotRecord } from '../shared/schema.js';
 export type BotPresetStatus = BotStatus;
 export interface BotCatalogEntry { bot: BotRecord; status?: BotPresetStatus }
 export interface CatalogError { code?: string; message: string }
-export interface CatalogSnapshot {
+export interface CatalogSnapshot extends PollingSnapshot {
   readonly entries: readonly BotCatalogEntry[];
+  readonly presetIdPrefix?: string;
+}
+export interface PollingSnapshot {
   readonly loading: boolean;
   /** A failed refresh retains the last successful entries and this diagnostic. */
   readonly error?: CatalogError;
@@ -17,6 +20,7 @@ export interface CatalogSnapshot {
 }
 export interface BotCatalog {
   subscribe(listener: () => void): () => void;
+  observe(listener: () => void): () => void;
   getSnapshot(): CatalogSnapshot;
   /** Always supersedes older reads, including reads started before a mutation. */
   refresh(): Promise<void>;
@@ -67,11 +71,24 @@ function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T | 
  * There is deliberately no custom changed-event subscription: rc.2 does not
  * forward third-party events. Mutation callers must await refresh() afterward.
  */
-export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}): BotCatalog {
+export interface PollingCatalog<Payload> {
+  subscribe(listener: () => void): () => void;
+  observe(listener: () => void): () => void;
+  getSnapshot(): Payload & PollingSnapshot;
+  refresh(): Promise<void>;
+  setPollIntervalMs(value: number): void;
+  reset(value: Payload): void;
+  dispose(): void;
+}
+
+export function createPollingCatalog<Payload>(
+  ctx: Context, initial: Payload, load: () => Promise<Payload>, options: BotCatalogOptions = {},
+): PollingCatalog<Payload> {
   let pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   validatePollInterval(pollIntervalMs);
-  let snapshot: CatalogSnapshot = { entries: [], loading: true, loaded: false, pollIntervalMs };
+  let snapshot: Payload & PollingSnapshot = { ...initial, loading: true, loaded: false, pollIntervalMs };
   const listeners = new Set<() => void>();
+  const pollers = new Set<() => void>();
   let epoch = 0;
   let disposed = false;
   let controller: AbortController | undefined;
@@ -79,7 +96,7 @@ export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}):
   let unsubscribeReset: (() => void) | undefined;
   const page = typeof document === 'undefined' ? undefined : document;
   const visible = () => page?.visibilityState !== 'hidden';
-  const publish = (next: CatalogSnapshot) => {
+  const publish = (next: Payload & PollingSnapshot) => {
     snapshot = next;
     for (const listener of listeners) listener();
   };
@@ -97,20 +114,9 @@ export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}):
     publish({ ...snapshot, loading: true });
     try {
       if (request.signal.aborted || disposed) return;
-      const remote = ctx.get('remote.dshBot') as DshBotRemoteMethods | undefined;
-      if (!remote) throw { code: 'bot/unavailable', message: '' };
-      const result = await untilAborted(Promise.all([remote.list(), remote.status()]), request.signal);
+      const result = await untilAborted(load(), request.signal);
       if (!result || disposed || request.signal.aborted || current !== epoch) return;
-      const [bots, statuses] = result;
-      if (!bots.ok) throw bots.error;
-      if (!statuses.ok) throw statuses.error;
-      const byId = new Map(statuses.value.map((status) => [status.id, status]));
-      publish({
-        entries: bots.value.map((bot) => ({ bot, status: byId.get(bot.id) })),
-        loading: false,
-        loaded: true,
-        pollIntervalMs,
-      });
+      publish({ ...result, loading: false, loaded: true, pollIntervalMs });
     } catch (error: unknown) {
       if (disposed || request.signal.aborted || current !== epoch) return;
       publish({ ...snapshot, loading: false, error: diagnostic(error) });
@@ -121,13 +127,13 @@ export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}):
   const schedulePoll = () => {
     if (timer !== undefined) clearInterval(timer);
     timer = undefined;
-    if (!listeners.size || disposed) return;
+    if (!pollers.size || disposed || !visible()) return;
     timer = setInterval(() => {
       // Slow reads finish instead of being starved by periodic invalidation.
       if (visible() && !controller) void refresh();
     }, pollIntervalMs);
   };
-  const onVisibility = () => { if (visible()) void refresh(); };
+  const onVisibility = () => { schedulePoll(); if (visible()) void refresh(); };
   const stop = () => {
     cancelRead();
     if (timer !== undefined) clearInterval(timer);
@@ -142,11 +148,39 @@ export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}):
     disposed = true;
     stop();
     listeners.clear();
+    pollers.clear();
+  };
+  const subscribe = (listener: () => void, polling: boolean) => {
+    if (disposed) return () => {};
+    const subscription = () => listener();
+    listeners.add(subscription);
+    if (polling) pollers.add(subscription);
+    schedulePoll();
+    if (listeners.size === 1) {
+      unsubscribeReset = ctx.on('connection/reset', () => { void refresh(); });
+      page?.addEventListener('visibilitychange', onVisibility);
+    }
+    // A newly mounted page/badge gets a current view, even when another consumer remains.
+    if (listeners.size === 1 || (polling && pollers.size === 1)) void refresh();
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      listeners.delete(subscription);
+      pollers.delete(subscription);
+      schedulePoll();
+      if (listeners.size === 0) stop();
+    };
   };
   const disposeOwner = ctx.effect(() => dispose, 'dsh-bot: catalog');
   return {
     getSnapshot: () => snapshot,
     refresh,
+    reset(value) {
+      if (disposed) return;
+      cancelRead();
+      publish({ ...value, loading: true, loaded: false, pollIntervalMs });
+    },
     setPollIntervalMs(value) {
       validatePollInterval(value);
       if (disposed || value === pollIntervalMs) return;
@@ -155,24 +189,20 @@ export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}):
       publish({ ...snapshot, pollIntervalMs });
     },
     dispose: () => { void disposeOwner(); },
-    subscribe(listener) {
-      if (disposed) return () => {};
-      // A wrapper gives repeated subscriptions with the same callback their own lease.
-      const subscription = () => listener();
-      listeners.add(subscription);
-      if (listeners.size === 1) {
-        unsubscribeReset = ctx.on('connection/reset', () => { void refresh(); });
-        page?.addEventListener('visibilitychange', onVisibility);
-        schedulePoll();
-        void refresh();
-      }
-      let active = true;
-      return () => {
-        if (!active) return;
-        active = false;
-        listeners.delete(subscription);
-        if (listeners.size === 0) stop();
-      };
-    },
+    subscribe: (listener) => subscribe(listener, true),
+    observe: (listener) => subscribe(listener, false),
   };
+}
+
+export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}): BotCatalog {
+  return createPollingCatalog<{ entries: readonly BotCatalogEntry[]; presetIdPrefix?: string }>(ctx, { entries: [] }, async () => {
+    const remote = ctx.get('remote.dshBot') as DshBotRemoteMethods | undefined;
+    if (!remote) throw { code: 'bot/unavailable', message: '' };
+    const [bots, statuses, info] = await Promise.all([remote.list(), remote.status(), remote.catalogInfo()]);
+    if (!bots.ok) throw bots.error;
+    if (!statuses.ok) throw statuses.error;
+    if (!info.ok) throw info.error;
+    const byId = new Map(statuses.value.map((status) => [status.id, status]));
+    return { presetIdPrefix: info.value.presetIdPrefix, entries: bots.value.map((bot) => ({ bot, status: byId.get(bot.id) })) };
+  }, options);
 }

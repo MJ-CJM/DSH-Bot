@@ -72,3 +72,6 @@
   .dialog { max-height: calc(100dvh - 20px); }
   .editorBody { padding: 20px 18px; }
 }
+
+.tabs { display: flex; gap: 8px; padding: 18px 24px 0; }
+.tabs [aria-selected="true"] { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-state-business-primary); }

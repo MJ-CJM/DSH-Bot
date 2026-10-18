@@ -5,6 +5,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client';
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import en from '../../locale/en.json';
@@ -13,6 +16,9 @@ import TYPERT_REMOTE from '../typert.remote-client.js';
 import type { DshBotRemoteMethods } from '../shared/remote-contract.js';
 import { Config } from './config.js';
 import { BotsPage, type BotsPageInjected } from './pages/BotsPage.js';
+import { SessionBotBadge } from './components/SessionBotBadge.js';
+import { createMemoryCatalog, type MemoryCatalog } from './memory-state.js';
+import { createBotDetailSource } from './detail-state.js';
 import { createBotCatalog } from './state.js';
 
 export { Config };
@@ -28,7 +34,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 // Standard Web/Desktop composition includes locale (dsh-v0.2.1-rc.2:
 // packages/bundle/web-app/cordis.patch.yml:257-258). Cordis waits for both services.
 // This assembly mounts dshBot, so it must not depend on remote.dshBot itself.
-export const inject = ['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces'];
+export const inject = ['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces', 'layout'];
 
 function BotsIcon({ size }: PropsRuntime<'sidebar.panellist'>) {
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
@@ -51,6 +57,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   }), 'dsh-bot: dictionaries');
   const t = ctx.locale.bind(namespace);
   const catalog = createBotCatalog(ctx, config);
+  const detail = createBotDetailSource(ctx);
+  const memories = new Set<MemoryCatalog>();
   let active = true;
   ctx.effect(() => () => { active = false; }, 'dsh-bot: action lifetime');
   const remote = (): DshBotRemoteMethods => {
@@ -64,9 +72,31 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     await catalog.refresh();
   };
   const page: BotsPageInjected = {
-    hooks: { catalog, workspaceCatalog: ctx.workspaces.list },
+    hooks: { catalog, workspaceCatalog: ctx.workspaces.list, botDetail: detail },
+    onDetailConsumed: detail.consume,
+    onCountMemories: async (id) => unwrap(await remote().memory.count(id)),
+    createMemoryPanel: (id) => {
+      const memory = createMemoryCatalog(ctx, id, { pollIntervalMs: catalog.getSnapshot().pollIntervalMs, pageSize: config.memoryPageSize });
+      memories.add(memory);
+      const write = async (operation: () => Promise<RemoteResult<unknown>>) => {
+        unwrap(await operation());
+        await memory.refresh();
+      };
+      return {
+        catalog: memory,
+        dispose: () => { memories.delete(memory); memory.dispose(); },
+        onSave: (input) => write(() => remote().memory.save(id, input)),
+        onUpdate: (memoryId, patch) => write(() => remote().memory.update(id, memoryId, patch)),
+        onRemove: (memoryId) => write(() => remote().memory.delete(id, memoryId)),
+        onOpenSession: (sessionId) => { if (active) ctx.uiWorkspace.openSession(sessionId as SessionId); },
+      };
+    },
     onRefresh: catalog.refresh,
-    onPollInterval: (value) => catalog.setPollIntervalMs(Config({ pollIntervalMs: value }).pollIntervalMs),
+    onPollInterval: (value) => {
+      const interval = Config({ pollIntervalMs: value }).pollIntervalMs;
+      catalog.setPollIntervalMs(interval);
+      for (const memory of memories) memory.setPollIntervalMs(interval);
+    },
     onCreate: (input) => mutate(() => remote().create(input)),
     onUpdate: (id, patch) => mutate(() => remote().update(id, patch)),
     onDuplicate: (id, newId) => mutate(() => remote().duplicate(id, newId)),
@@ -99,6 +129,14 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       }, { agentPreset: status.presetId });
     },
   };
+  ctx.effect(() => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities', id: 'dsh-bot', locale: namespace,
+    inject: () => ({ hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe } }, onOpenBot: (id: string) => {
+      if (!active) return;
+      detail.open(id);
+      ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+    } }),
+  }, SessionBotBadge)), 'dsh-bot: session badge');
   ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: 'dsh-bot', locale: namespace, inject: () => page,
   }, BotsPage)), 'dsh-bot: main page');

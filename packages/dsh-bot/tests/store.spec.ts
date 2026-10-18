@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BotStore, botDomain, MemoryStore, openBotStores } from '../src/host/store.js';
 import { DshBotError, type DshBotErrorCode } from '../src/host/errors.js';
 import {
-  BOT_NAME_MAX_CHARS, botSchema,
+  avatarSchema, botCreateSchema, botPatchSchema, BOT_NAME_MAX_CHARS, botSchema,
   MEMORY_LIST_MAX_LIMIT, memorySchema, PERSONA_PREFIX_MAX_BYTES,
 } from '../src/shared/schema.js';
 
@@ -55,6 +55,45 @@ async function expectCode(operation: () => unknown, code: DshBotErrorCode) {
 }
 
 describe('BotStore with the published JSON storage backend', () => {
+  it('shares strict raster base64 avatar validation across write and wire schemas', async () => withStores(async ({ bots }) => {
+    for (const type of ['png', 'jpeg', 'gif', 'webp']) {
+      const avatar = `data:image/${type};base64,aGVsbG8=`;
+      expect(avatarSchema.parse(avatar)).toBe(avatar);
+      expect(botCreateSchema.parse({ id: 'alpha', name: 'Alpha', avatar }).avatar).toBe(avatar);
+      expect(botPatchSchema.parse({ avatar }).avatar).toBe(avatar);
+    }
+    await bots.create({ id: 'alpha', name: 'Alpha', avatar: '🤖' });
+    for (const avatar of ['data:text/html;base64,PHNjcmlwdD4=', 'data:image/svg+xml;base64,PHN2Zz4=',
+      'data:image/png,hello', 'data:image/png;base64,', 'data:image/png;base64,???', 'data:image/png;base64,a',
+      'data:image/png;base64,a===', 'data:image/png;base64,aGVs bG8=', 'https://example.com/a.png']) {
+      expect(avatarSchema.safeParse(avatar).success).toBe(false);
+      expect(botCreateSchema.safeParse({ id: 'beta', name: 'Beta', avatar }).success).toBe(false);
+      expect(botPatchSchema.safeParse({ avatar }).success).toBe(false);
+      await expectCode(() => bots.create({ id: 'beta', name: 'Beta', avatar }), 'bot/invalid');
+      await expectCode(() => bots.update('alpha', { avatar }), 'bot/invalid');
+    }
+  }));
+
+  it('keeps invalid legacy avatars on disk but serves valid records and diagnostics after reopen', async () => withStores(async ({ ctx, root, domain, bots, close }) => {
+    const original = await bots.create({ id: 'legacy', name: 'Legacy' });
+    const healthy = await bots.create({ id: 'healthy', name: 'Healthy', avatar: '🤖' });
+    const avatar = 'data:text/html;base64,PHNjcmlwdD4=';
+    // Simulate an older writer; Domain.put intentionally does not validate.
+    await domain.table('bots').put('legacy', { ...original, avatar });
+    await close();
+    const before = await readFile(join(root, 'dsh_bot.json'), 'utf8');
+    const reopened = await openOwned(ctx);
+    expect(reopened.bots.get('legacy')).toEqual(original);
+    expect(reopened.bots.list()).toEqual([healthy, original]);
+    expect(reopened.bots.avatarWarnings()).toEqual(['legacy']);
+    expect(await readFile(join(root, 'dsh_bot.json'), 'utf8')).toBe(before);
+    await expectCode(() => reopened.bots.update('legacy', { name: 'Still legacy' }), 'bot/invalid');
+    expect(reopened.domain.table('bots').get('legacy')?.avatar).toBe(avatar);
+    await reopened.bots.update('legacy', { avatar: null });
+    expect(reopened.bots.avatarWarnings()).toEqual([]);
+    expect(reopened.bots.get('healthy')).toEqual(healthy);
+  }));
+
   it('bounds names by Unicode code points and persona prefixes by UTF-8 bytes', async () => withStores(async ({ bots }) => {
     const prefix = `${'界'.repeat(Math.floor(PERSONA_PREFIX_MAX_BYTES / 3))}a`;
     const original = await bots.create({ id: 'alpha', name: ` ${'🤖'.repeat(BOT_NAME_MAX_CHARS)} `,
@@ -123,9 +162,9 @@ describe('BotStore with the published JSON storage backend', () => {
 
   it('enforces the UTF-8 avatar limit and rejects writable metadata', async () => withStores(async ({ bots }) => {
     const prefix = 'data:image/png;base64,';
-    const avatar = prefix + 'a'.repeat(64 * 1024 - prefix.length);
+    const avatar = prefix + 'a'.repeat(Math.floor((64 * 1024 - prefix.length) / 4) * 4);
     const original = await bots.create({ id: 'alpha', name: 'Alpha', avatar });
-    await expectCode(() => bots.update('alpha', { avatar: `${avatar}a` }), 'bot/invalid');
+    await expectCode(() => bots.update('alpha', { avatar: `${avatar}aaaa` }), 'bot/invalid');
     for (const patch of [{ id: 'beta' }, { createdAt: 1 }, { updatedAt: 1 }, { schemaVersion: 1 }, { extra: true }]) {
       await expectCode(() => bots.update('alpha', patch as never), 'bot/invalid');
     }

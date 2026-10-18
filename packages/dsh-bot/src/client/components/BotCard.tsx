@@ -35,6 +35,7 @@ export function BotCard({ bot, status, busy, onStart, onEdit, onDuplicate, onDel
         </div>
       </div>
       <p className={styles.description}>{bot.description || t('card.noDescription')}</p>
+      {status?.warnings?.includes('avatar/invalid') && <p className={styles.warning}>{t('avatar.invalidStored')}</p>}
       {!ready && <p className={styles.warning} id={`${id}-status`}>
         {unavailable}{status?.preset.reason ? ` ${status.preset.reason}` : ''}
       </p>}

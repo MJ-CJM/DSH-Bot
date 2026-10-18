@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { botIdSchema, memoryIdSchema } from '../../shared/ids.js';
 import {
-  MEMORY_LIST_MAX_LIMIT, memoryAddSchema, memoryListOptionsSchema,
+  MEMORY_LIST_MAX_LIMIT, memoryAddSchema, memoryListOptionsSchema, memoryPatchSchema,
 } from '../../shared/schema.js';
-import type { MemoryCursor, MemoryRecord, MemorySaveResult } from '../../shared/schema.js';
+import type { MemoryCursor, MemoryListOptions, MemoryPatch, MemoryRecord, MemorySaveResult } from '../../shared/schema.js';
 import { parseInput } from '../errors.js';
 import type { MemoryStore } from '../store.js';
 import { rejectModelSecrets } from './secrets.js';
@@ -66,6 +66,18 @@ export class BotMemoryService {
   async forget(input: MemoryForgetInput, signal?: AbortSignal): Promise<void> {
     const { id } = parseInput(memoryForgetInputSchema, input);
     return this.run(() => this.store.remove(this.botId, id), signal);
+  }
+
+  /** Cursor reads for management UI; model tools keep their narrower contracts. */
+  async query(input: Omit<MemoryListOptions, 'limit'> & { limit?: number }, signal?: AbortSignal): Promise<MemoryRecord[]> {
+    const fields = parseInput(memoryListOptionsSchema, { ...input, limit: input.limit ?? this.defaultListLimit });
+    return this.run(() => this.store.listByBot(this.botId, fields), signal);
+  }
+
+  async update(id: string, patch: MemoryPatch, signal?: AbortSignal): Promise<MemoryRecord> {
+    const key = parseInput(memoryIdSchema, id);
+    const fields = parseInput(memoryPatchSchema, patch);
+    return this.run(() => this.store.update(this.botId, key, fields), signal);
   }
 
   /** Count every memory in one registry queue slot, without returning its content. */

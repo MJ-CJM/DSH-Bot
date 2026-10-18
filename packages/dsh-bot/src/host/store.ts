@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { DshBotError, type DshBotErrorCode, parseInput } from './errors.js';
 import { botIdSchema, memoryIdSchema } from '../shared/ids.js';
 import {
-  botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, memoryAddSchema,
+  avatarSchema, botRecordFields, botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, memoryAddSchema,
   memoryListOptionsSchema, memoryPatchSchema, memorySchema, normalizeBotPatch, normalizeMemoryContent, timestampSchema,
 } from '../shared/schema.js';
 import type {
@@ -14,10 +14,21 @@ import type {
   MemoryListOptions, MemoryPatch, MemoryRecord, MemorySaveResult,
 } from '../shared/schema.js';
 
+// Only the legacy avatar field is permissive at the storage read boundary.
+// Preserve its bytes on disk; public records and all new writes remain strict.
+const storedBotSchema = botRecordFields.extend({ avatar: z.unknown().optional() })
+  .refine((record) => record.updatedAt >= record.createdAt, 'updatedAt precedes createdAt');
+type StoredBot = z.output<typeof storedBotSchema>;
+function publicBot(record: StoredBot): BotRecord {
+  const { avatar, ...fields } = record;
+  return botSchema.parse({ ...fields, ...(avatarSchema.safeParse(avatar).success ? { avatar } : {}) });
+}
+const invalidAvatar = (record: StoredBot) => record.avatar !== undefined && !avatarSchema.safeParse(record.avatar).success;
+
 const seedStateSchema = z.strictObject({ status: z.enum(['pending', 'complete']) });
 export const botDomain = defineDomain({
   name: 'dsh_bot', version: 1,
-  tables: { bots: domainTable(botSchema), memories: domainTable(memorySchema),
+  tables: { bots: domainTable(storedBotSchema), memories: domainTable(memorySchema),
     registry_state: domainTable(seedStateSchema) },
 });
 type BotDomain = Domain<typeof botDomain>;
@@ -93,7 +104,7 @@ export class BotStore {
   }
 
   list(): BotRecord[] {
-    return read(() => [...this.domain.table('bots').entries()].map(([, value]) => structuredClone(value))
+    return read(() => [...this.domain.table('bots').entries()].map(([, value]) => publicBot(value))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || compareId(a.id, b.id)));
   }
 
@@ -102,8 +113,12 @@ export class BotStore {
     return read(() => {
       const record = this.domain.table('bots').get(key);
       if (!record) throw missingBot(key);
-      return structuredClone(record);
+      return publicBot(record);
     });
+  }
+
+  avatarWarnings(): string[] {
+    return read(() => [...this.domain.table('bots').entries()].filter(([, row]) => invalidAvatar(row)).map(([, row]) => row.id));
   }
 
   async create(input: BotCreateInput): Promise<BotRecord> {
@@ -122,10 +137,13 @@ export class BotStore {
     const key = parseInput(botIdSchema, id);
     const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
     const expected = parseInput(timestampSchema.optional(), expectedUpdatedAt);
-    return write(this.domain, async () => structuredClone(await this.domain.table('bots').update(key, (current) => {
+    return write(this.domain, async () => publicBot(await this.domain.table('bots').update(key, (current) => {
       // Check at the domain's write slot, never against a pre-queue snapshot.
       if (expected !== undefined && current.updatedAt !== expected) {
         throw new DshBotError('bot/conflict', `Bot '${key}' has changed; reload before updating`);
+      }
+      if (invalidAvatar(current) && !('avatar' in fields)) {
+        throw new DshBotError('bot/invalid', 'Stored avatar is unsupported; explicitly replace or clear the avatar before updating.');
       }
       return parseInput(botSchema, { ...current, ...fields, updatedAt: nextTimestamp(current.updatedAt) });
     })));

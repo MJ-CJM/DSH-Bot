@@ -7,9 +7,13 @@ import type { RemoteResult, TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-ty
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { DshBotRegistry } from '../src/host/registry.js';
+import type { DshBotMemoryRemote } from '../src/host/memory/remote.js';
 import { DshBotError } from '../src/host/errors.js';
-import { type BotStatus, type DshBotMethods, type DshBotRemoteMethods, dshBotRemoteSpec } from '../src/shared/remote-contract.js';
-import { type BotRecord, type BotRemoveOptions, botCreateSchema, botSchema } from '../src/shared/schema.js';
+import {
+  type CatalogInfo, type BotStatus, type DshBotMethods, type DshBotMemoryMethods,
+  type DshBotMemoryRemoteMethods, type DshBotRemoteMethods, dshBotRemoteSpec,
+} from '../src/shared/remote-contract.js';
+import { type BotRecord, type BotRemoveOptions, botCreateSchema, botSchema, memorySchema } from '../src/shared/schema.js';
 import TYPERT from '../src/typert.host.js';
 import TYPERT_REMOTE from '../src/typert.remote-client.js';
 
@@ -17,6 +21,10 @@ const require = createRequire(import.meta.url);
 const record = botSchema.parse({
   ...botCreateSchema.parse({ id: 'test-bot', name: '测试 Bot' }),
   createdAt: 1, updatedAt: 1, schemaVersion: 1,
+});
+const memory = memorySchema.parse({
+  id: 'memory-1', botId: 'test-bot', content: 'Prefer concise text', kind: 'preference', tags: [], pinned: true,
+  source: { by: 'user', at: 1 }, createdAt: 1, updatedAt: 1,
 });
 
 describe('single-source Remote contract', () => {
@@ -74,14 +82,32 @@ describe('single-source Remote contract', () => {
       expect(ctx.get('remote.dshBot')).toBeDefined();
       await expect(ctx.remote.dshBot.delete('test-bot', undefined)).resolves.toEqual({ ok: true, value: undefined });
       expect(calls).toEqual([{ endpoint: 'dshBot/delete', payload: { args: { id: 'test-bot' } } }]);
+      expect(ctx.get('remote.dshBot.memory')).toBeDefined();
+      await ctx.remote.dshBot.memory.list('test-bot', { limit: 50 });
+      await ctx.remote.dshBot.memory.search('test-bot', { query: 'concise' });
+      await ctx.remote.dshBot.memory.save('test-bot', { content: 'Prefer concise text' });
+      await ctx.remote.dshBot.memory.update('test-bot', 'memory-1', { pinned: false });
+      await ctx.remote.dshBot.memory.delete('test-bot', 'memory-1');
+      await ctx.remote.dshBot.memory.count('test-bot');
+      expect(calls.slice(1)).toEqual([
+        { endpoint: 'dshBot.memory/list', payload: { args: { botId: 'test-bot', options: { limit: 50 } } } },
+        { endpoint: 'dshBot.memory/search', payload: { args: { botId: 'test-bot', input: { query: 'concise' } } } },
+        { endpoint: 'dshBot.memory/save', payload: { args: { botId: 'test-bot', input: { content: 'Prefer concise text' } } } },
+        { endpoint: 'dshBot.memory/update', payload: { args: { botId: 'test-bot', id: 'memory-1', patch: { pinned: false } } } },
+        { endpoint: 'dshBot.memory/delete', payload: { args: { botId: 'test-bot', id: 'memory-1' } } },
+        { endpoint: 'dshBot.memory/count', payload: { args: { botId: 'test-bot' } } },
+      ]);
       await expect(Reflect.apply(ctx.remote.dshBot.delete, ctx.remote.dshBot, ['test-bot']))
         .rejects.toThrow('expected 2 argument(s), got 1');
       await unmount();
       expect(ctx.get('remote.dshBot')).toBeUndefined();
+      expect(ctx.get('remote.dshBot.memory')).toBeUndefined();
     } finally { await ctx.fiber.dispose(); }
   });
 
   it('matches all Host and Client method signatures at compile time', () => {
+    expectTypeOf<DshBotRegistry['catalogInfo']>().toEqualTypeOf<DshBotMethods['catalogInfo']>();
+    expectTypeOf<DshBotRemoteMethods['catalogInfo']>().toEqualTypeOf<() => Promise<RemoteResult<CatalogInfo>>>();
     expectTypeOf<DshBotRegistry['status']>().toEqualTypeOf<DshBotMethods['status']>();
     expectTypeOf<DshBotRemoteMethods['status']>().toEqualTypeOf<() => Promise<RemoteResult<BotStatus[]>>>();
     expectTypeOf<DshBotRegistry['list']>().toEqualTypeOf<DshBotMethods['list']>();
@@ -90,31 +116,73 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRegistry['update']>().toEqualTypeOf<DshBotMethods['update']>();
     expectTypeOf<DshBotRegistry['duplicate']>().toEqualTypeOf<DshBotMethods['duplicate']>();
     expectTypeOf<DshBotRegistry['remove']>().toEqualTypeOf<DshBotMethods['remove']>();
+    expectTypeOf<DshBotMemoryRemote['list']>().toEqualTypeOf<DshBotMemoryMethods['list']>();
+    expectTypeOf<DshBotMemoryRemote['search']>().toEqualTypeOf<DshBotMemoryMethods['search']>();
+    expectTypeOf<DshBotMemoryRemote['save']>().toEqualTypeOf<DshBotMemoryMethods['save']>();
+    expectTypeOf<DshBotMemoryRemote['update']>().toEqualTypeOf<DshBotMemoryMethods['update']>();
+    expectTypeOf<DshBotMemoryRemote['remove']>().toEqualTypeOf<DshBotMemoryMethods['remove']>();
+    expectTypeOf<DshBotMemoryRemote['count']>().toEqualTypeOf<DshBotMemoryMethods['count']>();
+    expectTypeOf<TypertRemoteNamespaceMap['dshBot.memory']>().toEqualTypeOf<DshBotMemoryRemoteMethods>();
+    expectTypeOf<DshBotRemoteMethods['memory']>().toEqualTypeOf<DshBotMemoryRemoteMethods>();
     expectTypeOf<TypertRemoteNamespaceMap['dshBot']>().toEqualTypeOf<DshBotRemoteMethods>();
     expectTypeOf<DshBotRemoteMethods['get']>().toEqualTypeOf<(id: string) => Promise<RemoteResult<BotRecord>>>();
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
-    expectTypeOf<keyof DshBotRemoteMethods>().toEqualTypeOf<'list' | 'status' | 'get' | 'create' | 'update' | 'duplicate' | 'delete'>();
+    expectTypeOf<keyof DshBotRemoteMethods>()
+      .toEqualTypeOf<'list' | 'status' | 'catalogInfo' | 'get' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory'>();
+    expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'>();
   });
 
-  it('shares exactly seven strict descriptors between Host and Client exports', () => {
+  it('shares all fourteen strict descriptors between Host and Client exports', () => {
     expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
     // The Host owns registration in ctx.effect. ./typert would also be picked
     // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(7);
+    expect(TYPERT.invocations).toHaveLength(14);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
-      expect(descriptor.service).toBe('dshBots');
+      expect(descriptor.service).toBe(descriptor.namespace === 'dshBot.memory' ? 'dshBotMemory' : 'dshBots');
       expect(descriptor.invocation).toEqual({ kind: 'direct' });
       expect(descriptor.result.mode).toBe('strict');
       expect(descriptor.parameters.every((parameter) => parameter.codec.mode === 'strict')).toBe(true);
     }
     expect(TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'delete'))
       .toMatchObject({ implementation: 'remove', namespace: 'dshBot' });
+  });
+
+  it('validates every memory method with strict identity, cursor and provenance boundaries', () => {
+    const input = (method: string, value: unknown) => {
+      const descriptor = TYPERT_REMOTE.methods[`dshBot.memory/${method}`];
+      if (!descriptor) throw new Error(`Missing memory descriptor: ${method}`);
+      return descriptor.input({ strict: true }).create().parse(value);
+    };
+    const before = { id: 'memory-1', updatedAt: 1, pinned: true };
+    expect(input('list', { botId: 'test-bot', options: { limit: 50, before } }))
+      .toEqual({ botId: 'test-bot', options: { limit: 50, before } });
+    expect(input('search', { botId: 'test-bot', input: { query: 'text', tag: 'writing' } }))
+      .toEqual({ botId: 'test-bot', input: { query: 'text', tag: 'writing' } });
+    expect(input('save', { botId: 'test-bot', input: { content: 'Text' } }))
+      .toEqual({ botId: 'test-bot', input: { content: 'Text', kind: 'note', tags: [], pinned: false } });
+    expect(input('update', { botId: 'test-bot', id: 'memory-1', patch: { pinned: false } }))
+      .toEqual({ botId: 'test-bot', id: 'memory-1', patch: { pinned: false } });
+    expect(input('delete', { botId: 'test-bot', id: 'memory-1' })).toEqual({ botId: 'test-bot', id: 'memory-1' });
+    expect(input('count', { botId: 'test-bot' })).toEqual({ botId: 'test-bot' });
+    for (const value of [
+      { content: 'Text', botId: 'other' }, { content: 'Text', id: 'chosen' },
+      { content: 'Text', source: { by: 'model', at: 0, sessionId: 'forged' } },
+      { content: 'Text', unknown: true }, { content: 'a'.repeat(2049) },
+    ]) expect(() => input('save', { botId: 'test-bot', input: value })).toThrow();
+    for (const patch of [{ source: { by: 'user', at: 0 } }, { botId: 'other' }, { createdAt: 0 }]) {
+      expect(() => input('update', { botId: 'test-bot', id: 'memory-1', patch })).toThrow();
+    }
+    expect(() => input('list', { botId: 'test-bot', options: { limit: 201 } })).toThrow();
+    expect(() => input('list', { botId: 'test-bot', options: { before: { ...before, unknown: true } } })).toThrow();
+    expect(() => input('search', { botId: 'test-bot', input: {} })).toThrow();
+    expect(() => input('delete', { botId: '../escape', id: 'memory-1' })).toThrow();
+    expect(() => input('count', { botId: 'test-bot', unknown: true })).toThrow();
   });
 
   it('validates arguments, defaults and unknown fields with the T03 schemas', () => {
@@ -164,7 +232,22 @@ describe('single-source Remote contract', () => {
     for (const descriptor of TYPERT.invocations) {
       if (descriptor.result.mode !== 'strict') throw new Error('Expected strict result codec');
       const codec = descriptor.result.create();
-      if (descriptor.method === 'status') {
+      if (descriptor.namespace === 'dshBot.memory') {
+        const values: Record<string, [unknown, unknown]> = {
+          list: [[memory], [{ ...memory, unknown: true }]],
+          search: [[memory], [{ id: 'bad' }]],
+          save: [{ id: 'memory-1', deduplicated: false }, { id: 'memory-1', deduplicated: 'false' }],
+          update: [memory, { ...memory, source: { by: 'untrusted', at: 1 } }],
+          delete: [undefined, { removed: true }], count: [201, -1],
+        };
+        const value = values[descriptor.method];
+        if (!value) throw new Error(`Missing memory result case ${descriptor.method}`);
+        expect(codec.parse(value[0])).toEqual(value[0]);
+        expect(() => codec.parse(value[1])).toThrow();
+      } else if (descriptor.method === 'catalogInfo') {
+        expect(codec.parse({ presetIdPrefix: 'custom-' })).toEqual({ presetIdPrefix: 'custom-' });
+        expect(() => codec.parse({ presetIdPrefix: '', extra: true })).toThrow();
+      } else if (descriptor.method === 'status') {
         const value = [{ id: 'test-bot', presetId: 'custom-test-bot', preset: { state: 'broken', reason: 'Failed' } }];
         expect(codec.parse(value)).toEqual(value);
         expect(() => codec.parse([{ ...value[0], preset: { state: 'unknown' } }])).toThrow();

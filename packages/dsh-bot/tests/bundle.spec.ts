@@ -97,7 +97,7 @@ describe('built bundle contract', () => {
       return require(id);
     });
     expect([...new Set(requests)].sort()).toEqual(['react', 'react/jsx-runtime', 'zod']);
-    expect(plugin?.inject).toEqual(['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces']);
+    expect(plugin?.inject).toEqual(['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces', 'layout']);
     expect(typeof plugin?.apply).toBe('function');
   });
 
@@ -185,6 +185,7 @@ describe('built bundle contract', () => {
       register: (options: { name: string }) => register(options.name),
     } as unknown as Context['slots']);
     ctx.provide('uiWorkspace', { openWorkspace: vi.fn() } as unknown as Context['uiWorkspace']);
+    ctx.provide('layout', { selectPanel: vi.fn() } as unknown as Context['layout']);
     ctx.provide('workspaces', { list: {} } as unknown as Context['workspaces']);
     const mountedEndpoints: string[] = [];
     ctx.provide('remote', {
@@ -206,14 +207,15 @@ describe('built bundle contract', () => {
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      expect([...active].sort()).toEqual(['dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
+      expect([...active].sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
       expect(mountedEndpoints.sort()).toEqual([
-        'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update',
+        'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
+        'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update',
       ]);
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);
-      expect(releases.sort()).toEqual(['dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
+      expect(releases.sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
     } finally {
       await ctx.fiber.dispose();
     }

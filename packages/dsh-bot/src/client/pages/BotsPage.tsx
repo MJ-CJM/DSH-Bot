@@ -5,13 +5,18 @@ import { botIdSchema } from '../../shared/ids.js';
 import type { BotCreateInput, BotPatch, BotRecord } from '../../shared/schema.js';
 import { BotCard } from '../components/BotCard.js';
 import { BotEditor } from '../components/BotEditor.js';
+import { MemoryPanel, type MemoryPanelProps } from '../components/MemoryPanel.js';
+import type { BotDetailSource } from '../detail-state.js';
 import { Modal } from '../components/Modal.js';
 import type { BotCatalog } from '../state.js';
 import styles from '../styles/bots.module.css';
 import css from '../styles/bots.module.css?inline';
 
 export interface BotsPageInjected {
-  hooks: { catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>; workspaceCatalog: Context['workspaces']['list'] };
+  hooks: { catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>; workspaceCatalog: Context['workspaces']['list']; botDetail: Pick<BotDetailSource, 'getSnapshot' | 'subscribe'> };
+  onDetailConsumed(requestId: number): void;
+  onCountMemories(id: string): Promise<number>;
+  createMemoryPanel(id: string): Omit<MemoryPanelProps, 'bot' | 't'> & { dispose(): void };
   onRefresh(): Promise<void>;
   onPollInterval(value: number): void;
   onCreate(input: BotCreateInput): Promise<void>;
@@ -28,11 +33,14 @@ function detail(error: unknown): string {
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ useCatalog, useWorkspaceCatalog, onRefresh, onPollInterval, onCreate, onUpdate, onDuplicate, onDelete, onStart, t }: BotsPageProps) {
+export function BotsPage({ useCatalog, useWorkspaceCatalog, useBotDetail, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onPollInterval, onCreate, onUpdate, onDuplicate, onDelete, onStart, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
+  const requestedDetail = useBotDetail((value) => value);
   const workspaces = useWorkspaceCatalog((value) => value);
   const [chosenWorkspace, setChosenWorkspace] = useState('');
   const workspaceId = chosenWorkspace || (workspaces.items.length === 1 ? workspaces.items[0]?.workspaceId ?? '' : '');
+  const [memoryCount, setMemoryCount] = useState<{ count?: number; failed?: boolean }>({});
+  const [countAttempt, setCountAttempt] = useState(0);
   const [deleteMemories, setDeleteMemories] = useState(true);
   const [dialog, setDialog] = useState<Dialog>();
   const [busy, setBusy] = useState(false);
@@ -47,6 +55,24 @@ export function BotsPage({ useCatalog, useWorkspaceCatalog, onRefresh, onPollInt
     lifetime.current = controller;
     return () => controller.abort();
   }, []);
+  useEffect(() => {
+    if (!requestedDetail || !snapshot.loaded || snapshot.loading || snapshot.error) return;
+    const found = snapshot.entries.find(({ bot }) => bot.id === requestedDetail.botId);
+    if (found) { setDialog({ kind: 'edit', bot: found.bot }); setToast(undefined); }
+    else setToast({ text: t('errors.detailMissing'), error: true });
+    onDetailConsumed(requestedDetail.requestId);
+  }, [requestedDetail, snapshot, onDetailConsumed, t]);
+  const deleteId = dialog?.kind === 'delete' ? dialog.bot.id : undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retry explicitly starts a fresh count request for the same Bot.
+  useEffect(() => {
+    let current = true;
+    setMemoryCount({});
+    if (deleteId) void onCountMemories(deleteId).then(
+      (count) => { if (current) setMemoryCount({ count }); },
+      () => { if (current) setMemoryCount({ failed: true }); },
+    );
+    return () => { current = false; };
+  }, [deleteId, onCountMemories, countAttempt]);
   const alive = () => lifetime.current?.signal.aborted === false;
 
   async function perform(action: () => Promise<void>, errorKey: 'errors.save' | 'errors.delete' | 'errors.duplicate' | 'errors.start', successKey?: 'bots.saveSuccess' | 'delete.success' | 'delete.keptSuccess' | 'duplicate.success') {
@@ -125,10 +151,18 @@ export function BotsPage({ useCatalog, useWorkspaceCatalog, onRefresh, onPollInt
           onDelete={() => open({ kind: 'delete', bot })} t={t} />)}
       </div>
       {(dialog?.kind === 'create' || dialog?.kind === 'edit') && <BotEditor
+        avatarWarning={dialog.kind === 'edit' && snapshot.entries.find(({ bot }) => bot.id === dialog.bot.id)?.status?.warnings?.includes('avatar/invalid')}
+        key={dialog.kind === 'edit' ? dialog.bot.id : 'new'}
+        memoryPanel={dialog.kind === 'edit' ? <MemoryTab
+          bot={snapshot.entries.find(({ bot }) => bot.id === dialog.bot.id)?.bot ?? dialog.bot} create={createMemoryPanel} t={t} /> : undefined}
         bot={dialog.kind === 'edit' ? dialog.bot : undefined} busy={busy} onSave={save} onCancel={() => setDialog(undefined)} t={t} />}
       {dialog?.kind === 'delete' && <Modal title={t('delete.title')} busy={busy} onClose={() => setDialog(undefined)} t={t}>
         <div className={styles.editorBody}>
           <p>{t('delete.description', { name: dialog.bot.name })}</p>
+          {memoryCount.count !== undefined ? <p>{t('delete.memoryCount', { count: memoryCount.count })}</p>
+            : memoryCount.failed ? <div role="alert" className={styles.error}>
+              <p>{t('delete.countError')}</p><button type="button" className={styles.button} onClick={() => setCountAttempt((value) => value + 1)}>{t('actions.retry')}</button>
+            </div> : <p role="status">{t('delete.countLoading')}</p>}
           <label className={styles.checkboxField}>
             <input type="checkbox" checked={deleteMemories} disabled={busy} onChange={(event) => setDeleteMemories(event.target.checked)} />
             {t('delete.memories')}
@@ -138,7 +172,7 @@ export function BotsPage({ useCatalog, useWorkspaceCatalog, onRefresh, onPollInt
         </div>
         <footer className={styles.dialogFooter}>
           <button type="button" className={styles.button} disabled={busy} onClick={() => setDialog(undefined)}>{t('actions.cancel')}</button>
-          <button type="button" className={styles.dangerButton} disabled={busy} onClick={() => {
+          <button type="button" className={styles.dangerButton} disabled={busy || memoryCount.count === undefined} onClick={() => {
             void perform(() => onDelete(dialog.bot.id, deleteMemories), 'errors.delete', deleteMemories ? 'delete.success' : 'delete.keptSuccess').catch(() => {});
           }}>{t('actions.delete')}</button>
         </footer>
@@ -169,4 +203,17 @@ export function BotsPage({ useCatalog, useWorkspaceCatalog, onRefresh, onPollInt
       </div>}
     </section>
   );
+}
+
+/** Allocate owner-bound stores after mount; release them when switching tabs or Bots. */
+function MemoryTab({ bot, create, t }: {
+  bot: BotRecord; create: BotsPageInjected['createMemoryPanel']; t: PropsLocale<'dsh-bot'>['t'];
+}) {
+  const [panel, setPanel] = useState<ReturnType<BotsPageInjected['createMemoryPanel']>>();
+  useEffect(() => {
+    const value = create(bot.id);
+    setPanel(value);
+    return value.dispose;
+  }, [bot.id, create]);
+  return panel ? <MemoryPanel {...panel} bot={bot} t={t} /> : <p role="status">{t('memory.loading')}</p>;
 }

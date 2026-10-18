@@ -10,12 +10,14 @@ const credentials = [
   /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/u,
 ];
 
-/** Check unparsed model text first so validation failures cannot echo secrets. */
-export function rejectModelSecrets(input: { content?: unknown; tags?: unknown }): void {
+/** Check unparsed text first so validation failures cannot echo secrets. */
+export function rejectMemorySecrets(input: { content?: unknown; tags?: unknown }): void {
   const values = [input?.content, ...(Array.isArray(input?.tags) ? input.tags : [])];
   if (values.some((value) => typeof value === 'string'
     && credentials.some((pattern) => pattern.test(value.normalize('NFKC'))))) {
     throw new DshBotError('memory/rejected',
-      'memory/rejected: Model memory contains a possible credential or private key. Remove it before saving.');
+      'memory/rejected: Memory contains a possible credential or private key. Remove it before saving.');
   }
 }
+
+export const rejectModelSecrets = rejectMemorySecrets;

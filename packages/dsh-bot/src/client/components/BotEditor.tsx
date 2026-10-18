@@ -1,5 +1,5 @@
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { type BotCreateInput, type BotPatch, type BotRecord, botCreateSchema, botPatchSchema } from '../../shared/schema.js';
 import styles from '../styles/bots.module.css';
 import { AvatarPicker } from './AvatarPicker.js';
@@ -7,6 +7,8 @@ import { Modal } from './Modal.js';
 
 export interface BotEditorProps {
   bot?: BotRecord;
+  memoryPanel?: ReactNode;
+  avatarWarning?: boolean;
   duplicate?: boolean;
   busy?: boolean;
   onSave: (input: BotCreateInput | BotPatch) => void | Promise<void>;
@@ -14,7 +16,8 @@ export interface BotEditorProps {
   t: PropsLocale<'dsh-bot'>['t'];
 }
 
-export function BotEditor({ bot, duplicate = false, busy = false, onSave, onCancel, t }: BotEditorProps) {
+export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, busy = false, onSave, onCancel, t }: BotEditorProps) {
+  const [tab, setTab] = useState<'settings' | 'memory'>('settings');
   const editing = Boolean(bot && !duplicate);
   const uid = useId();
   const mounted = useRef(true);
@@ -75,8 +78,7 @@ export function BotEditor({ bot, duplicate = false, busy = false, onSave, onCanc
   }
 
   const title = editing ? t('editor.edit') : duplicate ? t('editor.duplicate') : t('editor.create');
-  return (
-    <Modal title={title} description={t('bots.newSessionsNotice')} busy={disabled} onClose={onCancel} t={t}>
+  const form = (
         <form onSubmit={(event) => { void submit(event); }} noValidate>
           <div className={styles.editorBody}>
             {failure && <p className={styles.error} role="alert">{t('errors.save')}</p>}
@@ -94,6 +96,7 @@ export function BotEditor({ bot, duplicate = false, busy = false, onSave, onCanc
                 <span className={styles.hint} id={`${uid}-id-hint`}>{t(editing ? 'editor.idImmutable' : 'editor.idHint')}</span>
               </label>
             </div>
+            {avatarWarning && <p className={styles.warning}>{t('avatar.invalidStored')}</p>}
             <AvatarPicker value={avatar} onChange={setAvatar} disabled={disabled} t={t} />
             <label className={styles.field}>{t('editor.description')}
               <textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} disabled={disabled} />
@@ -120,6 +123,8 @@ export function BotEditor({ bot, duplicate = false, busy = false, onSave, onCanc
                 <span className={styles.hint} id={`${uid}-memory-hint`}>{t('editor.injectHint')}</span>
               </label>
             </div>
+            {!memory && <p className={styles.notice}>{t('memory.disabled')}</p>}
+            {memory && bot?.persona.complete && <p className={styles.notice}>{t('memory.complete')}</p>}
             <label className={styles.field}>{t('editor.hiddenTools')}
               <textarea rows={3} value={deny} onChange={(event) => setDeny(event.target.value)} disabled={disabled}
                 aria-describedby={`${uid}-tools-hint`} />
@@ -131,6 +136,17 @@ export function BotEditor({ bot, duplicate = false, busy = false, onSave, onCanc
             <button type="submit" className={styles.primaryButton} disabled={disabled}>{t(disabled ? 'editor.saving' : 'editor.save')}</button>
           </footer>
         </form>
+  );
+  return (
+    <Modal title={title} description={t('bots.newSessionsNotice')} busy={disabled} onClose={onCancel} t={t}>
+        {editing && memoryPanel && <div className={styles.tabs} role="tablist" aria-label={t('editor.details')}>
+          <button id={`${uid}-settings-tab`} type="button" role="tab" aria-selected={tab === 'settings'} aria-controls={`${uid}-settings-panel`} className={styles.button} disabled={disabled} onClick={() => setTab('settings')}>{t('editor.settings')}</button>
+          <button id={`${uid}-memory-tab`} type="button" role="tab" aria-selected={tab === 'memory'} aria-controls={`${uid}-memory-panel`} className={styles.button} disabled={disabled} onClick={() => setTab('memory')}>{t('memory.title')}</button>
+        </div>}
+        {tab === 'memory' && <div id={`${uid}-memory-panel`} role="tabpanel" aria-labelledby={`${uid}-memory-tab`}>{memoryPanel}</div>}
+        {memoryPanel ? <div id={`${uid}-settings-panel`} hidden={tab !== 'settings'} role="tabpanel" aria-labelledby={`${uid}-settings-tab`}>
+          {form}
+        </div> : form}
     </Modal>
   );
 }

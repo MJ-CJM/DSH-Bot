@@ -265,6 +265,7 @@ try {
   check('profile links formal package', manifest.dependencies['dsh-bot'], `link:${resolve(root, 'packages/dsh-bot')}`);
 
   const initial = await runPhase('initial', async (remote, raw, roster) => {
+    check('Host publishes configured ownership prefix', ok(await remote.catalogInfo(), 'catalog info'), { presetIdPrefix: 'review-' });
     const seeds = ok(await remote.list(), 'initial list');
     check('initial: two examples only', seeds.map((bot) => bot.id).sort(), ['assistant', 'researcher']);
     check('initial: Chinese example names', seeds.map((bot) => bot.name).sort(), ['研究员', '通用助手'].sort());
@@ -303,6 +304,14 @@ try {
       invalid, invalidArgs, missing: failureDetail(missing), conflict: failureDetail(conflict),
     });
     check('Remote duplicate id conflict code', conflict.ok ? null : conflict.error.code, 'bot/conflict');
+    const badAvatar = await raw('dshBot/update', { id: created.id, patch: { avatar: 'data:image/svg+xml;base64,PHN2Zz4=' } });
+    check('strict Host rejects SVG avatar on real transport', badAvatar.error?.code, 'gateway/input-invalid');
+    const manual = ok(await remote.memory.save(created.id, { content: 'T09 profile manual memory' }), 'manual memory');
+    check('memory Remote stamps manual source', ok(await remote.memory.list(created.id, {}), 'memory list')[0]?.source.by, 'user');
+    check('memory Remote count', ok(await remote.memory.count(created.id), 'memory count'), 1);
+    ok(await remote.memory.update(created.id, manual.id, { pinned: true }), 'pin memory');
+    check('memory Remote search finds pinned row', ok(await remote.memory.search(created.id, { query: 'manual' }), 'memory search')[0]?.pinned);
+    ok(await remote.memory.delete(created.id, manual.id), 'delete memory');
     const createdStatus = ok(await remote.status(), 'created status').find((row) => row.id === created.id);
     check('created Bot status supplies actual preset id', createdStatus, { id: created.id, presetId: 'review-t04-probe', preset: { state: 'ok' } });
     const updated = ok(await remote.update(created.id, {
@@ -333,6 +342,12 @@ try {
     return { seeds, statuses, createdStatus, deletedPreset, initialPresets, invalid, invalidArgs, created, updated, clearedFetched, duplicated, kept };
   });
 
+  // Only this run's stopped Host storage is changed to simulate a pre-upgrade avatar.
+  const legacyFile = resolve(runDir, 'storages/dsh_bot.json');
+  const legacyData = JSON.parse(readFileSync(legacyFile, 'utf8'));
+  legacyData.tables.bots.assistant.avatar = 'data:text/html;base64,PHNjcmlwdD4=';
+  writeFileSync(legacyFile, JSON.stringify(legacyData));
+  const legacyHash = hashFile(legacyFile);
   await runPhase('restart', async (remote, _raw, roster) => {
     const rows = ok(await remote.list(), 'restart list');
     check('restart preserves record including timestamps and does not reseed researcher', rows, [initial.kept]);
@@ -340,6 +355,10 @@ try {
     check('restart registers persisted assistant only', presets.map((row) => ({ id: row.id, broken: row.broken ?? null })), [
       { id: 'review-assistant', broken: null },
     ]);
+    check('legacy avatar is hidden with a structured warning', ok(await remote.status(), 'legacy status')[0]?.warnings, ['avatar/invalid']);
+    check('legacy avatar read leaves original bytes untouched', hashFile(legacyFile), legacyHash);
+    ok(await remote.update('assistant', { avatar: null }), 'explicit avatar repair');
+    check('explicit repair clears warning', Object.hasOwn(ok(await remote.status(), 'repaired status')[0], 'warnings'), false);
     ok(await remote.delete('assistant', { deleteMemories: true }), 'remove final seed');
     check('all Bots can be removed', ok(await remote.list(), 'empty list'), []);
     return { rows, presets };
@@ -349,6 +368,7 @@ try {
     check('seed marker prevents reseeding after deliberate emptying and cold restart', rows, []);
     const presets = (await roster()).filter((row) => row.id.startsWith('review-'));
     check('empty restart leaves no Bot presets', presets, []);
+    check('ownership prefix remains available after deletion and cold restart', ok(await remote.catalogInfo(), 'empty catalog info'), { presetIdPrefix: 'review-' });
     check('empty registry status is empty', ok(await remote.status(), 'empty status'), []);
     return { rows, presets };
   });

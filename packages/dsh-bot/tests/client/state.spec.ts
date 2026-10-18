@@ -24,7 +24,7 @@ function setup(mount = true) {
   contexts.push(ctx);
   const list = vi.fn(async (): Promise<RemoteResult<BotRecord[]>> => ok([makeBot()]));
   const status = vi.fn(async (): Promise<RemoteResult<BotStatus[]>> => ok([healthy]));
-  const remote = { list, status };
+  const remote = { list, status, catalogInfo: vi.fn(async () => ok({ presetIdPrefix: 'custom-' })) };
   if (mount) ctx.provide('remote.dshBot', remote);
   return { ctx, remote, list, status };
 }
@@ -48,7 +48,7 @@ describe('Bot catalog refresh lifecycle', () => {
     expect(list).toHaveBeenCalledTimes(1);
     expect(status).toHaveBeenCalledTimes(1);
     expect(catalog.getSnapshot()).toEqual({
-      entries: [{ bot: makeBot(), status: healthy }], loading: false, loaded: true, pollIntervalMs: 5_000,
+      entries: [{ bot: makeBot(), status: healthy }], loading: false, loaded: true, pollIntervalMs: 5_000, presetIdPrefix: 'custom-',
     });
     first();
     ctx.emit('connection/reset');
@@ -75,7 +75,7 @@ describe('Bot catalog refresh lifecycle', () => {
     expect(catalog.getSnapshot().entries[0]?.status).toBeUndefined();
     list.mockResolvedValue(ok([]));
     await catalog.refresh();
-    expect(catalog.getSnapshot()).toEqual({ entries: [], loading: false, loaded: true, pollIntervalMs: 5_000 });
+    expect(catalog.getSnapshot()).toEqual({ entries: [], loading: false, loaded: true, pollIntervalMs: 5_000, presetIdPrefix: 'custom-' });
   });
 
   it('reports an unmounted namespace without declaring an authoritative empty list', async () => {

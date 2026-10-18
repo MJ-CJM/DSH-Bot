@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-typert-registry';
 import { TYPERT } from '../typert.host.js';
 import { Config, DshBotRegistry } from './registry.js';
 import { registerStandardBotManage } from './tools/bot-manage.js';
+import { DshBotMemoryRemote } from './memory/remote.js';
 
 export { Config, DshBotRegistry };
 
@@ -13,6 +14,7 @@ export const inject = ['storageDomain', 'agentPresets', 'typert', 'loader', 'too
 export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => ctx.typert.register(TYPERT), 'dsh-bot: Host Remote contract');
   const registry = new DshBotRegistry(ctx, config, () => ctx.loader.await());
+  new DshBotMemoryRemote(ctx);
   if (registry.config.enableBotManageInStandard) registerStandardBotManage(ctx);
   // The guard service answers bot/unavailable while the Host Loader settles.
   // Its own lifecycle drains initialization and operations on unload.

@@ -119,6 +119,24 @@ async function withFacility(run: (fixture: Fixture) => Promise<void>) {
 }
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('exposes the configured prefix even with zero Bots and reports isolated legacy avatar warnings', async () => withFacility(async ({ start, unit }) => {
+    const first = await start({ presetIdPrefix: 'custom-review-' });
+    expect(await first.registry.catalogInfo()).toEqual({ presetIdPrefix: 'custom-review-' });
+    const legacy = await first.registry.create({ id: 'legacy', name: 'Legacy' });
+    await first.registry.create({ id: 'healthy', name: 'Healthy' });
+    await unit().putRecord('bots', 'legacy', { ...legacy, avatar: 'data:image/svg+xml;base64,PHN2Zz4=' });
+    await first.stop();
+    const second = await start({ presetIdPrefix: 'custom-review-' });
+    expect(await second.registry.list()).toHaveLength(2);
+    expect(await second.registry.get('legacy')).not.toHaveProperty('avatar');
+    expect(await second.registry.status()).toContainEqual({ id: 'legacy', presetId: 'custom-review-legacy', warnings: ['avatar/invalid'], preset: { state: 'ok' } });
+    await second.registry.update('legacy', { avatar: null });
+    expect((await second.registry.status()).find((row) => row.id === 'legacy')).not.toHaveProperty('warnings');
+    await second.registry.remove('legacy');
+    await second.registry.remove('healthy');
+    expect(await second.registry.catalogInfo()).toEqual({ presetIdPrefix: 'custom-review-' });
+  }));
+
   it('creates separate skill directories, preserves user files and exposes detached activation snapshots', async () => withFacility(async ({ root, start, presets }) => {
     const { registry } = await start();
     const captured: Array<{ id: string; deny: string[] }> = [];

@@ -1,5 +1,27 @@
 # DSH API 核实记录
 
+## T09 评审补充：被动徽标订阅、删除状态与头像读取兼容
+
+- catalog 现在有两种订阅：`subscribe` 为页面持有轮询 lease，`observe` 为徽标持有被动订阅。共用同一快照和 mutation 后 refresh；只剩徽标时保留 mount/visibility/connection reset 监听，**没有 setInterval**。第一个页面订阅进入时刷新并开启轮询，最后一个页面退出立即清除定时器；document 隐藏同样清除定时器、恢复可见时刷新和恢复页面轮询。记忆页签沿用主动订阅且离开即释放。徽标不再造成聊天期间的常驻 list/status 调用。React/jsdom 测试覆盖实际徽标独占、真实 Bots 页进出、写后共享更新与无定时器断言。
+- 单 spec 新增 `dshBot/catalogInfo() → {presetIdPrefix}`，由 Host Config 返回，经过现有队列与 readiness guard；当前共 **14 endpoints**。每轮 catalog 将 list/status/catalogInfo 共同读取，额外的 info 为廉价元数据查询。即使所有 Bot 都删除或重启，仍可取得当前前缀。没有改 status 的数组形态。
+- 已存在 Bot 继续用 `status.presetId` 精确映射。已成功加载且无刷新/错误、status 完整时，若会话 preset 在 Host 返回的当前前缀下但没有对应 Bot，则显示弱化、不可点击的本地化“已删除的 Bot”及历史会话恢复提示。非本插件前缀、空 ID、加载失败均不冒充已删除。使用当前 Host 命名空间作为判断依据，不保存历史 tombstone，也不假定旧配置前缀仍受当前 Host 管理。删除后重建相同 ID 会重新显示可点击徽标。
+- 共用 `avatarSchema` 只接受原有单 emoji 或非空、格式完整的 `data:image/(png|jpeg|gif|webp);base64,...`，保留整体 64 KiB UTF-8 上限。拒绝 SVG、HTML、其它 MIME、非 base64、错误 padding/字符、空载荷。未做图片解码或真实性鉴定；这是 URI/MIME/base64 白名单，不保证解码后能显示图片。Host 写入、Client 表单与 wire result 使用同一严格 schema。
+- 仅 storage read schema 对历史 avatar 字段容错，其它 Bot 字段仍严格校验。BotStore 对外返回严格 BotRecord，屏蔽不合规 avatar；原数据不在读取时修改或删除。Host 启动记录不带原始内容的 `avatar/invalid bot=<id>` 诊断，status 可选 `warnings:['avatar/invalid']` 传给卡片和编辑器，完整列表与 preset 健康状态继续可用。公开 storageDomain 在 open 时解析所有行（参考 `packages/storage/storage-domain/src/index.ts:121-140`），因此不能仅在 list 捕获错误或启用 backup-and-skip 来丢弃整个 Bot。
+- 修复必须显式替换/清空 avatar；存在不合规头像时，只改其它字段会返回固定 `bot/invalid` 诊断，避免静默丢失旧头像。读取、轮询、重启都不改原文件；UI 保存编辑器会提交当前头像或 null。共享 schema 的严格写入不会因为兼容旧读而放宽。
+- 最终 `check` 266 tests + strict/build/lint PASS，`check:spikes` PASS；真实独立 profile：Registry 83 checks、Composer 90 checks PASS，0 prompts，既有 `.dsh-dev/storages/dsh_bot.json` SHA256 前后相同。Registry 新增真实 Remote prefix、严格 SVG 拒绝、T09 memory CRUD、旧头像冷启动诊断/无写入/显式修复，仍含 failed-startup guard。路径和首轮断言修正记录见 T09 验收报告。未运行真实浏览器视觉验收，不修改 spikes 源码。
+
+
+## T09 初轮：记忆管理 Remote、详情页签与会话徽标
+
+- 单一 `src/shared/remote-contract.ts` spec 新增 `dshBot.memory/{list,search,save,update,delete,count}`，总计 13 个端点。公开 `TypertRemoteService` 以 `namespace:'dshBot.memory'` 注册 `dshBotMemory`；Client 通过原 `$mount` 得到 `ctx.remote.dshBot.memory`。rc.2 Client namespace 的 `remove` 是保留方法，故 wire 用 `delete`、Host `@Remote('delete') remove`，与 Bot 删除一致。锁定参考源码：`packages/api/gateway/src/client/index.ts:638-717,765`、`packages/typert/protocol/src/index.ts:24-35`。本轮已用已发布 Gateway + Cordis 实测 nested namespace 挂载、调用与卸载；不是只靠类型推断。
+- 所有方法走既有 `dshBots.memoryFor(botId)` → BotMemoryService → MemoryStore，复用 `dsh_bot`、注册表队列、Bot 存在性与归属检查、已有错误码。`list/search` 接受可选 limit、before、tag、pinned，search 必带 query；Client 必须显式传 options（如 `{}`）。新增服务 query/update 不扩大 T06 模型工具入参。`count(botId)` 计数全量记录而非当前分页；Bot 删除确认等待计数成功，失败显示重试并阻止删除，文案明确数量可能随后变化。
+- 手工新增由 Host 写入 `source:{by:'user',at:Date.now()}`，Client 无 source 字段；去重仍遵循 T06，命中已有记录时保留原始来源，而不改写历史。update 禁止传 source/id/botId/时间。UI save/update 在 Host 复用 T06 相同秘密启发式，**直接拒绝**并返回 `memory/rejected`，无确认绕过；UI 显示固定中英文提示，不回显失败输入。取舍：可能误报的签名也拒绝，避免用户误将凭据持久化；该规则不是完备秘密检测，既有存量不扫描、不迁移。T06 Host-only 手工 save 行为保持不变。
+- Bot 编辑器增加“设置/记忆”页签，保留未保存表单；记忆列表显示内容、类型、标签、来源与时间，提供词法搜索、分页、编辑、置顶、二次确认删除、手工新增。完整人设遮蔽提示与关闭记忆提示均本地化；关闭记忆不禁止管理已保存记录。说明新/冷恢复会话读取新快照、存活 Agent 快照不变，沿用 T06 KV cache 边界。
+- 从 T08 catalog 抽取共用 `createPollingCatalog`，Bot 与记忆均保持 epoch/本地 Abort、首次订阅/visibility/connection reset、可配置轮询及最后订阅释放语义；每次写成功后重新读取，读失败保留旧数据并显示错误。分页使用稳定 pin/time/id cursor；单页默认 50、读取多一条判定下一页，Client `Config.memoryPageSize` 整数 1–199（Host 每次最多 200）。记忆分页的 records/count 两个调用没有共同 revision，不能视为原子快照；编辑/其他 Client 写入可能移动分页位置，可返回首页。所有 store/slot/字典归 effect，切出记忆页签释放其 store，插件卸载阻止迟到导航/刷新。
+- 徽标使用公开 `conversation.session.header.utilities`（list/session）；读取 `useSessions(state => state.byId[sessionId]?.projectionValues?.agentPreset)`，避免创建 header 在空白会话切换后陈旧。只用 catalog 的 `status.presetId` 精确映射 Bot ID，不拆拼前缀；standard/minimal/未知 preset/找不到映射不显示。Broken Bot 仍显示，允许进入详情修复。来源：`packages/client/ui-conversation/src/client/contract/slots.ts:234-239`、`packages/client/ui-agent-preset/src/client/AgentPresetLabel.tsx:16-17,43-49`。
+- 点击徽标通过 effect-owned 的一次性详情请求 store + 公开 `ctx.layout.selectPanel('dsh-bot')` 打开并定位；请求在成功读取 catalog 后消费，避免定时刷新反复打开。layout 已加入 inject；manifest 增加 ui-conversation Client owner（原有精确 devDependency，无新增 runtime peer）。来源：`packages/client/ui-layout/src/client/service.ts:27-41,71-78`，根出口 `index.ts:29-30`。来源会话按钮调用公开同步 `ctx.uiWorkspace.openSession(sessionId)`；宿主负责导航与会话恢复诊断，不发明 permalink，不宣称捕获该 void API 内的异步失败。来源：`packages/client/ui-workspace/src/client/navigation.ts:40-44,276-278`。
+- 测试继续用公开 Cordis/SlotCore + fake services + React/jsdom，无 client-test-runtime、无内部组件或 spike import。新增 Host 真 JSON 存储单测、完整 Host/Client 编译与运行签名/codec 检查、Gateway nested namespace 实测、UI 实际 slot 接线与清理测试；主题 token 继续由锁定版亮暗 fixture 验证。实际结果及未执行的浏览器视觉验证见 [T09 验收记录](acceptance/P1-T09.md)。本节覆盖后文 T08“等待 T09 计数契约”的历史说明。
+
 ## T08：Bot 全局首页与 Client 生命周期
 
 - 正式 Client 使用公开 `sidebar.panellist`（root/list，`id:'dsh-bot'`）和 `main`（root/keyed，`key:'dsh-bot'`）。侧栏只贡献图标，宿主负责导航按钮，图标尺寸来自 owner 的 `size`；label 通过动态 `ctx.locale.bind` 读取。两处注册都在 `ctx.effect(() => ctx.slots.inject(...))` 内。评审后已删除 T01 composer 演示徽标、对应 locale 与注册测试，不再向任何会话贡献该徽标；T09 的会话专属徽标另行实现。来源：锁定源码 `packages/client/ui-sidebar/src/client/contract/slots.ts:30-35,68-74`、`ui-sidebar/src/client/index.ts:49-63`、`ui-layout/src/client/index.ts:53-73`、`ui-renderer/src/client/registry.ts:196-253`。

@@ -23,10 +23,10 @@ function withoutUndefined<T>(value: T): T {
   return value;
 }
 const emojiSegments = new Intl.Segmenter('en', { granularity: 'grapheme' });
-const avatarSchema = z.string().refine((value) => utf8Bytes(value) <= AVATAR_MAX_BYTES, 'Avatar exceeds 64 KiB')
-  .refine((value) => /^data:[^,\s]*,\S*$/u.test(value)
+export const avatarSchema = z.string().refine((value) => utf8Bytes(value) <= AVATAR_MAX_BYTES, 'Avatar exceeds 64 KiB')
+  .refine((value) => /^data:image\/(?:png|jpeg|gif|webp);base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value) && value.split(',')[1] !== ''
     || ([...emojiSegments.segment(value)].length === 1
-      && /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(value)), 'Expected an emoji or data URL');
+      && /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(value)), 'Expected an emoji or base64 PNG, JPEG, GIF or WebP data URL');
 
 export const mcpServerRefSchema = z.strictObject({
   serverName: nonempty,
@@ -60,9 +60,10 @@ const botFields = z.strictObject({
   order: z.number().finite().optional(),
 });
 
-export const botSchema = botFields.extend({
+export const botRecordFields = botFields.extend({
   id: botIdSchema, createdAt: timestampSchema, updatedAt: timestampSchema, schemaVersion: z.literal(1),
-}).refine((record) => record.updatedAt >= record.createdAt, 'updatedAt precedes createdAt').transform(withoutUndefined);
+});
+export const botSchema = botRecordFields.refine((record) => record.updatedAt >= record.createdAt, 'updatedAt precedes createdAt').transform(withoutUndefined);
 
 export const botCreateSchema = botFields.extend({
   id: botIdSchema,

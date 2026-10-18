@@ -23,13 +23,48 @@ afterEach(async () => {
 });
 
 describe('Bots main page through the public Cordis and Slot registration contract', () => {
+  it('renders a stored-avatar warning without disabling the healthy Bot or failing its list', async () => {
+    const app = await mount([bot()], 'en', (remote) => {
+      remote.data.statuses = [{ id: 'alpha-bot', presetId: 'custom-alpha', preset: { state: 'ok' }, warnings: ['avatar/invalid'] }];
+    });
+    expect(app.container.textContent).toContain(t['avatar.invalidStored']);
+    expect(app.container.querySelector('img')).toBeNull();
+    expect(button(app.container, t['card.start']).disabled).toBe(false);
+    await click(button(app.container, t['card.edit']));
+    expect(app.container.querySelector('dialog')?.textContent).toContain(t['avatar.invalidStored']);
+  });
+
   it('defaults to 5 seconds and validates the inclusive 1000–60000 ms Client configuration range', () => {
-    expect(Config({})).toEqual({ pollIntervalMs: 5000 });
+    expect(Config({})).toEqual({ pollIntervalMs: 5000, memoryPageSize: 50 });
     for (const value of [1000, 2000, 60000]) expect(Config({ pollIntervalMs: value }).pollIntervalMs).toBe(value);
     for (const value of [999, 60001, 0, -1, 1000.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => Config({ pollIntervalMs: value })).toThrow();
     }
     expect(() => Config({ pollIntervalMs: '5000' as never })).toThrow();
+  });
+
+  it('validates the memory page size configuration', () => {
+    for (const value of [1, 50, 199]) expect(Config({ memoryPageSize: value }).memoryPageSize).toBe(value);
+    for (const value of [0, 200, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) expect(() => Config({ memoryPageSize: value })).toThrow();
+  });
+
+  it('counts all memories before Bot deletion and blocks when the count fails', async () => {
+    const app = await mount([bot()], 'en', (remote) => {
+      remote.methods.memory.count.mockResolvedValueOnce({ ok: false, error: new RemoteError('store/unavailable', 'offline', {}) });
+    });
+    await click(button(app.container, t['card.more']));
+    await click(button(app.container, t['actions.delete']));
+    const dialog = app.container.querySelector('dialog');
+    if (!dialog) throw new Error('No delete dialog');
+    expect(dialog.textContent).toContain(t['delete.countError']);
+    expect(button(dialog, t['actions.delete']).disabled).toBe(true);
+    expect(app.remote.methods.memory.list).not.toHaveBeenCalled();
+    app.remote.methods.memory.count.mockResolvedValueOnce({ ok: true, value: 205 });
+    await click(button(dialog, t['actions.retry']));
+    expect(dialog.textContent).toContain(t['delete.memoryCount'].replace('{count}', '205'));
+    expect(button(dialog, t['actions.delete']).disabled).toBe(false);
+    await click(button(dialog, t['actions.cancel']));
+    expect(app.remote.methods.delete).not.toHaveBeenCalled();
   });
 
   it('changes the polling cadence from the page and preserves it across page remounts', async () => {

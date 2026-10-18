@@ -9,7 +9,7 @@ import { vi } from 'vitest';
 import * as client from '../../src/client/index.js';
 import type { BotStatus, DshBotRemoteMethods } from '../../src/shared/remote-contract.js';
 import {
-  type BotCreateInput, type BotRecord, botCreateSchema, botSchema, normalizeBotPatch,
+  type BotCreateInput, type BotRecord, type MemoryRecord, botCreateSchema, botSchema, normalizeBotPatch,
 } from '../../src/shared/schema.js';
 
 export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot' }): BotRecord {
@@ -17,8 +17,27 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { records: initial, statuses: undefined as BotStatus[] | undefined };
+  const data = { records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], statuses: undefined as BotStatus[] | undefined };
+  const memory = {
+    list: vi.fn<DshBotRemoteMethods['memory']['list']>(async (id) => ({ ok: true, value: data.memories.filter((row) => row.botId === id) })),
+    search: vi.fn<DshBotRemoteMethods['memory']['search']>(async (id, input) => ({ ok: true, value: data.memories.filter((row) => row.botId === id && row.content.includes(input.query)) })),
+    count: vi.fn<DshBotRemoteMethods['memory']['count']>(async (id) => ({ ok: true, value: data.memories.filter((row) => row.botId === id).length })),
+    save: vi.fn<DshBotRemoteMethods['memory']['save']>(async () => ({ ok: true, value: { id: 'memory-test', deduplicated: false } })),
+    update: vi.fn<DshBotRemoteMethods['memory']['update']>(async (botId, id, patch) => {
+      const row = data.memories.find((item) => item.botId === botId && item.id === id);
+      if (!row) throw new Error('Missing memory');
+      const next = { ...row, ...patch, updatedAt: row.updatedAt + 1 };
+      data.memories = data.memories.map((item) => item === row ? next : item);
+      return { ok: true, value: next };
+    }),
+    delete: vi.fn<DshBotRemoteMethods['memory']['delete']>(async (botId, id) => {
+      data.memories = data.memories.filter((row) => row.botId !== botId || row.id !== id);
+      return { ok: true, value: undefined };
+    }),
+  };
   const methods = {
+    memory,
+    catalogInfo: vi.fn<DshBotRemoteMethods['catalogInfo']>(async () => ({ ok: true, value: { presetIdPrefix: data.presetIdPrefix } })),
     list: vi.fn<DshBotRemoteMethods['list']>(async () => ({ ok: true, value: [...data.records] })),
     status: vi.fn<DshBotRemoteMethods['status']>(async () => ({
       ok: true,
@@ -92,6 +111,7 @@ export async function mountClient(
     children: {
       main: { kind: 'keyed', scope: 'root' },
       'sidebar.panellist': { kind: 'list', scope: 'root' },
+      'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
     },
   }, (() => null) as never);
   const remote = remoteDouble(initial);
@@ -108,6 +128,9 @@ export async function mountClient(
     return async () => { remoteMounted = false; await release(); };
   });
   let remoteMounted = true;
+  const openSession = vi.fn<Context['uiWorkspace']['openSession']>();
+  const selectPanel = vi.fn<Context['layout']['selectPanel']>();
+  ctx.provide('layout', { selectPanel } as unknown as Context['layout']);
   const openWorkspace = vi.fn<Context['uiWorkspace']['openWorkspace']>(async () => {});
   let workspaceSnapshot: WorkspaceSnapshot = {
     items: [workspace()], state: 'idle', phase: 'ready', error: null, archivedSessionIds: [], pinnedSessionIds: [],
@@ -129,7 +152,7 @@ export async function mountClient(
     register: core.register.bind(core),
   } as unknown as Context['slots']);
   ctx.provide('remote', { $mount: mountRemote, dshBot: remote.methods } as unknown as Context['remote']);
-  ctx.provide('uiWorkspace', { openWorkspace } as unknown as Context['uiWorkspace']);
+  ctx.provide('uiWorkspace', { openWorkspace, openSession } as unknown as Context['uiWorkspace']);
   ctx.provide('workspaces', { list: workspaceSource } as unknown as Context['workspaces']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();
@@ -167,7 +190,7 @@ export async function mountClient(
     await act(async () => { root.unmount(); });
   };
   return {
-    ctx, core, remote, openWorkspace, mountRemote, container, main, dictionaries,
+    ctx, core, remote, openWorkspace, openSession, selectPanel, mountRemote, container, main, dictionaries,
     async setWorkspaces(patch: Partial<WorkspaceSnapshot>) {
       await act(async () => {
         workspaceSnapshot = { ...workspaceSnapshot, ...patch };

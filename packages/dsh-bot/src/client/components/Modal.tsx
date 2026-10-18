@@ -32,7 +32,7 @@ export function Modal({ title, description, busy, onClose, children, t }: ModalP
     if (event.key !== 'Tab') return;
     const fields = Array.from(dialog.current?.querySelectorAll<HTMLElement>(
       'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
-    ) ?? []);
+    ) ?? []).filter((element) => !element.closest('[hidden]'));
     const first = fields[0];
     const last = fields[fields.length - 1];
     if (!first) { event.preventDefault(); dialog.current?.focus(); return; }
