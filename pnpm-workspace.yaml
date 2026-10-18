@@ -1,5 +1,8 @@
 packages:
   - 'packages/*'
+  - 'spikes/p1-api'
+  - 'spikes/test-tools'
+  - 'spikes/remote/packages/*'
 
 # Keep package-manager writes inside this checkout.
 storeDir: .dsh-dev/pnpm-store
@@ -8,3 +11,9 @@ cacheDir: .dsh-dev/pnpm-cache
 # esbuild uses its platform optional package directly; no install hook is needed.
 allowBuilds:
   esbuild@0.25.12: false
+  esbuild@0.28.2: false
+  koffi@3.1.1: false
+
+# Match the locked DSH source's Zod ABI across Typert and spike schemas.
+overrides:
+  zod: 4.4.3

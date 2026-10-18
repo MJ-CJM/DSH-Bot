@@ -7,11 +7,12 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "scripts/pnpm -r build",
-    "test": "scripts/pnpm -r test",
-    "typecheck": "tsc --noEmit -p tsconfig.json && scripts/pnpm -r typecheck",
-    "lint": "biome lint .",
-    "check": "scripts/pnpm build && scripts/pnpm test && scripts/pnpm typecheck && scripts/pnpm lint"
+    "build": "scripts/pnpm --filter './packages/*' -r build",
+    "test": "scripts/pnpm --filter './packages/*' -r test",
+    "typecheck": "scripts/pnpm --filter './packages/*' -r typecheck",
+    "lint": "biome lint packages",
+    "check": "scripts/pnpm build && scripts/pnpm test && scripts/pnpm typecheck && scripts/pnpm lint",
+    "check:spikes": "scripts/pnpm --filter './spikes/**' -r build && scripts/pnpm --filter './spikes/**' -r typecheck && biome lint spikes && node spikes/remote/packages/dsh-bot-spike-remote/lib/contract-check.js && node spikes/p1-api/lib/public-exports.js && DSH_HOME=\"$PWD/.dsh-dev\" node spikes/test-tools/src/run.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

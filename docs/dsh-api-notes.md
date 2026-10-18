@@ -59,3 +59,79 @@ Client sourcemap 使用 **linked** 模式：`lib/client.js` 引用相邻 `client
 - Web ready 行在 Loader settled 与启动审计之后输出：`packages/bundle/web-app/src/index.ts:244-254`。没有发送 prompt 或创建模型会话。
 - 参考 tag HEAD 为 `687f282e8625c6b8d11ff58211a90524be2e4317`；实际桌面自带 CLI Web release metadata 为 version `0.2.1-rc.2`、commit `332895e`。只确认版本号一致，没有把不同 commit 当作同一源码构建。
 - 浏览器安全审批拒绝本机 origin。Client 的 apply 只在 Cordis + service doubles 测试中执行；真实浏览器激活、徽标、插件页图标和亮暗主题验收未执行。未以静态 token 或 boot graph 替代视觉证据。
+
+## T02：真实隔离 Web API spike（2026-10-18）
+
+最新运行结论见 [P1 API spike 完整报告](spikes/P1-api-spike.md)。本节覆盖前文 T00 的“待验证”状态；T01 的浏览器/桌面验收边界仍保留。可复现代码在 `spikes/`，不属于正式 bundle。
+
+| API / 公开包入口 | 本轮实际结果 | 约束与后续设计 |
+| --- | --- | --- |
+| `agentPresets.register/list/readDocument`；`dsh-agent-preset-registry` | 动态注册/注销、重复 id、坏定义、旧/新代际和跨进程恢复实测 | register 返回异步 disposer，必须 await 并归属 effect；激活失败可能只体现在 `list().broken`。同 id 注销再注册有真实空窗。稳定 id 冷恢复取当前定义；版本 id 缺失时拒绝恢复 |
+| `entryListSchema`；`@deepseek-ai/cordis-plugin-include@1.0.10` + `js-yaml@4.1.1` | 从 standard document 解析 22 行，替 persona 加 bot-context 得 23 行，healthy 且创建成功 | `!!js` 是 `{__jsExpr: string}`。普通字符串不会执行；函数 structuredClone 失败。inventory 缺 config，不能当模板。库从公开根入口导入 |
+| `systemPrompt.section`、`tools.register/restrict`、`agent/created`；system-prompt/tools/agent/scope | Host dshBots 可见；alpha/beta/plain/global 隔离，alpha 两会话的独立 section 实测 | preset apply 发生在代际 standing scope。每会话记忆和继承工具限制放 scoped `agent/created` 中，使用 agent.ctx.effect。9000 在工具引导后，不满足“工具之前”的顺序要求 |
+| `defineDomain/domainTable/storageDomain.open`；storage-domain | 原名 `dsh-bot` 被拒；替代 `dsh_bot` 在 Web 下写入、并发 update、close/reopen、重启读回成功 | 名称正则 `^[a-z][a-z0-9_]*$`。默认 `$DSH_HOME/storages/dsh_bot.json`。open 校验已存值；put/update 不校验，正式写入需 schema.parse。同名 open: already-open；closed 句柄访问: closed |
+| `TypertRemoteService/Remote/createTypertRemoteInfo`；typert-protocol | Host bare decorator/SRC fallback 和显式 strict contribution 两条路径均经鉴权 HTTP 成功 | Host strict 契约可用公开 `ctx.typert.register`，由 effect 注销；不能把 SRC JSON 形态检查当业务 schema 校验 |
+| `installConnection`；client-connection/client，`api-gateway/client`，typert-registry | 实际 Node 条件入口调用 `ctx.remote.dshBot.list()`；未鉴权 401，mount 前缺 namespace，unmount 后消失 | Client 必须 `$mount(contribution)` 并 await；消费方 inject remote 与 remote.dshBot。本轮以内存启动 token 交换 cookie，未读取凭据文件。没有打开浏览器 |
+| `WorkspaceTypertGenerator/WorkspaceAnalyzer`；typert-generator | **FAIL：外部 npm protocol .d.ts 的 Remote 标记未被识别，invocations=0** | `spike:generator` 保留失败复现。本轮手写 public metadata fixture 只证明通信，不能视作官方生成成功；T04/T08 需先决定正式契约方案 |
+| `sessionController.create/resolveAgent/inspect`；api-session-controller，`sessions.flush`；session | 第三方 Host 创建、落盘、重启恢复 PASS；评审补充的 mock prompt PASS | 对每个使用的 service 声明 inject；Session Controller 拥有创建的 Agent，裸 Agent 不是可销毁 handle。初轮未发送 prompt；本页末尾追加了隔离 profile 的 mock 回复证据 |
+| agent-loop-testkit / llm-mock-server / loader-smoke / client-test-runtime | 四包精确 rc.2 可安装；前三个外部最小示例 PASS，Client 根入口 import **FAIL** | Client 包引用 renderer 未发布的 src/client/bind.ts。不要深导入参考源码绕过。独立 mock SSE 不代表 profile 模型或工具闭环完成 |
+
+关键源码定位（相对参考根）：
+
+- preset：`packages/preset/agent-preset-registry/src/index.ts:81-121,213-273,318-327`；`src/mount.ts:92-122,194-214`。
+- 表达式：`vendor/include/src/index.ts:9-23`；`vendor/loader/src/config/utils.ts:11-32`；`packages/boot/app-boot/src/compatibility-preflight.ts:89-95`。
+- scope：`packages/core/system-prompt/src/index.ts:131-164,470-487,614-640`；`packages/core/tools/src/index.ts:1065-1125,1170-1226`；`packages/core/agent/src/runtime-types.ts:248-261`。
+- storage：`packages/storage/storage/src/backend.ts:10`；`storage-domain/src/spec.ts:108-109`、`src/index.ts:120-128`、`src/domain.ts:307-344`；默认组合 `packages/bundle/base/cordis.patch.yml:175-190`。
+- Remote：`docs/api-gateway.zh.md:64,90-144`；`packages/api/gateway/src/index.ts:862-993`；`src/client/index.ts:214-222`；`packages/typert/generator/src/analyzer.ts:1395-1401,2084-2100,2770-2777`。
+- 会话：`packages/api/session-controller/src/index.ts:295-303`、`src/agent.ts:235-256,387-398,563-577`；`packages/core/session/src/index.ts:1306-1335`。
+- Client 测试包：`packages/test-support/client-runtime/src/index.ts:25-30` 对比 `packages/client/ui-renderer/package.json:52-56` 的 files。
+
+版本与生命周期：新增 DSH dev 包均 `0.2.1-rc.2`、Cordis `4.0.5`、Schemastery `3.18.5`；需要共享实例的 Host runtime 包声明兼容 peer。测试 schema 与 protocol 的 Zod 类型出现 4.4.3/4.6.7 分裂，workspace override 固定 `zod:4.4.3`，与参考源码一致。异步注册/打开资源在 effect 内取得并收集 disposer；Host 正常完成后才停止。没有将未执行的中途取消故障注入计为验证通过。
+
+T02 不改变正式包的 Config、UI 或 locale。Desktop 只确认组合源码，实际 Desktop、浏览器显示/亮暗主题、自定义 Remote 事件、独立 Bot model 仍待后续验收；profile mock prompt 已在评审补充通过。任务单修订由编排方负责。
+
+## T02 评审补充：检查隔离、依赖和生产接口建议（2026-10-18）
+
+### 产品检查与 Zod override
+
+根 `build/test/typecheck` 使用 `--filter './packages/*'`，`lint` 只检查 `packages`，因此 `scripts/pnpm check` 不再构建或检查 spike。`scripts/pnpm check:spikes` 单独覆盖三个 spike workspace 的 build/typecheck、`biome lint spikes`、Remote 签名/codec/公开 exports 检查和三个可运行测试工具（含 fs-local 原子写入）。真实 Host 与 mock profile 是独立显式命令，见 spike 报告；已知失败的 generator、client-test-runtime 保留独立复现命令，未静默当作通过。**检查隔离不等于依赖隔离**：它们仍共享 workspace lockfile 和 override。
+
+`pnpm-workspace.yaml` 中 `overrides.zod: 4.4.3` 是本 workspace 的统一解析约束。原因是 protocol 的 `^4.4.3` 曾解析成 4.6.7，而 registry 与本 spike 的 schema factory 使用 4.4.3，公开 `ZodType` 的 `validate/validateAsync` 等类型出现版本分裂；锁到参考 rc.2 所用 4.4.3 后 strict 编译与实际 Remote codec 通过。源码 manifest：`packages/typert/protocol/package.json:38-40`、registry `package.json:55-56`；当前实际依赖树见 `.dsh-dev/t02-review-zod-why.log`（`scripts/pnpm -r why zod`，仅 4.4.3）。
+
+影响范围与移除条件：
+
+- override 作用于**整个仓库所有 importer 及传递依赖**，包括 `packages/dsh-bot` 的开发类型/测试依赖，并非只影响 `spikes`。今后加入要求其他 Zod 版本的包时，要检查强制替换的兼容性，不能仅以安装通过判断。
+- 当前产品 Host `packages/dsh-bot/lib/index.js` 没有任何 runtime import，仅注册日志 effect；源码只有 type import。因此当前 Host 运行不依赖 Zod，本次 override 不改变其 Host 行为。未来 Host 加入 Zod、storage 或 Remote runtime imports 后，本地开发依赖会受 override 约束，须重新验收，不能沿用此结论。
+- 当前 Client 也未使用 Zod；后续 Client 的 `zod` import 必须来自**宿主平台模块表**（参考 `packages/client/web/src/platform.ts:8-15`；本仓库 `packages/dsh-bot/build/client.config.ts:11-20,44-55` external/产物检查）。workspace override 不替换已安装 DSH 平台的 Zod，也不修改桌面安装内容或宿主全局依赖。开发类型锁定与浏览器运行时共享实例是两个层面。
+- 可移除时机：上游统一所需版本/修复跨版本公共类型，或在独立 spike workspace 中局部固定；移除后重新解析 lockfile，核对 `pnpm why zod`、产品/spike strict 检查、Host strict Remote 编解码及 Client 平台 schema 兼容性。不要只删除 override 而保留旧 lockfile，误判问题已解决。T04 引入正式 Remote 后应重审一次，DSH 升级时再次重审。
+
+### koffi install hook
+
+实际命令 `scripts/pnpm -r why koffi` 的唯一链（完整输出 `.dsh-dev/t02-review-koffi-why.log`）：
+
+```text
+dsh-bot-spike-test-tools (devDependencies)
+  -> @deepseek-ai/dsh-agent-loop-testkit@0.2.1-rc.2
+  -> @deepseek-ai/dsh-fs-local@0.2.1-rc.2
+  -> koffi@3.1.1
+```
+
+`allowBuilds.koffi@3.1.1: false` 保留。fs-local manifest 在 `packages/fs/fs-local/package.json:33-36` 声明它；`src/win32.ts:46-54` 才动态 import Koffi，加载 `advapi32.dll`/`kernel32.dll`，用于 Windows DACL 与 ReplaceFileW。`src/fsio.ts:605-649` 仅 win32 替换路径调用这些函数，POSIX 路径使用 link/rename。
+
+运行确认：`spikes/test-tools/src/run.ts` 通过公开 testkit `{workingDirectory:true}` 挂载真实 fs-local，再通过公开 `ctx.fs.resolve/writeText` 执行 createIfAbsent、替换已有文件、读取校验，结果 `platform:darwin, create:create, replace:update, text:second`，见 `.dsh-dev/t02-test-tools/results.json` 的 `fsLocalWithoutKoffiHook`。因此禁用 hook **不影响本次 macOS 会用到的文件创建/替换、Agent harness、mock 和 Loader 功能**；产品 Host 当前没有这条依赖链。没有据此声称 Windows 原生绑定可用，Windows/其他原生路径未验证，扩展平台前需单独检查预编译绑定与 hook 策略。
+
+### T04 Remote 与 T08 刷新
+
+详见 [spike 第 5 节的完整模板与源码证据](spikes/P1-api-spike.md#t04-推荐写法)：单一 Zod schema 派生 Host/Client 类型，同一 `createTypertRemoteInfo` 产物供 Host `ctx.typert.register` 和 Client `$mount` 使用。签名测试检查实际 service 方法与 Client 声明、descriptor 和正负 codec 样本；公开 npm exports 和符号检查输出 `.dsh-dev/t02-review/public-exports.json`。`createTypertRemoteInfo` 根出口及公开 `/remote-info`、registry 根出口和 register 合同、gateway `/client` 及继承的 `$mount` 都在已安装 rc.2 包内核对过；没有从参考源码内部路径 import。
+
+Client 建议用无 runtime imports 的公开 `@deepseek-ai/dsh-typert-protocol/remote-info` 工厂，随本包契约内联；Zod 保持平台 external。该工厂不在平台模块表，T04 必须精确调整 T01 的“禁止任何 node_modules 内联”检查，不能把 protocol 根入口当平台 require。本轮只提供可编译模板，没有改产品构建或业务代码。
+
+刷新调研结果：ui-schedule/plugin-market 使用内置 changed 白名单 + `connection/reset` 触发重新查询；第三方 `dsh-bot/changed` 不会自动进入宿主唯一 Remote 事件源。P1 推荐提交成功后 refetch + 页面可见/首次订阅 + reset + 活动页面可配置轮询（建议 5 秒），防旧读覆盖新读、卸载清理并保留手动刷新。若要求即时跨 Client/工具更新，备选自定义 stream Remote，配合 `$stream`/`RemoteSnapshotStream`，每代一个 opening snapshot 后跟 delta；Host 负责一致性、revision 与队列边界。**本项仅源码调研，未将自定义 stream 或浏览器刷新计为运行通过。**
+
+### P2 mock 新会话闭环
+
+评审补充已取代上文初轮“profile prompt 未验证”：`DSH_HOME="$PWD/.dsh-dev" node spikes/test-tools/src/mock-profile.ts` 创建全新默认 Web profile，将其 `cordis.patch.yml` 中 `agent-default-model` 指向 `deepseek-official/deepseek-flash`，覆盖 `llm-deepseek` 的 loopback `/v1` baseURL 和独立 `DSH_BOT_MOCK_KEY` 引用。仅子进程 launch env 提供 `mock-key`；停用其他模型 provider、title LLM、重试和遥测/远程日志，不读取任何凭据文件。`--dump-config` 后 `--no-open --host 127.0.0.1 --port 0` 实际启动。
+
+最终证据 `.dsh-dev/t02-review/t02-mock-1792342631862/{dump.yml,host.log,session-result.json,result.json}`：Host 激活；`create({cwd,agentPreset:'bot-mock-spike'})`；`prompt` 返回 accepted=true；实际 `assistant/message` 文本 `T02_ROUTINE_MOCK_OK`；flush=true；mock 恰好一条 `/v1/messages`、behavior=success/outcome=completed。会话为 `session-cc048c8f-e320-4665-ac15-6e1d55159c66`。正常关闭退出 0，无浏览器，无真实模型调用。
+
+新增使用公开包：`@deepseek-ai/dsh-agent-default-model` 根入口（dev 精确 rc.2，type import），`currentSelection()` 用于验证默认 provider/model；`SessionRequestId` 与 `sessionController.prompt` 来自 `dsh-api-session-controller` 根入口；`ctx.fs` 的类型声明来自 `@deepseek-ai/dsh-fs` 根入口（dev 精确 rc.2）。源码 `core/agent-default-model/src/index.ts:67-73`、`api/session-controller/src/types.ts:344-359`、`src/index.ts:462-485`。prompt 回执只保证进入 Inbox，必须另等 assistant 事件；本例验证了文本回复，**工具调用、routine 调度/并发、错误重试和冷恢复后续执行仍未验证**。
