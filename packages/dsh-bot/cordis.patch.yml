@@ -9,3 +9,5 @@
         maxInjectChars: 4000
         memorySectionOrder: 100
         memoryListLimit: 20
+        enableBotManageInStandard: false
+        botManagePersonaPreviewChars: 200

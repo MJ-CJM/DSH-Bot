@@ -249,6 +249,20 @@ async function probe(startupUrl, phase) {
     check('plain standard Agent preserves Host request model', evidence.plain.requestModel, evidence.defaultModel);
     check('plain standard Agent sees no Bot private skills', evidence.plain.skills.some((skill) => /^t05-/.test(skill.name)), false);
     check('old Agent remains live after preset re-registration', evidence.generation.oldAgentStillLive);
+    check('self update went through bot_manage and was approved once',
+      !evidence.management.selfUpdate.isError && evidence.management.approvals.length === 1);
+    check('self update approval identifies the target and fields in both languages', ['en', 'zh'].every((locale) => {
+      const text = evidence.management.approvals[0].displayReason[locale];
+      return text.includes('t05-alpha') && text.includes('["persona","tools"]');
+    }));
+    check('self update approval warns about the current Bot',
+      evidence.management.approvals[0].displayReason.en.includes('CURRENT BOT ITSELF')
+        && evidence.management.approvals[0].displayReason.zh.includes('当前 Bot 自身'));
+    check('self update has a real approval audit pair', evidence.management.approvalAudit.map((event) => event.type),
+      ['approval/asked', 'approval/decided']);
+    check('self update approval outcome is allowed-once', evidence.management.approvalAudit[1].data.outcome, 'allowed-once');
+    check('approved self update cannot dispatch a previously denied tool on the live Agent',
+      evidence.management.deniedRead.error?.info?.code, 'UNKNOWN_TOOL');
     check('old Agent keeps its Bot binding after update', evidence.generation.old.binding, { botId: 't05-alpha' });
     check('old Agent deny remains active after update', evidence.generation.old.tools.includes('read'), false);
     check('old Agent retains original persona', evidence.generation.old.persona.includes('T05_ALPHA_PERSONA'));

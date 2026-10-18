@@ -3,6 +3,16 @@
     "title": "DSH-Bot",
     "description": "A multi-agent workspace for DeepSeek Harness. This first version adds the DSH-Bot composer badge."
   },
+  "tools": {
+    "bot_manage.approval.create": "Create Bot {id} named {name} and register its preset?",
+    "bot_manage.approval.update": "Update Bot {id}? Changed top-level fields: {fields}. New and cold-restored sessions use the updated configuration; live sessions keep their current configuration.{selfWarning}",
+    "bot_manage.approval.delete": "Delete Bot {id} and its preset? {memoryWarning} Session history remains, but cannot resume until this Bot id exists again.{selfWarning}",
+    "bot_manage.approval.deleteMemories": "WARNING: deleteMemories=true — DELETE ALL {count} MEMORIES currently belonging to this Bot (counted before approval).",
+    "bot_manage.approval.keepMemories": "deleteMemories=false — keep all memories.",
+    "bot_manage.approval.selfUpdate": "\nWARNING: this modifies the CURRENT BOT ITSELF. Changes to tools.deny can remove tool restrictions for future sessions. This live Agent keeps its existing restrictions.",
+    "bot_manage.approval.selfDelete": "\nWARNING: this deletes the CURRENT BOT ITSELF. This live Agent keeps its existing restrictions; new sessions and cold restoration will be unavailable without this Bot preset.",
+    "bot_manage.approval.combined": "{operation}\nAdditional approval policy: {upstream}"
+  },
   "ui": {
     "badge.label": "DSH-Bot",
     "badge.description": "DSH-Bot is enabled"

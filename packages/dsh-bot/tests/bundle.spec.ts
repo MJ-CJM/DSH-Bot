@@ -8,6 +8,8 @@ import { Context } from '@deepseek-ai/cordis';
 import Storage from '@deepseek-ai/dsh-storage';
 import * as storageDomain from '@deepseek-ai/dsh-storage-domain';
 import * as storageJson from '@deepseek-ai/dsh-storage-json';
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
+import ToolRuntime from '@deepseek-ai/dsh-tools';
 import { describe, expect, it, vi } from 'vitest';
 import { assertClientInput } from '../build/client-policy.js';
 import * as host from '../lib/index.js';
@@ -42,11 +44,14 @@ describe('built bundle contract', () => {
       await ctx.plugin(Storage).await();
       await ctx.plugin(storageJson, { root }).await();
       await ctx.plugin(storageDomain, { backend: 'json' }).await();
+      await ctx.plugin(SystemPrompt, {}).await();
+      await ctx.plugin(ToolRuntime, { mode: 'native' }).await();
       ctx.provide('agentPresets', {
         async register() { throw new Error('Empty registry must not register a preset'); },
         list: () => [],
       } as unknown as Context['agentPresets']);
       ctx.provide('loader', { await: async () => {} } as unknown as Context['loader']);
+      ctx.provide('agents', { get: () => undefined } as unknown as Context['agents']);
       const registrations: string[] = [];
       ctx.provide('typert', {
         register(contribution: { package: string }) {
@@ -119,8 +124,21 @@ describe('built bundle contract', () => {
   });
 
   it('exports matching bilingual resources and an SVG within the icon limit', () => {
+    expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort());
     expect(Object.keys(en.meta).sort()).toEqual(Object.keys(zh.meta).sort());
     expect(Object.keys(en.ui).sort()).toEqual(Object.keys(zh.ui).sort());
+    expect(Object.keys(en.tools).sort()).toEqual(Object.keys(zh.tools).sort());
+    for (const dictionary of [en.tools, zh.tools]) {
+      expect(Object.keys(dictionary).sort()).toEqual([
+        'bot_manage.approval.combined', 'bot_manage.approval.create', 'bot_manage.approval.delete',
+        'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories',
+        'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',
+      ]);
+      for (const value of Object.values(dictionary)) expect(value.trim()).not.toBe('');
+    }
+    for (const key of Object.keys(en.tools) as Array<keyof typeof en.tools>) {
+      expect(en.tools[key].match(/\{\w+\}/g)?.sort()).toEqual(zh.tools[key].match(/\{\w+\}/g)?.sort());
+    }
     expect(en.meta.title).toBe('DSH-Bot');
     expect(zh.meta.title).toBe('DSH-Bot 多智能体');
     expect(require.resolve('dsh-bot/locale/en.json')).toMatch(/locale\/en\.json$/);
@@ -128,6 +146,12 @@ describe('built bundle contract', () => {
     const icon = require.resolve('dsh-bot/icon');
     expect(statSync(icon).size).toBeLessThanOrEqual(256 * 1024);
     expect(readFileSync(icon, 'utf8')).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
+  });
+
+  it('keeps bot_manage opt-in for standard sessions in the public Host Config', () => {
+    expect(host.Config({}).enableBotManageInStandard).toBe(false);
+    expect(host.Config({ enableBotManageInStandard: true }).enableBotManageInStandard).toBe(true);
+    expect(() => host.Config({ enableBotManageInStandard: 'yes' } as never)).toThrow();
   });
 
   it('awaits Remote mounting and releases its contribution, dictionaries and slot on unload', async () => {

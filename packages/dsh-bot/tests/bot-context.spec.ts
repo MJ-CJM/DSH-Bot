@@ -1,18 +1,21 @@
 import { Context } from '@deepseek-ai/cordis';
 import { type Agent, type ModelSelection, type ModelSelectionRef, installModelSelection } from '@deepseek-ai/dsh-agent';
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
-import { createScope, scopeTarget } from '@deepseek-ai/dsh-scope';
+import { ReasoningEffortId, ToolCallId } from '@deepseek-ai/dsh-llm';
+import { bindScopeParent, createScope, scopeChainOf, scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope';
+import { SessionId } from '@deepseek-ai/dsh-session';
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools';
+import type {} from '@deepseek-ai/dsh-user-approval';
 import { describe, expect, it, vi } from 'vitest';
 import * as botContext from '../lib/host/bot-context.js';
 import { Config as RegistryConfig } from '../lib/host/registry.js';
+import { registerStandardBotManage } from '../lib/host/tools/bot-manage.js';
 import { botCreateSchema, botSchema } from '../lib/shared/schema.js';
 
 async function fixture() {
   const ctx = new Context();
   await ctx.plugin(SystemPrompt, {}).await();
-  await ctx.plugin(ToolRuntime).await();
+  await ctx.plugin(ToolRuntime, { mode: 'native' }).await();
   const records = new Map(['alpha', 'beta'].map((id) => [id, botSchema.parse({
     ...botCreateSchema.parse({ id, name: id, tools: { deny: id === 'alpha' ? ['inherited_tool'] : [] },
       memory: { enabled: false, injectLimit: 20 } }),
@@ -21,26 +24,36 @@ async function fixture() {
   const presetBot = vi.fn((id: string) => {
     const bot = records.get(id);
     if (!bot) throw new Error(`Unknown Bot: ${id}`);
-    return bot;
+    return structuredClone(bot);
   });
   const catalogs = new Map<string, string[]>([['bot-provider', ['bot-model']]]);
   const listModels = vi.fn(async (provider: string) => (catalogs.get(provider) ?? []).map((id) => ({ id, provider, name: id })));
   ctx.provide('llm', {
     listProviders: () => [...catalogs.keys()].map((id) => ({ id, name: id })), listModels,
   } as unknown as Context['llm']);
-  ctx.provide('dshBots', { presetBot, config: RegistryConfig({}) } as unknown as Context['dshBots']);
+  const list = vi.fn(async () => structuredClone([...records.values()]));
+  ctx.provide('dshBots', { presetBot, list, config: RegistryConfig({}) } as unknown as Context['dshBots']);
+  const requestApproval = vi.fn(async (_request: { agent: Agent; toolName: string }) => 'rejected' as const);
+  ctx.provide('approval', { request: requestApproval } as unknown as Context['approval']);
+  const liveAgents = new Map<string, Agent>();
+  ctx.provide('agents', { get: (id: string) => liveAgents.get(id) } as unknown as Context['agents']);
+  const presetNames = new Map<object, string>();
+  ctx.provide('agentPresets', {
+    composedPreset: (context: Context) => scopeChainOf(scopeOf(context)).map((key) => presetNames.get(key)).find(Boolean),
+  } as unknown as Context['agentPresets']);
   const modelStates = new WeakMap<object, { pending: ModelSelection | null }>();
   ctx.provide('sessionProjections', {
     stateOf: (session: object) => modelStates.get(session),
   } as unknown as Context['sessionProjections']);
   let owner!: Context;
   await ctx.plugin({
-    inject: ['tools', 'systemPrompt', 'dshBots'],
+    inject: ['tools', 'systemPrompt', 'dshBots', 'agents', 'agentPresets'],
     apply(injected: Context) { owner = injected; },
   }).await();
 
   const preset = async (botId: string) => {
     const key = {};
+    presetNames.set(key, `bot-${botId}`);
     const scope = createScope(owner, key);
     scope.ctx.effect(() => scope.ctx.tools.register(defineTool({
       name: 'inherited_tool', description: 'Inherited fixture tool', parameters: {},
@@ -51,23 +64,50 @@ async function fixture() {
     await plugin.await();
     return { key, scope, plugin };
   };
+  const plainPreset = (id: 'standard' | 'minimal') => {
+    const key = {};
+    presetNames.set(key, id);
+    return { key, scope: createScope(owner, key) };
+  };
+  const standardManage = async () => {
+    const plugin = owner.plugin({
+      inject: ['tools', 'dshBots', 'agents', 'agentPresets'], apply: registerStandardBotManage,
+    });
+    await plugin.await();
+    return plugin;
+  };
   // These are event payload fixtures, not a model/session runtime. Scope routing,
   // restriction resolution and effect disposal use the actual published APIs.
   let sequence = 0;
   const agent = (parent?: object) => {
     const modelState: { header?: { config: ModelSelection }; pending: ModelSelection | null } = { pending: null };
-    const session = { requestHeader: () => modelState.header };
+    const session = { id: SessionId(`fixture-session-${++sequence}`), requestHeader: () => modelState.header };
     modelStates.set(session, modelState);
     const payload = { id: `fixture-${++sequence}`, ctx, session };
     const subject = payload as Agent;
-    const scope = createScope(owner, subject, parent ? { parent } : undefined);
+    let parentBinding = parent ? bindScopeParent(subject, parent) : undefined;
+    const scope = createScope(owner, subject);
     payload.ctx = scope.ctx;
+    liveAgents.set(session.id, subject);
+    scope.ctx.effect(() => () => { liveAgents.delete(session.id); });
     return {
       subject, scope, modelState,
       announce: () => ctx.serial(scopeTarget(subject, subject), 'agent/created', { agent: subject, source: 'startup' }),
+      select: (next: object) => {
+        if (parentBinding) parentBinding.rebind(next);
+        else parentBinding = bindScopeParent(subject, next);
+        const id = presetNames.get(next);
+        if (!id) throw new Error('Missing fixture preset name');
+        return ctx.serial('agent-preset/selected', session.id, id);
+      },
     };
   };
-  return { ctx, records, presetBot, preset, agent, catalogs, listModels, close: () => ctx.fiber.dispose() };
+  const manage = (subject: Agent, args: unknown = { action: 'create', input: { id: 'new-bot', name: 'New Bot' } }) => ctx.tools.execute({
+    callId: ToolCallId(`manage-${++sequence}`), name: 'bot_manage', arguments: args,
+    agent: subject, signal: new AbortController().signal,
+  });
+  return { ctx, records, presetBot, preset, plainPreset, standardManage, agent, catalogs, listModels, list, requestApproval, manage,
+    close: () => ctx.fiber.dispose() };
 }
 
 async function withFixture(run: (value: Awaited<ReturnType<typeof fixture>>) => Promise<void>) {
@@ -102,6 +142,172 @@ describe('Bot preset context using the published scope and tool services', () =>
     expect(botContext.getBotBinding(other.subject)).toEqual({ botId: 'beta' });
     expect(botContext.getBotBinding(plain.subject)).toBeUndefined();
     expect(Object.isFrozen(botContext.getBotBinding(first.subject))).toBe(true);
+  }));
+
+  it('registers bot_manage for every Bot even with memory disabled, only inside its Agent scope', async () => withFixture(async ({
+    ctx, preset, agent, manage, list, requestApproval,
+  }) => {
+    for (const id of ['alpha', 'beta']) {
+      const composition = await preset(id);
+      const session = agent(composition.key);
+      expect(ctx.tools.get('bot_manage', composition.key)).toBeUndefined();
+      await session.announce();
+      expect(ctx.tools.get('bot_manage', session.subject)).toBeDefined();
+      expect(await manage(session.subject, { action: 'list' })).toMatchObject({ isError: false, value: { action: 'list' } });
+      expect(ctx.tools.schemas(session.subject).some((tool) => tool.name.startsWith('memory_'))).toBe(false);
+    }
+    const plain = agent();
+    await plain.announce();
+    expect(ctx.tools.get('bot_manage', plain.subject)).toBeUndefined();
+    expect(ctx.tools.get('bot_manage')).toBeUndefined();
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(requestApproval).not.toHaveBeenCalled();
+  }));
+
+  it('omits denied bot_manage tools and approval hooks while retaining each preset generation policy', async () => withFixture(async ({
+    ctx, records, preset, agent, manage, requestApproval,
+  }) => {
+    const record = records.get('alpha');
+    if (!record) throw new Error('Missing alpha fixture');
+    record.tools.deny.push('bot_manage');
+    const old = await preset('alpha');
+    const restrictions = vi.spyOn(ctx.tools, 'restrict');
+    const registrations = vi.spyOn(ctx.tools, 'register');
+    const before = agent(old.key);
+    await before.announce();
+    // rc.2 restrict cannot hide a same-layer definition. Denial must omit the
+    // local registration entirely, regardless of the creation-listener order.
+    expect(registrations.mock.calls.some(([tool]) => tool.name === 'bot_manage')).toBe(false);
+    expect(restrictions.mock.calls.map(([filter]) => filter)).toEqual([{ deny: ['inherited_tool'] }]);
+    record.tools.deny = ['inherited_tool'];
+    const current = await preset('alpha');
+    const retained = agent(old.key);
+    const fresh = agent(current.key);
+    await retained.announce();
+    await fresh.announce();
+    for (const session of [before, retained]) {
+      expect(botContext.getBotBinding(session.subject)).toEqual({ botId: 'alpha' });
+      expect(ctx.tools.get('bot_manage', session.subject)).toBeUndefined();
+      expect(ctx.tools.get('inherited_tool', session.subject)).toBeUndefined();
+      expect(ctx.tools.schemas(session.subject).map((tool) => tool.name)).not.toContain('bot_manage');
+      expect(await manage(session.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    }
+    expect(requestApproval).not.toHaveBeenCalled();
+    expect(ctx.tools.get('bot_manage', fresh.subject)).toBeDefined();
+    expect(await manage(fresh.subject)).toMatchObject({ isError: true, error: { message: 'the user rejected tool "bot_manage"' } });
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    expect(requestApproval.mock.calls[0]?.[0].agent).toBe(fresh.subject);
+    expect(requestApproval.mock.calls[0]?.[0].toolName).toBe('bot_manage');
+    restrictions.mockRestore();
+    registrations.mockRestore();
+  }));
+
+  it('removes both bot_manage and its approval hook on Agent or preset unload without affecting siblings', async () => withFixture(async ({
+    ctx, preset, agent, manage, requestApproval,
+  }) => {
+    const alpha = await preset('alpha');
+    const beta = await preset('beta');
+    const first = agent(alpha.key);
+    const second = agent(alpha.key);
+    const other = agent(beta.key);
+    for (const session of [first, second, other]) await session.announce();
+    await manage(first.subject);
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+
+    await first.scope.dispose();
+    await first.scope.dispose();
+    expect(ctx.tools.get('bot_manage', first.subject)).toBeUndefined();
+    expect(await manage(first.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    await manage(second.subject);
+    expect(requestApproval).toHaveBeenCalledTimes(2);
+
+    await alpha.plugin.dispose();
+    await alpha.plugin.dispose();
+    expect(ctx.tools.get('bot_manage', second.subject)).toBeUndefined();
+    expect(await manage(second.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    const afterUnload = agent(alpha.key);
+    await afterUnload.announce();
+    expect(ctx.tools.get('bot_manage', afterUnload.subject)).toBeUndefined();
+    expect(await manage(afterUnload.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    expect(requestApproval).toHaveBeenCalledTimes(2);
+    expect(ctx.tools.get('bot_manage', other.subject)).toBeDefined();
+    await manage(other.subject);
+    expect(requestApproval).toHaveBeenCalledTimes(3);
+    await second.scope.dispose();
+    expect(requestApproval).toHaveBeenCalledTimes(3);
+  }));
+
+  it('moves management across retained Bot generations, denied Bots and minimal without stale ownership', async () => withFixture(async ({
+    ctx, records, preset, plainPreset, agent, manage, requestApproval,
+  }) => {
+    const denied = records.get('beta');
+    if (!denied) throw new Error('Missing beta fixture');
+    denied.tools.deny = ['bot_manage'];
+    const old = await preset('alpha');
+    const blocked = await preset('beta');
+    const current = await preset('alpha');
+    const minimal = plainPreset('minimal');
+    const changing = agent(old.key);
+    const retained = agent(old.key);
+    await changing.announce();
+    await retained.announce();
+    await manage(changing.subject);
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+
+    await changing.select(blocked.key);
+    expect(ctx.tools.get('bot_manage', changing.subject)).toBeUndefined();
+    expect(await manage(changing.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    expect(ctx.tools.get('bot_manage', retained.subject)).toBeDefined();
+
+    await changing.select(current.key);
+    expect(ctx.tools.schemas(changing.subject).filter((tool) => tool.name === 'bot_manage')).toHaveLength(1);
+    await old.plugin.dispose();
+    expect(ctx.tools.get('bot_manage', retained.subject)).toBeUndefined();
+    expect(ctx.tools.get('bot_manage', changing.subject)).toBeDefined();
+    await manage(changing.subject);
+    expect(requestApproval).toHaveBeenCalledTimes(2);
+
+    await changing.select(minimal.key);
+    expect(ctx.tools.get('bot_manage', changing.subject)).toBeUndefined();
+    expect(await manage(changing.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    expect(requestApproval).toHaveBeenCalledTimes(2);
+    await changing.select(current.key);
+    expect(ctx.tools.schemas(changing.subject).filter((tool) => tool.name === 'bot_manage')).toHaveLength(1);
+    await manage(changing.subject);
+    expect(requestApproval).toHaveBeenCalledTimes(3);
+  }));
+
+  it.each(['standard-first', 'bot-first'] as const)('transfers management between standard and Bot with %s listener order', async (order) => withFixture(async ({
+    ctx, preset, plainPreset, standardManage, agent, manage, requestApproval,
+  }) => {
+    const standard = plainPreset('standard');
+    const minimal = plainPreset('minimal');
+    const standardPlugin = order === 'standard-first' ? await standardManage() : undefined;
+    const bot = await preset('alpha');
+    const standardOwner = standardPlugin ?? await standardManage();
+    const changing = agent(standard.key);
+    const retained = agent(bot.key);
+    await changing.announce();
+    await retained.announce();
+    for (const key of [bot.key, standard.key]) {
+      await changing.select(key);
+      expect(ctx.tools.schemas(changing.subject).filter((tool) => tool.name === 'bot_manage')).toHaveLength(1);
+      expect(await manage(changing.subject)).toMatchObject({ isError: true, error: { message: 'the user rejected tool "bot_manage"' } });
+    }
+    expect(requestApproval).toHaveBeenCalledTimes(2);
+    await bot.plugin.dispose();
+    expect(ctx.tools.get('bot_manage', retained.subject)).toBeUndefined();
+    expect(ctx.tools.get('bot_manage', changing.subject)).toBeDefined();
+    await manage(changing.subject);
+    expect(requestApproval).toHaveBeenCalledTimes(3);
+    await changing.select(minimal.key);
+    expect(ctx.tools.get('bot_manage', changing.subject)).toBeUndefined();
+    expect(await manage(changing.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    expect(requestApproval).toHaveBeenCalledTimes(3);
+    await standardOwner.dispose();
+    expect(ctx.tools.get('bot_manage', changing.subject)).toBeUndefined();
   }));
 
   it('captures policy once per preset generation and keeps live agents stable', async () => withFixture(async ({ ctx, records, presetBot, preset, agent }) => {
@@ -187,7 +393,9 @@ describe('Bot preset context using the published scope and tool services', () =>
     expect(botContext.getBotBinding(session.subject)).toBeUndefined();
   }));
 
-  it('does not register late Agent effects when the plugin unloads during model validation', async () => withFixture(async ({ records, preset, agent, listModels }) => {
+  it('does not register late Agent effects when the plugin unloads during model validation', async () => withFixture(async ({
+    ctx, records, preset, agent, listModels, manage, requestApproval,
+  }) => {
     const record = records.get('alpha');
     if (!record) throw new Error('Missing fixture');
     record.model = { provider: 'bot-provider', model: 'bot-model' };
@@ -199,9 +407,12 @@ describe('Bot preset context using the published scope and tool services', () =>
     const announced = session.announce();
     const rejected = expect(announced).rejects.toMatchObject({ code: 'bot/unavailable' });
     await composition.plugin.dispose();
+    expect(ctx.tools.get('bot_manage', session.subject)).toBeUndefined();
     release();
     await rejected;
     expect(botContext.getBotBinding(session.subject)).toBeUndefined();
+    expect(await manage(session.subject)).toMatchObject({ isError: true, error: { info: { code: 'UNKNOWN_TOOL' } } });
+    expect(requestApproval).not.toHaveBeenCalled();
   }));
 
   it.each(['assembly', 'request'] as const)('does not apply an in-flight %s override after plugin unload', async (phase) => withFixture(async ({ ctx, records, preset, agent, listModels }) => {

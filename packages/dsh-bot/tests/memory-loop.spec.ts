@@ -21,6 +21,7 @@ import { openBotStores } from '../lib/host/store.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
 const memoryToolNames = ['memory_forget', 'memory_list', 'memory_save', 'memory_search'];
+const botToolNames = ['bot_manage', ...memoryToolNames];
 const botIds = ['alpha', 'beta', 'disabled', 'readonly'];
 
 /** Real JSON storage, production AgentLoop/Tools/SystemPrompt and public scope APIs. */
@@ -180,17 +181,16 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     const readonly = await create('readonly');
     const plain = await harness.create(SessionId('t06-plain'));
     for (const agent of [first.agent, second.agent, beta.agent]) {
-      expect(ctx.tools.schemas(agent).map((tool) => tool.name).sort()).toEqual(memoryToolNames);
+      expect(ctx.tools.schemas(agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
       for (const tool of ctx.tools.schemas(agent)) expect(JSON.stringify(tool.parameters)).not.toContain('botId');
     }
     expect(ctx.tools.schemas()).toEqual([]);
-    for (const agent of [disabled.agent, plain]) {
-      expect(ctx.tools.schemas(agent)).toEqual([]);
-      expect(await memoryText(agent)).toBeUndefined();
-    }
+    expect(ctx.tools.schemas(disabled.agent).map((tool) => tool.name)).toEqual(['bot_manage']);
+    expect(ctx.tools.schemas(plain)).toEqual([]);
+    for (const agent of [disabled.agent, plain]) expect(await memoryText(agent)).toBeUndefined();
     expect(memoryFor.mock.calls.map(([id]) => id)).not.toContain('disabled');
     expect(ctx.tools.schemas(readonly.agent).map((tool) => tool.name).sort())
-      .toEqual(memoryToolNames.filter((name) => name !== 'memory_save'));
+      .toEqual(botToolNames.filter((name) => name !== 'memory_save'));
     expect((await execute(readonly.agent, 'memory_save', { content: 'Must not be stored.' })).isError).toBe(true);
     expect(stores.memories.listByBot('readonly', { limit: 20 })).toEqual([]);
     expect(await memoryText(first.agent)).toContain('Alpha private');
@@ -209,12 +209,12 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     expect(botContext.getBotBinding(first.agent)).toBeUndefined();
     expect(ctx.tools.schemas(first.agent)).toEqual([]);
     expect(await memoryText(first.agent)).toBeUndefined();
-    expect(ctx.tools.schemas(second.agent).map((tool) => tool.name).sort()).toEqual(memoryToolNames);
+    expect(ctx.tools.schemas(second.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
     await presets.get('alpha')?.plugin.dispose();
     expect(botContext.getBotBinding(second.agent)).toBeUndefined();
     expect(ctx.tools.schemas(second.agent)).toEqual([]);
     expect(await memoryText(second.agent)).toBeUndefined();
-    expect(ctx.tools.schemas(beta.agent).map((tool) => tool.name).sort()).toEqual(memoryToolNames);
+    expect(ctx.tools.schemas(beta.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
     expect(await memoryText(beta.agent)).toContain('Beta private');
   }));
 
@@ -253,7 +253,7 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     // Memory remains accessible through tools without overriding that policy.
     expect(completeAssembly.sections).toEqual([{ name: PERSONA_PREFIX_SECTION, text: 'beta persona' }]);
     expect(renderPrompt(completeAssembly)).toBe('beta persona');
-    expect(ctx.tools.schemas(complete.agent).map((tool) => tool.name).sort()).toEqual(memoryToolNames);
+    expect(ctx.tools.schemas(complete.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
     const listing = await execute(complete.agent, 'memory_list', {});
     expect(listing.isError).toBe(false);
     expect(JSON.stringify(listing.value)).toContain(literal);

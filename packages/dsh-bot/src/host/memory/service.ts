@@ -68,6 +68,11 @@ export class BotMemoryService {
     return this.run(() => this.store.remove(this.botId, id), signal);
   }
 
+  /** Count every memory in one registry queue slot, without returning its content. */
+  async count(signal?: AbortSignal): Promise<number> {
+    return this.run(() => this.store.countByBot(this.botId), signal);
+  }
+
   /** Read all pins plus the latest unpinned records in a single queue slot.
    * Synchronous cursor reads keep every page in the same point-in-time snapshot.
    */

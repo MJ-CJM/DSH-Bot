@@ -11,9 +11,10 @@ import type {} from './registry.js';
 import { DshBotError } from './errors.js';
 import { buildMemoryPrompt } from './memory/prompt.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './memory/tools.js';
+import { BOT_MANAGE_TOOL_NAME, registerBotPresetManage } from './tools/bot-manage.js';
 
 export const name = 'dsh-bot-context';
-export const inject = ['dshBots', 'tools', 'llm', 'systemPrompt'];
+export const inject = ['dshBots', 'tools', 'llm', 'systemPrompt', 'agents'];
 
 export interface Config {
   botId: string;
@@ -44,7 +45,9 @@ export function apply(ctx: Context, config: Config): void {
   const memoryPolicy = { ...bot.memory };
   const { maxInjectChars, memorySectionOrder } = ctx.dshBots.config;
   const deniedMemory = new Set(bot.tools.deny.filter((name) => MEMORY_TOOL_NAMES.includes(name)));
-  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name));
+  const denyBotManage = bot.tools.deny.includes(BOT_MANAGE_TOOL_NAME);
+  if (!denyBotManage) registerBotPresetManage(ctx, botId);
+  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME);
   const model = bot.model ? {
     provider: bot.model.provider,
     model: bot.model.model,

@@ -102,7 +102,29 @@ async function inspect(ctx, config, signal, calls) {
   }
   const plainAgent = await create('standard');
   const plain = await inspectAgent(plainAgent, null);
-  await bots.update(request.ids[0], { tools: { deny: [] }, persona: { prefix: 'T05_ALPHA_UPDATED' } });
+  // Exercise the actual tool and ApprovalService inside an explicit test turn.
+  // This is a direct dispatch probe, not a model-generated call or UI approval.
+  const managementCallId = ToolCallId(`t07-self-update-${Date.now()}`);
+  const approvals = [];
+  const releaseApproval = ctx.effect(() => ctx.on('approval/request', async (req, next) => {
+    if (req.callId !== managementCallId) return next();
+    approvals.push({ reason: req.reason, displayReason: req.displayReason });
+    return 'allowed-once';
+  }, { prepend: true }));
+  let selfUpdate;
+  live[0].session.append('turn/start', { turn: 1 });
+  try {
+    selfUpdate = await ctx.tools.execute({ name: 'bot_manage', arguments: {
+      action: 'update', id: request.ids[0], input: { tools: { deny: [] }, persona: { prefix: 'T05_ALPHA_UPDATED' } },
+    }, agent: live[0], callId: managementCallId, signal });
+  } finally {
+    releaseApproval();
+    live[0].session.append('turn/end', { turn: 1, reason: { kind: 'completed' } });
+  }
+  if (selfUpdate.isError) throw new Error(`Self update failed: ${JSON.stringify(selfUpdate)}`);
+  const deniedRead = await ctx.tools.execute({ name: 'read', arguments: {}, agent: live[0],
+    callId: ToolCallId('t07-old-agent-denied-read'), signal });
+  const approvalAudit = live[0].session.snapshotEvents().filter((event) => event.type === 'approval/asked' || event.type === 'approval/decided');
   const old = await inspectAgent(live[0], request.ids[0]);
   const freshAgent = await create(`bot-${request.ids[0]}`);
   const fresh = await inspectAgent(freshAgent, request.ids[0]);
@@ -139,7 +161,8 @@ async function inspect(ctx, config, signal, calls) {
   };
   await saveResult(config.responsePath, {
     ok: true, agents, plain, generation: { old, fresh, oldAgentStillLive: ctx.agents.get(live[0].id) === live[0] },
-    invalidModels, memory, streamCalls: calls.stream, idleSessionsCreated: 6,
+    invalidModels, memory, management: { selfUpdate, approvals, approvalAudit, deniedRead },
+    streamCalls: calls.stream, idleSessionsCreated: 6,
     defaultModel: { provider: defaults.provider, model: defaults.model }, promptsSent: 0,
   });
 }

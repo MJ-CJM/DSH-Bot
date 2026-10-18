@@ -1,5 +1,26 @@
 # DSH API 核实记录
 
+## T07：对话内 Bot 管理与审批
+
+### 评审补充：具体审批、自身修改及模型摘要
+
+- 审批文案由 `locale/{en,zh}.json` 模板插值：create 包含 input.id/name；update 包含 id 与排序后的顶层字段名；delete 包含 id、deleteMemories 的实际默认/显式值，true 时醒目显示当前完整记忆数。字符串参数用 JSON 引号转义，防止名字中的换行与引号混淆说明；不把 input 的长内容复制到审批提示。`reason` 使用英文，`displayReason` 同时提供中英；下游已有 ask 时仍补齐本操作说明并保留它的本地化说明，deny/cancel 不改写。
+- 新增 Host-only `BotMemoryService.count(signal)` → `MemoryStore.countByBot(id)`。计数通过现有 Registry 队列，在一个同步读槽内遍历本 Bot 全部记录，不受默认 list limit 或 200 条分页上限影响，不返回内容、不打开新域；包含 pinned 与 unpinned，不包含其它 Bot。失败保留 store/unavailable 等业务码并阻止发起审批和删除。计数发生在审批前，文案明确这是当时的数量；审批期间没有持有存储锁，其他会话可能继续写入，delete 仍按批准的“删除全部记忆”语义执行，不承诺数量锁定。
+- Bot 上下文把自身 botId 作为工具注册闭包参数，随精确代际工具 lease 交接；不信任模型入参或创建时的 session header，也不循环依赖 bot-context 的绑定查询。update/delete 命中当前 Bot 时增加中英警示；修改 tools.deny 的说明强调当前 live Agent 仍保留原限制，后续新建/冷恢复的 Agent 才采用新配置。审批机制与原有代际隔离未更改。
+- 模型视图是副本：所有返回 Bot 的 action 将 data URL avatar 替换成固定 `[data-url avatar]`，emoji 保留。list 的 persona.prefix/suffix 共用 `Config.botManagePersonaPreviewChars` 个 Unicode 码点预算（默认 200、正安全整数）；不切开 surrogate pair，超出时 `persona.truncated=true`，complete 原样保留。get/create/update 返回完整 persona。结构化 output schema 明确投影视图字段，render 只序列化已投影的规范结果；Store、Registry 和 UI/Remote 完整记录不变。
+- 本轮测试覆盖 205 条混合记忆的精确计数与跨 Bot 隔离、false/0 条/失败、已有 ask、当前 Bot update/delete 和非自身操作、64 KiB 头像、Unicode/200 边界/共享 suffix 预算/自定义预算/不改存储。deny 测试同时确认没有注册本地 bot_manage，restrict 只接收 inherited_tool，schema 和实际 dispatch 都拒绝该管理工具；不依赖同层 restrict 的调用先后。
+- 最新产品 `check` 为 177 tests 全通过，check:spikes 通过。真实隔离 Web profile `.dsh-dev/t05/run-2026-10-18T18-47-28.436Z-14206/` 为 90 checks 全通过：测试主动打开/关闭一个 Session turn，直接调用正式 bot_manage，由真实 ApprovalService 和限定 callId 的测试 responder 批准；审计含 asked/allowed-once，旧 live Agent 的 read 仍 UNKNOWN_TOOL，新 Agent 的 read 可见。无模型请求、无浏览器；这是工具/审批/注册表/代际的直接运行测试，不是模型发起或人类点击审批卡验证。完整命令、初次 strict 问题和改动清单见 [T07 报告的评审补充](acceptance/P1-T07.md#评审补充)。
+
+### 初轮机制及边界（以上评审补充覆盖旧的输出与静态审批文案说明）
+
+- 正式工具位于 `packages/dsh-bot/src/host/tools/bot-manage.ts`，单一 `bot_manage` 直接调用现有 `ctx.dshBots.list/get/create/update/remove`，与 Remote/UI 共用存储、严格 schema、稳定 preset id 和串行回滚。参数按 action 严格校验：`list` 不带其它参数；`get` 带顶层 id；`create` 的 input 是包含 id/name 的 BotCreateInput；`update` 带顶层 id 和 BotPatch input；`delete` 带顶层 id，可选 input `{deleteMemories}`，默认 true。拒绝未知/不适用字段；patch 替换整个顶层字段，沿用 null 清空可选字段约定。结果为 `{action,bots}`，list 返回全量、get/create/update 返回单条、delete 返回空数组，render 附简短英文说明和 JSON。
+- 选用任务允许的最弱公开机制：Agent 的 `tools/pre-execute` waterfall。只处理所属 Agent 的 bot_manage；参数先校验，list/get 委托 next；写操作先等待 next，保留已有 deny/cancel/ask，仅将 allow 提升为 ask。审批 reason/displayReason 来自随包中英 locale。DSH 在 dispatch 前调用 `approval.request`，只有 allowed-once 才执行工具正文；rejected/cancelled/unavailable、缺服务均拒绝。来源：锁定参考源码 `docs/subsystems/approval.zh.md`、`packages/core/tools/src/index.ts:145-154,602-612,1513-1548,1725-1775`。不自行实现应答 UI、不默认批准、不缓存许可；`never` 由 DSH 服务强制拒绝。
+- 该 waterfall 是宿主可扩展策略入口，不是隔离任意第三方插件的安全边界；其它更外层策略可以短路或重写结果（`packages/core/tools/tests/scoped.spec.ts:284-318`）。本任务沿用 DSH 的协作式插件模型，不额外引入工具正文二次询问或全局 guard。审批等待期间取消由 DSH 阻止 dispatch；工具正文再次检查 owner 与 signal。调用 registry 进入写队列之后沿用其事务语义，不声称取消能撤销已接受的写入。
+- `DshBotError` 通过既有公开 `@deepseek-ai/dsh-llm` 根入口的 HarnessError 保留 code，不把失败伪造成成功 value。DSH 原生审批拒绝只提供错误 message，没有稳定的 error.info.code，本包不伪造拒绝码。来源：`packages/core/tools/src/index.ts:655-665,1752-1775`。
+- 所有 Bot preset 的 bot-context 在 scoped `agent/created` 中挂载，独立于 memory.enabled；tools.deny 中包含 bot_manage 时省略本地定义，避免 rc.2 restrict 同层限制错误。注册和 pre-execute hook 归 agent.ctx.effect，Bot preset 插件保留 disposer；Agent 销毁或插件卸载均清理，旧代际保留原 deny 策略。另监听公开 `agent-preset/selected`，通过 `ctx.agents.get(sessionId)` 查询 live Agent，使用公开 scopeOf/scopeChainOf 检查精确代际归属（不能只比较稳定 id），为管理工具处理空白会话切换。模块 WeakMap 只协调本包的管理工具：新 owner 先释放旧 lease，旧 disposer 不会删除新 lease，旧 owner 的 Map 同步清理，消除不同监听顺序的重复注册。来源：`packages/core/scope/src/index.ts:87-103,154-156`、`packages/preset/agent-preset-registry/src/index.ts:66-71,349-360`。未改写 T05 的绑定、记忆或模型切换逻辑。
+- Host Config `enableBotManageInStandard` 默认 false。开启后在 agent/created 和 agent-preset/selected 中仅匹配公开 `ctx.agentPresets.composedPreset(agent.ctx) === 'standard'`，为该 Agent 注册同一工具；不修改 standard preset，不扩散到 minimal/其它非 Bot preset/无 preset 会话。不能使用 session.header.agentPreset：header 仅代表创建时选择，空白会话可切换，冷恢复使用持久选择投影（`packages/preset/agent-preset-registry/src/session.ts:1-13`）。composedPreset 查询当前实际挂载组合（同包 `src/index.ts:314-318`）。覆盖启用后新建、冷恢复及空白选择事件；启用时不扫描并追溯已有 live Agent。Host 同样持有 Agent disposer，双 owner 清理。
+- 新增精确 rc.2 devDependency `@deepseek-ai/dsh-user-approval` 只供测试使用，生产通过 tools 自带审批桥接，不新增其 runtime import/peer。scope 新增 runtime import，保留精确 rc.2 dev 并补兼容 peer。测试使用公开 ApprovalService、真实 Session 的 open turn、公开 ToolRuntime、正式 Registry 与真实 JSON 后端；preset 激活采用 double。运行结果及验证边界见 [T07 验收报告](acceptance/P1-T07.md)。
+
 ## T06：每 Bot 记忆服务、Agent 工具与静态提示词
 
 - 正式实现位于 `packages/dsh-bot/src/host/memory/{service,tools,prompt}.ts`。Host-only `dshBots.memoryFor(botId)` 从已有 `dsh_bot` 域创建绑定 Bot 的服务门面；所有操作经过注册表队列，执行时确认 Bot 仍存在，Host 卸载先排空已接受操作再关闭域。不另开领域、不从 spike 导入，也不新增 Remote 端点（UI 契约留给 T09）。服务直接复用 T03 的严格 schema、2 KiB UTF-8 限制、词法检索、归属校验和持久化。

@@ -56,7 +56,8 @@
     "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-agent-preset-registry": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-llm": ">=0.2.1-rc.2 <0.3.0",
-    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0"
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-scope": ">=0.2.1-rc.2 <0.3.0"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.5",
@@ -95,6 +96,7 @@
     "@deepseek-ai/dsh-scope": "0.2.1-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-rc.2"
   }
 }

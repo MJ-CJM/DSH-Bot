@@ -26,9 +26,16 @@ export interface Config {
   maxInjectChars: number;
   memorySectionOrder: number;
   memoryListLimit: number;
+  enableBotManageInStandard: boolean;
+  botManagePersonaPreviewChars: number;
 }
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
   seedExamples: Schema.boolean().default(true),
+  enableBotManageInStandard: Schema.boolean().default(false),
+  botManagePersonaPreviewChars: Schema.transform(Schema.number(), (value) => {
+    if (!Number.isSafeInteger(value) || value < 1) throw new TypeError('botManagePersonaPreviewChars must be a positive safe integer');
+    return value;
+  }).default(200),
   presetIdPrefix: Schema.string().pattern(/^[a-z][a-z0-9-]*$/).default('bot-'),
   presetOrder: Schema.transform(Schema.number(), (value) => {
     if (!Number.isFinite(value)) throw new TypeError('presetOrder must be finite');

@@ -3,6 +3,16 @@
     "title": "DSH-Bot 多智能体",
     "description": "面向 DeepSeek Harness 的多智能体工作区。当前版本提供 DSH-Bot 输入区徽标。"
   },
+  "tools": {
+    "bot_manage.approval.create": "创建 ID 为 {id}、名称为 {name} 的 Bot 并注册预设？",
+    "bot_manage.approval.update": "更新 Bot {id}？修改的顶层字段：{fields}。新建及冷恢复的会话使用更新后的配置，活跃会话保留当前配置。{selfWarning}",
+    "bot_manage.approval.delete": "删除 Bot {id} 和它的预设？{memoryWarning} 会话历史保留，但需要重新创建相同 ID 的 Bot 后才能恢复。{selfWarning}",
+    "bot_manage.approval.deleteMemories": "警告：deleteMemories=true，将删除此 Bot 当前的全部 {count} 条记忆（审批前统计）！",
+    "bot_manage.approval.keepMemories": "deleteMemories=false，保留全部记忆。",
+    "bot_manage.approval.selfUpdate": "\n警告：正在修改当前 Bot 自身！修改 tools.deny 可能解除后续会话的工具限制；当前 live Agent 仍保留原有限制。",
+    "bot_manage.approval.selfDelete": "\n警告：正在删除当前 Bot 自身！当前 live Agent 仍保留原有限制；缺少此 Bot 预设时，无法新建或冷恢复它的会话。",
+    "bot_manage.approval.combined": "{operation}\n其他审批策略：{upstream}"
+  },
   "ui": {
     "badge.label": "DSH-Bot",
     "badge.description": "DSH-Bot 已启用"

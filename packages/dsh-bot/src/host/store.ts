@@ -238,6 +238,18 @@ export class MemoryStore {
     }, 'memory/not-found');
   }
 
+  /** Count all rows owned by a Bot without allocating/cloning a result page. */
+  countByBot(botId: string): number {
+    const owner = parseInput(botIdSchema, botId);
+    return read(() => {
+      let count = 0;
+      for (const [, record] of this.domain.table('memories').entries()) {
+        if (record.botId === owner) count++;
+      }
+      return count;
+    });
+  }
+
   /** Cursor denotes an exclusive position, not a timestamp cutoff or snapshot. */
   listByBot(botId: string, options: MemoryListOptions): MemoryRecord[] {
     const owner = parseInput(botIdSchema, botId);
