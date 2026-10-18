@@ -4,3 +4,4 @@ dist/
 .dsh-dev/
 .codex/runs/
 *.tgz
+.dsh-desktop
