@@ -193,7 +193,7 @@ interface McpServerRef { serverName: string; transport: 'stdio' | 'streamable-ht
 
 ## 4. DSH 版本策略
 
-- **锁定**：所有 `@deepseek-ai/dsh-*` devDependencies / peerDependencies 精确写 `0.2.1-rc.2`（npm 上的 `next` 标签；`latest` 标签还是旧版，千万别用不带版本的安装）；框架包 `@deepseek-ai/cordis@4.0.5`、`@deepseek-ai/schemastery@3.18.5`（与 DSH 源码 vendor 一致；这两个包的 `next` 标签反而是旧版）。
+- **锁定**：所有 `@deepseek-ai/dsh-*` devDependencies 精确写 `0.2.1-rc.2`，peerDependencies 写范围 `>=0.2.1-rc.2 <0.3.0`（cordis 为 `^4.0.5`；T00 评审后调整）（npm 上的 `next` 标签；`latest` 标签还是旧版，千万别用不带版本的安装）；框架包 `@deepseek-ai/cordis@4.0.5`、`@deepseek-ai/schemastery@3.18.5`（与 DSH 源码 vendor 一致；这两个包的 `next` 标签反而是旧版）。
 - `engines.dsh`: `">=0.2.1-rc.2 <0.3.0"`（不满足时 DSH 拒绝安装/启动该 bundle）。
 - 需要与宿主共享实例的包（`@deepseek-ai/cordis`、`@deepseek-ai/dsh-*` 服务定义包）同时放 `peerDependencies` + `devDependencies`（`docs/user/develop/basic/publish.zh.md`）。
 - 基础 preset 模板 `templates/standard.rows.yml` 从 `packages/bundle/web-app/presets/standard.patch.yml`（锁定 tag）同步，配一条测试：同步脚本输出与仓库文件不一致即失败，升级时一目了然。

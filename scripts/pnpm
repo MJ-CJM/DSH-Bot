@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+# Keep pnpm state and Node's compile cache inside the checkout: Codex's
+# workspace-write sandbox cannot write user state directories, and project rules
+# require repository-local writes. pnpm rejects stateDir in workspace config.
+# These exports also affect child processes. Set DSH_BOT_KEEP_USER_STATE=1 to
+# preserve the caller's values (including unset values) for both variables.
+if [ "${DSH_BOT_KEEP_USER_STATE:-}" != "1" ]; then
+  dsh_bot_root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+  export XDG_STATE_HOME="$dsh_bot_root/.dsh-dev/state"
+  export NODE_COMPILE_CACHE="$dsh_bot_root/.dsh-dev/node-compile-cache"
+fi
+
+if command -v pnpm >/dev/null 2>&1; then
+  exec pnpm "$@"
+fi
+
+exec node "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.mjs" "$@"

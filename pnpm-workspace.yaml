@@ -1,0 +1,6 @@
+packages:
+  - 'packages/*'
+
+# Keep package-manager writes inside this checkout.
+storeDir: .dsh-dev/pnpm-store
+cacheDir: .dsh-dev/pnpm-cache
