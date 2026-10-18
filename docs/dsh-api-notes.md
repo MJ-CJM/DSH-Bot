@@ -1,5 +1,39 @@
 # DSH API 核实记录
 
+## T08：Bot 全局首页与 Client 生命周期
+
+- 正式 Client 使用公开 `sidebar.panellist`（root/list，`id:'dsh-bot'`）和 `main`（root/keyed，`key:'dsh-bot'`）。侧栏只贡献图标，宿主负责导航按钮，图标尺寸来自 owner 的 `size`；label 通过动态 `ctx.locale.bind` 读取。两处注册都在 `ctx.effect(() => ctx.slots.inject(...))` 内。评审后已删除 T01 composer 演示徽标、对应 locale 与注册测试，不再向任何会话贡献该徽标；T09 的会话专属徽标另行实现。来源：锁定源码 `packages/client/ui-sidebar/src/client/contract/slots.ts:30-35,68-74`、`ui-sidebar/src/client/index.ts:49-63`、`ui-layout/src/client/index.ts:53-73`、`ui-renderer/src/client/registry.ts:196-253`。
+- 页面不接收 Context；通过 slot `inject.hooks.catalog` 交出 getSnapshot/subscribe，renderer 将它绑定为 `useCatalog`，其余业务函数来自 apply closure。来源：`docs/subsystems/slots.zh.md` 的组件输入/开发者 injection；`packages/client/ui-slots/src/index.ts:549-595`。测试使用公开 Cordis、SlotCore 和自有 remote/slots/locale/uiWorkspace doubles，由 React/jsdom 模拟公开的 hook 绑定约定，不使用损坏的 client-test-runtime，也没有导入参考源码内部模块。
+- `list()` 与 `status()` 同轮查询、一次发布，使用 epoch 和 AbortController 丢弃迟到响应；无 signal 参数的既有 unary Remote 不支持网络取消，此处 Abort 仅结束本地等待。缺 status、刷新中或读取失败时禁用开始聊天，旧成功数据保留并显示错误/重试，不将失败解释为空列表。二者无共同 revision，因此不是原子快照；点击开始时再次调用 status 核实 state，只采用返回的 presetId，并处理缺失/失败。
+- 成功 create/update/duplicate/delete 后重新读取，且不会复用写入前的读取。首个页面订阅、页面重新显示、`connection/reset` 触发读取；默认每 5 秒在可见页面轮询，慢读取不被周期轮询反复取消。最后订阅者退出时清理 timer、reset/visibility 监听和本地等待，插件卸载永久释放 store；所有资源归 effect。第三方 changed 事件不受宿主转发，因此跨 Client、工具修改为轮询周期级可见，不宣称实时推送。来源：`packages/client/connection/src/client/index.ts:21-28`、`packages/api/remotes/src/remote-events.ts:25-55`、Cordis `events.ts:254-301` / `fiber.ts:485-568`。
+- Client 导出 `Config` 和 Schemastery schema：`pollIntervalMs` 默认 5000，整数范围 1000–60000。页面下拉可调整；设置保留于该 Client 插件的存活期，不写 localStorage、不影响其他 Client。默认 rc.2 Loader 只以 `{name:id}` 创建 Client 行，不转发 Host 配置（`packages/client/modules/src/client/entries.ts:179-187`）；不能把 Host 行的字段当作已生效的 Client 设置。
+- 评审后开始聊天使用公开 `ctx.workspaces.list` 的目录（`workspaceCatalog` 私有 hook，不覆盖全局 useWorkspaces）选择工作区。唯一工作区默认选中，多个时由用户明确选择；无工作区、目录加载中/错误、选择失效均显示本地化 Toast。status() 读取前后复查工作区，然后 `await ctx.uiWorkspace.openWorkspace(workspaceId, beforeOpen, {agentPreset:status.presetId})`；异步 Host 拒绝会冒泡到页面通知，可重试。`beforeOpen` 在页面/插件已卸载时抛错阻止迟到导航，不承诺撤销 Host 已接受的会话创建，也不清空既有草稿。来源：`packages/api/workspace-controller/src/client/service.ts:35-51`、`model.ts:31-41`，`packages/client/ui-workspace/src/client/navigation.ts:44-64,280-305`。**替换原因：** 同文件 `startSession` 返回 void（320–352），无 workspace 且不初始化草稿时只 `clearMain()`（335–341），异步拒绝内部 catch（350–351），调用者无法 await；本轮采用评审允许的公开 async API，不复制私有 recentWorkspace/seat staging。
+
+- 表单复用正式 shared schema 校验 ID/名称/人设/记忆条数，编辑 ID 只读，顶层 persona patch 保留 suffix/complete，未展示的 model/skills/defaultCwd/order 等保持不变。清空头像传 `null`。工具限制使用文本输入精确名称：当前没有可直接作为全局 Bot 工具目录的既有 Remote，Agent 的工具目录依赖实际组合。复制调用正式 duplicate，仅填写新 ID，不复制记忆；删除确认增加默认勾选的“同时删除该 Bot 的记忆”，显式传 `{deleteMemories}`；取消勾选时说明记忆仍关联原 Bot ID、同 ID 重建会重新关联，成功通知区分删除/保留记忆。两种选择均保留历史会话恢复限制提示。当前七个 Remote 方法没有 memory list/count；Host-only count 不能从 Client 使用，因此按评审允许先不展示记忆数量、不伪造 0，等待 T09 契约。保存提示新会话/冷恢复采用新配置、存活会话保留原配置。
+- 样式使用包内 CSS modules，构建在每轮开始清空 CSS 编译缓存，同轮的 `.module.css` 与 `?inline` 共享一次编译，分别导出类名与 CSS 字符串。构建插件不注入 DOM；BotsPage 在自身树中渲染唯一的 `<style data-dsh-bot-styles>`，React 重绘复用它，页面退出及 slot 注销后由 renderer 卸载它。热重载先卸载旧注册再挂新注册，因此不会叠加；不向 document.body 追加应用或样式。仅引用 `--dsw-alias-*`，亮暗 token 来源为 `ui-theme/src/styles/design-platform.css`。构建继续精确拒绝 React/Cordis/Zod、Host 与 spike 内联；额外仅允许独立 Config validator 的 Schemastery 3.18.5 公开 ESM 入口与其 Cosmokit 1.8.6 公开入口，不扩展共享 resolver，也不把它们误列为宿主平台模块。Client-only 服务包与 React 仍只在精确 devDependencies，不增加 Host peer。
+
+### T08 评审：主题 token 出处与离线检查
+
+只读核实 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`，来源文件为参考源码 **`packages/client/ui-theme/src/styles/design-platform.css`**，SHA256 `809b20ae477324fdf5181a2d338655a19919cabbf1b0e60adc149908462c5a66`。当前正式 CSS/TSX 所用 9 个 token 全部存在，无需替换；下表是定义行，不是使用行。
+
+| token | 亮色 `body` 行 | 暗色 `body[data-ds-dark-theme]` 行 |
+| --- | ---: | ---: |
+| `--dsw-alias-bg-base` | 167 | 285 |
+| `--dsw-alias-bg-layer-1` | 171 | 289 |
+| `--dsw-alias-border-l3` | 188 | 306 |
+| `--dsw-alias-interactive-bg-hover` | 213 | 331 |
+| `--dsw-alias-label-primary` | 222 | 340 |
+| `--dsw-alias-label-secondary` | 223 | 341 |
+| `--dsw-alias-label-tertiary` | 225 | 343 |
+| `--dsw-alias-state-business-primary` | 240 | 358 |
+| `--dsw-alias-state-error-primary` | 250 | 368 |
+
+- 维护脚本 `packages/dsh-bot/build/generate-theme-tokens.mjs <reference-checkout>` 验证 HEAD 对应锁定 tag 且主题文件与 tag 完全相同，只读提取所有 101 个 alias，输出版本、commit、源文件 SHA256、亮/暗定义行到 `tests/fixtures/dsh-theme-tokens-0.2.1-rc.2.json`。重新生成仅由维护者显式运行，不是构建的一部分。
+- 构建 `build/theme-tokens.ts` 扫描全部 `src/client/**/*.css/ts/tsx`，包括未被 bundle 引用的文件；所有 `var(--dsw-alias-*)` 都必须存在于仓库内的 fixture 中。正常构建、测试和产品运行均不读取参考源码，也不依赖本机路径；测试包含不存在 token 即使带 fallback 仍拒绝的负例。
+- CSS 生命周期测试执行真实 `lib/client.js` 闭包工厂和其中的 CSS，在公开 SlotCore 订阅 + React/jsdom 下验证：factory 本身不注入、重绘只有一个 style、离页移除、插件卸载移除、连续三次加载新工厂不叠加。另用 esbuild context 实际 rebuild 验证改动 CSS 后不复用旧缓存，类名映射和 inline CSS 一致。这是生命周期/产物测试，不是浏览器主题视觉证明。
+
+本轮命令、测试结果与真实浏览器验证边界见 [T08 验收记录](acceptance/P1-T08.md)。
+
 ## T07：对话内 Bot 管理与审批
 
 ### 评审补充：具体审批、自身修改及模型摘要

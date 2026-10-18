@@ -93,11 +93,11 @@ describe('built bundle contract', () => {
     const requests: string[] = [];
     const plugin = entry?.factory((id) => {
       requests.push(id);
-      if (!['react/jsx-runtime', 'zod'].includes(id)) throw new Error(`Unexpected platform import: ${id}`);
+      if (!['react', 'react/jsx-runtime', 'zod'].includes(id)) throw new Error(`Unexpected platform import: ${id}`);
       return require(id);
     });
-    expect([...new Set(requests)].sort()).toEqual(['react/jsx-runtime', 'zod']);
-    expect(plugin?.inject).toEqual(['slots', 'locale', 'remote']);
+    expect([...new Set(requests)].sort()).toEqual(['react', 'react/jsx-runtime', 'zod']);
+    expect(plugin?.inject).toEqual(['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces']);
     expect(typeof plugin?.apply).toBe('function');
   });
 
@@ -108,19 +108,29 @@ describe('built bundle contract', () => {
     const payload = JSON.parse(readFileSync(`${clientPath}.map`, 'utf8'));
     expect(payload.version).toBe(3);
     const dependencySources = payload.sources.filter((path: string) => path.includes('/node_modules/'));
-    expect(dependencySources).toHaveLength(1);
-    expect(dependencySources[0]).toMatch(/@deepseek-ai\/dsh-typert-protocol\/lib\/types\/remote-info\.js$/);
+    expect(dependencySources).toHaveLength(3);
+    expect(dependencySources.every((path: string) => /@deepseek-ai\/(dsh-typert-protocol\/lib\/types\/remote-info\.js|schemastery\/lib\/index\.mjs|cosmokit\/lib\/index\.js)$/.test(path))).toBe(true);
     expect(payload.sources.some((path: string) => /\/(?:host|spikes)\//.test(path))).toBe(false);
-    const generatedLine = source.split('\n').findIndex((line) => line.startsWith('function DshBotBadge('));
+    const generatedLine = source.split('\n').findIndex((line) => line.startsWith('function BotsIcon('));
     expect(generatedLine).toBeGreaterThan(0);
     const entry = new SourceMap(payload).findEntry(generatedLine, 0);
     if (!('originalSource' in entry) || !('originalLine' in entry)) {
-      throw new Error('Badge declaration is not mapped to its original source');
+      throw new Error('Icon declaration is not mapped to its original source');
     }
     expect(entry.originalSource).toMatch(/src\/client\/index\.tsx$/);
     const sourceIndex = payload.sources.indexOf(entry.originalSource);
     const originalLines = payload.sourcesContent[sourceIndex].split('\n');
-    expect(originalLines[entry.originalLine]).toContain('function DshBotBadge(');
+    expect(originalLines[entry.originalLine]).toContain('function BotsIcon(');
+  });
+
+  it('ships component-owned theme CSS without literal colors or embedded shared runtimes', () => {
+    const source = readFileSync(require.resolve('dsh-bot/client'), 'utf8');
+    const payload = JSON.parse(readFileSync(`${require.resolve('dsh-bot/client')}.map`, 'utf8'));
+    expect(source).toContain('--dsw-alias-bg-layer-1');
+    expect(source).toContain('bots_page');
+    expect(source).not.toMatch(/#[\da-f]{6}\b/i);
+    expect(payload.sources.some((path: string) => /node_modules\/(@deepseek-ai\/cordis|react(?:-dom)?|zod)\//.test(path))).toBe(false);
+    expect(source).not.toContain('document.createElement("style")');
   });
 
   it('exports matching bilingual resources and an SVG within the icon limit', () => {
@@ -164,6 +174,7 @@ describe('built bundle contract', () => {
     };
     // Service doubles check the plugin's ownership contract, not browser rendering.
     ctx.provide('locale', {
+      bind: () => (key: keyof typeof en.ui) => en.ui[key],
       register: () => {
         expect(active.has('remote.dshBot')).toBe(true);
         return register('dictionaries');
@@ -171,8 +182,10 @@ describe('built bundle contract', () => {
     } as unknown as Context['locale']);
     ctx.provide('slots', {
       inject: (_name: string, callback: () => () => void) => callback(),
-      register: () => register('badge'),
+      register: (options: { name: string }) => register(options.name),
     } as unknown as Context['slots']);
+    ctx.provide('uiWorkspace', { openWorkspace: vi.fn() } as unknown as Context['uiWorkspace']);
+    ctx.provide('workspaces', { list: {} } as unknown as Context['workspaces']);
     const mountedEndpoints: string[] = [];
     ctx.provide('remote', {
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
@@ -193,14 +206,14 @@ describe('built bundle contract', () => {
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      expect([...active].sort()).toEqual(['badge', 'dictionaries', 'remote.dshBot']);
+      expect([...active].sort()).toEqual(['dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
       expect(mountedEndpoints.sort()).toEqual([
         'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update',
       ]);
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);
-      expect(releases.sort()).toEqual(['badge', 'dictionaries', 'remote.dshBot']);
+      expect(releases.sort()).toEqual(['dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
     } finally {
       await ctx.fiber.dispose();
     }

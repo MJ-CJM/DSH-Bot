@@ -7,14 +7,23 @@ import { build } from 'esbuild';
 // This build entry runs as native TypeScript in Node; retain bundler-mode types.
 const { assertClientInput }: typeof import('./client-policy.js') =
   await import(new URL('./client-policy.ts', import.meta.url).href);
+const { cssModules }: typeof import('./css-modules.js') =
+  await import(new URL('./css-modules.ts', import.meta.url).href);
+const { checkClientThemeTokens }: typeof import('./theme-tokens.js') =
+  await import(new URL('./theme-tokens.ts', import.meta.url).href);
 
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
+await checkClientThemeTokens(packageRoot);
 const outfile = resolve(packageRoot, 'lib/client.js');
 const require = createRequire(import.meta.url);
+const schemaEntry = fileURLToPath(import.meta.resolve('@deepseek-ai/schemastery'));
 // This public helper is stateless and has no runtime imports. The protocol root
 // contains shared service state and is deliberately not an allowed dependency.
 const bundledDependencies = new Set([
   await realpath(require.resolve('@deepseek-ai/dsh-typert-protocol/remote-info')),
+  // Independent Config validator (no shared resolver extensions); not a platform module.
+  await realpath(schemaEntry),
+  await realpath(createRequire(schemaEntry).resolve('@deepseek-ai/cosmokit')),
 ]);
 
 // These are shared entries in the DSH 0.2.1-rc.2 browser module table.
@@ -40,6 +49,7 @@ const result = await build({
   target: 'es2023',
   jsx: 'automatic',
   external,
+  plugins: [cssModules()],
   metafile: true,
   write: false,
   // DSH's combo-map route reads the adjacent client.js.map on its first GET.
@@ -55,7 +65,8 @@ const result = await build({
 // Fail the build if a future import accidentally embeds a shared runtime,
 // or leaves a require that the platform's injected module table cannot serve.
 for (const input of Object.keys(result.metafile.inputs)) {
-  assertClientInput(await realpath(resolve(packageRoot, input)), packageRoot, bundledDependencies);
+  const file = input.replace(/^component-css:/, '').replace(/\?inline$/, '');
+  assertClientInput(await realpath(resolve(packageRoot, file)), packageRoot, bundledDependencies);
 }
 for (const output of Object.values(result.metafile.outputs)) {
   for (const dependency of output.imports) {
