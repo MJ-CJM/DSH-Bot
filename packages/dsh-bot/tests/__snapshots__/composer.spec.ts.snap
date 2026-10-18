@@ -1,0 +1,1509 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`composeBotPreset > snapshots minimal, model=false, deny=false 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "edit": false,
+          "read": false,
+          "readImage": true,
+          "write": false,
+        },
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "pty",
+            "name": "@deepseek-ai/dsh-terminal",
+          },
+          {
+            "config": {
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "terminal-bash",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a bash shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* Network access depends on the task environment. Prefer configured mirrors/proxies when they are available.
+* State is persistent across command calls and discussions with the user.
+* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "persistent-bash",
+            "name": "@deepseek-ai/dsh-tool-bash-persistent",
+          },
+          {
+            "config": {
+              "shellDialect": "pwsh",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "terminal-pwsh",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a PowerShell shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* You don't have access to the internet via this tool.
+* State is persistent across command calls and discussions with the user.
+* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "persistent-pwsh",
+            "name": "@deepseek-ai/dsh-tool-pwsh-persistent",
+          },
+        ],
+        "group": true,
+        "id": "persistent-shell",
+        "isolate": {
+          "terminals": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [],
+    "model": undefined,
+    "template": "minimal",
+  },
+}
+`;
+
+exports[`composeBotPreset > snapshots minimal, model=false, deny=true 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "edit": false,
+          "read": false,
+          "readImage": true,
+          "write": false,
+        },
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "pty",
+            "name": "@deepseek-ai/dsh-terminal",
+          },
+          {
+            "config": {
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "terminal-bash",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a bash shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* Network access depends on the task environment. Prefer configured mirrors/proxies when they are available.
+* State is persistent across command calls and discussions with the user.
+* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "persistent-bash",
+            "name": "@deepseek-ai/dsh-tool-bash-persistent",
+          },
+          {
+            "config": {
+              "shellDialect": "pwsh",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "terminal-pwsh",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a PowerShell shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* You don't have access to the internet via this tool.
+* State is persistent across command calls and discussions with the user.
+* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "persistent-pwsh",
+            "name": "@deepseek-ai/dsh-tool-pwsh-persistent",
+          },
+        ],
+        "group": true,
+        "id": "persistent-shell",
+        "isolate": {
+          "terminals": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [
+      "bash",
+      "write",
+    ],
+    "model": undefined,
+    "template": "minimal",
+  },
+}
+`;
+
+exports[`composeBotPreset > snapshots minimal, model=true, deny=false 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "edit": false,
+          "read": false,
+          "readImage": true,
+          "write": false,
+        },
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "pty",
+            "name": "@deepseek-ai/dsh-terminal",
+          },
+          {
+            "config": {
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "terminal-bash",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a bash shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* Network access depends on the task environment. Prefer configured mirrors/proxies when they are available.
+* State is persistent across command calls and discussions with the user.
+* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "persistent-bash",
+            "name": "@deepseek-ai/dsh-tool-bash-persistent",
+          },
+          {
+            "config": {
+              "shellDialect": "pwsh",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "terminal-pwsh",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a PowerShell shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* You don't have access to the internet via this tool.
+* State is persistent across command calls and discussions with the user.
+* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "persistent-pwsh",
+            "name": "@deepseek-ai/dsh-tool-pwsh-persistent",
+          },
+        ],
+        "group": true,
+        "id": "persistent-shell",
+        "isolate": {
+          "terminals": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [],
+    "model": {
+      "model": "bot-model",
+      "provider": "mock-provider",
+      "reasoningEffort": "high",
+    },
+    "template": "minimal",
+  },
+}
+`;
+
+exports[`composeBotPreset > snapshots minimal, model=true, deny=true 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "edit": false,
+          "read": false,
+          "readImage": true,
+          "write": false,
+        },
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "pty",
+            "name": "@deepseek-ai/dsh-terminal",
+          },
+          {
+            "config": {
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "terminal-bash",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a bash shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* Network access depends on the task environment. Prefer configured mirrors/proxies when they are available.
+* State is persistent across command calls and discussions with the user.
+* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform === 'win32'",
+            },
+            "id": "persistent-bash",
+            "name": "@deepseek-ai/dsh-tool-bash-persistent",
+          },
+          {
+            "config": {
+              "shellDialect": "pwsh",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "terminal-pwsh",
+            "name": "@deepseek-ai/dsh-terminal-bash",
+          },
+          {
+            "config": {
+              "description": "Run commands in a PowerShell shell
+* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.
+* You don't have access to the internet via this tool.
+* State is persistent across command calls and discussions with the user.
+* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.
+* Please avoid commands that may produce a very large amount of output.
+* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+              "timeoutMs": 300000,
+            },
+            "disabled": {
+              "__jsExpr": "process.platform !== 'win32'",
+            },
+            "id": "persistent-pwsh",
+            "name": "@deepseek-ai/dsh-tool-pwsh-persistent",
+          },
+        ],
+        "group": true,
+        "id": "persistent-shell",
+        "isolate": {
+          "terminals": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [
+      "bash",
+      "write",
+    ],
+    "model": {
+      "model": "bot-model",
+      "provider": "mock-provider",
+      "reasoningEffort": "high",
+    },
+    "template": "minimal",
+  },
+}
+`;
+
+exports[`composeBotPreset > snapshots standard, model=false, deny=false 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "maxBytes": 65536,
+        },
+        "id": "agent-instructions",
+        "name": "@deepseek-ai/dsh-agent-instructions",
+      },
+      {
+        "id": "time-context",
+        "name": "@deepseek-ai/dsh-time-context",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform === 'win32'",
+        },
+        "id": "tool-bash",
+        "name": "@deepseek-ai/dsh-tool-bash",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform !== 'win32'",
+        },
+        "id": "tool-pwsh",
+        "name": "@deepseek-ai/dsh-tool-pwsh",
+      },
+      {
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": {
+          "sampleOverCapGlobResults": false,
+        },
+        "id": "tool-fs-search",
+        "name": "@deepseek-ai/dsh-tool-fs-search",
+      },
+      {
+        "id": "tool-jobs",
+        "name": "@deepseek-ai/dsh-tool-jobs",
+      },
+      {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "id": "tool-skill",
+        "name": "@deepseek-ai/dsh-tool-skill",
+      },
+      {
+        "id": "command-goal",
+        "name": "@deepseek-ai/dsh-command-goal",
+      },
+      {
+        "id": "tool-goal",
+        "name": "@deepseek-ai/dsh-tool-goal",
+      },
+      {
+        "config": [
+          {
+            "config": {
+              "section": "You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+",
+            },
+            "id": "plan-mode",
+            "name": "@deepseek-ai/dsh-plan-mode",
+          },
+        ],
+        "group": true,
+        "id": "planning",
+        "isolate": {
+          "planMode": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+          {
+            "config": {
+              "headChars": 4096,
+              "tailChars": 1024,
+              "thresholdChars": 8192,
+            },
+            "id": "tool-result-pruner",
+            "name": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+          "toolResultPruner": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "tool-subagent-control",
+            "name": "@deepseek-ai/dsh-tool-subagent-control",
+          },
+          {
+            "id": "tool-subagent-list-agents",
+            "name": "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+          },
+          {
+            "config": {
+              "modelSelectionSettings": true,
+              "provider": "spawn",
+              "toolName": "subagent",
+            },
+            "id": "tool-subagent",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "fork",
+              "toolName": "subagent_fork",
+            },
+            "id": "tool-subagent-fork",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "spawn",
+            },
+            "id": "workflow-ptc",
+            "name": "@deepseek-ai/dsh-workflow-ptc",
+          },
+          {
+            "id": "tool-workflow",
+            "name": "@deepseek-ai/dsh-tool-workflow",
+          },
+        ],
+        "group": true,
+        "id": "delegation",
+        "isolate": {
+          "workflowEngine": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "id": "tool-ask-user",
+        "name": "@deepseek-ai/dsh-tool-ask-user",
+      },
+      {
+        "config": {
+          "allowParallelInProgress": true,
+        },
+        "id": "tool-todo",
+        "name": "@deepseek-ai/dsh-tool-todo",
+      },
+      {
+        "config": {
+          "fetch": true,
+          "searchTimeoutMs": 60000,
+        },
+        "id": "tool-web",
+        "name": "@deepseek-ai/dsh-tool-web",
+      },
+      {
+        "id": "present",
+        "name": "@deepseek-ai/dsh-tool-present",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-manager",
+        "name": "@deepseek-ai/dsh-plugin-manager/tools",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-market",
+        "name": "@deepseek-ai/dsh-plugin-market/tools",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [],
+    "model": undefined,
+    "template": "standard",
+  },
+}
+`;
+
+exports[`composeBotPreset > snapshots standard, model=false, deny=true 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "maxBytes": 65536,
+        },
+        "id": "agent-instructions",
+        "name": "@deepseek-ai/dsh-agent-instructions",
+      },
+      {
+        "id": "time-context",
+        "name": "@deepseek-ai/dsh-time-context",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform === 'win32'",
+        },
+        "id": "tool-bash",
+        "name": "@deepseek-ai/dsh-tool-bash",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform !== 'win32'",
+        },
+        "id": "tool-pwsh",
+        "name": "@deepseek-ai/dsh-tool-pwsh",
+      },
+      {
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": {
+          "sampleOverCapGlobResults": false,
+        },
+        "id": "tool-fs-search",
+        "name": "@deepseek-ai/dsh-tool-fs-search",
+      },
+      {
+        "id": "tool-jobs",
+        "name": "@deepseek-ai/dsh-tool-jobs",
+      },
+      {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "id": "tool-skill",
+        "name": "@deepseek-ai/dsh-tool-skill",
+      },
+      {
+        "id": "command-goal",
+        "name": "@deepseek-ai/dsh-command-goal",
+      },
+      {
+        "id": "tool-goal",
+        "name": "@deepseek-ai/dsh-tool-goal",
+      },
+      {
+        "config": [
+          {
+            "config": {
+              "section": "You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+",
+            },
+            "id": "plan-mode",
+            "name": "@deepseek-ai/dsh-plan-mode",
+          },
+        ],
+        "group": true,
+        "id": "planning",
+        "isolate": {
+          "planMode": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+          {
+            "config": {
+              "headChars": 4096,
+              "tailChars": 1024,
+              "thresholdChars": 8192,
+            },
+            "id": "tool-result-pruner",
+            "name": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+          "toolResultPruner": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "tool-subagent-control",
+            "name": "@deepseek-ai/dsh-tool-subagent-control",
+          },
+          {
+            "id": "tool-subagent-list-agents",
+            "name": "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+          },
+          {
+            "config": {
+              "modelSelectionSettings": true,
+              "provider": "spawn",
+              "toolName": "subagent",
+            },
+            "id": "tool-subagent",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "fork",
+              "toolName": "subagent_fork",
+            },
+            "id": "tool-subagent-fork",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "spawn",
+            },
+            "id": "workflow-ptc",
+            "name": "@deepseek-ai/dsh-workflow-ptc",
+          },
+          {
+            "id": "tool-workflow",
+            "name": "@deepseek-ai/dsh-tool-workflow",
+          },
+        ],
+        "group": true,
+        "id": "delegation",
+        "isolate": {
+          "workflowEngine": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "id": "tool-ask-user",
+        "name": "@deepseek-ai/dsh-tool-ask-user",
+      },
+      {
+        "config": {
+          "allowParallelInProgress": true,
+        },
+        "id": "tool-todo",
+        "name": "@deepseek-ai/dsh-tool-todo",
+      },
+      {
+        "config": {
+          "fetch": true,
+          "searchTimeoutMs": 60000,
+        },
+        "id": "tool-web",
+        "name": "@deepseek-ai/dsh-tool-web",
+      },
+      {
+        "id": "present",
+        "name": "@deepseek-ai/dsh-tool-present",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-manager",
+        "name": "@deepseek-ai/dsh-plugin-manager/tools",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-market",
+        "name": "@deepseek-ai/dsh-plugin-market/tools",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [
+      "bash",
+      "write",
+    ],
+    "model": undefined,
+    "template": "standard",
+  },
+}
+`;
+
+exports[`composeBotPreset > snapshots standard, model=true, deny=false 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "maxBytes": 65536,
+        },
+        "id": "agent-instructions",
+        "name": "@deepseek-ai/dsh-agent-instructions",
+      },
+      {
+        "id": "time-context",
+        "name": "@deepseek-ai/dsh-time-context",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform === 'win32'",
+        },
+        "id": "tool-bash",
+        "name": "@deepseek-ai/dsh-tool-bash",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform !== 'win32'",
+        },
+        "id": "tool-pwsh",
+        "name": "@deepseek-ai/dsh-tool-pwsh",
+      },
+      {
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": {
+          "sampleOverCapGlobResults": false,
+        },
+        "id": "tool-fs-search",
+        "name": "@deepseek-ai/dsh-tool-fs-search",
+      },
+      {
+        "id": "tool-jobs",
+        "name": "@deepseek-ai/dsh-tool-jobs",
+      },
+      {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "id": "tool-skill",
+        "name": "@deepseek-ai/dsh-tool-skill",
+      },
+      {
+        "id": "command-goal",
+        "name": "@deepseek-ai/dsh-command-goal",
+      },
+      {
+        "id": "tool-goal",
+        "name": "@deepseek-ai/dsh-tool-goal",
+      },
+      {
+        "config": [
+          {
+            "config": {
+              "section": "You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+",
+            },
+            "id": "plan-mode",
+            "name": "@deepseek-ai/dsh-plan-mode",
+          },
+        ],
+        "group": true,
+        "id": "planning",
+        "isolate": {
+          "planMode": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+          {
+            "config": {
+              "headChars": 4096,
+              "tailChars": 1024,
+              "thresholdChars": 8192,
+            },
+            "id": "tool-result-pruner",
+            "name": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+          "toolResultPruner": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "tool-subagent-control",
+            "name": "@deepseek-ai/dsh-tool-subagent-control",
+          },
+          {
+            "id": "tool-subagent-list-agents",
+            "name": "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+          },
+          {
+            "config": {
+              "modelSelectionSettings": true,
+              "provider": "spawn",
+              "toolName": "subagent",
+            },
+            "id": "tool-subagent",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "fork",
+              "toolName": "subagent_fork",
+            },
+            "id": "tool-subagent-fork",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "spawn",
+            },
+            "id": "workflow-ptc",
+            "name": "@deepseek-ai/dsh-workflow-ptc",
+          },
+          {
+            "id": "tool-workflow",
+            "name": "@deepseek-ai/dsh-tool-workflow",
+          },
+        ],
+        "group": true,
+        "id": "delegation",
+        "isolate": {
+          "workflowEngine": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "id": "tool-ask-user",
+        "name": "@deepseek-ai/dsh-tool-ask-user",
+      },
+      {
+        "config": {
+          "allowParallelInProgress": true,
+        },
+        "id": "tool-todo",
+        "name": "@deepseek-ai/dsh-tool-todo",
+      },
+      {
+        "config": {
+          "fetch": true,
+          "searchTimeoutMs": 60000,
+        },
+        "id": "tool-web",
+        "name": "@deepseek-ai/dsh-tool-web",
+      },
+      {
+        "id": "present",
+        "name": "@deepseek-ai/dsh-tool-present",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-manager",
+        "name": "@deepseek-ai/dsh-plugin-manager/tools",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-market",
+        "name": "@deepseek-ai/dsh-plugin-market/tools",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [],
+    "model": {
+      "model": "bot-model",
+      "provider": "mock-provider",
+      "reasoningEffort": "high",
+    },
+    "template": "standard",
+  },
+}
+`;
+
+exports[`composeBotPreset > snapshots standard, model=true, deny=true 1`] = `
+{
+  "definition": {
+    "description": "Bot-specific assistant",
+    "id": "bot-alpha",
+    "name": "Alpha 助手",
+    "order": 50,
+    "plugins": [
+      {
+        "config": {
+          "prefix": "You are Alpha. 用中文回答。",
+        },
+        "id": "persona",
+        "name": "@deepseek-ai/dsh-persona",
+      },
+      {
+        "config": {
+          "maxBytes": 65536,
+        },
+        "id": "agent-instructions",
+        "name": "@deepseek-ai/dsh-agent-instructions",
+      },
+      {
+        "id": "time-context",
+        "name": "@deepseek-ai/dsh-time-context",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform === 'win32'",
+        },
+        "id": "tool-bash",
+        "name": "@deepseek-ai/dsh-tool-bash",
+      },
+      {
+        "disabled": {
+          "__jsExpr": "process.platform !== 'win32'",
+        },
+        "id": "tool-pwsh",
+        "name": "@deepseek-ai/dsh-tool-pwsh",
+      },
+      {
+        "id": "tool-fs",
+        "name": "@deepseek-ai/dsh-tool-fs",
+      },
+      {
+        "config": {
+          "sampleOverCapGlobResults": false,
+        },
+        "id": "tool-fs-search",
+        "name": "@deepseek-ai/dsh-tool-fs-search",
+      },
+      {
+        "id": "tool-jobs",
+        "name": "@deepseek-ai/dsh-tool-jobs",
+      },
+      {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
+      },
+      {
+        "config": {
+          "customSkillDirs": [
+            "/isolated/data/bots/alpha/skills",
+          ],
+        },
+        "id": "skill-filesystem",
+        "name": "@deepseek-ai/dsh-skill-filesystem",
+      },
+      {
+        "id": "tool-skill",
+        "name": "@deepseek-ai/dsh-tool-skill",
+      },
+      {
+        "id": "command-goal",
+        "name": "@deepseek-ai/dsh-command-goal",
+      },
+      {
+        "id": "tool-goal",
+        "name": "@deepseek-ai/dsh-tool-goal",
+      },
+      {
+        "config": [
+          {
+            "config": {
+              "section": "You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+",
+            },
+            "id": "plan-mode",
+            "name": "@deepseek-ai/dsh-plan-mode",
+          },
+        ],
+        "group": true,
+        "id": "planning",
+        "isolate": {
+          "planMode": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "compaction-basic",
+            "name": "@deepseek-ai/dsh-compaction-basic",
+          },
+          {
+            "id": "command-compact",
+            "name": "@deepseek-ai/dsh-command-compact",
+          },
+          {
+            "config": {
+              "headChars": 4096,
+              "tailChars": 1024,
+              "thresholdChars": 8192,
+            },
+            "id": "tool-result-pruner",
+            "name": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+          },
+        ],
+        "group": true,
+        "id": "compaction",
+        "isolate": {
+          "compaction": true,
+          "toolResultPruner": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "config": [
+          {
+            "id": "tool-subagent-control",
+            "name": "@deepseek-ai/dsh-tool-subagent-control",
+          },
+          {
+            "id": "tool-subagent-list-agents",
+            "name": "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+          },
+          {
+            "config": {
+              "modelSelectionSettings": true,
+              "provider": "spawn",
+              "toolName": "subagent",
+            },
+            "id": "tool-subagent",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "fork",
+              "toolName": "subagent_fork",
+            },
+            "id": "tool-subagent-fork",
+            "name": "@deepseek-ai/dsh-tool-subagent",
+          },
+          {
+            "config": {
+              "provider": "spawn",
+            },
+            "id": "workflow-ptc",
+            "name": "@deepseek-ai/dsh-workflow-ptc",
+          },
+          {
+            "id": "tool-workflow",
+            "name": "@deepseek-ai/dsh-tool-workflow",
+          },
+        ],
+        "group": true,
+        "id": "delegation",
+        "isolate": {
+          "workflowEngine": true,
+        },
+        "name": "cordis:group",
+      },
+      {
+        "id": "tool-ask-user",
+        "name": "@deepseek-ai/dsh-tool-ask-user",
+      },
+      {
+        "config": {
+          "allowParallelInProgress": true,
+        },
+        "id": "tool-todo",
+        "name": "@deepseek-ai/dsh-tool-todo",
+      },
+      {
+        "config": {
+          "fetch": true,
+          "searchTimeoutMs": 60000,
+        },
+        "id": "tool-web",
+        "name": "@deepseek-ai/dsh-tool-web",
+      },
+      {
+        "id": "present",
+        "name": "@deepseek-ai/dsh-tool-present",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-manager",
+        "name": "@deepseek-ai/dsh-plugin-manager/tools",
+      },
+      {
+        "disabled": true,
+        "id": "tool-plugin-market",
+        "name": "@deepseek-ai/dsh-plugin-market/tools",
+      },
+      {
+        "config": {
+          "botId": "alpha",
+        },
+        "id": "bot-context",
+        "name": "dsh-bot/bot-context",
+      },
+    ],
+  },
+  "input": {
+    "deny": [
+      "bash",
+      "write",
+    ],
+    "model": {
+      "model": "bot-model",
+      "provider": "mock-provider",
+      "reasoningEffort": "high",
+    },
+    "template": "standard",
+  },
+}
+`;

@@ -1,5 +1,44 @@
 # DSH API 核实记录
 
+## T05：运行时模板、Agent 策略和技能目录（2026-10-18）
+
+- `composeBotPreset(bot, ctx)` 默认使用 Host registry Config，亦接受显式第三参数供注册表启动和测试调用；异步调用公开 `agentPresets.readDocument(bot.template)`；用 `@deepseek-ai/cordis-plugin-include@1.0.10` 的 `entryListSchema` 和 `js-yaml@4.1.1` 解析，再调用 registry 根出口 `entryListProblem` 校验。`!!js` 保持 `{__jsExpr}`，不求值、不转字符串。锁定模板原文仅放测试 fixture，并校验 SHA256；正式代码无 vendored 模板、无同步脚本、无 spike import。来源：`preset/agent-preset-registry/src/index.ts:213-229`、`src/definition.ts`；`vendor/include/src/index.ts:9-23`。
+- persona 顶层行必须唯一，完整替换其 config 为 Bot 的 prefix/suffix/complete；minimal 原有 `complete/includeRuntimeContext` 不暗中覆盖 Bot 输入。standard 修改唯一的顶层 skill-filesystem 行，保留其它 provider 配置并替换 `customSkillDirs`；minimal 原模板没有该行，因此补一行。拒绝嵌套/重复技能 provider 和任意层已有 bot-context，避免健康列表掩盖重复绑定。不会把整棵模板包进额外 `cordis:group`。来源：`bundle/web-app/presets/{standard,minimal}.patch.yml`；`skill/skill-filesystem/README.zh.md`。
+- Host 在创建、复制、恢复存量 Bot 与 reconcile 时递归创建 `<dataDir>/bots/<id>/skills`；模板读取与目录准备在注销旧 preset **之前**完成，失败为 `bot/preset-failed` 且保留 cause。删除、失败回滚和复制均不删除/复制技能内容，避免覆盖用户文件。存储地址仍由 `storageDomain` 配置决定。
+- 新增公开本包子路径 `dsh-bot/bot-context`，行 config 只有 `{botId}`。注册表的非 Remote 同步 `presetBot(botId)` 返回激活候选/当前 lease 的深克隆；插件在 apply 捕获策略，避免在持有写队列的 register 中再次排队 get 造成死锁。lease 同时保存 Bot 快照；失败回滚恢复旧定义和旧策略；status 比较配置时忽略持久化时间戳。
+- scoped `agent/created` 通过 `agent.ctx.effect` 绑定只读 Bot 身份及 `tools.restrict({deny})`，同时由 Agent 和插件生命周期清理（见本节评审补充）；`getBotBinding(agent)` 供后续 T06 读取。未知、同层和保留工具（如 `run_code`）沿用 DSH 的拒绝语义，拒绝创建而非静默忽略。有效工具限制只作用于该 Agent；**preset healthy 不等于任意 deny 名称都能创建会话**。来源：`core/tools/src/index.ts:1065-1125,1170-1226`、`core/agent/src/runtime-types.ts:248-261`。
+- T02 未实测独立 Bot model，且 rc.2 没有 `dsh-agent-model` 包。Host `agentDefaultModel` 是共享默认，不能通过新增 preset 内同名服务改变 SessionController。T05 使用公开 `system-prompt/assemble` / `agent/request` waterfall 的 `prepend:true`：仅在没有 `agent.session.requestHeader()` 且公开 `sessionProjections.stateOf(session,'modelSelection').pending` 为空时，用 Bot model 作为初始默认；每次 assembly 捕获同一选择供 request 使用，省略 reasoningEffort 时清除继承值。显式会话选择及历史请求优先，未指定 Bot model 时完全沿用 Host。不能调用 `sessionController.selectModel` 来初始化 Bot，因为它还会保存共享默认。来源：`core/agent/src/model-selection.ts`、`api/session-controller/src/agent.ts:289-340`、`src/commands.ts:157-182`、`src/model-selection-projection.ts`。运行验证包括真实空闲 Agent 的提示词变量与请求路由 waterfall，**不等于实际模型请求或回复验证**。
+- 真实 T05 profile 暴露 T04 的 Remote 注册竞态：`typert-loader` 自动发现 `exports['./typert']` 后注册，而 Host apply 也手动注册，先后顺序会造成 `package face "dsh-bot#host" is already registered`。现在导出改为 `dsh-bot/host-contract`，保留 Host `ctx.effect(() => ctx.typert.register(TYPERT))` 为唯一 owner；Client `/remote` 不变。不禁用宿主 loader、不吞重复错误。来源：`typert/loader/src/index.ts:39-40,399-448`。原 `dsh-bot/typert` 调用者须改用新路径。
+- 依赖：registry 根出口 `entryListProblem` 和 llm 根出口 `ReasoningEffortId` 是新增 Host runtime import，因此新增相应兼容 peer，dev 均精确 rc.2；include/YAML 作为独立依赖。session-projection、api-session-controller 仅类型 dev，scope 仅测试 dev。Client 产物不包含新增 Host 模块。
+
+本轮实际命令、运行证据与边界见 [T05 验收报告](acceptance/P1-T05.md)。DSH 升级须复核模板结构、entry-list 表达式、模型 waterfall 顺序与 Remote 注册所有权。
+
+### T05 评审补充：双 owner、模型机制选择及模板诊断
+
+生命周期按 `packages/preset/agent-preset/skills/cordis-plugin-development/references/practices.md` 的 Principles 2 / Stability 每 Agent 条款修订：插件自己的一个 effect 保存 `Map<Agent, disposer>`；每个 Agent 的绑定、restrict 和两个模型监听器统一放入一个 `agent.ctx.effect`。Agent 先销毁时清除 map 项；插件先卸载时移除创建监听器，再释放全部 Agent disposer；重复清理幂等。异步目录校验返回后检查插件是否停止，不注册迟到资源；已进入 assembly/request 的校验若遇到插件卸载，也不再覆盖下游结果。
+
+**注销 preset 不等于卸载旧代际。** rc.2 registry `src/index.ts:81-100,148-151,264-277` 将代际标记 retired，只有 users=0 才 dispose。真实 profile 验证中，更新 Alpha 为 deny=[] 后，旧 live Agent 仍是同一个对象，仍绑定 alpha、保持旧 persona，read 仍不可见；新 Agent 的 read 可见且 persona 更新。测试对象是仍在 Host 中存活的 idle Agent，没有发送模型 prompt；没有声称已测正在流式生成的 turn。显式卸载 bot-context 插件则必须释放限制，这是双 owner 的既定行为，与保留代际不同。
+
+模型设置的较弱公开机制调研（路径相对锁定参考源码）：
+
+| 候选 | 核实结果 / 未采用原因 |
+| --- | --- |
+| `sessionController.create` 参数 | `api/session-controller/src/types.ts:287-305` 只接受 workspaceId/cwd/sessionId/agentPreset，没有 model/selection；不能传未声明参数 |
+| 直接 `agents.create({agentOptions})` | 适用于自行拥有创建入口的调用者；Bot 插件必须覆盖宿主标准选择器经 SessionController 创建的 Agent，不能替换该入口或修改只读 options |
+| `sessionProjections.stateOf(session,'modelSelection')` | `session/session-projection/src/index.ts:313-329` 明确返回只读派生状态；没有供插件设置选择的 setter，不能直接改返回对象 |
+| append 已有 `model/selection` 事件 | Controller 的 `selectionFor` 在安装时只读取一次 pending 并持有私有 picked 引用；`composeAgent` 又先安装 selection、再 mount preset。单纯在 agent/created append 不会更新已安装引用（`api/session-controller/src/agent.ts:289-340,387-401`），所以没有这样写事件 |
+| `sessionController.selectModel` | 公开方法可更新会话，但还异步调用 `agentDefaultModel.saveSelection` 保存共享默认；没有关闭该副作用的参数（`src/commands.ts:157-182`）。不适合作 Bot 私有初始默认 |
+| `agentDefaultModel.currentSelection/saveSelection` | 前者返回拷贝，后者写拥有该服务的 profile 配置；Controller 持有 Host 服务，preset 内另建服务不会改变它（`core/agent-default-model/src/index.ts:67-99`） |
+| `systemPrompt.variables` 或再次 `installModelSelection` | 单纯 variables 贡献仍会被 Controller 的 assembly waterfall 覆盖；`installModelSelection` 也是 assembly/request/pre-step 监听器组合，未开放替换 Controller selection ref 或这两项的 prepend 选项（`core/agent/src/model-selection.ts:82-147`），不是更弱的会话 setter |
+
+因此锁定 rc.2 保留 **仅变量与路由** 的 `system-prompt/assemble` + `agent/request` 外层 waterfall。它不增删 section、context、tool 或文本；先等待 next，再保留其整个结果，只覆盖当前 Bot 初始选择的 provider/model（请求另处理 reasoningEffort）。单测同时挂载真实 `installModelSelection` 和另一贡献者，逐一验证 sections/contexts/tools 引用、其它变量、扩展字段、请求 maxTokens 都保留；显式会话选择/历史优先及卸载均有覆盖。风险是公开 waterfall 的顺序与字段语义会随升级变化，第三方更外层监听器仍可能再改路由；升级必须重跑组合测试。未访问 Controller 的私有 selections/agents 状态。
+
+bot-context 新增注入 `llm`，通过公开 `llm.listProviders()` / `llm.listModels(provider)` 校验将实际采用的 Bot route；失败抛 `DshBotError('bot/preset-failed', ...)`，包含 botId/provider/model/原因并保留 cause，不回退 Host 模型。检查发生在 Agent 创建及采用初始 Bot 模型的 assembly/request，以捕获创建后 provider 消失；显式选择或历史路由优先时不验证未使用的 Bot 默认。与 GUI 的目录选择政策一致，仅接受 provider 广告目录内的模型：DSH core 本可路由未列出模型，此处选择明确拒绝而非猜测（`llm/llm/src/index.ts:251-261,711-740`；`api/session-controller/src/catalog.ts:modelAvailable`）。目录查询可能由适配器执行远程元数据请求，存在延迟/失败；目录可用不证明凭据有效或模型回复成功。真实 profile 用公开 `LlmAdapter` 注册仅目录 fixture，stream 永远抛错并计数，最终 streamCalls=0；不存在的 provider 和 model 均在新建 Agent 时明确拒绝。
+
+**模板跟随运行中宿主。** Bot 每次启动/创建/更新组合时读取当前 DSH 的 standard/minimal；宿主升级或模板编辑可能改变之后生成的 Bot 行为，测试 fixture 的 SHA256 只锁定回归输入，不能锁定生产模板，也不在生产读取。已挂载代际不会因一次 status 查询被替换。`status()` 每次按不同模板做一次 `readDocument`，失败返回 broken 与具体原因（即便旧代际仍健康或启动未注册成功），恢复后重新查询可清除该临时诊断。单测覆盖启动读失败、运行后读失败、修复和查询不注销旧 preset。
+
+真实跨 preset 探针已新增原生 standard Agent：没有 Bot binding、read 可见、无私有技能、提示词变量和请求路由均为 Host 默认。测试 fixture 复制到隔离 profile 运行，从宿主加载 `dsh-agent` 的公开 helper；不能从正式包的 dev-only agent 副本构造 scope carrier，否则不同 scope 模块的私有 Symbol 会使测试分发错误地扩大到全局。初次失败证据保留，最终以正确宿主模块的 probe 为准。
+
 ## T04：注册表、严格 Remote 契约与关闭协调（2026-10-18）
 
 本节沿用 T02/T03 的锁定版本；实现与完整验收见 `docs/acceptance/P1-T04.md`。新增正式代码均位于 `packages/dsh-bot/`，没有从 `spikes/` 导入。

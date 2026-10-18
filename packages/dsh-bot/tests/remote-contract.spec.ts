@@ -98,7 +98,10 @@ describe('single-source Remote contract', () => {
   });
 
   it('shares exactly seven strict descriptors between Host and Client exports', () => {
-    expect(require.resolve('dsh-bot/typert')).toMatch(/lib\/typert\.host\.js$/);
+    expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
+    // The Host owns registration in ctx.effect. ./typert would also be picked
+    // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
+    expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
     expect(TYPERT.invocations).toHaveLength(7);

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Context, Service } from '@deepseek-ai/cordis';
@@ -26,6 +26,10 @@ class PresetDouble extends Service {
   beforeUnregister?: (definition: PresetDefinition) => Promise<void>;
 
   constructor(ctx: Context) { super(ctx, 'agentPresets'); }
+
+  async readDocument(agentPreset: string) {
+    return { agentPreset, content: '- id: persona\n  name: "@deepseek-ai/dsh-persona"\n- id: skill-filesystem\n  name: "@deepseek-ai/dsh-skill-filesystem"\n' };
+  }
 
   async register(definition: PresetDefinition): Promise<() => Promise<void>> {
     this.calls.push(`register:${definition.id}:${definition.name}`);
@@ -115,6 +119,71 @@ async function withFacility(run: (fixture: Fixture) => Promise<void>) {
 }
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('creates separate skill directories, preserves user files and exposes detached activation snapshots', async () => withFacility(async ({ root, start, presets }) => {
+    const { registry } = await start();
+    const captured: Array<{ id: string; deny: string[] }> = [];
+    presets.beforeRegister = async (definition) => {
+      const bot = registry.presetBot(definition.id.slice('bot-'.length));
+      captured.push({ id: bot.id, deny: [...bot.tools.deny] });
+      bot.tools.deny.push('must-not-leak');
+    };
+    await registry.create({ id: 'alpha', name: 'Alpha', tools: { deny: ['read'] } });
+    const skills = join(root, 'data/bots/alpha/skills');
+    expect((await stat(skills)).isDirectory()).toBe(true);
+    await writeFile(join(skills, 'keep.md'), 'user skill');
+    await registry.duplicate('alpha', 'beta');
+    expect((await stat(join(root, 'data/bots/beta/skills'))).isDirectory()).toBe(true);
+    await expect(readFile(join(root, 'data/bots/beta/skills/keep.md'))).rejects.toMatchObject({ code: 'ENOENT' });
+    presets.brokenNames.add('Rejected');
+    await expect(registry.update('alpha', { name: 'Rejected', tools: { deny: ['write'] } }))
+      .rejects.toMatchObject({ code: 'bot/preset-failed' });
+    expect(captured).toEqual([
+      { id: 'alpha', deny: ['read'] }, { id: 'beta', deny: ['read'] },
+      { id: 'alpha', deny: ['write'] }, { id: 'alpha', deny: ['read'] },
+    ]);
+    expect(registry.presetBot('alpha').tools.deny).toEqual(['read']);
+    await registry.remove('alpha');
+    expect(await readFile(join(skills, 'keep.md'), 'utf8')).toBe('user skill');
+    expect(() => registry.presetBot('alpha')).toThrow();
+  }));
+
+  it('keeps the current preset and record if template preparation or skill directory creation fails', async () => withFacility(async ({ root, start, presets }) => {
+    const { registry } = await start();
+    const original = await registry.create({ id: 'alpha', name: 'Alpha' });
+    const calls = [...presets.calls];
+    const templateRead = vi.spyOn(presets, 'readDocument').mockRejectedValueOnce(new Error('template unavailable'));
+    await expect(registry.update('alpha', { name: 'Changed' })).rejects.toMatchObject({ code: 'bot/preset-failed' });
+    templateRead.mockRestore();
+    expect(presets.calls).toEqual(calls);
+    expect(await registry.get('alpha')).toEqual(original);
+    await writeFile(join(root, 'data/bots/blocked'), 'not a directory');
+    await expect(registry.create({ id: 'blocked', name: 'Blocked' })).rejects.toMatchObject({
+      code: 'bot/preset-failed', cause: expect.any(Error),
+    });
+    expect(presets.calls).toEqual(calls);
+    expect(await registry.list()).toEqual([original]);
+  }));
+
+  it('reports template read failures as broken with reasons on startup and later queries', async () => withFacility(async ({ ctx, start, presets }) => {
+    const stores = await openBotStores(ctx);
+    await stores.bots.create({ id: 'alpha', name: 'Alpha' });
+    await stores.close();
+    const read = vi.spyOn(presets, 'readDocument').mockRejectedValue(new Error('standard template missing'));
+    const { registry } = await start();
+    expect(await registry.status()).toEqual([{ id: 'alpha', presetId: 'bot-alpha', preset: {
+      state: 'broken', reason: expect.stringContaining('standard template missing'),
+    } }]);
+    read.mockRestore();
+    await registry.update('alpha', { name: 'Repaired' });
+    expect((await registry.status())[0]?.preset.state).toBe('ok');
+    const calls = [...presets.calls];
+    const lost = vi.spyOn(presets, 'readDocument').mockRejectedValue(new Error('readDocument unavailable'));
+    expect((await registry.status())[0]?.preset).toEqual({ state: 'broken', reason: expect.stringContaining('readDocument unavailable') });
+    expect(presets.calls).toEqual(calls);
+    lost.mockRestore();
+    expect((await registry.status())[0]?.preset.state).toBe('ok');
+  }));
+
   it('exports validated default configuration', () => {
     expect(Config(undefined)).toMatchObject({ seedExamples: true, presetIdPrefix: 'bot-', presetOrder: 50 });
     for (const input of [{ presetIdPrefix: '' }, { presetOrder: Number.NaN }, { seedExamples: 'true' }]) {
