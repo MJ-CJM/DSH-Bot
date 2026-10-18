@@ -23,3 +23,10 @@
 
 **验收**：spike 文档覆盖全部 7 条且每条有证据；能运行的 spike 用 `scripts/dev-profile.sh` 变体在 `.dsh-dev` 中跑过（`--dump-config` + 有日志证明激活）；更新 `docs/dsh-api-notes.md`。
 **我做**：读结论，必要时修订 T03–T10 的任务单再派发。
+
+## 编排方补充（T00/T01 之后）
+- T00 已发现：`agentPresets.register` 对已存在的 id 抛 `Duplicate agent preset`。第 1 条必须给出"更新同一个 Bot 的 preset"的可行方案并实测：(a) 先注销再注册（量化空窗期内 `list()`/新建会话的表现，失败时如何恢复旧定义）；(b) 带版本后缀的新 id（如 `bot-<id>~<rev>`）对会话记录的 preset id、重启恢复（"缺失时拒绝恢复"）、选择器显示的影响；给出推荐。
+- 运行验证沿用 T01 的做法：在 `.dsh-dev` 下用隔离 Web profile（`--from-default-profile web`，`--no-open --host 127.0.0.1 --port 0`）启动 Host；不要打开浏览器。验证 Remote 时优先用 DSH 公开的 Node 侧客户端（`packages/sdk/client`、`packages/api/gateway` 文档中的调用方式）或已鉴权 HTTP，不要读取/打印任何凭据文件内容，日志中出现的 token 不得写入仓库文件。
+- 第 6 条：只需验证 `sessionController.create({ cwd, agentPreset })` 能用 bot preset 建出会话；`prompt` 会触发模型调用——仅当能在隔离 profile 中把模型指向 `@deepseek-ai/dsh-llm-mock-server` 时才验证，否则记为"未验证"并说明。
+- spike 代码放 `spikes/`（可提交），隔离运行产物留在 `.dsh-dev/`（已忽略）。
+- 报告第 ③ 项按 7 条逐条给 结论 / 证据 / 对 T03–T10 的影响。
