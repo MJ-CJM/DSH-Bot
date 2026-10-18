@@ -1,3 +1,8 @@
 - insert:
     - id: dsh-bot
       name: dsh-bot
+      config:
+        seedExamples: true
+        presetIdPrefix: bot-
+        presetOrder: 50
+        dataDir: $DSH_HOME/dsh-bot

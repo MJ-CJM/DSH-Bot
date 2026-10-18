@@ -1,16 +1,6 @@
 import { z } from 'zod';
 import { botIdSchema, memoryIdSchema } from './ids.js';
 
-export type DshBotErrorCode = 'bot/not-found' | 'bot/conflict' | 'bot/invalid'
-  | 'memory/not-found' | 'memory/too-large' | 'store/unavailable';
-
-export class DshBotError extends Error {
-  override readonly name = 'DshBotError';
-  constructor(readonly code: DshBotErrorCode, message: string, options?: ErrorOptions) {
-    super(message, options);
-  }
-}
-
 export const MEMORY_MAX_BYTES = 2 * 1024;
 export const AVATAR_MAX_BYTES = 64 * 1024;
 export const MEMORY_LIST_MAX_LIMIT = 200;
@@ -81,8 +71,15 @@ export const botCreateSchema = botFields.extend({
   memory: botFields.shape.memory.default({ enabled: true, injectLimit: 20 }),
   mcpServers: botFields.shape.mcpServers.default([]), channels: botFields.shape.channels.default([]),
 });
-/** Patches replace whole top-level fields; identity and metadata are never writable. */
-export const botPatchSchema = botFields.partial();
+/** Patches replace whole top-level fields; identity and metadata are never writable.
+ * JSON cannot carry undefined properties, so optional top-level fields also accept
+ * null as an explicit clear. Keep null on the wire and normalize only on the Host.
+ */
+const botPatchFields = botFields.partial();
+export const botPatchSchema = botPatchFields.extend({
+  avatar: botFields.shape.avatar.nullable(), model: botFields.shape.model.nullable(),
+  defaultCwd: botFields.shape.defaultCwd.nullable(), order: botFields.shape.order.nullable(),
+});
 export const botRemoveOptionsSchema = z.strictObject({ deleteMemories: z.boolean().default(true) });
 export type BotRemoveOptions = z.input<typeof botRemoveOptionsSchema>;
 
@@ -113,16 +110,18 @@ export const memoryListOptionsSchema = z.strictObject({
 export type BotRecord = z.infer<typeof botSchema>;
 export type BotCreateInput = z.input<typeof botCreateSchema>;
 export type BotPatch = z.input<typeof botPatchSchema>;
+export function normalizeBotPatch(patch: BotPatch): z.output<typeof botPatchFields> {
+  const { avatar, model, defaultCwd, order, ...fields } = patch;
+  return {
+    ...fields,
+    ...('avatar' in patch ? { avatar: avatar ?? undefined } : {}),
+    ...('model' in patch ? { model: model ?? undefined } : {}),
+    ...('defaultCwd' in patch ? { defaultCwd: defaultCwd ?? undefined } : {}),
+    ...('order' in patch ? { order: order ?? undefined } : {}),
+  };
+}
 export type MemoryRecord = z.infer<typeof memorySchema>;
 export type MemoryAddInput = z.input<typeof memoryAddSchema>;
 export type MemoryPatch = z.input<typeof memoryPatchSchema>;
 export type MemoryCursor = z.infer<typeof memoryCursorSchema>;
 export type MemoryListOptions = z.input<typeof memoryListOptionsSchema>;
-
-/** Input errors remain distinct from storage availability failures. */
-export function parseInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
-  const result = schema.safeParse(input);
-  if (result.success) return result.data;
-  const tooLarge = result.error.issues.some((issue) => issue.code === 'custom' && issue.params?.code === 'memory/too-large');
-  throw new DshBotError(tooLarge ? 'memory/too-large' : 'bot/invalid', result.error.message, { cause: result.error });
-}

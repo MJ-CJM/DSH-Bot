@@ -9,8 +9,9 @@ import type { Domain } from '@deepseek-ai/dsh-storage-domain';
 import * as storageJson from '@deepseek-ai/dsh-storage-json';
 import { describe, expect, it, vi } from 'vitest';
 import { BotStore, botDomain, MemoryStore, openBotStores } from '../src/host/store.js';
+import { DshBotError, type DshBotErrorCode } from '../src/host/errors.js';
 import {
-  BOT_NAME_MAX_CHARS, botSchema, DshBotError, type DshBotErrorCode,
+  BOT_NAME_MAX_CHARS, botSchema,
   MEMORY_LIST_MAX_LIMIT, memorySchema, PERSONA_PREFIX_MAX_BYTES,
 } from '../src/shared/schema.js';
 
@@ -385,6 +386,25 @@ describe('MemoryStore', () => {
 });
 
 describe('durability and ownership', () => {
+  it.each([undefined, null])('clears all optional Bot fields with %s while required fields reject null', async (clear) => withStores(async ({ ctx, bots, close }) => {
+    const original = await bots.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: './workspace', order: 8,
+      model: { provider: 'local', model: 'test', reasoningEffort: 'off' } });
+    await bots.update('alpha', { description: 'Keep omitted optional fields' });
+    for (const field of ['avatar', 'model', 'defaultCwd', 'order'] as const) {
+      expect(bots.get('alpha')[field]).toStrictEqual(original[field]);
+    }
+    const cleared = await bots.update('alpha', { avatar: clear, model: clear, defaultCwd: clear, order: clear });
+    for (const field of ['avatar', 'model', 'defaultCwd', 'order']) {
+      expect(Object.hasOwn(cleared, field)).toBe(false);
+      expect(Object.hasOwn(bots.get('alpha'), field)).toBe(false);
+    }
+    await expectCode(() => bots.update('alpha', { name: null } as never), 'bot/invalid');
+    expect(bots.get('alpha')).toStrictEqual(cleared);
+    await close();
+    const reopened = await openOwned(ctx);
+    expect(reopened.bots.get('alpha')).toStrictEqual(cleared);
+  }));
+
   it('clears optional fields explicitly and preserves the exact record shape after reopen', async () => withStores(async ({ ctx, root, bots, memories, close }) => {
     await bots.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: './workspace',
       model: { provider: 'local', model: 'test', reasoningEffort: 'off' } });

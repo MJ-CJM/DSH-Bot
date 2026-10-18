@@ -1,10 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis';
+import type {} from '@deepseek-ai/dsh-api-gateway/client';
 import type {} from '@deepseek-ai/dsh-client-locale/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
+import TYPERT_REMOTE from '../typert.remote-client.js';
 
 const namespace = 'dsh-bot';
 
@@ -51,9 +53,11 @@ function DshBotBadge({ t }: PropsLocale<typeof namespace>) {
 
 // Standard Web/Desktop composition includes locale (dsh-v0.2.1-rc.2:
 // packages/bundle/web-app/cordis.patch.yml:257-258). Cordis waits for both services.
-export const inject = ['slots', 'locale'];
+// This assembly mounts dshBot, so it must not depend on remote.dshBot itself.
+export const inject = ['slots', 'locale', 'remote'];
 
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
+  await ctx.effect(async () => await ctx.remote.$mount(TYPERT_REMOTE), 'dsh-bot: Remote contribution');
   ctx.effect(() => ctx.locale.register(namespace, {
     en: en.ui,
     zh: zh.ui,

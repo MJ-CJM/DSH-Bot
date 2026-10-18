@@ -1,10 +1,21 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
+// This build entry runs as native TypeScript in Node; retain bundler-mode types.
+const { assertClientInput }: typeof import('./client-policy.js') =
+  await import(new URL('./client-policy.ts', import.meta.url).href);
+
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 const outfile = resolve(packageRoot, 'lib/client.js');
+const require = createRequire(import.meta.url);
+// This public helper is stateless and has no runtime imports. The protocol root
+// contains shared service state and is deliberately not an allowed dependency.
+const bundledDependencies = new Set([
+  await realpath(require.resolve('@deepseek-ai/dsh-typert-protocol/remote-info')),
+]);
 
 // These are shared entries in the DSH 0.2.1-rc.2 browser module table.
 // They must resolve through the factory's require, never a private copy.
@@ -44,9 +55,7 @@ const result = await build({
 // Fail the build if a future import accidentally embeds a shared runtime,
 // or leaves a require that the platform's injected module table cannot serve.
 for (const input of Object.keys(result.metafile.inputs)) {
-  if (/(^|[/\\])node_modules([/\\]|$)/.test(input)) {
-    throw new Error(`Client bundle contains a dependency implementation: ${input}`);
-  }
+  assertClientInput(await realpath(resolve(packageRoot, input)), packageRoot, bundledDependencies);
 }
 for (const output of Object.values(result.metafile.outputs)) {
   for (const dependency of output.imports) {

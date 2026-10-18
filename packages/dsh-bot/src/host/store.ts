@@ -2,19 +2,23 @@ import { randomUUID } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
 import { defineDomain, DomainError, domainTable } from '@deepseek-ai/dsh-storage-domain';
 import type { Domain } from '@deepseek-ai/dsh-storage-domain';
+import { z } from 'zod';
+import { DshBotError, type DshBotErrorCode, parseInput } from './errors.js';
 import { botIdSchema, memoryIdSchema } from '../shared/ids.js';
 import {
-  botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, DshBotError, memoryAddSchema,
-  memoryListOptionsSchema, memoryPatchSchema, memorySchema, parseInput, timestampSchema,
+  botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, memoryAddSchema,
+  memoryListOptionsSchema, memoryPatchSchema, memorySchema, normalizeBotPatch, timestampSchema,
 } from '../shared/schema.js';
 import type {
-  BotCreateInput, BotPatch, BotRecord, BotRemoveOptions, DshBotErrorCode, MemoryAddInput, MemoryCursor,
+  BotCreateInput, BotPatch, BotRecord, BotRemoveOptions, MemoryAddInput, MemoryCursor,
   MemoryListOptions, MemoryPatch, MemoryRecord,
 } from '../shared/schema.js';
 
+const seedStateSchema = z.strictObject({ status: z.enum(['pending', 'complete']) });
 export const botDomain = defineDomain({
   name: 'dsh_bot', version: 1,
-  tables: { bots: domainTable(botSchema), memories: domainTable(memorySchema) },
+  tables: { bots: domainTable(botSchema), memories: domainTable(memorySchema),
+    registry_state: domainTable(seedStateSchema) },
 });
 type BotDomain = Domain<typeof botDomain>;
 
@@ -63,6 +67,31 @@ async function deleteBotMemories(domain: BotDomain, botId: string): Promise<numb
 export class BotStore {
   constructor(private readonly domain: BotDomain) {}
 
+  /** A durable marker prevents reseeding after users deliberately remove every Bot.
+   * A pending batch resumes missing examples after an interrupted initial write.
+   */
+  async seedExamples(inputs: readonly BotCreateInput[]): Promise<void> {
+    const examples = inputs.map((input) => parseInput(botCreateSchema, input));
+    await write(this.domain, async () => {
+      const state = this.domain.table('registry_state');
+      const bots = this.domain.table('bots');
+      const previous = state.get('examples');
+      if (previous?.status === 'complete') return;
+      if (previous === undefined && bots.size > 0) {
+        await state.put('examples', seedStateSchema.parse({ status: 'complete' }));
+        return;
+      }
+      await state.put('examples', seedStateSchema.parse({ status: 'pending' }));
+      for (const example of examples) {
+        if (bots.get(example.id)) continue;
+        const now = Date.now();
+        const record = parseInput(botSchema, { ...example, createdAt: now, updatedAt: now, schemaVersion: 1 });
+        await bots.put(record.id, record);
+      }
+      await state.put('examples', seedStateSchema.parse({ status: 'complete' }));
+    });
+  }
+
   list(): BotRecord[] {
     return read(() => [...this.domain.table('bots').entries()].map(([, value]) => structuredClone(value))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || compareId(a.id, b.id)));
@@ -91,7 +120,7 @@ export class BotStore {
 
   async update(id: string, patch: BotPatch, expectedUpdatedAt?: number): Promise<BotRecord> {
     const key = parseInput(botIdSchema, id);
-    const fields = parseInput(botPatchSchema, patch);
+    const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
     const expected = parseInput(timestampSchema.optional(), expectedUpdatedAt);
     return write(this.domain, async () => structuredClone(await this.domain.table('bots').update(key, (current) => {
       // Check at the domain's write slot, never against a pre-queue snapshot.
@@ -205,7 +234,7 @@ export class MemoryStore {
 }
 
 /** Call once in the owning Host context (inject storageDomain); share the stores. */
-export async function openBotStores(ctx: Context): Promise<{
+export async function openBotStores(ctx: Context, options: { beforeClose?: () => Promise<void> } = {}): Promise<{
   bots: BotStore; memories: MemoryStore; close: () => Promise<void>;
 }> {
   let stores!: { bots: BotStore; memories: MemoryStore };
@@ -215,6 +244,9 @@ export async function openBotStores(ctx: Context): Promise<{
       const domain = await ctx.storageDomain.open(botDomain);
       stores = { bots: new BotStore(domain), memories: new MemoryStore(domain) };
       const closeDomain = async () => {
+        // Cordis may dispose sibling effects concurrently. The registry owns a
+        // wider queue than these stores, and must drain it before we reject writes.
+        if (options.beforeClose) await options.beforeClose();
         const state = writer(domain);
         state.closing = true;
         await state.tail;
