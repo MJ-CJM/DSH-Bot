@@ -24,6 +24,11 @@ export function apply(ctx, config) {
     export(message) {
       const text = format(...message.args);
       if (text.includes('[dsh-bot]')) console.log(text);
+      // Session observers contain synchronous exceptions. Make that failure
+      // visible without copying a backend cause or any message text to disk.
+      else if (/session\/event listener (?:threw|rejected)/u.test(text)) {
+        console.log('[dsh-bot] session/event observer failure (details omitted)');
+      }
     },
   }));
   ctx.provide('t05LogReady', true);

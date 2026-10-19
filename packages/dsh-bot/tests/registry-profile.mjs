@@ -270,6 +270,13 @@ try {
     check('initial: two examples only', seeds.map((bot) => bot.id).sort(), ['assistant', 'researcher']);
     check('initial: Chinese example names', seeds.map((bot) => bot.name).sort(), ['研究员', '通用助手'].sort());
     check('initial: Chinese personas', seeds.every((bot) => /[\u4e00-\u9fff]/u.test(bot.persona.prefix)));
+    const activity = ok(await remote.activity.list(), 'initial activity list');
+    check('activity namespace lists no sessions for idle seeded Bots', activity.sessions, []);
+    check('activity namespace includes empty Bot aggregates', activity.bots.slice().sort((a, b) => a.botId.localeCompare(b.botId)),
+      seeds.map((bot) => ({ botId: bot.id, lastActivityAt: 0, unreadCount: 0 })).sort((a, b) => a.botId.localeCompare(b.botId)));
+    const missingActivity = await remote.activity.markRead('t08c-unknown-session');
+    check('activity markRead unknown session has a structured error', missingActivity.error?.code, 'activity/not-found');
+    check('activity error details survive the real Remote codec', missingActivity.error?.details, {});
     const initialPresets = (await roster()).filter((row) => row.id.startsWith('review-'));
     check('initial: two example presets registered and healthy', initialPresets.map((row) => ({ id: row.id, broken: row.broken ?? null })), [
       { id: 'review-assistant', broken: null }, { id: 'review-researcher', broken: null },
@@ -374,6 +381,8 @@ try {
     check('empty restart leaves no Bot presets', presets, []);
     check('ownership prefix remains available after deletion and cold restart', ok(await remote.catalogInfo(), 'empty catalog info'), { presetIdPrefix: 'review-' });
     check('empty registry status is empty', ok(await remote.status(), 'empty status'), []);
+    check('empty restart activity Remote remains callable without arguments',
+      ok(await remote.activity.list(), 'empty restart activity'), { sessions: [], bots: [] });
     return { rows, presets };
   });
 
@@ -390,7 +399,11 @@ try {
     for (const [method, result] of Object.entries(results)) {
       check(`failed startup ${method} returns bot/unavailable`, result.error?.code, 'bot/unavailable');
     }
-    return results;
+    const activity = ok(await remote.activity.list(), 'unavailable activity list');
+    check('failed storage startup activity degrades to an empty list', activity, { sessions: [], bots: [] });
+    const activityRead = await remote.activity.markRead('t08c-unknown-session');
+    check('failed storage startup markRead returns a structured unavailable error', activityRead.error?.code, 'store/unavailable');
+    return { ...results, activity, activityRead: failureDetail(activityRead) };
   });
 } catch (error) {
   failure = redact(error.stack ?? error);

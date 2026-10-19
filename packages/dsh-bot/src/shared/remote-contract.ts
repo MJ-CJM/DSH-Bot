@@ -2,6 +2,8 @@
 import type { RemoteResult, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import { z } from 'zod';
 import { botIdSchema, memoryIdSchema } from './ids.js';
+import { activityListResultSchema, activitySessionIdSchema, activitySessionSchema } from './activity.js';
+export type { ActivityRecord, ActivitySession, ActivityListResult } from './activity.js';
 import {
   botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema,
   memoryAddSchema, memoryListOptionsSchema, memoryPatchSchema, memorySchema,
@@ -51,6 +53,7 @@ type HostMethods<Namespace extends string> = {
 };
 export type DshBotMethods = HostMethods<'dshBot'>;
 export type DshBotMemoryMethods = HostMethods<'dshBot.memory'>;
+export type DshBotActivityMethods = HostMethods<'dshBot.activity'>;
 
 type RemoteMethods<Namespace extends string> = {
   // rc.2's Gateway enforces the descriptor arity even for acceptsUndefined.
@@ -60,11 +63,17 @@ type RemoteMethods<Namespace extends string> = {
       Promise<RemoteResult<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>>;
 };
 export type DshBotMemoryRemoteMethods = RemoteMethods<'dshBot.memory'>;
-export type DshBotRemoteMethods = RemoteMethods<'dshBot'> & { memory: DshBotMemoryRemoteMethods };
+export type DshBotActivityRemoteMethods = RemoteMethods<'dshBot.activity'>;
+export type DshBotRemoteMethods = RemoteMethods<'dshBot'> & {
+  memory: DshBotMemoryRemoteMethods;
+  activity: DshBotActivityRemoteMethods;
+};
 type DshBotRemoteEndpoints = {
   [Method in keyof RemoteMethods<'dshBot'> as `dshBot/${Method}`]: RemoteMethods<'dshBot'>[Method];
 } & {
   [Method in keyof DshBotMemoryRemoteMethods as `dshBot.memory/${Method}`]: DshBotMemoryRemoteMethods[Method];
+} & {
+  [Method in keyof DshBotActivityRemoteMethods as `dshBot.activity/${Method}`]: DshBotActivityRemoteMethods[Method];
 };
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
@@ -72,6 +81,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespaceMap {
     dshBot: DshBotRemoteMethods;
     'dshBot.memory': DshBotMemoryRemoteMethods;
+    'dshBot.activity': DshBotActivityRemoteMethods;
   }
   interface RemoteErrorDetailsMap {
     'bot/not-found': Record<string, never>;
@@ -84,6 +94,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'memory/too-large': Record<string, never>;
     'memory/rejected': Record<string, never>;
     'store/unavailable': Record<string, never>;
+    'activity/not-found': Record<string, never>;
   }
 }
 
@@ -96,6 +107,7 @@ const parameter = <Schema extends z.ZodType>(name: string, type: string, schema:
 };
 const owner = { service: 'dshBots', invocation: { kind: 'direct' as const } };
 const memoryOwner = { service: 'dshBotMemory', invocation: { kind: 'direct' as const } };
+const activityOwner = { service: 'dshBotActivity', invocation: { kind: 'direct' as const } };
 const id = parameter('id', 'BotId', botIdSchema);
 const botId = parameter('botId', 'BotId', botIdSchema);
 const memoryId = parameter('id', 'MemoryId', memoryIdSchema);
@@ -106,6 +118,15 @@ const memories = codec('MemoryRecord[]', z.array(memorySchema));
 export const dshBotRemoteSpec = {
   package: 'dsh-bot',
   methods: {
+    // Zero parameters deliberately support activity.list() on rc.2, whose
+    // Client enforces exact arity even for optional descriptor parameters.
+    'dshBot.activity/list': {
+      ...activityOwner, parameters: [], result: codec('ActivityListResult', activityListResultSchema),
+    },
+    'dshBot.activity/markRead': {
+      ...activityOwner, parameters: [parameter('sessionId', 'ActivitySessionId', activitySessionIdSchema)],
+      result: codec('ActivitySession', activitySessionSchema),
+    },
     'dshBot/list': { ...owner, parameters: [], result: codec('BotRecord[]', z.array(botSchema)) },
     'dshBot/catalogInfo': { ...owner, parameters: [], result: codec('CatalogInfo', catalogInfoSchema) },
     'dshBot/status': { ...owner, parameters: [], result: codec('BotStatus[]', z.array(botStatusSchema)) },

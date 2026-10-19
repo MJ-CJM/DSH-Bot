@@ -2,11 +2,12 @@
  * T05 integration probe against the built formal bundle and a real Web Host.
  * Run after build, from repository root:
  * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/composer-profile.mjs
- * Creates idle sessions only: no prompt, model key, or browser is used.
+ * The composer/memory probes stay idle; activity uses three loopback mock
+ * replies across two Host processes. No real model or browser is used.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +15,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { Context } from '@deepseek-ai/cordis';
 import * as Gateway from '@deepseek-ai/dsh-api-gateway/client';
 import { installConnection } from '@deepseek-ai/dsh-client-connection/client';
+import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
@@ -39,6 +41,11 @@ const children = new Set();
 const checks = [];
 let interrupted = false;
 let idleSessionsCreated = 0;
+let mock;
+let mockPromptsSent = 0;
+const activityBotId = 't08c-activity';
+const activityTitle = 'T08c local mock activity';
+const mockReply = 'T08C_LOCAL_MOCK_REPLY 活动跟踪已完成 😀';
 mkdirSync(runDir, { recursive: true });
 mkdirSync(resolve(home, 'tmp'), { recursive: true });
 writeFileSync(resolve(home, 't05/latest-run.txt'), `${runDir}\n`);
@@ -131,6 +138,52 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
+async function activityTurn(bots, raw, sessionId, turn, previousAt = 0) {
+  const receipt = ok(await raw('session/prompt', { request: {
+    sessionId, requestId: randomUUID(), mode: 'queue',
+    content: [{ type: 'text', text: `T08c local mock activity round ${turn}.` }],
+  } }), `activity prompt ${turn}`);
+  check(`activity turn ${turn}: prompt admitted`, receipt.accepted);
+  mockPromptsSent++;
+  const deadline = Date.now() + 45_000;
+  let lastObserved;
+  while (!interrupted && Date.now() < deadline) {
+    const listing = ok(await raw('session/list', { _request: {} }), 'activity session list');
+    const summary = listing.items.find((row) => row.sessionId === sessionId);
+    const projection = ok(await raw('session/projections', { request: { sessionId } }), 'activity projections');
+    const activity = ok(await bots.activity.list(), 'activity list after prompt');
+    const session = activity.sessions.find((row) => row.sessionId === sessionId);
+    lastObserved = { sessionId, turn, summary, projection, activity };
+    if (summary?.blank === false && summary.running === false && projection.values?.sessionStats?.turns >= turn
+      && session?.lastMessage.role === 'assistant' && session.lastMessage.at > previousAt) {
+      check(`activity turn ${turn}: complete assistant preview`, session.lastMessage.preview, mockReply);
+      check(`activity turn ${turn}: session is unread`, session.unread);
+      check(`activity turn ${turn}: session belongs to the Bot`, session.botId, activityBotId);
+      check(`activity turn ${turn}: public session title is retained`, session.title, activityTitle);
+      const aggregate = activity.bots.find((row) => row.botId === activityBotId);
+      check(`activity turn ${turn}: aggregate has one unread session`, aggregate?.unreadCount, 1);
+      check(`activity turn ${turn}: aggregate uses latest assistant`, aggregate?.latest, {
+        sessionId, preview: mockReply, role: 'assistant', at: session.lastMessage.at,
+      });
+      check(`activity turn ${turn}: aggregate activity time matches session`, aggregate?.lastActivityAt, session.updatedAt);
+      return { activity, session, projection };
+    }
+    await new Promise((accept) => setTimeout(accept, 100));
+  }
+  save(`activity-turn-${turn}-timeout.json`, lastObserved);
+  throw new Error(`Activity turn ${turn} did not complete; inspect sanitized Host log`);
+}
+
+async function readActivity(bots, sessionId, label) {
+  const marked = ok(await bots.activity.markRead(sessionId), `${label} markRead`);
+  check(`${label}: markRead returns read session`, marked.unread, false);
+  check(`${label}: lastReadAt covers assistant time`, marked.lastReadAt >= marked.lastMessage.at);
+  const activity = ok(await bots.activity.list(), `${label} list after markRead`);
+  check(`${label}: list reports read session`, activity.sessions.find((row) => row.sessionId === sessionId)?.unread, false);
+  check(`${label}: aggregate unread count clears`, activity.bots.find((row) => row.botId === activityBotId)?.unreadCount, 0);
+  return activity;
+}
+
 async function probe(startupUrl, phase) {
   const base = new URL('/', startupUrl);
   const auth = await fetch(startupUrl, { redirect: 'manual', signal: AbortSignal.timeout(30_000) });
@@ -158,6 +211,7 @@ async function probe(startupUrl, phase) {
     await owner.await();
     const unmount = await ctx.effect(() => ctx.remote.$mount(remoteContribution));
     const bots = ctx.remote.dshBot;
+    const raw = (endpoint, args = {}) => ctx.connection.rpc.call('/api', endpoint, { args }, AbortSignal.timeout(30_000));
     if (phase === 'resume') {
       await until(() => existsSync(responsePath), 'cold restored memory inspection');
       const evidence = JSON.parse(readFileSync(responsePath, 'utf8'));
@@ -170,11 +224,32 @@ async function probe(startupUrl, phase) {
       check('restored Agent stays idle without a model request', evidence.status, 'idle');
       check('cold restore never streams a model', evidence.streamCalls, 0);
       save('memory-resume.json', evidence);
+      const activityPrepared = JSON.parse(readFileSync(resolve(runDir, 'activity-prepare.json'), 'utf8'));
+      const { sessionId } = activityPrepared;
+      const coldSessions = ok(await raw('session/list', { _request: {} }), 'cold activity session list');
+      check('activity session is persisted and cold after Host restart',
+        coldSessions.items.find((row) => row.sessionId === sessionId)?.agentAvailable, false);
+      const restored = ok(await bots.activity.list(), 'cold activity list');
+      check('activity and read marker survive Host restart', restored, activityPrepared.afterRead);
+      const continued = await activityTurn(bots, raw, sessionId, 3, activityPrepared.lastMessageAt);
+      const afterRead = await readActivity(bots, sessionId, 'cold resumed activity');
+      const afterRepeat = ok(await bots.activity.markRead(sessionId), 'repeat cold markRead');
+      check('repeated markRead preserves message and read state', {
+        lastMessage: afterRepeat.lastMessage, unread: afterRepeat.unread,
+      }, { lastMessage: continued.session.lastMessage, unread: false });
+      ok(await bots.delete(activityBotId, { deleteMemories: true }), 'delete activity Bot');
+      const deleted = ok(await bots.activity.list(), 'activity after Bot cascade deletion');
+      check('Bot cascade deletion removes all its session activity', deleted.sessions.some((row) => row.botId === activityBotId), false);
+      check('Bot cascade deletion removes its activity aggregate', deleted.bots.some((row) => row.botId === activityBotId), false);
+      const missing = await bots.activity.markRead(sessionId);
+      check('deleted activity returns a wrapped not-found error', missing.error?.code, 'activity/not-found');
+      save('activity-resume.json', { sessionId, coldSessions, restored, continued, afterRead, deleted,
+        missing: missing.ok ? missing : { ok: false, error: { code: missing.error.code, details: missing.error.details } } });
       await unmount();
       return;
     }
-    const raw = (endpoint, args = {}) => ctx.connection.rpc.call('/api', endpoint, { args }, AbortSignal.timeout(30_000));
     check('isolated registry begins empty', ok(await bots.list(), 'list'), []);
+    check('activity Remote begins empty without arguments', ok(await bots.activity.list(), 'initial activity list'), { sessions: [], bots: [] });
     const extraDir = resolve(runDir, 'extra-skills');
     const model = { provider: 't05-bot-provider', model: 't05-bot-model', reasoningEffort: 'high' };
     const inputs = [
@@ -272,6 +347,22 @@ async function probe(startupUrl, phase) {
       id: item.id, rejected: item.rejected, diagnostic: item.message?.includes('is unavailable'),
     })), ['t05-bad-provider', 't05-bad-model'].map((id) => ({ id, rejected: true, diagnostic: true })));
     check('catalog-only adapter never streams model output', evidence.streamCalls, 0);
+    ok(await bots.create({ id: activityBotId, name: 'Activity mock Bot', template: 'minimal',
+      model: { provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'off' },
+    }), 'create activity Bot');
+    const emptyActivity = ok(await bots.activity.list(), 'activity before prompts');
+    check('Bot without messages has a zero activity aggregate', emptyActivity.bots.find((row) => row.botId === activityBotId),
+      { botId: activityBotId, lastActivityAt: 0, unreadCount: 0 });
+    const { sessionId } = ok(await raw('session/create', { request: {
+      cwd: resolve(runDir, 'workspace'), agentPreset: `bot-${activityBotId}`,
+    } }), 'create activity session');
+    ok(await raw('session/rename', { request: { sessionId, title: activityTitle } }), 'name activity session');
+    const first = await activityTurn(bots, raw, sessionId, 1);
+    await readActivity(bots, sessionId, 'first activity round');
+    const second = await activityTurn(bots, raw, sessionId, 2, first.session.lastMessage.at);
+    const afterRead = await readActivity(bots, sessionId, 'second activity round');
+    check('local mock completed exactly two requests before restart', mock.requests.length, 2);
+    save('activity-prepare.json', { sessionId, first, second, afterRead, lastMessageAt: second.session.lastMessage.at });
     await unmount();
     check('Remote namespace disposed', ctx.get('remote.dshBot') === undefined);
   } finally {
@@ -318,16 +409,25 @@ try {
   check('built formal Host artifacts exist', existsSync(resolve(root, 'packages/dsh-bot/lib/index.js')));
   check('new profile does not overwrite an existing profile', existsSync(profileDir), false);
   check('locked CLI version', (await command(['--version'], 'version')).trim(), '0.2.1-rc.2');
+  mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, randomSeed: 8,
+    sequence: ['success', 'success', 'success'], successText: mockReply,
+    apiKey: 't08c-local-mock-key', chunkSize: 4,
+  });
+  check('activity mock uses loopback only', new URL(mock.baseURL).hostname, '127.0.0.1');
+  secrets.add('t08c-local-mock-key');
+  Object.assign(env, { DSH_BOT_T08C_MOCK_KEY: 't08c-local-mock-key', DEEPSEEK_API_KEY: '', DEEPSEEK_BASE_URL: `${mock.baseURL}/v1` });
   // Run the observer inside the profile so its runtime-only dsh-agent import
   // shares the Host's scope module, rather than this package's dev-only copy.
   const fixtureSource = resolve(root, 'packages/dsh-bot/tests/fixtures/composer-observer.mjs');
   const fixture = resolve(profileDir, 't05-composer-observer.mjs');
-  const disabled = ['llm-deepseek', 'llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry', 'session-telemetry-otel', 'desktop-product-telemetry'];
+  const disabled = ['llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry', 'session-log-deepseek', 'session-telemetry-otel', 'desktop-product-telemetry'];
   writeFileSync(patchPath, [
     '- insert:', '    - id: t05-composer-observer', `      name: ${JSON.stringify(fixture)}`, '      config:',
     `        requestPath: ${JSON.stringify(requestPath)}`, `        responsePath: ${JSON.stringify(responsePath)}`,
     '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'storages'))}`,
     '- id: agent-default-model', '  config:', '    provider: t05-default-provider', '    model: t05-default-model',
+    '- id: llm-deepseek', '  disabled: false', '  config:', '    apiKeyEnv: DSH_BOT_T08C_MOCK_KEY',
+    `    baseURL: ${JSON.stringify(`${mock.baseURL}/v1`)}`, '    thinking: disabled', '    reasoningEffort: off', '    maxTokens: 128',
     ...disabled.flatMap((id) => [`- id: ${id}`, '  disabled: true']),
     '- id: dsh-bot', '  inject: [t05LogReady]', '  config:', '    seedExamples: false',
     `    dataDir: ${JSON.stringify(dataDir)}`, '',
@@ -347,17 +447,23 @@ try {
   writeFileSync(`${requestPath}.tmp`, JSON.stringify({ phase: 'resume', sessionId: prepared.sessionId }));
   renameSync(`${requestPath}.tmp`, requestPath);
   await runHost('resume');
+  check('three prompts used three local mock requests across restart', mock.requests.length, 3);
+  check('every local mock request completed successfully', mock.requests.every((request) => request.path === '/v1/messages'
+    && request.behavior === 'success' && request.outcome === 'completed'));
 } catch (error) {
   failure = redact(error.stack ?? error);
   process.exitCode = 1;
 } finally {
+  await mock?.close();
   const sharedStoreAfter = hashFile(sharedStore);
   try { check('pre-existing shared storage unchanged', sharedStoreAfter, sharedStoreBefore); }
   catch (error) { failure ??= redact(error.stack ?? error); process.exitCode = 1; }
   save('summary.json', {
     runDir, profile, dshHome: home, checks,
     sharedStore: { path: sharedStore, before: sharedStoreBefore, after: sharedStoreAfter },
-    idleSessionsCreated, promptsSent: 0, ...(failure ? { failure } : {}),
+    idleSessionsCreated, mockPromptsSent, realModelPromptsSent: 0,
+    mockRequests: mock?.requests.map(({ path, behavior, outcome }) => ({ path, behavior, outcome })) ?? [],
+    ...(failure ? { failure } : {}),
   });
   console.log(`T05 ${failure ? 'FAIL' : 'PASS'}: ${runDir}`);
   if (failure) console.error(failure);

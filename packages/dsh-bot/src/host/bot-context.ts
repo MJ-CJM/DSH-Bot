@@ -12,6 +12,7 @@ import { DshBotError } from './errors.js';
 import { buildMemoryPrompt } from './memory/prompt.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './memory/tools.js';
 import { BOT_MANAGE_TOOL_NAME, registerBotPresetManage } from './tools/bot-manage.js';
+import { registerBotPresetActivity } from './activity/tracker.js';
 
 export const name = 'dsh-bot-context';
 export const inject = ['dshBots', 'tools', 'llm', 'systemPrompt', 'agents'];
@@ -42,6 +43,7 @@ export function apply(ctx: Context, config: Config): void {
   // Never enqueue a Remote-style get here: preset activation is itself awaited
   // by registry writes. Copy now so retained generations keep their old policy.
   const bot = ctx.dshBots.presetBot(botId);
+  registerBotPresetActivity(ctx, botId, bot.createdAt);
   const memoryPolicy = { ...bot.memory };
   const { maxInjectChars, memorySectionOrder } = ctx.dshBots.config;
   const deniedMemory = new Set(bot.tools.deny.filter((name) => MEMORY_TOOL_NAMES.includes(name)));

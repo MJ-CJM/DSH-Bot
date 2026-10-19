@@ -119,6 +119,50 @@ async function withFacility(run: (fixture: Fixture) => Promise<void>) {
 }
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('validates configurable activity retention limits', () => {
+    expect(Config({})).toMatchObject({ activityMaxSessionsPerBot: 50, activityMaxSessionsTotal: 1000 });
+    for (const field of ['activityMaxSessionsPerBot', 'activityMaxSessionsTotal']) {
+      for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+        expect(() => Config({ [field]: value })).toThrow();
+      }
+      expect(Config({ [field]: 2 })).toHaveProperty(field, 2);
+    }
+  });
+
+  it('keeps the preset creation identity equal to storage across delayed activation', async () => withFacility(async ({ start, presets }) => {
+    const { registry } = await start();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(100);
+    let generationCreatedAt = 0;
+    presets.beforeRegister = async () => {
+      generationCreatedAt = registry.presetBot('alpha').createdAt;
+      now.mockReturnValue(200);
+    };
+    try {
+      const bot = await registry.create({ id: 'alpha', name: 'Alpha' });
+      expect(bot.createdAt).toBe(generationCreatedAt);
+      await registry.recordActivity({ sessionId: 'session-1', botId: 'alpha', role: 'assistant',
+        text: 'Completed', at: 200, seq: 1, expectedBotCreatedAt: generationCreatedAt });
+      expect((await registry.listActivity()).sessions[0]).toMatchObject({ unread: true, lastMessage: { preview: 'Completed' } });
+    } finally { now.mockRestore(); }
+  }));
+
+  it('rejects old Agent activity after same-id recreation when the clock does not advance', async () => withFacility(async ({ start }) => {
+    const { registry } = await start();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(100);
+    try {
+      const old = await registry.create({ id: 'alpha', name: 'Old' });
+      await registry.remove('alpha');
+      now.mockReturnValue(50);
+      const current = await registry.create({ id: 'alpha', name: 'New' });
+      expect(current.createdAt).toBeGreaterThan(old.createdAt);
+      await registry.recordActivity({ sessionId: 'old-session', botId: 'alpha', role: 'assistant', text: 'Late',
+        at: 100, seq: 1, expectedBotCreatedAt: old.createdAt });
+      expect((await registry.listActivity()).sessions).toEqual([]);
+      await registry.recordActivity({ sessionId: 'new-session', botId: 'alpha', role: 'assistant', text: 'Current',
+        at: 100, seq: 1, expectedBotCreatedAt: current.createdAt });
+      expect((await registry.listActivity()).sessions).toHaveLength(1);
+    } finally { now.mockRestore(); }
+  }));
   it('exposes the configured prefix even with zero Bots and reports isolated legacy avatar warnings', async () => withFacility(async ({ start, unit }) => {
     const first = await start({ presetIdPrefix: 'custom-review-' });
     expect(await first.registry.catalogInfo()).toEqual({ presetIdPrefix: 'custom-review-' });

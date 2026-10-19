@@ -213,6 +213,7 @@ describe('built bundle contract', () => {
       await fork.await();
       expect([...active].sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.footer.action', 'sidebar.panellist']);
       expect(mountedEndpoints.sort()).toEqual([
+        'dshBot.activity/list', 'dshBot.activity/markRead',
         'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update',
       ]);

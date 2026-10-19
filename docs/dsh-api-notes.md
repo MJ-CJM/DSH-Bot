@@ -1,5 +1,32 @@
 # DSH API 核实记录
 
+## T08c：Bot 会话活动（Host + Remote）
+
+正式代码为 `packages/dsh-bot/src/host/activity/`、共享 `activity.ts` 和既有 Registry/Store 扩展，无 spike import、无 UI 改动。运行证据与边界见 [T08c 验收记录](acceptance/P1-T08c.md)。下列源码路径相对只读参考 `deepseek-harness@dsh-v0.2.1-rc.2`。
+
+| 公开 API | 来源 | 用法与理由 |
+| --- | --- | --- |
+| `agent/created` | `packages/core/agent/src/runtime-types.ts:248-261`、`src/index.ts:539-556` | 创建和冷恢复都安装活动观察器，不按 source 跳过恢复；使用所属 Agent effect 清理 |
+| `session/event(session,event)` | `packages/core/session/src/index.ts:64-74,872-889,1210-1223` | post-commit 完整事件，按真实 Session 对象隔离；`agent.ctx.sessions.enter` 绑定 Agent scope，见 `core/agent-loop/src/index.ts:654`；无每 token 写入 |
+| `user/message` / `assistant/message` | `packages/core/session/src/types.ts:303-350`、`core/agent-loop/src/agent.ts:434,465-482,529-546` | 只收 `surfaceOp:'append'`、human `source.kind:'user'` 和未中断 assistant 的 text blocks；排除 synthetic user、reasoning、工具调用、图片、失败 attempt、compaction replacement 和流式 delta |
+| `SessionEvent.time/seq` | `packages/core/session/src/types.ts:494-501`、`src/index.ts:817-823` | time 为毫秒，seq 单会话单调；内部持久 `lastEventSeq` 排除重复/过时消息，对外不暴露 |
+| `sessionProjections.snapshot(session).values.title` | `packages/session/session-projection/src/index.ts:330-352`、`session-title/src/index.ts:269-281` | 在消息完成时读取公开 title view，runtime narrow 为 string；缺服务/无标题时省略；标题同样脱敏，重命名在下一条完成消息时刷新 |
+| `agent-preset/selected`、`agents.get`、`scopeOf/scopeChainOf` | `packages/preset/agent-preset-registry/src/index.ts:66-71,348-360`、`packages/core/scope/src/index.ts:87-103` | 空白会话 recompose 不重发 created，按精确 preset 代际交接活动 lease；不依赖可能过期的创建 header 或仅匹配稳定 id |
+
+事件观察只同步提交任务到 Registry 串行队列，Host 卸载先 drain 再关闭原有 `dsh_bot` Domain。Agent/preset 两方均持有 disposer；正常 Bot 更新不改变仍活跃旧代际的所有权。**必须从声明 inject 的 preset `ctx.dshBots` 捕获 sink，不能直接访问 loop 所有的 `agent.ctx.dshBots`**：后者未注入服务，会同步抛错。Agent ctx 只拥有监听器/effect；同步和异步写失败均输出固定信息，不泄露 cause。该差别经真实 profile 失败诊断、公开 Cordis 依赖隔离回归及修复后的完整 profile 验证。
+
+存储写入前校验 Bot 存在及创建时间，防止已删除旧 Agent 的迟到事件重新生成活动；Registry 的候选 preset 和持久 Bot 共享创建时间，避免注册耗时导致身份不一致。同一 Host 内新 Bot 创建时间单调递增，重启从现存记录最大值起算，防止同毫秒删除/同 id 重建及系统时钟回退复用旧身份。纯图片的真实用户消息仍记录 user + 空 preview，以更新最后消息和未读状态；无可见文本的 assistant 工具/推理步骤不覆盖预览。
+
+`dsh_bot` version 1 增加 `activities` 表，旧域缺表可按公开 Domain 行为打开，测试确认既有 Bot/记忆不变。记录存 `sessionId/botId/title?/lastMessage/updatedAt/lastReadAt?`，Remote 再计算 `unread = role==='assistant' && at>(lastReadAt??0)`。仅在完成消息时写入；同一 Agent 的 token 流不落盘。Config 导出 `activityMaxSessionsPerBot=50`、`activityMaxSessionsTotal=1000`，均为正安全整数；按 updatedAt 降序保留，sessionId 破同时间平局，启动时也应用降低后的上限。markRead 不更改 updatedAt 或 LRU；删除 Bot 无论 deleteMemories 真假都清理活动。后台没有跨表事务，失败时可能已部分清理，但 Bot 保留以便重试。
+
+完成事件 `at=max(event.time,previous.at+1,lastReadAt+1)`；`markRead` 写 `max(Date.now(),lastMessage.at,previous.lastReadAt)`。该微小逻辑时钟补偿同毫秒消息与系统时钟回退，保证严格 `>` 的未读规则在读后新回复时成立。相同时间重复 markRead 不再写盘；重复/旧 seq 不改预览或读状态。
+
+预览对完整原文先复用 T06 `memory/secrets.rejectMemorySecrets`，清洗 markdown/代码块/图片及控制字符后再次检查，再按 Unicode 码点截到最多 120（含 `…`）。命中用 `[已隐藏]`，原文、原始标题及异常 cause 不进入活动存储或观察器日志。此为原有签名启发式检测，无法保证识别所有秘密。
+
+Remote 继续使用单一手写 Zod spec、`TypertRemoteService` + `@Remote`、Host `ctx.typert.register` 与已有 Client `$mount`。新增 `dshBot.activity/list` → `{sessions,bots}`（所有现存 Bot 均有聚合，尚无消息时 `lastActivityAt:0,unreadCount:0`）；`dshBot.activity/markRead(sessionId)` → 带 unread 的 session。未知/已淘汰活动返回结构化 `activity/not-found`；存储不可用时 list 降级为 `{sessions:[],bots:[]}`、markRead 返回 `store/unavailable`。**list 是零参数**：rc.2 Client `prepareInvocation` 强制实参数量（`api/gateway/src/client/index.ts:508-518`），不能以 TS 可选参数伪装真正的 `list()`；本轮不提供可选 Bot 过滤端点，调用方可对完整结果筛选。合约类型经公开 `dsh-bot/remote` 导出，未引入 Client Host-only 事件转发；T08d 仍需轮询/重取。
+
+冷恢复时历史 seed 不会重发 `session/event`（`core/session/src/index.ts:550-560`），因此读取已持久活动并订阅后续消息；不扫描历史日志补齐首次安装之前的消息。
+
 ## T08b：原生布局、平台头像与侧栏会话入口（0.1.1）
 
 - 最后一轮截图补充：`--extras-only` 仅中文宽屏亮/暗的编辑器和 Bot 会话弹层，共 4 张。复用公开 `@deepseek-ai/dsh-llm-mock-server` 根出口 `startMockLlmServer`，隔离 profile 的 deepseek provider 只指向 `127.0.0.1` 动态端口，两次 success 响应。使用公开 `session/create({request:{workspaceId,agentPreset}})`、`session/prompt({request:{sessionId,requestId,mode:'queue',content}})`、`session/rename({request:{sessionId,title}})`；preset 来自本包 Host status。`session/list` 的原始 wire 参数名是 **`_request`**（`api/session-controller/src/index.ts:276`），summary 的 blank/running 见 `types.ts:178`；`session/projections.values.sessionStats.turns` 为公开 view（`session/session-stats/src/projection.ts:200`），不使用内部 turnBoundary。`--seed-only` 在真实 rc.2 Host 实测两条非空会话、两次 mock completed，无真实模型；浏览器截图受沙箱限制待宿主运行。既有完整 16 张矩阵已于 `2026-10-19T03-15-49.355Z-573` PASS，最低实测对比度 4.7265:1，取代下文历史待验结论。详见[最后一轮报告](acceptance/P1-T08b-review.md)。

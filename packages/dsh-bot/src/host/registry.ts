@@ -16,6 +16,9 @@ import { composeBotPreset, ensureBotSkillsDirectory } from './composer.js';
 export { composeBotPreset } from './composer.js';
 import { openBotStores } from './store.js';
 import { BotMemoryService } from './memory/service.js';
+import type { ActivityListResult, ActivitySession } from '../shared/activity.js';
+import { activitySessionIdSchema } from '../shared/activity.js';
+import type { ActivityStore } from './store.js';
 
 export interface Config {
   seedExamples: boolean;
@@ -28,8 +31,16 @@ export interface Config {
   memoryListLimit: number;
   enableBotManageInStandard: boolean;
   botManagePersonaPreviewChars: number;
+  activityMaxSessionsPerBot: number;
+  activityMaxSessionsTotal: number;
 }
+const activityLimit = (name: string, fallback: number) => Schema.transform(Schema.number(), (value) => {
+  if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${name} must be a positive safe integer`);
+  return value;
+}).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
+  activityMaxSessionsPerBot: activityLimit('activityMaxSessionsPerBot', 50),
+  activityMaxSessionsTotal: activityLimit('activityMaxSessionsTotal', 1000),
   seedExamples: Schema.boolean().default(true),
   enableBotManageInStandard: Schema.boolean().default(false),
   botManagePersonaPreviewChars: Schema.transform(Schema.number(), (value) => {
@@ -97,6 +108,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   private initialized = false;
   private started = false;
   private startupError?: string;
+  // A live old Agent must not match a same-id replacement even if the system
+  // clock stalls or moves backwards. A scalar suffices for this Host lifetime.
+  private creationTime = 0;
   private readonly diagnostics = new Map<string, string>();
 
   constructor(ctx: Context, config: Config, start: () => Promise<void> = async () => {}) {
@@ -151,13 +165,18 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
         if (errors.length) throw new AggregateError(errors, 'DSH Bot registry cleanup failed');
       };
       try {
-        this.stores = await openBotStores(this.ctx, { beforeClose: async () => {
-          this.stopping = true;
-          await this.tail;
-        } });
+        this.stores = await openBotStores(this.ctx, {
+          activityMaxSessionsPerBot: this.config.activityMaxSessionsPerBot,
+          activityMaxSessionsTotal: this.config.activityMaxSessionsTotal,
+          beforeClose: async () => {
+            this.stopping = true;
+            await this.tail;
+          },
+        });
         for (const id of this.stores.bots.avatarWarnings()) this.ctx.logger.warn(`[dsh-bot] avatar/invalid bot=${id}: unsupported saved avatar hidden; replace or clear explicitly`);
         if (this.config.seedExamples) await this.stores.bots.seedExamples(examples);
         for (const bot of this.stores.bots.list()) {
+          this.creationTime = Math.max(this.creationTime, bot.createdAt);
           try {
             await ensureBotSkillsDirectory(bot.id, this.config);
             await this.acquire(await composeBotPreset(bot, this.ctx, this.config), bot);
@@ -276,6 +295,33 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     }), this.config.memoryListLimit);
   }
 
+  /** Host-only completion sink. The same queue drains before domain shutdown
+   * and serializes accepted messages with Bot deletion and Remote reads. */
+  async recordActivity(input: Parameters<ActivityStore['record']>[0]): Promise<void> {
+    await this.enqueue(async () => { await this.stores.activities.record(input); });
+  }
+
+  async listActivity(): Promise<ActivityListResult> {
+    try { return await this.enqueue(() => this.stores.activities.list()); }
+    catch (error) {
+      if (error instanceof DshBotError && (error.code === 'store/unavailable' || error.code === 'bot/unavailable')) {
+        return { sessions: [], bots: [] };
+      }
+      throw error;
+    }
+  }
+
+  async markActivityRead(sessionId: string): Promise<ActivitySession> {
+    const key = parseInput(activitySessionIdSchema, sessionId);
+    try { return await this.enqueue(() => this.stores.activities.markRead(key)); }
+    catch (error) {
+      if (error instanceof DshBotError && error.code === 'bot/unavailable') {
+        throw new DshBotError('store/unavailable', 'Activity store is unavailable', { cause: error });
+      }
+      throw error;
+    }
+  }
+
   private async acquire(definition: PresetDefinition, bot: BotRecord): Promise<void> {
     this.activating.set(bot.id, structuredClone(bot));
     try {
@@ -355,9 +401,12 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     if (this.stores.bots.list().some((bot) => bot.id === fields.id)) {
       throw new DshBotError('bot/conflict', `Bot '${fields.id}' already exists`);
     }
-    const now = Date.now();
+    const now = Math.max(Date.now(), this.creationTime + 1);
+    this.creationTime = now;
     const candidate = parseInput(botSchema, { ...fields, createdAt: now, updatedAt: now, schemaVersion: 1 });
-    const record = await this.transition(fields.id, candidate, () => this.stores.bots.create(fields));
+    // The generation snapshot and stored identity must share their creation
+    // time even when preset activation crosses a millisecond boundary.
+    const record = await this.transition(fields.id, candidate, () => this.stores.bots.create(fields, candidate.createdAt));
     this.changed(record.id, action);
     return record;
   }
