@@ -151,8 +151,8 @@ describe('built bundle contract', () => {
     for (const key of Object.keys(en.tools) as Array<keyof typeof en.tools>) {
       expect(en.tools[key].match(/\{\w+\}/g)?.sort()).toEqual(zh.tools[key].match(/\{\w+\}/g)?.sort());
     }
-    expect(en.meta.title).toBe('DSH-Bot');
-    expect(zh.meta.title).toBe('DSH-Bot 多智能体');
+    expect(en.meta.title).toBe('DSH-Bot Personal Agents');
+    expect(zh.meta.title).toBe('DSH-Bot 个人智能体');
     expect(require.resolve('dsh-bot/locale/en.json')).toMatch(/locale\/en\.json$/);
     expect(require.resolve('dsh-bot/locale/zh.json')).toMatch(/locale\/zh\.json$/);
     const icon = require.resolve('dsh-bot/icon');

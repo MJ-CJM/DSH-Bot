@@ -1,8 +1,8 @@
 {
   "name": "dsh-bot",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
-  "description": "Manage DSH Bots, personas, tools and memories from a localized workspace.",
+  "description": "Your personal agent workspace for DeepSeek Harness. Create multiple personal agents, each with its own persona, long-term memory, tools and skills, working alongside you over time.",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",

@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "DSH-Bot 多智能体",
-    "description": "面向 DeepSeek Harness 的多智能体工作区。创建具备独立人设、工具与记忆的 Bot。"
+    "title": "DSH-Bot 个人智能体",
+    "description": "你的 Personal Agent 工作台。在 DeepSeek Harness 里创建多个专属个人智能体，各自拥有人设、长期记忆、工具与技能，长期陪你处理工作与生活。"
   },
   "tools": {
     "bot_manage.approval.create": "创建 ID 为 {id}、名称为 {name} 的 Bot 并注册预设？",

@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "DSH-Bot",
-    "description": "A multi-agent workspace for DeepSeek Harness. Create Bots with their own personas, tools, and memories."
+    "title": "DSH-Bot Personal Agents",
+    "description": "Your personal agent workspace for DeepSeek Harness. Create multiple personal agents, each with its own persona, long-term memory, tools and skills, working alongside you over time."
   },
   "tools": {
     "bot_manage.approval.create": "Create Bot {id} named {name} and register its preset?",
