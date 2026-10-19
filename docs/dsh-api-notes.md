@@ -1,5 +1,11 @@
 # DSH API 核实记录
 
+## T08f：会话右栏 Bots tab
+
+锁定 rc.2 公开 `sidebarRightTabs.register` + `sidebar.right.pane.tab`（key=`definition.id`，非 kind）+ `sidebarRight.openTab(kind)` 可干净扩展。正式实现 `kind:dsh-bot-bots` / `id:dsh-bot.right-bots`，复用 T08d `BotList` 紧凑模式及原 catalog/markRead/新会话动作；guide、header utilities 与空白 Hero options 为入口。只有右栏内明确点击导航才一次性跟随目标会话；其它导航及卸载取消。默认 keepMounted=false，各注册归 effect，不写宿主内部 store 或 localStorage。新增 Client dev 依赖精确 rc.2，Host peer 不变。
+
+布局按 session 存浏览器 localStorage，非 Host 会话日志；卸载 Bot 插件保留记录，由宿主显示 unavailable。`tab.signal` 属于右栏包，Bot 自有 cleanup 不依赖其卸载时 abort。准确公开导出、源码行号、files/terminal/browser 示例、设计取舍与完整命令见 [T08f 调研及验收](spikes/P1-T08f-right-tab.md)。本轮 `check` 431 tests 与 `check:spikes` PASS；实际 Host/mock/Remote probe 完成，**真实右栏截图 0/2 FAIL**（Chromium 沙箱阻塞 + 备用浏览器 origin 审批拒绝），持久恢复及卸载占位仅源码结论。
+
 ## T08e：原生工作区会话行 Bot 头像
 
 通过公开 `sidebar.session.row.leading` / `sidebar.session.row.hover`（均 root/list）追加贡献，id 分别为 `dsh-bot-avatar` / `dsh-bot-identity`，`order:0`，所有注册归 `ctx.effect`。owner 只有 `sessionId`；用已有 activity 的 `sessionId → botId` 再查现有 Bot catalog，不绑定或激活 Session、不猜 preset 前缀。两个 catalog 首次读取成功前返回 null；没有 activity、Bot 已删除或摘要已淘汰同样返回 null，不增加占位。刷新期间沿用最近成功快照；跨 Client 删除在下一次成功轮询后反映，不声称即时一致性。

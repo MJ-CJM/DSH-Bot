@@ -16,6 +16,7 @@ import zh from '../../locale/zh.json';
 import TYPERT_REMOTE from '../typert.remote-client.js';
 import type { DshBotRemoteMethods } from '../shared/remote-contract.js';
 import { Config } from './config.js';
+import { registerBotsRightTab } from './right-tab.js';
 import { BotsPage, type BotsPageInjected } from './pages/BotsPage.js';
 import { SessionBotBadge } from './components/SessionBotBadge.js';
 import { SessionBotLeading, SessionBotHover, type SessionBotRowInjected } from './components/SessionBotLeading.js';
@@ -87,8 +88,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     await Promise.all([catalog.refresh(), activity.refresh()]);
   };
   const refresh = async () => { await Promise.all([catalog.refresh(), activity.refresh()]); };
-  const openSession = async (id: string) => {
-    if (!active) return;
+  const openSession = async (id: string, beforeOpen?: (id: SessionId) => void, signal?: AbortSignal) => {
+    if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
     try { await activity.markRead(id); }
     catch {
@@ -96,7 +97,43 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       // and do not block the primary action when the receipt cannot be saved.
       if (active) console.warn(t('activity.readFailed'));
     }
-    if (active && !navigation.aborted) ctx.uiWorkspace.openSession(id as SessionId);
+    if (active && !navigation.aborted && !signal?.aborted) {
+      beforeOpen?.(id as SessionId);
+      ctx.uiWorkspace.openSession(id as SessionId);
+    }
+  };
+  const startBot = async (id: string, workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) => {
+    if (!active || signal?.aborted) return;
+    const navigation = ctx.layout.beginNavigation();
+    const target = () => {
+      const snapshot = ctx.workspaces.list.getSnapshot();
+      if (snapshot.state === 'error') throw new Error(`${t('chat.workspaceUnavailable')} ${snapshot.error?.message ?? ''}`.trim());
+      if (snapshot.phase !== 'ready') throw new Error(t('chat.workspaceLoading'));
+      if (!snapshot.items.length) throw new Error(t('chat.workspaceRequired'));
+      const selected = snapshot.items.find((item) => item.workspaceId === workspaceId);
+      if (!selected) throw new Error(t('chat.workspaceChoose'));
+      return selected;
+    };
+    target();
+    // Recheck the snapshot at action time; Host still owns the final validity check.
+    const statuses = unwrap(await remote().status());
+    if (!active || signal?.aborted || navigation.aborted) return;
+    const status = statuses.find((entry) => entry.id === id);
+    if (status?.preset.state !== 'ok') {
+      void catalog.refresh();
+      throw new Error(status?.preset.reason ?? t(status?.preset.state === 'broken'
+        ? 'card.statusBroken' : status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown'));
+    }
+    // Unlike startSession (void, silently clears main when no workspace),
+    // this public API lets this page await and display Host refusals.
+    // Revalidate after the status query in case the workspace was removed.
+    await ctx.uiWorkspace.openWorkspace(target().workspaceId, (sessionId) => {
+      if (!active || signal?.aborted) throw new Error(t('chat.cancelled'));
+      // This callback is skipped for superseded navigation and runs before
+      // selectPanel unmounts the Bots page (and aborts its local lifetime).
+      preferredWorkspace = workspaceId;
+      beforeOpen?.(sessionId);
+    }, { agentPreset: status.presetId });
   };
   const page: BotsPageInjected = {
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },
@@ -131,37 +168,15 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onUpdate: (id, patch) => mutate(() => remote().update(id, patch)),
     onDuplicate: (id, newId) => mutate(() => remote().duplicate(id, newId)),
     onDelete: (id, deleteMemories) => mutate(() => remote().delete(id, { deleteMemories })),
-    onStart: async (id, workspaceId, signal) => {
-      const target = () => {
-        const snapshot = ctx.workspaces.list.getSnapshot();
-        if (snapshot.state === 'error') throw new Error(`${t('chat.workspaceUnavailable')} ${snapshot.error?.message ?? ''}`.trim());
-        if (snapshot.phase !== 'ready') throw new Error(t('chat.workspaceLoading'));
-        if (!snapshot.items.length) throw new Error(t('chat.workspaceRequired'));
-        const selected = snapshot.items.find((item) => item.workspaceId === workspaceId);
-        if (!selected) throw new Error(t('chat.workspaceChoose'));
-        return selected;
-      };
-      target();
-      // Recheck the snapshot at action time; Host still owns the final validity check.
-      const statuses = unwrap(await remote().status());
-      if (!active || signal?.aborted) return;
-      const status = statuses.find((entry) => entry.id === id);
-      if (status?.preset.state !== 'ok') {
-        void catalog.refresh();
-        throw new Error(status?.preset.reason ?? t(status?.preset.state === 'broken'
-          ? 'card.statusBroken' : status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown'));
-      }
-      // Unlike startSession (void, silently clears main when no workspace),
-      // this public API lets this page await and display Host refusals.
-      // Revalidate after the status query in case the workspace was removed.
-      await ctx.uiWorkspace.openWorkspace(target().workspaceId, () => {
-        if (!active || signal?.aborted) throw new Error(t('chat.cancelled'));
-        // This callback is skipped for superseded navigation and runs before
-        // selectPanel unmounts the Bots page (and aborts its local lifetime).
-        preferredWorkspace = workspaceId;
-      }, { agentPreset: status.presetId });
-    },
+    onStart: startBot,
   };
+  registerBotsRightTab(ctx, {
+    hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list },
+    onOpenSession: (id, signal) => openSession(id, undefined, signal),
+    onStart: startBot, getPreferredWorkspace: page.getPreferredWorkspace,
+    onRefresh: refresh,
+    onManage: () => { if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId); },
+  }, { open: openSession, start: startBot });
   ctx.effect(() => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities', id: 'dsh-bot', locale: namespace,
     inject: () => ({ hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity }, onMarkRead: activity.markRead, onOpenBot: (id: string) => {

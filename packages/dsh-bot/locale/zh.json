@@ -184,6 +184,10 @@
     "bots.newSession": "新会话",
     "bots.history": "会话历史",
     "bots.noSessions": "还没有会话",
-    "bots.emptySessionsHint": "点击上方“新会话”，开始与这个 Bot 聊天。"
+    "bots.emptySessionsHint": "点击上方“新会话”，开始与这个 Bot 聊天。",
+    "rightTab.title": "Bots",
+    "rightTab.open": "打开 Bots 侧栏",
+    "rightTab.description": "打开 Bot 最近的会话，或开始新会话。",
+    "rightTab.openError": "无法打开 Bots 侧栏，请重试。"
   }
 }

@@ -4,14 +4,16 @@
  *   DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs
  * Default: five responsive Bots pages, two Chinese Bot-chat dialogs and two
  * Chinese native workspace lists. --workspace-only captures the latter two.
+ * --right-tab-only captures two Chinese conversation/Bots right-tab surfaces.
  * --extras-only keeps the Chinese editor/dialog regression surfaces.
  * --seed-only verifies committed mock assistant activity without Chromium.
+ * --manual-browser prepares that same Host for an external browser until stopped.
  * No browser download, global install, Desktop mutation or real model calls.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +27,7 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
 import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
-import { captureFailureEvidence, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity, verifyWorkspaceSessionRows } from './screenshot-support.ts';
+import { captureFailureEvidence, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyScreenshotActivity, verifyWorkspaceSessionRows } from './screenshot-support.ts';
 import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
@@ -33,11 +35,13 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const seedOnly = process.argv.includes('--seed-only');
 const extrasOnly = process.argv.includes('--extras-only');
 const workspaceOnly = process.argv.includes('--workspace-only');
+const rightTabOnly = process.argv.includes('--right-tab-only');
+const manualBrowser = process.argv.includes('--manual-browser');
 const mockReply = 'Mock assistant reply / 本地模拟回复：已经整理好资料、关键结论和下一步建议。打开会话即可继续讨论具体细节。';
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists. --workspace-only: 2 zh light/dark native workspace lists. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
-  assert.ok([seedOnly, extrasOnly, workspaceOnly].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
+  assert.ok([seedOnly, extrasOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
   const home = resolve(root, '.dsh-dev');
   assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-dev home is allowed');
@@ -46,6 +50,10 @@ if (process.argv.includes('--help')) {
   const run = resolve(home, 'screenshots', stamp);
   const profile = `shot-${Date.now()}-${process.pid}`;
   const patch = resolve(run, 'profile.patch.yml');
+  const browserAccessFile = resolve(run, 'browser-access.json');
+  const manualStopFile = resolve(run, 'manual-stop');
+  let manualAccessWritten = false;
+  let manualStoppedBy;
   for (const dir of [output, run, resolve(run, 'tmp'), resolve(run, 'workspace')]) mkdirSync(dir, { recursive: true });
   const env = {
     ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1',
@@ -65,6 +73,7 @@ if (process.argv.includes('--help')) {
   const workspaceChoices = [];
   const conversationChecks = [];
   const workspaceRowChecks = [];
+  const rightTabChecks = [];
   const failureEvidence = [];
   const sessionFixtures = [];
   let mock;
@@ -142,13 +151,13 @@ if (process.argv.includes('--help')) {
     assert.ok(existsSync(resolve(root, 'packages/dsh-bot/lib/client.js')), 'Build the package first');
     // Fail early when the runner sandbox cannot launch a browser. The profile
     // installation is not attempted in that case; the same script can be rerun.
-    if (!seedOnly) {
+    if (!seedOnly && !manualBrowser) {
       browser = await chromium.launch({ executablePath: cachedBrowser(), headless: true, chromiumSandbox: true, env, timeout: 30_000 });
       activeContext = await browser.newContext();
       activePage = await activeContext.newPage();
     }
     step = 'mock-start';
-    mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success', 'success', 'success'], successText: mockReply, randomSeed: 2 });
+    mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success', 'success', 'success'], repeatLast: false, successText: mockReply, randomSeed: 2 });
     assert.equal(new URL(mock.baseURL).hostname, '127.0.0.1');
     Object.assign(env, { DSH_BOT_MOCK_KEY: 'mock-key', DEEPSEEK_API_KEY: '', DEEPSEEK_BASE_URL: `${mock.baseURL}/v1` });
     stage = 'profile';
@@ -270,8 +279,34 @@ if (process.argv.includes('--help')) {
       save('mock-sessions.json', { sessionFixtures, activity, clientActivity, shippedClientFactory: true,
         mockPromptsSent, requests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) });
     }
-    stage = seedOnly ? 'seed-validation' : 'screenshots';
-    for (const { language, theme, viewport, width, height } of seedOnly || workspaceOnly ? [] : screenshotCases(extrasOnly)) {
+    if (manualBrowser) {
+      stage = 'manual-host-only';
+      step = 'manual-browser-ready';
+      // This is the fresh loopback Host's task-scoped launch token, not a user
+      // credential. Keep it out of stdout and redacted report/log artifacts.
+      // The token may be exchanged by another browser during this Host lifetime.
+      writeFileSync(browserAccessFile, `${JSON.stringify({ startupUrl: startupUrl.href, origin, profile,
+        workspaceId: workspace.workspaceId, sessionFixtures, stopFile: manualStopFile,
+        instructions: 'Do not send messages in the UI. Only the three completed seed requests are authorized. Create manual-stop to shut down this isolated Host.',
+      }, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+      manualAccessWritten = true;
+      save('summary.json', { status: 'MANUAL_HOST_READY_ONLY', mode: 'manual-browser', visualValidation: 'NOT_RUN',
+        browserAccessFile, manualStopFile, mockPromptsSent, sessionFixtures, profile, run, screenshots: [] });
+      console.log(`Manual browser access file: ${browserAccessFile}`);
+      console.log(`Manual stop file: ${manualStopFile}`);
+      console.log('Host ready only; no screenshots or visual PASS. Do not send messages in the UI.');
+      // Yield between checks so SIGINT/SIGTERM can stop children and unwind all
+      // resources. An exhausted mock sequence fails requests after the seed.
+      while (!interrupted && !existsSync(manualStopFile)) {
+        assert.ok(!ended, 'Manual browser Host stopped unexpectedly');
+        assert.equal(mock.requests.length, 3, 'Unexpected model request during manual browser verification');
+        await new Promise((accept) => setTimeout(accept, 250));
+      }
+      manualStoppedBy = interrupted ? 'signal' : 'manual-stop';
+      assert.equal(mock.requests.length, 3, 'Unexpected model request during manual browser verification');
+    }
+    stage = manualBrowser ? 'manual-host-only' : seedOnly ? 'seed-validation' : 'screenshots';
+    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly)) {
       const copy = language === 'zh' ? zh.ui : en.ui;
       const filename = `${language}-${theme}-${viewport}`;
       step = `${filename}-new-page`;
@@ -396,7 +431,7 @@ if (process.argv.includes('--help')) {
     // Opening each native conversation clears the Host's new-message state,
     // which otherwise replaces its leading slot with a status dot. Run this
     // after the existing matrix so its read/unread fixtures remain unchanged.
-    for (const { language, theme, viewport, width, height } of seedOnly || extrasOnly ? [] : screenshotCases(true)) {
+    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || extrasOnly || rightTabOnly ? [] : screenshotCases(true)) {
       const filename = `${language}-${theme}-${viewport}-workspace`;
       step = `${filename}-new-page`;
       await activeContext.close();
@@ -445,11 +480,90 @@ if (process.argv.includes('--help')) {
       save('progress.json', { overlays, workspaceChoices, conversationChecks, workspaceRowChecks, contrastChecks, screenshots: shots });
       console.log(`PASS: ${language}/${theme}/${viewport} native workspace Bot session rows (16px, centered)`);
     }
-    step = 'matrix-validation';
-    assert.equal(prompts, 0, 'No browser model prompt attempted');
+    for (const { language, theme, viewport, width, height } of rightTabOnly ? screenshotCases(true) : []) {
+      const filename = `${language}-${theme}-${viewport}-right-tab`;
+      const fixture = sessionFixtures[0];
+      step = `${filename}-new-page`;
+      assert.ok(fixture && !fixture.unread, 'Open only the pre-read conversation before both theme captures');
+      await activeContext.close();
+      const context = await browser.newContext({ viewport: { width, height }, locale: 'zh-CN', colorScheme: theme, reducedMotion: 'reduce' });
+      activeContext = context;
+      await context.addCookies(cookies);
+      await context.route('**/api/session/prompt', (route) => { prompts++; return route.abort('blockedbyclient'); });
+      const page = await context.newPage();
+      activePage = page;
+      page.setDefaultTimeout(30_000);
+      page.on('pageerror', (error) => browserErrors.push(redact(error.message)));
+      const recordOverlay = (event) => overlays.push({ language, theme, viewport, surface: 'right-tab', ...event });
+      await installOverlayHandler(page, recordOverlay);
+      await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      await dismissFirstRunOverlays(page, recordOverlay, 'right-tab-new-page');
+      const group = page.locator(`[role="treeitem"][data-row-key="workspace:${workspace.workspaceId}"]`);
+      await group.waitFor();
+      if (await group.getAttribute('aria-expanded') !== 'true') await group.click();
+      await page.waitForFunction(() => document.documentElement.lang.startsWith('zh'));
+      step = `${filename}-open-conversation`;
+      await page.locator(`[role="treeitem"][data-row-key="session:${fixture.sessionId}"]`).click();
+      await page.locator(`[data-conversation-content][data-conversation-session="${fixture.sessionId}"]`).waitFor();
+      await page.getByRole('button', { name: '打开 Bots 侧栏', exact: true }).click();
+      const rightTab = page.locator('[data-bots-right-tab]:visible');
+      await rightTab.waitFor();
+      for (const sample of [bot, researcher]) {
+        await rightTab.locator(`[role="option"][data-bot-id="${sample.id}"]`).getByText(mockReply, { exact: true }).waitFor();
+      }
+      await rightTab.locator('[data-unread]').first().waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      await page.mouse.move(width - 1, height - 1);
+      step = `${filename}-capture`;
+      await dismissFirstRunOverlays(page, recordOverlay, 'before-right-tab-capture');
+      const evidence = await page.evaluate(readBotsRightTab);
+      verifyBotsRightTab(evidence, fixture.sessionId, [bot, researcher], mockReply);
+      const avatars = await measureAvatars(page);
+      const expectedIds = [bot.id, researcher.id];
+      verifyAvatarContrast(avatars, expectedIds);
+      const bodyTheme = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim());
+      rightTabChecks.push({ language, theme, viewport, kind: 'conversation-and-right-tab', ...evidence });
+      contrastChecks.push({ language, theme, viewport, surface: 'right-tab', avatars, expectedIds });
+      await page.screenshot({ path: resolve(output, `${filename}.png`), fullPage: true, animations: 'disabled' });
+      shots.push({ file: `${filename}.png`, language, theme, viewport, width, height, surface: 'right-tab', bodyTheme, avatars, evidence });
+      save('progress.json', { overlays, workspaceChoices, conversationChecks, rightTabChecks, contrastChecks, screenshots: shots });
+      console.log(`PASS: ${language}/${theme}/${viewport} native conversation and Bots right tab with previews/unread`);
+      // Preserve unread fixtures until both captures exist. Only this final
+      // surface exercises navigation, through UI actions and public Host reads.
+      if (theme === 'dark') {
+        step = `${filename}-recent-session`;
+        const recent = sessionFixtures.find((value) => value.botId === researcher.id);
+        assert.ok(recent, 'Research fixture exists');
+        await rightTab.locator(`[role="option"][data-bot-id="${researcher.id}"]`).click();
+        await page.locator(`[data-conversation-content][data-conversation-session="${recent.sessionId}"]`).waitFor();
+        await page.locator(`[data-sidebar-right-panel][data-sidebar-right-session="${recent.sessionId}"] [data-bots-right-tab]`).waitFor();
+        const activity = unwrap(await api.remote.dshBot.activity.list());
+        assert.equal(activity.sessions.find((value) => value.sessionId === recent.sessionId)?.unread, false, 'Right-tab navigation marks the target conversation read');
+        rightTabChecks.push({ language, theme, kind: 'recent-session', botId: researcher.id, sessionId: recent.sessionId, unread: false, rightTabVisible: true });
+        step = `${filename}-new-session`;
+        const fresh = unwrap(await api.remote.dshBot.create({ id: 'shot-no-session', name: 'Fresh / 新助手', description: 'A Bot without a previous conversation.' }));
+        const freshStatus = unwrap(await api.remote.dshBot.status()).find((value) => value.id === fresh.id);
+        assert.equal(freshStatus?.preset.state, 'ok');
+        await rightTab.getByRole('button', { name: zh.ui['bots.refresh'], exact: true }).click();
+        await rightTab.locator(`[role="option"][data-bot-id="${fresh.id}"]`).click();
+        const conversation = page.locator('[data-conversation-content][data-conversation-session][data-content-phase="hero"]');
+        const editor = conversation.getByRole('textbox');
+        const choice = await completeChatWorkspaceChoice(page, editor, workspace.workspaceId, zh.ui);
+        await editor.waitFor();
+        const sessionId = await conversation.getAttribute('data-conversation-session');
+        assert.ok(sessionId && !sessionFixtures.some((value) => value.sessionId === sessionId), 'Bot without history creates a new Host session');
+        const projection = await raw('session/projections', { request: { sessionId } });
+        assert.equal(projection?.values.agentPreset, freshStatus.presetId, 'New conversation uses the clicked Bot preset');
+        await page.locator(`[data-sidebar-right-panel][data-sidebar-right-session="${sessionId}"] [data-bots-right-tab]`).waitFor();
+        rightTabChecks.push({ language, theme, kind: 'new-session', botId: fresh.id, sessionId, agentPreset: projection.values.agentPreset, phase: 'hero', workspaceChoice: choice, rightTabVisible: true, promptsSent: 0 });
+        save('progress.json', { overlays, workspaceChoices, conversationChecks, rightTabChecks, contrastChecks, screenshots: shots });
+      }
+    }
+    step = manualBrowser ? 'manual-host-validation' : 'matrix-validation';
+    if (!manualBrowser) assert.equal(prompts, 0, 'No browser model prompt attempted');
     assert.equal(browserErrors.length, 0, 'Browser page errors; inspect summary');
-    assert.equal(shots.length, seedOnly ? 0 : extrasOnly ? 4 : workspaceOnly ? 2 : 9, 'Complete the requested screenshot set');
-    if (!seedOnly) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
+    assert.equal(shots.length, seedOnly || manualBrowser ? 0 : extrasOnly ? 4 : workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
+    if (!seedOnly && !manualBrowser) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
   } catch (error) {
     failure = redact(error instanceof Error ? error.message : error);
     await diagnoseFailure().catch((error) => { failureEvidence.push({ step, diagnosticError: redact(error) }); });
@@ -464,11 +578,17 @@ if (process.argv.includes('--help')) {
     for (const child of children) child.kill('SIGTERM');
     await until(() => children.size === 0, 'Host shutdown', 10_000).catch(() => { for (const child of children) child.kill('SIGKILL'); });
     await mock?.close();
+    if (manualAccessWritten) {
+      try { unlinkSync(browserAccessFile); }
+      catch (error) { failure ??= redact(error); process.exitCode = 1; }
+    }
     process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal);
-    save('summary.json', { status: failure ? 'FAIL' : 'PASS', mode: seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : workspaceOnly ? 'workspace-only' : 'matrix',
+    save('summary.json', { status: failure ? 'FAIL' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
       mockPromptsSent, sessionFixtures, mockRequests: mock?.requests.map(({ path, outcome }) => ({ path, outcome })),
-      stage, step, failure, failureEvidence, profile, run, prompts, browserErrors,
-      overlays, workspaceChoices, conversationChecks, workspaceRowChecks, contrastChecks, screenshots: shots });
+      stage, step, failure, failureEvidence, profile, run, prompts: manualBrowser ? null : prompts, browserErrors,
+      ...(manualBrowser ? { manualHostOnly: true, visualValidation: 'NOT_RUN', browserPromptInterception: false,
+        browserAccessFile, browserAccessRemoved: manualAccessWritten && !existsSync(browserAccessFile), manualStopFile, manualStoppedBy } : {}),
+      overlays, workspaceChoices, conversationChecks, workspaceRowChecks, rightTabChecks, contrastChecks, screenshots: shots });
     console.log(`Evidence: ${output}`);
   }
 }

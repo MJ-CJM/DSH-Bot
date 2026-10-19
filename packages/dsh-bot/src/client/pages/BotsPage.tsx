@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { botIdSchema } from '../../shared/ids.js';
 import type { BotCreateInput, BotPatch, BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from '../components/BotAvatar.js';
+import { BotList } from '../components/BotList.js';
 import type { ActivityCatalog } from '../activity-state.js';
 import { botSessionRows, previewText, relativeTime, sortBotEntries } from '../activity-view.js';
 import { BotEditor } from '../components/BotEditor.js';
@@ -66,7 +67,6 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
   const locale = t('activity.locale');
   const entries = sortBotEntries(snapshot.entries, activity.bots, locale);
   const selected = entries.find(({ bot }) => bot.id === selectedId) ?? entries[0];
-  const activityByBot = new Map(activity.bots.map((row) => [row.botId, row]));
   const rows = selected ? botSessionRows(selected.bot.id, snapshot.entries, sessions, activity.sessions, workspaces.archivedSessionIds) : [];
   const ready = !snapshot.error && !snapshot.loading && selected?.status?.preset.state === 'ok';
   const [memoryCount, setMemoryCount] = useState<{ count?: number; failed?: boolean }>({});
@@ -90,9 +90,6 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
     if (showDetail) backElement.current?.focus();
     else if (focusListOnReturn.current) { listElement.current?.focus(); focusListOnReturn.current = false; }
   }, [compact, showDetail, dialog]);
-  useEffect(() => {
-    if (selectedId && listElement.current) document.getElementById(`${listId}-${selectedId}`)?.scrollIntoView?.({ block: 'nearest' });
-  }, [selectedId, listId]);
   useEffect(() => {
     const page = pageElement.current;
     if (!page) return;
@@ -193,40 +190,9 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
             <Button variant="primary" size="sm" className={styles.emptyAction} disabled={busy} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
           </div>}
           {entries.length > 0 && <div className={styles.twoPane}>
-            {(!compact || !showDetail) && <div className={styles.botList} ref={listElement} role="listbox" tabIndex={0}
-              aria-label={t('bots.list')} aria-activedescendant={selected ? `${listId}-${selected.bot.id}` : undefined}
-              onKeyDown={(event) => {
-                const current = entries.findIndex(({ bot }) => bot.id === selected?.bot.id);
-                let next = current;
-                if (event.key === 'ArrowDown') next = Math.min(entries.length - 1, current + 1);
-                else if (event.key === 'ArrowUp') next = Math.max(0, current - 1);
-                else if (event.key === 'Home') next = 0;
-                else if (event.key === 'End') next = entries.length - 1;
-                else if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault(); setShowDetail(true); return;
-                } else return;
-                event.preventDefault();
-                setSelectedId(entries[next]?.bot.id);
-                setMore(false);
-              }}>
-              {entries.map(({ bot }) => {
-                const latest = activityByBot.get(bot.id);
-                const preview = latest?.latest ? previewText(latest.latest.preview, t) || t('activity.noPreview') : bot.description || t('bots.noSessions');
-                return <button type="button" role="option" tabIndex={-1} key={bot.id} id={`${listId}-${bot.id}`} data-bot-id={bot.id}
-                  aria-selected={bot.id === selected?.bot.id} className={styles.botOption}
-                  onClick={() => { setSelectedId(bot.id); setShowDetail(true); setMore(false); listElement.current?.focus(); }}>
-                  <BotAvatar bot={bot} size={40} />
-                  <span className={styles.botOptionBody}>
-                    <span className={styles.rowHeading}><span className={styles.rowName}>{bot.name}</span>
-                      {!!latest?.lastActivityAt && <time className={styles.relativeTime} dateTime={new Date(latest.lastActivityAt).toISOString()}>{relativeTime(latest.lastActivityAt, locale)}</time>}
-                    </span>
-                    <span className={styles.rowHeading}><span className={styles.activityPreview} data-activity-preview="" title={preview}>{preview}</span>
-                      {!!latest?.unreadCount && <span className={styles.unreadDot} data-unread="" role="img" aria-label={t('activity.unreadCount', { count: latest.unreadCount })} />}
-                    </span>
-                  </span>
-                </button>;
-              })}
-            </div>}
+            {(!compact || !showDetail) && <BotList entries={entries} activities={activity.bots} t={t}
+              selectedId={selected?.bot.id} listRef={listElement} idPrefix={listId}
+              onSelect={(id) => { setSelectedId(id); setMore(false); }} onActivate={() => setShowDetail(true)} />}
             {selected && (!compact || showDetail) && <article className={styles.botDetail} data-bot-detail={selected.bot.id}>
               {compact && <Button ref={backElement} variant="ghost" size="sm" className={styles.backButton} onClick={() => { focusListOnReturn.current = true; setShowDetail(false); setMore(false); }}>{t('bots.back')}</Button>}
               <header className={styles.detailHeader}>

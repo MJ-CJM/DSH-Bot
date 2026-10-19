@@ -109,6 +109,11 @@
 .activityPreview { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 20px; }
 .relativeTime { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; white-space: nowrap; }
 .unreadDot { flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dsw-alias-state-error-primary); }
+.botListCompact { padding: 4px; border-right: 0; }
+.botListCompact .botOption { gap: 8px; padding: 9px 8px; border-radius: 8px; }
+.botListCompact .botOptionBody { gap: 2px; }
+.botListCompact .rowHeading { gap: 6px; }
+.botListCompact .botOption:disabled { cursor: wait; opacity: 0.55; }
 .botDetail { min-width: 0; padding: 24px 0 24px 28px; }
 .detailHeader { display: flex; flex-direction: column; gap: 16px; }
 .detailTitle { margin: 0 0 5px; font-size: 18px; line-height: 26px; font-weight: 500; overflow-wrap: anywhere; }

@@ -81,6 +81,65 @@ export function verifyWorkspaceSessionRows(rows: ReturnType<typeof readWorkspace
   }
 }
 
+/** Read the native right-tab seat and its visible conversation together. A Bot
+ * page or standalone component must never count as sidebar runtime evidence. */
+export function readBotsRightTab() {
+  const visible = (element: Element | null) => {
+    if (!element || element.closest('[hidden]')) return false;
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+  };
+  const box = (element: Element | null) => {
+    const rect = element?.getBoundingClientRect();
+    return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  };
+  const region = Array.from(document.querySelectorAll('[data-bots-right-tab]')).find(visible) ?? null;
+  const panel = region?.closest('[data-sidebar-right-panel]') ?? null;
+  const tabId = region?.closest('[data-sidebar-right-tab]')?.getAttribute('data-sidebar-right-tab') ?? null;
+  const chip = Array.from(panel?.querySelectorAll('[role="tab"][data-dockkit-tab]') ?? [])
+    .find((element) => element.getAttribute('data-dockkit-tab') === tabId) ?? null;
+  const sessionId = panel?.getAttribute('data-sidebar-right-session') ?? null;
+  const conversation = Array.from(document.querySelectorAll('[data-conversation-content][data-conversation-session]'))
+    .find((element) => element.getAttribute('data-conversation-session') === sessionId && visible(element)) ?? null;
+  return {
+    inTabSlot: !!region?.closest('[data-slot="sidebar.right.pane.tab"]'),
+    inSessionSlot: !!region?.closest('[data-slot="rightbar.session"]'),
+    region: box(region), panel: box(panel), conversation: box(conversation), sessionId, tabId,
+    panelOpen: panel?.hasAttribute('data-sidebar-right-open') === true,
+    chipVisible: visible(chip), chipSelected: chip?.getAttribute('aria-selected') === 'true', chipTitle: chip?.textContent?.trim() ?? '',
+    rows: Array.from(region?.querySelectorAll('[role="option"][data-bot-id]') ?? []).map((row) => {
+      const avatar = row.querySelector('[data-bot-avatar]');
+      const preview = row.querySelector('[data-activity-preview]');
+      const style = preview ? getComputedStyle(preview) : null;
+      return { botId: row.getAttribute('data-bot-id'), visible: visible(row), text: row.textContent ?? '',
+        avatarVisible: visible(avatar), avatarBotId: avatar?.getAttribute('data-bot-id') ?? null, avatar: box(avatar),
+        previewVisible: visible(preview), preview: preview?.textContent ?? '',
+        previewCss: style ? { overflow: style.overflow, textOverflow: style.textOverflow, whiteSpace: style.whiteSpace } : null,
+        unreadVisible: Array.from(row.querySelectorAll('[data-unread]')).some(visible) };
+    }),
+  };
+}
+
+export function verifyBotsRightTab(evidence: ReturnType<typeof readBotsRightTab>, sessionId: string,
+  bots: readonly { id: string; name: string }[], preview: string): void {
+  if (!evidence.inTabSlot || !evidence.inSessionSlot || !evidence.panelOpen || !evidence.panel || !evidence.region
+    || !evidence.chipVisible || !evidence.chipSelected || !evidence.chipTitle.includes('Bots') || !evidence.tabId
+    || evidence.sessionId !== sessionId || !evidence.conversation || evidence.conversation.width <= 0
+    || evidence.conversation.x + evidence.conversation.width > evidence.panel.x + 2) {
+    throw new Error('Native Bots right tab/conversation layout missing');
+  }
+  for (const bot of bots) {
+    const row = evidence.rows.find((value) => value.botId === bot.id);
+    if (!row?.visible || !row.text.includes(bot.name) || !row.avatarVisible || row.avatarBotId !== bot.id
+      || !row.previewVisible || row.preview !== preview || row.previewCss?.overflow !== 'hidden'
+      || row.previewCss.textOverflow !== 'ellipsis' || row.previewCss.whiteSpace !== 'nowrap') {
+      throw new Error(`Native Bots right tab row missing: ${bot.id}`);
+    }
+  }
+  if (!evidence.rows.some((row) => row.unreadVisible)) throw new Error('Native Bots right tab unread indicator missing');
+}
+
 /** DOM-only layout evidence. This measures actual displayed boxes and CSS;
  * responsive classes or jsdom render results are not screenshot evidence. */
 export function readBotsLayout() {

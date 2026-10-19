@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Page } from 'playwright-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readFailureState, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity, verifyWorkspaceSessionRows, type OverlayEvent } from '../scripts/screenshot-support.js';
+import { captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readBotsRightTab, readFailureState, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyScreenshotActivity, verifyWorkspaceSessionRows, type OverlayEvent } from '../scripts/screenshot-support.js';
 import type { ActivityListResult } from '../src/shared/activity.js';
 import en from '../locale/en.json';
 import zh from '../locale/zh.json';
@@ -116,6 +116,32 @@ describe('native workspace screenshot evidence', () => {
       expect(() => verifyWorkspaceSessionRows(rows.map((row) => ({ ...row, inLeadingCell: false })), [fixture])).toThrow('missing');
       expect(() => verifyWorkspaceSessionRows(rows.map((row) => ({ ...row, avatar: { x: 8, y: 2, width: 16, height: 16 } })), [fixture])).toThrow('alignment');
       expect(() => verifyWorkspaceSessionRows(rows.map((row) => ({ ...row, avatar: { x: 8, y: 8, width: 24, height: 24 } })), [fixture])).toThrow('alignment');
+    } finally { bounds.mockRestore(); }
+  });
+});
+
+describe('native right-tab screenshot evidence', () => {
+  const bot = { id: 'atlas', name: 'Atlas' };
+  it('requires the real session/tab slots, selected chrome, visible conversation and complete Bot content', () => {
+    const content = `<section data-bots-right-tab><div role="option" data-bot-id="atlas">Atlas<span data-bot-avatar="whale" data-bot-id="atlas" aria-hidden="true"></span><span data-activity-preview style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Mock reply</span><i data-unread></i></div></section>`;
+    document.body.innerHTML = `<section data-bots-page>${content}</section>`;
+    expect(() => verifyBotsRightTab(readBotsRightTab(), 'session-a', [bot], 'Mock reply')).toThrow('layout missing');
+    document.body.innerHTML = `<div data-conversation-content data-conversation-session="session-a"></div><div data-slot="rightbar.session"><aside data-sidebar-right-panel="push" data-sidebar-right-session="session-a" data-sidebar-right-open><button role="tab" aria-selected="true" data-dockkit-tab="tab2">Bots</button><div data-sidebar-right-tab="tab2"><div data-slot="sidebar.right.pane.tab">${content}</div></div></aside></div>`;
+    const bounds = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.hasAttribute('data-conversation-content') ? new DOMRect(0, 0, 600, 800) : new DOMRect(600, 0, 300, 800);
+    });
+    try {
+      const evidence = readBotsRightTab();
+      expect(() => verifyBotsRightTab(evidence, 'session-a', [bot], 'Mock reply')).not.toThrow();
+      expect(() => verifyBotsRightTab(evidence, 'another-session', [bot], 'Mock reply')).toThrow('layout missing');
+      expect(() => verifyBotsRightTab({ ...evidence, inTabSlot: false }, 'session-a', [bot], 'Mock reply')).toThrow('layout missing');
+      expect(() => verifyBotsRightTab({ ...evidence, chipSelected: false }, 'session-a', [bot], 'Mock reply')).toThrow('layout missing');
+      expect(() => verifyBotsRightTab({ ...evidence, conversation: null }, 'session-a', [bot], 'Mock reply')).toThrow('layout missing');
+      expect(() => verifyBotsRightTab({ ...evidence, rows: evidence.rows.map((row) => ({ ...row, avatarVisible: false })) }, 'session-a', [bot], 'Mock reply')).toThrow('row missing');
+      expect(() => verifyBotsRightTab(evidence, 'session-a', [bot], 'Wrong preview')).toThrow('row missing');
+      expect(() => verifyBotsRightTab({ ...evidence, rows: evidence.rows.map((row) => ({ ...row, unreadVisible: false })) }, 'session-a', [bot], 'Mock reply')).toThrow('unread indicator missing');
+      document.querySelector('[data-bots-right-tab]')?.setAttribute('hidden', '');
+      expect(() => verifyBotsRightTab(readBotsRightTab(), 'session-a', [bot], 'Mock reply')).toThrow('layout missing');
     } finally { bounds.mockRestore(); }
   });
 });

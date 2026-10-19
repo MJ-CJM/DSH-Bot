@@ -184,6 +184,10 @@
     "bots.newSession": "New conversation",
     "bots.history": "Conversation history",
     "bots.noSessions": "No conversations yet",
-    "bots.emptySessionsHint": "Start a new conversation using the button above."
+    "bots.emptySessionsHint": "Start a new conversation using the button above.",
+    "rightTab.title": "Bots",
+    "rightTab.open": "Open Bots sidebar",
+    "rightTab.description": "Switch to a Bot’s latest conversation or start a new one.",
+    "rightTab.openError": "Could not open Bots sidebar. Please try again."
   }
 }

@@ -5,6 +5,8 @@ import { SlotCore, type StoredEntry, resolveSlotLabel } from '@deepseek-ai/dsh-c
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { SidebarRightTabDefinition, SidebarRightTabInjected } from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import { type ComponentType, act, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { vi } from 'vitest';
@@ -132,10 +134,14 @@ export async function mountClient(
   configure?: (remote: ReturnType<typeof remoteDouble>) => void,
   config: Partial<client.Config> = {},
   plugin: typeof client = client,
+  rightSidebar = false,
 ) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const ctx = new Context();
   const core = new SlotCore();
+  const rightSlotInjection: SidebarRightTabInjected = {
+    hooks: { tabInfo: () => () => { throw new Error('This tab test does not supply docking geometry'); } },
+  };
   const unmountFrame = core.register({
     name: 'root',
     children: {
@@ -145,6 +151,11 @@ export async function mountClient(
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
       'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
       'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
+      ...(rightSidebar ? {
+        'sidebar.right.pane.tab': { kind: 'keyed' as const, scope: 'session' as const, inject: rightSlotInjection },
+        'sidebar.right.pane.tab.title': { kind: 'keyed' as const, scope: 'session' as const, inject: rightSlotInjection },
+        'conversation.hero.options': { kind: 'list' as const, scope: 'session' as const },
+      } : {}),
     },
   }, (() => null) as never);
   const remote = remoteDouble(initial);
@@ -163,14 +174,37 @@ export async function mountClient(
     return async () => { remoteMounted = false; await releaseActivity(); await releaseMemory(); await release(); };
   });
   let remoteMounted = true;
+  let rightSession: SessionId | undefined;
+  const rightSessionListeners = new Set<() => void>();
+  const rightMounted = {
+    getSnapshot: () => rightSession,
+    subscribe(listener: () => void) { rightSessionListeners.add(listener); return () => { rightSessionListeners.delete(listener); }; },
+  };
+  const updateRightSession = (id: SessionId | undefined) => {
+    if (!rightSidebar || rightSession === id) return;
+    rightSession = id;
+    for (const listener of rightSessionListeners) listener();
+  };
+  const rightDefinitions = new Map<string, SidebarRightTabDefinition>();
+  const registerRightTab = vi.fn((definition: SidebarRightTabDefinition) => {
+    if (rightDefinitions.has(definition.id)) throw new Error('Duplicate sidebar tab definition');
+    rightDefinitions.set(definition.id, definition);
+    return () => { rightDefinitions.delete(definition.id); };
+  });
+  const openRightTab = vi.fn<Context['sidebarRight']['openTab']>();
+  if (rightSidebar) {
+    ctx.provide('sidebarRight', { mounted: rightMounted, openTab: openRightTab } as unknown as Context['sidebarRight']);
+    ctx.provide('sidebarRightTabs', { register: registerRightTab } as unknown as Context['sidebarRightTabs']);
+  }
   let navigation = new AbortController();
   const beginNavigation = () => { navigation.abort(); navigation = new AbortController(); return navigation.signal; };
-  const openSession = vi.fn<Context['uiWorkspace']['openSession']>(() => { beginNavigation(); });
-  const selectPanel = vi.fn<Context['layout']['selectPanel']>(() => { beginNavigation(); });
+  const openSession = vi.fn<Context['uiWorkspace']['openSession']>((id) => { beginNavigation(); updateRightSession(typeof id === 'string' ? id : id.childSessionId); });
+  const selectPanel = vi.fn<Context['layout']['selectPanel']>(() => { beginNavigation(); updateRightSession(undefined); });
   ctx.provide('layout', { selectPanel, beginNavigation } as unknown as Context['layout']);
   const openWorkspace = vi.fn<Context['uiWorkspace']['openWorkspace']>(async (_id, beforeOpen) => {
     beginNavigation();
     beforeOpen?.('test-opened-session' as never);
+    updateRightSession('test-opened-session' as SessionId);
   });
   let workspaceSnapshot: WorkspaceSnapshot = {
     items: [workspace()], state: 'idle', phase: 'ready', error: null, archivedSessionIds: [], pinnedSessionIds: [],
@@ -250,9 +284,57 @@ export async function mountClient(
     viewMounted = false;
     await act(async () => { root.unmount(); });
   };
+  type RightSurface = 'body' | 'title' | 'opener';
+  const rightSurfaces = new Map<RightSurface, { container: HTMLDivElement; root: ReturnType<typeof createRoot> }>();
+  let openerSessionId = '';
+  let openerSeat = 'conversation.session.header.utilities';
+  const renderRightSurface = (surface: RightSurface) => {
+    const target = rightSurfaces.get(surface);
+    if (!target) return;
+    const slot = surface === 'body' ? 'sidebar.right.pane.tab' : surface === 'title' ? 'sidebar.right.pane.tab.title' : openerSeat;
+    const entry = core.entries(slot).find((item) => surface === 'opener'
+      ? item.options.id === 'dsh-bot-right-tab' : item.options.key === 'dsh-bot.right-bots');
+    renderEntry(entry, target.root, surface === 'opener' ? { sessionId: openerSessionId } : {});
+  };
+  const mountRightSurface = async (surface: RightSurface) => {
+    if (!rightSidebar) throw new Error('Right sidebar services are not enabled in this test');
+    let target = rightSurfaces.get(surface);
+    if (!target) {
+      const element = document.createElement('div');
+      document.body.append(element);
+      target = { container: element, root: createRoot(element) };
+      rightSurfaces.set(surface, target);
+    }
+    await act(async () => { renderRightSurface(surface); });
+    return target.container;
+  };
+  const unmountRightSurface = async (surface: RightSurface) => {
+    const target = rightSurfaces.get(surface);
+    if (!target) return;
+    await act(async () => { target.root.unmount(); });
+    target.container.remove();
+    rightSurfaces.delete(surface);
+  };
+  const rightSubscriptions = rightSidebar ? [
+    core.subscribe('sidebar.right.pane.tab', () => renderRightSurface('body')),
+    core.subscribe('sidebar.right.pane.tab.title', () => renderRightSurface('title')),
+    core.subscribe('conversation.session.header.utilities', () => renderRightSurface('opener')),
+    core.subscribe('conversation.hero.options', () => renderRightSurface('opener')),
+  ] : [];
   return {
     ctx, core, remote, openWorkspace, openSession, selectPanel, mountRemote, container, main, dictionaries,
     sessionListeners,
+    rightDefinitions, registerRightTab, openRightTab, rightSessionListeners,
+    rightSession: () => rightSession,
+    async setRightSession(id: string | undefined) { await act(async () => { updateRightSession(id as SessionId | undefined); }); },
+    mountRightTab: () => mountRightSurface('body'),
+    mountRightTitle: () => mountRightSurface('title'),
+    async mountRightOpener(id: string, hero = false) {
+      openerSessionId = id;
+      openerSeat = hero ? 'conversation.hero.options' : 'conversation.session.header.utilities';
+      return mountRightSurface('opener');
+    },
+    unmountRightTab: () => unmountRightSurface('body'),
     async mountSidebar(wide = true) {
       sidebarWide = wide;
       if (!sidebarContainer) {
@@ -289,11 +371,13 @@ export async function mountClient(
       if (disposed) return;
       disposed = true;
       await unmountPage();
+      for (const surface of [...rightSurfaces.keys()]) await unmountRightSurface(surface);
       await act(async () => { sidebarRoot?.unmount(); });
       sidebarRoot = undefined;
       sidebarContainer?.remove();
       unsubscribeMain();
       unsubscribeSidebar();
+      for (const unsubscribe of rightSubscriptions) unsubscribe();
       container.remove();
       await fork.dispose();
       unmountFrame();
