@@ -173,6 +173,7 @@ function mutation(action: 'create' | 'update' | 'delete') {
 }
 
 describe('bot_manage through published ToolRuntime, approval audit and JSON-backed registry', () => {
+  // Writes more than one page of records to real JSON storage, so allow extra I/O time.
   it('describes the target, changed fields and full deletion count in both approval languages', async () => withFixture(async ({ ctx, registry, create, execute, disk, presets }) => {
     const owner = create();
     await registry.create({ id: 'alpha', name: 'Alpha' });
@@ -213,7 +214,7 @@ describe('bot_manage through published ToolRuntime, approval audit and JSON-back
     expect(await disk()).toBe(before);
     expect(presets.calls).toEqual(calls);
     expect(await memory.count()).toBe(205);
-  }));
+  }), 20_000);
 
   it('warns on self-update and self-delete using the trusted Bot owner, including downstream asks', async () => withFixture(async ({ ctx, registry, create, execute }) => {
     await registry.create({ id: 'alpha', name: 'Alpha' });

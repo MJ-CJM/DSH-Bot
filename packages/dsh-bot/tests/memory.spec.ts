@@ -181,6 +181,7 @@ describe('BotMemoryService with the published JSON storage backend', () => {
     expect(await limited.search({ query: 'extra', limit: 3 })).toHaveLength(3);
   }));
 
+  // Writes more than one page of records to real JSON storage, so allow extra I/O time.
   it('snapshots all pins and recent unpinned records beyond a storage page with stable ties', async () => withMemories(async ({ alpha, beta, domain, store }) => {
     const pinned: MemoryRecord[] = [];
     const recent: MemoryRecord[] = [];
@@ -206,7 +207,7 @@ describe('BotMemoryService with the published JSON storage backend', () => {
     if (!first) throw new Error('Expected a pinned record');
     first.content = 'Caller mutation';
     expect((await alpha.snapshot(0))[0]?.content).toBe('pin-000');
-  }));
+  }), 20_000);
 
   it('cancels operations after a queued wait and snapshots immutable parsed input', async () => withMemories(async ({ alpha, store }) => {
     let release!: () => void;

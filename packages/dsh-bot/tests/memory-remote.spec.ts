@@ -122,6 +122,7 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     ]);
   }));
 
+  // Writes more than one page of records to real JSON storage, so allow extra I/O time.
   it('counts all records beyond the page cap without including another Bot', async () => withFacility(async ({ remote, registry }) => {
     for (let index = 0; index < 205; index++) {
       await registry.memoryFor('alpha').save({ content: `Fact ${index}`, pinned: index % 2 === 0 });
@@ -129,7 +130,7 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     await remote.save('beta', { content: 'Not counted' });
     expect(await remote.list('alpha', { limit: 200 })).toHaveLength(200);
     expect(await remote.count('alpha')).toBe(205);
-  }));
+  }), 20_000);
 
   it('rejects cross-Bot mutation, absent Bots and forged provenance with existing error codes', async () => withFacility(async ({ remote }) => {
     const { id } = await remote.save('alpha', { content: 'Alpha only' });
