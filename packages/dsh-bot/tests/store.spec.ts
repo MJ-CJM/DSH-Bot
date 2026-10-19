@@ -55,6 +55,19 @@ async function expectCode(operation: () => unknown, code: DshBotErrorCode) {
 }
 
 describe('BotStore with the published JSON storage backend', () => {
+  it('reads legacy seed-only registry state and validates/persists the optional Bots workspace id', async () => withStores(async ({ ctx, domain, bots, close }) => {
+    await domain.table('registry_state').put('examples', { status: 'complete' });
+    expect(bots.botsWorkspaceId()).toBeUndefined();
+    await bots.saveBotsWorkspaceId('workspace-one');
+    await expect(bots.saveBotsWorkspaceId('')).rejects.toMatchObject({ code: 'bot/invalid' });
+    expect(bots.botsWorkspaceId()).toBe('workspace-one');
+    await close();
+    const reopened = await openOwned(ctx);
+    expect(reopened.bots.botsWorkspaceId()).toBe('workspace-one');
+    expect(reopened.domain.table('registry_state').get('examples')).toEqual({ status: 'complete' });
+    await reopened.bots.seedExamples([{ id: 'unexpected-seed', name: 'Not seeded' }]);
+    expect(reopened.bots.list()).toEqual([]);
+  }));
   it('keeps version-one records without colors compatible and persists only the curated theme palette', async () => withStores(async ({ ctx, bots, close }) => {
     const old = await bots.create({ id: 'legacy-color', name: 'Legacy' });
     expect(old).not.toHaveProperty('avatarColor');

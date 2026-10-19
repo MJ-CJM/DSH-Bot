@@ -20,6 +20,8 @@ export type CatalogInfo = z.output<typeof catalogInfoSchema>;
 export type BotStatus = z.output<typeof botStatusSchema>;
 export const botHomeSchema = z.strictObject({ path: absoluteDirectorySchema });
 export type BotHome = z.output<typeof botHomeSchema>;
+export const botsWorkspaceSchema = z.strictObject({ workspaceId: z.string().min(1), path: absoluteDirectorySchema });
+export type BotsWorkspace = z.output<typeof botsWorkspaceSchema>;
 // Process-local invalidation only: consumers always re-read authoritative data.
 // No persisted revision, user text, paths or credential-shaped payloads travel here.
 export const botChangeSchema = z.strictObject({ revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) });
@@ -152,6 +154,7 @@ export const dshBotRemoteSpec = {
     'dshBot/status': { ...owner, parameters: [], result: codec('BotStatus[]', z.array(botStatusSchema)) },
     'dshBot/get': { ...owner, parameters: [id], result: bot },
     'dshBot/ensureHome': { ...owner, parameters: [botId], result: activityResultCodec('BotHome', botHomeSchema) },
+    'dshBot/ensureBotsWorkspace': { ...owner, parameters: [], result: activityResultCodec('BotsWorkspace', botsWorkspaceSchema) },
     'dshBot/create': { ...owner, parameters: [parameter('input', 'BotCreateInput', botCreateSchema)], result: bot },
     'dshBot/update': { ...owner, parameters: [id, parameter('patch', 'BotPatch', botPatchSchema)], result: bot },
     'dshBot/duplicate': { ...owner, parameters: [id, parameter('newId', 'BotId', botIdSchema)], result: bot },

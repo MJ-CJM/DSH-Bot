@@ -302,7 +302,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.container.querySelector('article')?.textContent).toContain('A careful helper');
     expect(app.container.querySelector('article')?.textContent).toContain('🦊');
     await click(button(app.container, t['bots.newSession']));
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-selected/alpha-bot' });
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
   });
@@ -439,7 +439,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     await app.setWorkspaces({ items: [] });
     await click(button(app.container, t['bots.newSession']));
     expect(app.remote.methods.ensureHome).toHaveBeenCalledExactlyOnceWith('alpha-bot');
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-selected/alpha-bot' });
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.container.querySelector('dialog')).toBeNull();

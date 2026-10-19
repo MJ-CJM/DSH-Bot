@@ -12,7 +12,7 @@ import {
 import type { ActivityListOptions, ActivityListResult, ActivityRecord, ActivitySession } from '../shared/activity.js';
 import { createActivityPreview } from './activity/preview.js';
 import {
-  avatarSchema, botRecordFields, botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, memoryAddSchema,
+  avatarSchema, botRecordFields, botRegistryStateSchema, botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, memoryAddSchema,
   memoryListOptionsSchema, memoryPatchSchema, memorySchema, normalizeBotPatch, normalizeMemoryContent, timestampSchema,
 } from '../shared/schema.js';
 import type {
@@ -31,13 +31,12 @@ function publicBot(record: StoredBot): BotRecord {
 }
 const invalidAvatar = (record: StoredBot) => record.avatar !== undefined && !avatarSchema.safeParse(record.avatar).success;
 
-const seedStateSchema = z.strictObject({ status: z.enum(['pending', 'complete']) });
 const storedActivitySchema = activityRecordSchema.extend({ lastEventSeq: z.number().int().nonnegative().optional() });
 type StoredActivity = z.output<typeof storedActivitySchema>;
 export const botDomain = defineDomain({
   name: 'dsh_bot', version: 1,
   tables: { bots: domainTable(storedBotSchema), memories: domainTable(memorySchema),
-    registry_state: domainTable(seedStateSchema), activities: domainTable(storedActivitySchema) },
+    registry_state: domainTable(botRegistryStateSchema), activities: domainTable(storedActivitySchema) },
 });
 type BotDomain = Domain<typeof botDomain>;
 
@@ -93,6 +92,15 @@ async function deleteBotActivities(domain: BotDomain, botId: string): Promise<vo
 export class BotStore {
   constructor(private readonly domain: BotDomain) {}
 
+  botsWorkspaceId(): string | undefined {
+    return read(() => this.domain.table('registry_state').get('bots-workspace')?.botsWorkspaceId);
+  }
+
+  async saveBotsWorkspaceId(id: string): Promise<void> {
+    const state = parseInput(botRegistryStateSchema, { botsWorkspaceId: id });
+    await write(this.domain, () => this.domain.table('registry_state').put('bots-workspace', state));
+  }
+
   /** A durable marker prevents reseeding after users deliberately remove every Bot.
    * A pending batch resumes missing examples after an interrupted initial write.
    */
@@ -105,17 +113,17 @@ export class BotStore {
       const previous = state.get('examples');
       if (previous?.status === 'complete') return;
       if (previous === undefined && bots.size > 0) {
-        await state.put('examples', seedStateSchema.parse({ status: 'complete' }));
+        await state.put('examples', botRegistryStateSchema.parse({ status: 'complete' }));
         return;
       }
-      await state.put('examples', seedStateSchema.parse({ status: 'pending' }));
+      await state.put('examples', botRegistryStateSchema.parse({ status: 'pending' }));
       for (const example of examples) {
         if (bots.get(example.id)) continue;
         const now = Date.now();
         const record = parseInput(botSchema, { ...example, createdAt: now, updatedAt: now, schemaVersion: 1 });
         await bots.put(record.id, record);
       }
-      await state.put('examples', seedStateSchema.parse({ status: 'complete' }));
+      await state.put('examples', botRegistryStateSchema.parse({ status: 'complete' }));
     });
   }
 

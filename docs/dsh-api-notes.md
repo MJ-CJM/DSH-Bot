@@ -1,5 +1,28 @@
 # DSH API 核实记录
 
+## T08i：共享 Bots 工作区
+
+本节替代 T08h 主入口使用私有 home 作为 cwd 的方案。以下为实现前对只读 `deepseek-harness@dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317` 的公开面核实；实际运行结果另记 [T08i 验收](acceptance/P1-T08i.md)。源码路径相对该参考仓库。
+
+| 公开接口 / 行为 | 源码出处 | 本轮用法与边界 |
+| --- | --- | --- |
+| Host `ctx.workspaceRegistry`，`resolveByPath(path)`、`create(path,title?)` | `packages/workspace/workspace/package.json:16-25` 根出口；`src/index.ts:2-5,170,222-244,495-523`；README 公开服务 API | 插件可依赖的公开服务；仅从 `@deepseek-ai/dsh-workspace` 根入口做类型引用。root 先经公开 `resolveDshHome()` 及受管目录检查创建，再按 canonical path 复用，否则 `create(path,'Bots')`。create 自带宿主串行幂等；本插件仍使用 registry 现有队列 |
+| create 的 title 仅用于新纪录；同 canonical path 返回既有实体 | `workspace/workspace/src/index.ts:223-230,510-523` | 不调用 setTitle；用户手动改名及已有同路径工作区名均保留。删除后生成的是新记录，重新使用默认标题 Bots |
+| 删除只移除登记及其成员列表，保留目录和所有 session logs | `workspace/workspace/src/index.ts:302-311,585-617` | 不归档、不删日志、不删目录；`archivedSessionIds` 是全局集合，delete 复制原 state，保留全局归档与固定状态。重建后不重新 attach 历史：尊重删除后的未分组/归档状态，不搬动其他工作区会话；T08h 私有 cwd 历史本来也不满足 Bots 根的精确相等规则 |
+| 首次迁移按历史 cwd 建组，仅 `initialized=false` 运行 | `workspace/workspace/src/index.ts:198-219,650-690`；delete 保持 `initialized:true` 于 `:592` | 正常删除后重启不会重做迁移。只有人为清空 workspace 域才可能触发原生迁移；本插件不清空或修改该域 |
+| 成员 attach 必须真实 cwd 精确等于 workspace.path；workspaceId 创建强制 cwd 为该根 | `workspace/workspace/src/entity.ts:102-149`；`api/session-controller/src/commands.ts:111-150` | 新 Bot 会话传 `{workspaceId,agentPreset}`，不再传 cwd。私有 home 仅用于提示与文件组织，不是隔离边界 |
+| Client `ctx.workspaces.create({path}) → Promise<WorkspaceView>` | `api/workspace-controller/src/client/index.ts:16-23,33-36`、`service.ts:55,130-133`、`model.ts:98-99`；Host `commands.ts:44-60` | 有 defaultCwd 时经此公开 API 幂等创建/复用该目录工作区；不写用户权限设置 |
+| 原生 fs 越界和提权审批 | `fs/tool-fs/src/write.ts:129-143`、`sandbox.ts:87-107`；`sandbox/sandbox/src/escalation.ts:172-218`；`interaction/user-approval/src/types.ts:91-126`；`core/session/src/types.ts:358-389` | 模型调用 write 经 resolvePolicy/fs.writeText；越界返回 FS_SANDBOX_DENIED，sandbox_permissions + justification 经 approveEscalation/ctx.approval.request。隔离测试以公开 session/event 与 approval/request 观察 tool/call/result 和 pending 请求，并由测试 responder 拒绝；实际结果以本轮验收为准 |
+| 原生空白会话行不挂 leading slot | `client/ui-workspace/src/client/rows/Rows.tsx:633-635` | 空白新会话检查 Bots 归属与原生输入框可用；鲸鱼头像在同组已完成 mock 会话行回归。保持 T08e 活动身份，不绕过原生 blank/archived 条件 |
+
+`dshBot/ensureBotsWorkspace()` 新增零参数严格 Remote，返回 `{workspaceId,path}`；`ensureHome(botId)` 仍返回 Bot 子目录。工作区 id 置于既有 `dsh_bot.registry_state` 的独立 `bots-workspace` 行，扩展 schema 兼容旧的 examples 状态行，写前 parse。每次以真实 path 查询为准并修正存储 id，不把失效 id 当作有效缓存。启动时尝试恢复；暂时失败只记录诊断，保留 Bot 管理与后续重试。跨工作区存储与 Bot 存储不存在原子事务：id 写入失败保留已经创建的工作区，下次按 path 复用并补写。
+
+Cordis `inject` 的对象形式是服务名到 intercept config 的映射（`vendor/cordis/src/registry.ts:12-19`），rc.2 不接受 `{required,optional}` 嵌套结构。本插件保留原必需注入数组，在已有 `loader.await()` 后通过公开 `ctx.get('workspaceRegistry')` 查询；缺少该服务时 ensure 返回 `bot/unavailable`，不阻塞其他 Bot 管理。初轮误用嵌套结构导致等待名为 required/optional 的服务，已在正式实现修正，并用真实 Cordis Host 装卸及 native WorkspaceRegistry 测试通过。
+
+私有 home 提示属于 `agent/created` 中的 Agent effect，与 memory 开关无关；路径只来自 ensureHome。T08i r1 将该段精简为三句英文：私有目录绝对路径及文件放置要求、当前 cwd 与共享 Bots 根、Bot 互不隔离及根外写入遵循原生权限/审批；失败降级为不含路径的一句英文，不阻塞会话。defaultCwd 会话提示其实际 cwd，避免错误称其当前目录仍为 Bots 根。删除 Bot 只处理原有归属检查后的 home/marker，以及空的 Bot 父目录，从不移除 Bots 根或工作区登记。
+
+保留原生 `persona.complete=true` 语义：此设置抑制其他 system-prompt sections，包括 home 与 memory；默认 `complete=false` 时两者按通常条件生效。本插件不覆盖用户完整人设设置。源码：`packages/preset/persona/src/index.ts:42-43`、`packages/core/system-prompt/src/index.ts:653-685`。
+
 ## T08h：每 Bot 私有 home 与免工作区聊天
 
 本节覆盖 T08/T08b/T08d 中“新会话必须选择工作区”的历史行为；工作区流程保留为次要操作。源码只读复核基线为 `deepseek-harness@dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`，下表路径相对该仓库。运行结果与截图边界见 [T08h 验收](acceptance/P1-T08h.md)。

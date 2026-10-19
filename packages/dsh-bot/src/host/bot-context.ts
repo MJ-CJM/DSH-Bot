@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis';
+import { dirname } from 'node:path';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-api-session-controller';
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
@@ -91,6 +92,23 @@ export function apply(ctx: Context, config: Config): void {
       // replace the cached system prefix of this live Agent.
       const memoryText = memory
         ? buildMemoryPrompt(await memory.snapshot(memoryPolicy.injectLimit), maxInjectChars) : '';
+      let homeText = 'Private directory unavailable; use the current workspace under native permissions and approval.';
+      try {
+        const { path } = await ctx.dshBots.ensureHome(botId);
+        const root = dirname(dirname(path));
+        const cwd = agent.session.header.cwd;
+        homeText = [
+          `Your private working directory is ${JSON.stringify(path)}; put your files there.`,
+          cwd === root
+            ? `Your cwd is the shared Bots root ${JSON.stringify(root)}.`
+            : `Your cwd is ${JSON.stringify(cwd)}; the shared Bots root is ${JSON.stringify(root)}.`,
+          'Bots share this root without isolation; writes outside it follow native permissions and approval.',
+        ].join('\n');
+      } catch {
+        // Filesystem failure must not prevent ordinary session initialization.
+        // Do not expose a guessed or unverified private path in the fallback.
+        ctx.logger.warn(`[dsh-bot] private home prompt unavailable bot=${botId}`);
+      }
       if (stopped) throw new DshBotError('bot/unavailable', `Bot '${botId}' context is unloading`);
       const dispose = agent.ctx.effect(() => {
         const releases: Array<() => void> = [];
@@ -106,6 +124,9 @@ export function apply(ctx: Context, config: Config): void {
         try {
           // Do not silently ignore unknown, same-layer or reserved tool names.
           if (deny.length) releases.push(agent.ctx.tools.restrict({ deny }));
+          releases.push(agent.ctx.systemPrompt.section({
+            name: 'dsh-bot:home', order: memorySectionOrder, text: homeText, interpolate: false,
+          }));
           if (memory) {
             // restrict() only hides inherited tools in rc.2. Omit denied local
             // definitions so schema lookup and dispatch agree for memory tools.

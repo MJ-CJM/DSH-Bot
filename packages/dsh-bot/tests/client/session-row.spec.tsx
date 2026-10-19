@@ -9,7 +9,7 @@ import type { ActivitySnapshot } from '../../src/client/activity-state.js';
 import type { CatalogSnapshot } from '../../src/client/state.js';
 import type { ActivitySession } from '../../src/shared/activity.js';
 import { SessionBotHover, SessionBotLeading, type SessionBotRowInjected, type SessionBotRowProps } from '../../src/client/components/SessionBotLeading.js';
-import { bot, click, loadBuiltClient, mountClient } from './helpers.js';
+import { bot, click, loadBuiltClient, mountClient, workspace } from './helpers.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -154,6 +154,25 @@ describe('Bot identity in public native session row seats', () => {
     expect(app.sessionListeners.size).toBe(0);
     expect(app.openSession).not.toHaveBeenCalled();
     expect(app.remote.methods.activity.markRead).not.toHaveBeenCalled();
+  });
+
+  it('keeps the whale on completed Bot sessions in Bots without changing other workspace or ungrouped rows', async () => {
+    const { app, ids } = await setup();
+    const other = 'session-other-workspace';
+    const ungrouped = 'session-ungrouped';
+    const bots = { ...workspace('bots-workspace', 'Bots'), path: '/test/dsh-bot/bots', sessionIds: [sessionId] };
+    const existing = workspace('existing-workspace', 'Existing project');
+    const before = [bots, existing];
+    await app.setWorkspaces({ items: before });
+    const { container } = await mountRows(app, [...ids, other, ungrouped]);
+    expect(container.querySelector(`[data-test-row="${sessionId}"] [data-bot-avatar="whale"]`)).not.toBeNull();
+    expect(container.querySelector(`[data-test-row="${other}"] [data-bot-session-leading]`)).toBeNull();
+    expect(container.querySelector(`[data-test-row="${ungrouped}"] [data-bot-session-leading]`)).toBeNull();
+    expect(app.ctx.workspaces.list.getSnapshot().items).toEqual(before);
+    expect(app.createWorkspace).not.toHaveBeenCalled();
+    expect(app.openWorkspace).not.toHaveBeenCalled();
+    expect(app.createSession).not.toHaveBeenCalled();
+    expect(app.sessionListeners.size).toBe(0);
   });
 
   it('removes both decorations after catalog deletion even while the activity mapping remains', async () => {

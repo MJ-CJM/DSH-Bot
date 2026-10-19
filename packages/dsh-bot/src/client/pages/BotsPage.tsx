@@ -38,6 +38,7 @@ export interface BotsPageInjected extends ChatLauncherActions {
   onDuplicate(id: string, newId: string): Promise<void>;
   onDelete(id: string, deleteMemories: boolean, deleteHome: boolean): Promise<void>;
   onEnsureHome(id: string): Promise<string>;
+  onEnsureBotsWorkspace(): Promise<string>;
   onPickDirectory?: () => Promise<string | null>;
 }
 export type BotsPageProps = InjectFace<BotsPageInjected> & PropsLocale<'dsh-bot'>;
@@ -48,7 +49,7 @@ function detail(error: unknown): string {
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onStartInWorkspace, onEnsureHome, onPickDirectory, getPreferredWorkspace, t }: BotsPageProps) {
+export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onStartInWorkspace, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, getPreferredWorkspace, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
@@ -263,7 +264,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
         key={dialog.kind === 'edit' ? dialog.bot.id : 'new'}
         memoryPanel={dialog.kind === 'edit' ? <MemoryTab
           bot={snapshot.entries.find(({ bot }) => bot.id === dialog.bot.id)?.bot ?? dialog.bot} create={createMemoryPanel} t={t} /> : undefined}
-        bot={dialog.kind === 'edit' ? dialog.bot : undefined} onEnsureHome={onEnsureHome} onPickDirectory={onPickDirectory} busy={busy} onSave={save} onCancel={() => setDialog(undefined)} t={t} />}
+        bot={dialog.kind === 'edit' ? dialog.bot : undefined} onEnsureHome={onEnsureHome} onEnsureBotsWorkspace={onEnsureBotsWorkspace} onPickDirectory={onPickDirectory} busy={busy} onSave={save} onCancel={() => setDialog(undefined)} t={t} />}
       {dialog?.kind === 'memory' && <Modal title={t('memory.title')} busy={busy} onClose={() => setDialog(undefined)} t={t}>
         <MemoryTab bot={snapshot.entries.find(({ bot }) => bot.id === dialog.bot.id)?.bot ?? dialog.bot} create={createMemoryPanel} t={t} />
       </Modal>}

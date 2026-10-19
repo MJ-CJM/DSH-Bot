@@ -8,6 +8,8 @@ import type { KvUnit } from '@deepseek-ai/dsh-storage';
 import * as storageDomain from '@deepseek-ai/dsh-storage-domain';
 import type { Domain } from '@deepseek-ai/dsh-storage-domain';
 import * as storageJson from '@deepseek-ai/dsh-storage-json';
+import { SessionId } from '@deepseek-ai/dsh-session';
+import { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace';
 import { describe, expect, it, vi } from 'vitest';
 // Like bundle.spec, run against the current build produced by pnpm check.
 // This also exercises TypeScript's lowering of the standard Remote decorators.
@@ -97,6 +99,12 @@ async function facility() {
     };
     return {
       ctx, root, presets, start,
+      workspaces: async () => {
+        const headers: { id: ReturnType<typeof SessionId>; cwd: string; createdAt: number }[] = [];
+        ctx.provide('sessionPersistence', { list: async () => headers.map((header) => ({ header })) } as unknown as Context['sessionPersistence']);
+        await ctx.plugin(WorkspaceRegistry).await();
+        return { registry: ctx.workspaceRegistry, headers };
+      },
       unit: () => {
         const unit = units.get('dsh_bot');
         if (!unit) throw new Error('Bot domain has not been opened');
@@ -125,6 +133,89 @@ async function withFacility(run: (fixture: Fixture) => Promise<void>) {
 }
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('creates a single 0700 shared workspace on startup and persists its id for concurrent ensures', async () => withFacility(async ({ ctx, start, root, workspaces }) => {
+    const { registry: native } = await workspaces();
+    const create = vi.spyOn(native, 'create');
+    const { registry } = await start();
+    const path = join(root, 'dsh-bot', 'bots');
+    expect(native.list()).toHaveLength(1);
+    const shared = native.list()[0];
+    if (!shared) throw new Error('Shared Bots workspace was not created');
+    expect(shared).toMatchObject({ path, title: 'Bots' });
+    expect((await stat(path)).mode & 0o777).toBe(0o700);
+    expect(await Promise.all(Array.from({ length: 12 }, () => registry.ensureBotsWorkspace())))
+      .toEqual(Array.from({ length: 12 }, () => ({ workspaceId: shared.id, path })));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(ctx.storageDomain.get('dsh_bot')?.table('registry_state').get('bots-workspace')).toEqual({ botsWorkspaceId: shared.id });
+  }));
+
+  it('reuses the canonical path without overwriting user titles and repairs a stale stored id', async () => withFacility(async ({ ctx, start, root, workspaces }) => {
+    const { registry: native } = await workspaces();
+    const path = join(root, 'dsh-bot', 'bots');
+    await mkdir(path, { recursive: true });
+    const existing = await native.create(path, 'My renamed bots');
+    const { registry, stop } = await start();
+    expect(await registry.ensureBotsWorkspace()).toEqual({ workspaceId: existing.id, path });
+    expect(existing.title).toBe('My renamed bots');
+    const domain = ctx.storageDomain.get('dsh_bot');
+    if (!domain) throw new Error('Bot storage domain was not opened');
+    const state = domain.table('registry_state');
+    await state.put('bots-workspace', { botsWorkspaceId: 'stale-workspace-id' });
+    await stop();
+    const restarted = await start();
+    expect(await restarted.registry.ensureBotsWorkspace()).toEqual({ workspaceId: existing.id, path });
+    expect(native.list()).toHaveLength(1);
+    expect(ctx.storageDomain.get('dsh_bot')?.table('registry_state').get('bots-workspace')).toEqual({ botsWorkspaceId: existing.id });
+    expect(existing.title).toBe('My renamed bots');
+  }));
+
+  it('recreates a deleted workspace on demand and restart, preserving history, archive and unrelated workspaces', async () => withFacility(async ({ ctx, start, root, workspaces }) => {
+    const { registry: native, headers } = await workspaces();
+    const { registry, stop } = await start();
+    const first = native.list()[0];
+    if (!first) throw new Error('Shared Bots workspace was not created');
+    const sessionId = SessionId('historical-bot');
+    headers.push({ id: sessionId, cwd: first.path, createdAt: 1 });
+    await first.attachSession(sessionId);
+    await native.archiveSession(sessionId);
+    const unrelated = await native.create(root, 'Keep this workspace');
+    await registry.create({ id: 'alpha', name: 'Alpha' });
+    await registry.recordActivity({ sessionId, botId: 'alpha', role: 'assistant', text: 'Historic reply', at: 1 });
+    await native.delete(first.id);
+    expect(native.archivedSessionIds).toEqual([sessionId]);
+    const next = await registry.ensureBotsWorkspace();
+    expect(next.workspaceId).not.toBe(first.id);
+    expect(native.list().find((entry) => entry.id === next.workspaceId)?.sessionIds).toEqual([]);
+    expect(native.archivedSessionIds).toEqual([sessionId]);
+    expect((await registry.listActivity()).sessions).toHaveLength(1);
+    expect((await stat(first.path)).isDirectory()).toBe(true);
+    const nextEntity = native.list().find((entry) => entry.id === next.workspaceId);
+    if (!nextEntity) throw new Error('Shared Bots workspace was not recreated');
+    await native.delete(nextEntity.id);
+    await stop();
+    const restarted = await start();
+    const final = await restarted.registry.ensureBotsWorkspace();
+    expect(final.workspaceId).not.toBe(next.workspaceId);
+    expect(native.list().find((entry) => entry.id === unrelated.id)?.title).toBe('Keep this workspace');
+    expect(native.list()).toHaveLength(2);
+    expect(ctx.storageDomain.get('dsh_bot')?.table('registry_state').get('bots-workspace')).toEqual({ botsWorkspaceId: final.workspaceId });
+  }));
+
+  it('keeps Bot management ready on workspace failure and retries without creating duplicate workspaces', async () => withFacility(async ({ start, workspaces, unit }) => {
+    const { registry: native } = await workspaces();
+    const create = vi.spyOn(native, 'create').mockRejectedValueOnce(new Error('Workspace backend unavailable'));
+    const { registry } = await start();
+    await registry.create({ id: 'alpha', name: 'Alpha' });
+    expect(await registry.list()).toHaveLength(1);
+    const write = vi.spyOn(unit(), 'putRecord').mockRejectedValueOnce(new Error('Bot storage unavailable'));
+    await expect(registry.ensureBotsWorkspace()).rejects.toMatchObject({ code: 'store/unavailable' });
+    write.mockRestore();
+    expect(native.list()).toHaveLength(1);
+    const result = await registry.ensureBotsWorkspace();
+    expect(result.workspaceId).toBe(native.list()[0]?.id);
+    expect(create).toHaveBeenCalledTimes(2); // failed startup, then one actual create
+  }));
+
   it('ensures a private home under the public DSH home, separately from configured skill data', async () => withFacility(async ({ start, root }) => {
     const { registry, stop } = await start();
     await registry.create({ id: 'alpha', name: 'Alpha', defaultCwd: root });

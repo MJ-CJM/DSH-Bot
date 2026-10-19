@@ -32,7 +32,8 @@ async function fixture() {
     listProviders: () => [...catalogs.keys()].map((id) => ({ id, name: id })), listModels,
   } as unknown as Context['llm']);
   const list = vi.fn(async () => structuredClone([...records.values()]));
-  ctx.provide('dshBots', { presetBot, list, config: RegistryConfig({}) } as unknown as Context['dshBots']);
+  const ensureHome = vi.fn(async (id: string) => ({ path: `/fixture/dsh-bot/bots/${id}/home` }));
+  ctx.provide('dshBots', { presetBot, list, ensureHome, config: RegistryConfig({}) } as unknown as Context['dshBots']);
   const requestApproval = vi.fn(async (_request: { agent: Agent; toolName: string }) => 'rejected' as const);
   ctx.provide('approval', { request: requestApproval } as unknown as Context['approval']);
   const liveAgents = new Map<string, Agent>();
@@ -79,9 +80,9 @@ async function fixture() {
   // These are event payload fixtures, not a model/session runtime. Scope routing,
   // restriction resolution and effect disposal use the actual published APIs.
   let sequence = 0;
-  const agent = (parent?: object) => {
+  const agent = (parent?: object, cwd = '/fixture/dsh-bot/bots') => {
     const modelState: { header?: { config: ModelSelection }; pending: ModelSelection | null } = { pending: null };
-    const session = { id: SessionId(`fixture-session-${++sequence}`), requestHeader: () => modelState.header };
+    const session = { id: SessionId(`fixture-session-${++sequence}`), header: { cwd }, requestHeader: () => modelState.header };
     modelStates.set(session, modelState);
     const payload = { id: `fixture-${++sequence}`, ctx, session };
     const subject = payload as Agent;
@@ -106,7 +107,7 @@ async function fixture() {
     callId: ToolCallId(`manage-${++sequence}`), name: 'bot_manage', arguments: args,
     agent: subject, signal: new AbortController().signal,
   });
-  return { ctx, records, presetBot, preset, plainPreset, standardManage, agent, catalogs, listModels, list, requestApproval, manage,
+  return { ctx, records, presetBot, preset, plainPreset, standardManage, agent, catalogs, listModels, list, ensureHome, requestApproval, manage,
     close: () => ctx.fiber.dispose() };
 }
 
@@ -116,6 +117,43 @@ async function withFixture(run: (value: Awaited<ReturnType<typeof fixture>>) => 
 }
 
 describe('Bot preset context using the published scope and tool services', () => {
+  it('adds concise English private home and workspace guidance per Agent even when memory is disabled', async () => withFixture(async ({ ctx, preset, agent, ensureHome }) => {
+    const alpha = await preset('alpha');
+    const first = agent(alpha.key);
+    const second = agent(alpha.key, '/fixture/user-workspace');
+    await first.announce();
+    await second.announce();
+    const text = async (subject: Agent) => (await ctx.systemPrompt.assemble({ scope: subject, agent: subject })).sections
+      .find((section) => section.name === 'dsh-bot:home')?.text;
+    for (const subject of [first.subject, second.subject]) {
+      const guidance = await text(subject);
+      expect(guidance).toContain('Your private working directory is "/fixture/dsh-bot/bots/alpha/home"; put your files there.');
+      expect(guidance).toContain('Bots share this root without isolation');
+      expect(guidance).toContain('writes outside it follow native permissions and approval');
+      expect(guidance).not.toMatch(/\p{Script=Han}/u);
+    }
+    expect(await text(first.subject)).toContain('Your cwd is the shared Bots root "/fixture/dsh-bot/bots".');
+    expect(await text(second.subject)).toContain('Your cwd is "/fixture/user-workspace"; the shared Bots root is "/fixture/dsh-bot/bots".');
+    expect(await text(second.subject)).not.toContain('Your cwd is the shared Bots root');
+    expect(ensureHome).toHaveBeenCalledTimes(2);
+    await first.scope.dispose();
+    expect(await text(first.subject)).toBeUndefined();
+    expect(await text(second.subject)).toContain('/fixture/dsh-bot/bots/alpha/home');
+    await alpha.plugin.dispose();
+    expect(await text(second.subject)).toBeUndefined();
+  }));
+
+  it('degrades a failed private home to path-free guidance without blocking session initialization', async () => withFixture(async ({ ctx, preset, agent, ensureHome }) => {
+    ensureHome.mockRejectedValueOnce(new Error('Cannot access private path'));
+    const alpha = await preset('alpha');
+    const first = agent(alpha.key);
+    await expect(first.announce()).resolves.toBeUndefined();
+    const text = (await ctx.systemPrompt.assemble({ scope: first.subject, agent: first.subject })).sections
+      .find((section) => section.name === 'dsh-bot:home')?.text;
+    expect(text).toBe('Private directory unavailable; use the current workspace under native permissions and approval.');
+    expect(text).not.toContain('/fixture');
+    expect(botContext.getBotBinding(first.subject)).toEqual({ botId: 'alpha' });
+  }));
   it('validates a required Bot id', () => {
     expect(botContext.Config({ botId: 'alpha' })).toEqual({ botId: 'alpha' });
     for (const value of [{}, { botId: '' }, { botId: 'A' }, { botId: '../alpha' }]) {

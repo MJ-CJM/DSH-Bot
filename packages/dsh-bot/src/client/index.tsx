@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types';
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
@@ -157,9 +158,18 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       throw new Error(status?.preset.reason ?? t(status?.preset.state === 'broken'
         ? 'card.statusBroken' : status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown'));
     }
-    const cwd = bot.defaultCwd || unwrap(await remote().ensureHome(id)).path;
+    let workspaceId: WorkspaceId;
+    if (bot.defaultCwd) {
+      // Public Client service delegates to workspace/create, which resolves
+      // the canonical path before creating a new Workspace registration.
+      workspaceId = (await ctx.workspaces.create({ path: bot.defaultCwd })).workspaceId;
+    } else {
+      await remote().ensureHome(id).then(unwrap);
+      if (!current()) return;
+      workspaceId = unwrap(await remote().ensureBotsWorkspace()).workspaceId as WorkspaceId;
+    }
     if (!current()) return;
-    const sessionId = await sessions.create({ cwd, agentPreset: status.presetId });
+    const sessionId = await sessions.create({ workspaceId, agentPreset: status.presetId });
     if (!current()) return;
     // Keep the right-tab continuation before native navigation can unmount its origin.
     beforeOpen?.(sessionId);
@@ -200,6 +210,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onDuplicate: (id, newId) => mutate(() => remote().duplicate(id, newId)),
     onDelete: (id, deleteMemories, deleteHome) => mutate(() => remote().delete(id, { deleteMemories, deleteHome })),
     onEnsureHome: async (id) => unwrap(await remote().ensureHome(id)).path,
+    onEnsureBotsWorkspace: async () => unwrap(await remote().ensureBotsWorkspace()).path,
     onPickDirectory: typeof ctx.uiWorkspace.pickDirectory === 'function' ? () => ctx.uiWorkspace.pickDirectory() : undefined,
     onStart: startBot, onStartInWorkspace: startBotInWorkspace,
   };

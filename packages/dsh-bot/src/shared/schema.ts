@@ -21,6 +21,11 @@ export const normalizeMemoryContent = (text: string) => text.normalize('NFKC').t
 export interface MemorySaveResult { id: string; deduplicated: boolean }
 export const timestampSchema = z.number().int().nonnegative();
 const nonempty = z.string().trim().min(1);
+/** Existing example-seed rows remain valid; workspace identity is a separate row. */
+export const botRegistryStateSchema = z.strictObject({
+  status: z.enum(['pending', 'complete']).optional(),
+  botsWorkspaceId: nonempty.optional(),
+}).refine((value) => value.status !== undefined || value.botsWorkspaceId !== undefined, 'Registry state must not be empty');
 // Browser-safe syntax validation; the Host additionally applies its platform's
 // absolute-path rules and checks the existing directory before a write.
 export const absoluteDirectorySchema = nonempty.refine((value) => !value.includes('\0')

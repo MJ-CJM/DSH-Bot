@@ -71,6 +71,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
       })),
     })),
     ensureHome: vi.fn<DshBotRemoteMethods['ensureHome']>(async (id) => ({ ok: true, value: { path: `/test/dsh-bot/bots/${id}/home` } })),
+    ensureBotsWorkspace: vi.fn<DshBotRemoteMethods['ensureBotsWorkspace']>(async () => ({ ok: true, value: { workspaceId: 'bots-workspace', path: '/test/dsh-bot/bots' } })),
     get: vi.fn<DshBotRemoteMethods['get']>(async (id) => {
       const record = data.records.find((item) => item.id === id);
       if (!record) throw new Error(`Missing test Bot ${id}`);
@@ -235,9 +236,10 @@ export async function mountClient(
   } as unknown as Context['slots']);
   ctx.provide('remote', { $mount: mountRemote, dshBot: remote.methods } as unknown as Context['remote']);
   const createSession = vi.fn<ISessions['create']>(async () => 'test-created-session' as SessionId);
+  const createWorkspace = vi.fn<Context['workspaces']['create']>(async ({ path }) => ({ ...workspace('custom-workspace'), path }));
   const pickDirectory = vi.fn<Context['uiWorkspace']['pickDirectory']>(async () => null);
   ctx.provide('uiWorkspace', { openWorkspace, openSession, pickDirectory } as unknown as Context['uiWorkspace']);
-  ctx.provide('workspaces', { list: workspaceSource } as unknown as Context['workspaces']);
+  ctx.provide('workspaces', { list: workspaceSource, create: createWorkspace } as unknown as Context['workspaces']);
   ctx.provide('sessions', { list: sessionSource, create: createSession } as unknown as Context['sessions']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();
@@ -329,7 +331,7 @@ export async function mountClient(
     core.subscribe('conversation.hero.options', () => renderRightSurface('opener')),
   ] : [];
   return {
-    ctx, core, remote, openWorkspace, openSession, createSession, pickDirectory, selectPanel, mountRemote, container, main, dictionaries,
+    ctx, core, remote, openWorkspace, openSession, createSession, createWorkspace, pickDirectory, selectPanel, mountRemote, container, main, dictionaries,
     renderCount: (entry: StoredEntry = main) => renderCounts.get(entry) ?? 0,
     sessionListeners,
     rightDefinitions, registerRightTab, openRightTab, rightSessionListeners,

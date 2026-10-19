@@ -166,6 +166,8 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRegistry['get']>().toEqualTypeOf<DshBotMethods['get']>();
     expectTypeOf<DshBotRegistry['ensureHome']>().toEqualTypeOf<DshBotMethods['ensureHome']>();
     expectTypeOf<DshBotRemoteMethods['ensureHome']>().toEqualTypeOf<(botId: string) => Promise<RemoteResult<{ path: string }>>>();
+    expectTypeOf<DshBotRegistry['ensureBotsWorkspace']>().toEqualTypeOf<DshBotMethods['ensureBotsWorkspace']>();
+    expectTypeOf<DshBotRemoteMethods['ensureBotsWorkspace']>().toEqualTypeOf<() => Promise<RemoteResult<{ workspaceId: string; path: string }>>>();
     expectTypeOf<DshBotRegistry['create']>().toEqualTypeOf<DshBotMethods['create']>();
     expectTypeOf<DshBotRegistry['update']>().toEqualTypeOf<DshBotMethods['update']>();
     expectTypeOf<DshBotRegistry['duplicate']>().toEqualTypeOf<DshBotMethods['duplicate']>();
@@ -183,18 +185,18 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
-      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'ensureHome' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
+      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'ensureHome' | 'ensureBotsWorkspace' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'>();
   });
 
-  it('shares all eighteen strict descriptors between Host and Client exports', () => {
+  it('shares all nineteen strict descriptors between Host and Client exports', () => {
     expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
     // The Host owns registration in ctx.effect. ./typert would also be picked
     // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(18);
+    expect(TYPERT.invocations).toHaveLength(19);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -206,6 +208,19 @@ describe('single-source Remote contract', () => {
     }
     expect(TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'delete'))
       .toMatchObject({ implementation: 'remove', namespace: 'dshBot' });
+  });
+
+  it('declares a zero-argument Bots workspace Remote and validates its path and identity on both wire directions', () => {
+    const descriptor = TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'ensureBotsWorkspace');
+    expect(descriptor?.parameters).toEqual([]);
+    if (descriptor?.result.mode !== 'strict' || !descriptor.result.encode || !descriptor.result.decode) throw new Error('Missing workspace codec');
+    const result = descriptor.result;
+    const valid = { workspaceId: 'workspace-one', path: '/dsh/dsh-bot/bots' };
+    expect(result.decode?.(result.encode?.(valid, () => null))).toEqual(valid);
+    for (const invalid of [{ ...valid, workspaceId: '' }, { ...valid, path: 'relative' }, { ...valid, cwd: valid.path }, {}]) {
+      expect(() => result.encode?.(invalid, () => null)).toThrow();
+      expect(() => result.decode?.(invalid)).toThrow();
+    }
   });
 
   it('declares a zero-argument cancellable stream and validates every invalidation frame', () => {
@@ -344,6 +359,10 @@ describe('single-source Remote contract', () => {
         expect(codec.parse({ path: '/private/home' })).toEqual({ path: '/private/home' });
         expect(() => codec.parse({ path: 'relative' })).toThrow();
         expect(() => codec.parse({ path: '/home', unexpected: true })).toThrow();
+      } else if (descriptor.method === 'ensureBotsWorkspace') {
+        const value = { workspaceId: 'workspace-one', path: '/private/bots' };
+        expect(codec.parse(value)).toEqual(value);
+        expect(() => codec.parse({ ...value, workspaceId: '' })).toThrow();
       } else if (descriptor.method === 'catalogInfo') {
         expect(codec.parse({ presetIdPrefix: 'custom-' })).toEqual({ presetIdPrefix: 'custom-' });
         expect(() => codec.parse({ presetIdPrefix: '', extra: true })).toThrow();

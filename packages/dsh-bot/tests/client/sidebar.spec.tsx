@@ -225,7 +225,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     const focused = document.activeElement;
     expect(focused?.closest('dialog')).not.toBeNull();
     await click(button(app.sidebar, en.ui['sidebar.newSession'].replace('{name}', 'Alpha Bot')));
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-selected/alpha-bot' });
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.sidebar.querySelector('dialog')).toBeNull();
