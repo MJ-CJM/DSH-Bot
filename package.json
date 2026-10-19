@@ -12,7 +12,8 @@
     "typecheck": "scripts/pnpm --filter './packages/*' -r typecheck",
     "lint": "biome lint packages",
     "check": "scripts/pnpm build && scripts/pnpm test && scripts/pnpm typecheck && scripts/pnpm lint",
-    "check:spikes": "scripts/pnpm --filter './spikes/**' -r build && scripts/pnpm --filter './spikes/**' -r typecheck && biome lint spikes && node spikes/remote/packages/dsh-bot-spike-remote/lib/contract-check.js && node spikes/p1-api/lib/public-exports.js && DSH_HOME=\"$PWD/.dsh-dev\" node spikes/test-tools/src/run.ts"
+    "check:spikes": "scripts/pnpm --filter './spikes/**' -r build && scripts/pnpm --filter './spikes/**' -r typecheck && biome lint spikes && node spikes/remote/packages/dsh-bot-spike-remote/lib/contract-check.js && node spikes/p1-api/lib/public-exports.js && DSH_HOME=\"$PWD/.dsh-dev\" node spikes/test-tools/src/run.ts",
+    "pack:plugin": "scripts/pnpm --filter dsh-bot build && cd packages/dsh-bot && ../../scripts/pnpm pack --pack-destination ../../dist"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

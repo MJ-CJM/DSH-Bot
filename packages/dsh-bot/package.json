@@ -1,6 +1,6 @@
 {
   "name": "dsh-bot",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "type": "module",
   "description": "Manage DSH Bots, personas, tools and memories from a localized workspace.",
   "exports": {

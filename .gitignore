@@ -5,3 +5,4 @@ dist/
 .codex/runs/
 *.tgz
 .dsh-desktop
+.dsh-pack
