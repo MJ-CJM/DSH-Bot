@@ -164,6 +164,8 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['status']>().toEqualTypeOf<() => Promise<RemoteResult<BotStatus[]>>>();
     expectTypeOf<DshBotRegistry['list']>().toEqualTypeOf<DshBotMethods['list']>();
     expectTypeOf<DshBotRegistry['get']>().toEqualTypeOf<DshBotMethods['get']>();
+    expectTypeOf<DshBotRegistry['ensureHome']>().toEqualTypeOf<DshBotMethods['ensureHome']>();
+    expectTypeOf<DshBotRemoteMethods['ensureHome']>().toEqualTypeOf<(botId: string) => Promise<RemoteResult<{ path: string }>>>();
     expectTypeOf<DshBotRegistry['create']>().toEqualTypeOf<DshBotMethods['create']>();
     expectTypeOf<DshBotRegistry['update']>().toEqualTypeOf<DshBotMethods['update']>();
     expectTypeOf<DshBotRegistry['duplicate']>().toEqualTypeOf<DshBotMethods['duplicate']>();
@@ -181,18 +183,18 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
-      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
+      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'ensureHome' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'>();
   });
 
-  it('shares all seventeen strict descriptors between Host and Client exports', () => {
+  it('shares all eighteen strict descriptors between Host and Client exports', () => {
     expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
     // The Host owns registration in ctx.effect. ./typert would also be picked
     // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(17);
+    expect(TYPERT.invocations).toHaveLength(18);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -270,6 +272,8 @@ describe('single-source Remote contract', () => {
     };
     expect(input('list', {})).toEqual({});
     expect(input('get', { id: 'test-bot' })).toEqual({ id: 'test-bot' });
+    expect(input('ensureHome', { botId: 'test-bot' })).toEqual({ botId: 'test-bot' });
+    expect(() => input('ensureHome', { botId: '../escape' })).toThrow();
     expect(input('create', { input: { id: 'test-bot', name: '测试 Bot' } }))
       .toEqual({ input: botCreateSchema.parse({ id: 'test-bot', name: '测试 Bot' }) });
     expect(input('update', { id: 'test-bot', patch: { name: 'Changed' } }))
@@ -278,7 +282,9 @@ describe('single-source Remote contract', () => {
       .toEqual({ id: 'test-bot', newId: 'clone-bot' });
     expect(input('delete', { id: 'test-bot' })).toEqual({ id: 'test-bot' });
     expect(input('delete', { id: 'test-bot', options: {} }))
-      .toEqual({ id: 'test-bot', options: { deleteMemories: true } });
+      .toEqual({ id: 'test-bot', options: { deleteMemories: true, deleteHome: false } });
+    expect(input('delete', { id: 'test-bot', options: { deleteHome: true } }))
+      .toEqual({ id: 'test-bot', options: { deleteMemories: true, deleteHome: true } });
     expect(() => input('list', { unknown: true })).toThrow();
     expect(() => input('get', { id: '../escape' })).toThrow();
     expect(() => input('create', { input: { id: 'test-bot', name: 'Bot', unexpected: true } })).toThrow();
@@ -334,6 +340,10 @@ describe('single-source Remote contract', () => {
       } else if (descriptor.method === 'watch') {
         expect(codec.parse({ revision: 0 })).toEqual({ revision: 0 });
         expect(() => codec.parse({ revision: -1 })).toThrow();
+      } else if (descriptor.method === 'ensureHome') {
+        expect(codec.parse({ path: '/private/home' })).toEqual({ path: '/private/home' });
+        expect(() => codec.parse({ path: 'relative' })).toThrow();
+        expect(() => codec.parse({ path: '/home', unexpected: true })).toThrow();
       } else if (descriptor.method === 'catalogInfo') {
         expect(codec.parse({ presetIdPrefix: 'custom-' })).toEqual({ presetIdPrefix: 'custom-' });
         expect(() => codec.parse({ presetIdPrefix: '', extra: true })).toThrow();

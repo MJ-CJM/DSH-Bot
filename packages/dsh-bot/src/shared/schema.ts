@@ -21,6 +21,11 @@ export const normalizeMemoryContent = (text: string) => text.normalize('NFKC').t
 export interface MemorySaveResult { id: string; deduplicated: boolean }
 export const timestampSchema = z.number().int().nonnegative();
 const nonempty = z.string().trim().min(1);
+// Browser-safe syntax validation; the Host additionally applies its platform's
+// absolute-path rules and checks the existing directory before a write.
+export const absoluteDirectorySchema = nonempty.refine((value) => !value.includes('\0')
+  && (value.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(value) || /^\\\\[^\\]+\\[^\\]+/u.test(value)),
+'Expected an absolute directory path');
 // JSON omits undefined properties. Canonicalize records, but not patches:
 // explicit undefined in a patch must still clear the previous optional value.
 function withoutUndefined<T>(value: T): T {
@@ -65,7 +70,7 @@ const botFields = z.strictObject({
   tools: z.strictObject({ deny: z.array(nonempty) }),
   skills: z.strictObject({ extraDirs: z.array(nonempty) }),
   memory: z.strictObject({ enabled: z.boolean(), injectLimit: z.number().int().nonnegative() }),
-  defaultCwd: nonempty.optional(), mcpServers: z.array(mcpServerRefSchema), channels: z.array(channelBindingSchema),
+  defaultCwd: absoluteDirectorySchema.optional(), mcpServers: z.array(mcpServerRefSchema), channels: z.array(channelBindingSchema),
   order: z.number().finite().optional(),
 });
 
@@ -93,7 +98,7 @@ export const botPatchSchema = botPatchFields.extend({
   avatar: botFields.shape.avatar.nullable(), avatarColor: botFields.shape.avatarColor.nullable(), model: botFields.shape.model.nullable(),
   defaultCwd: botFields.shape.defaultCwd.nullable(), order: botFields.shape.order.nullable(),
 });
-export const botRemoveOptionsSchema = z.strictObject({ deleteMemories: z.boolean().default(true) });
+export const botRemoveOptionsSchema = z.strictObject({ deleteMemories: z.boolean().default(true), deleteHome: z.boolean().default(false) });
 export type BotRemoveOptions = z.input<typeof botRemoveOptionsSchema>;
 
 const memoryFields = z.strictObject({

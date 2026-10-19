@@ -302,9 +302,9 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.container.querySelector('article')?.textContent).toContain('A careful helper');
     expect(app.container.querySelector('article')?.textContent).toContain('🦊');
     await click(button(app.container, t['bots.newSession']));
-    expect(app.openWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-one', expect.any(Function), {
-      agentPreset: 'host-selected/alpha-bot',
-    });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
+    expect(app.openWorkspace).not.toHaveBeenCalled();
   });
 
   it.each(['en', 'zh'] as const)('shows the localized empty page in %s', async (language) => {
@@ -424,30 +424,33 @@ describe('Bots main page through the public Cordis and Slot registration contrac
 
   it('awaits an asynchronous Host refusal and displays the reason on the page', async () => {
     const app = await mount([bot()]);
-    app.openWorkspace.mockRejectedValueOnce(new Error('Host refused the selected preset')); 
+    app.createSession.mockRejectedValueOnce(new Error('Host refused the selected preset'));
     await click(button(app.container, t['bots.newSession']));
     expect(app.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain('Host refused the selected preset');
     expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
     await click(button(app.container, t['bots.newSession']));
-    expect(app.openWorkspace).toHaveBeenCalledTimes(2);
+    expect(app.createSession).toHaveBeenCalledTimes(2);
     expect(app.container.querySelector('[role="alert"]')).toBeNull();
   });
 
-  it('explains that a workspace must be opened when none is available, without silent navigation', async () => {
+  it('starts immediately with no workspace and no workspace chooser', async () => {
     const app = await mount([bot()]);
     await app.setWorkspaces({ items: [] });
     await click(button(app.container, t['bots.newSession']));
-    expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceRequired']);
+    expect(app.remote.methods.ensureHome).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(app.remote.methods.status).toHaveBeenCalledTimes(1);
+    expect(app.container.querySelector('dialog')).toBeNull();
   });
 
   it.each(['en', 'zh'] as const)('confirms the multi-workspace launcher through the real form and public API in %s', async (language) => {
     const app = await mount([bot()], language);
     const t = language === 'zh' ? zh.ui : en.ui;
     await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second project')] });
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, t['card.more']));
+    await click(button(app.container, t['chat.inWorkspace']));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.container.querySelector('dialog')?.textContent).toContain(t['chat.workspaceChoose']);
     await fill(field(app.container, t['chat.workspace']), 'workspace-two');
@@ -465,15 +468,18 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   it('shows pending and failed workspace catalogs and revalidates a workspace after querying status', async () => {
     const app = await mount([bot()]);
     await app.setWorkspaces({ phase: 'pending', state: 'loading' });
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, t['card.more']));
+    await click(button(app.container, t['chat.inWorkspace']));
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceLoading']);
     await app.setWorkspaces({ phase: 'ready', state: 'error', error: new RemoteError('gateway/service-unavailable', 'Offline', { endpoint: 'workspace/watch' }) });
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, t['card.more']));
+    await click(button(app.container, t['chat.inWorkspace']));
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceUnavailable']);
     await app.setWorkspaces({ state: 'idle', error: null });
     let finish: ((value: RemoteResult<BotStatus[]>) => void) | undefined;
     app.remote.methods.status.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, t['card.more']));
+    await click(button(app.container, t['chat.inWorkspace']));
     await app.setWorkspaces({ items: [] });
     await act(async () => { finish?.({ ok: true, value: [{ id: 'alpha-bot', presetId: 'correct-preset', preset: { state: 'ok' } }] }); });
     expect(app.openWorkspace).not.toHaveBeenCalled();
@@ -488,7 +494,8 @@ describe('Bots main page through the public Cordis and Slot registration contrac
         try { beforeOpen?.('late-session' as never); resolve(); } catch (error) { reject(error); }
       };
     }));
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, t['card.more']));
+    await click(button(app.container, t['chat.inWorkspace']));
     await app.unmountPage();
     await act(async () => { finish?.(); });
     expect(app.container.textContent).toBe('');
@@ -565,7 +572,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     const call = app.remote.methods.delete.mock.calls[0];
     expect(call).toHaveLength(2);
     expect(call?.[0]).toBe('alpha-bot');
-    expect(call?.[1]).toEqual({ deleteMemories: true });
+    expect(call?.[1]).toEqual({ deleteMemories: true, deleteHome: false });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     expect(app.container.querySelectorAll('article')).toHaveLength(0);
     expect(app.container.textContent).toContain(t['delete.success']);
@@ -587,7 +594,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect((field(dialog, t['delete.memories']) as HTMLInputElement).checked).toBe(true);
     await click(field(dialog, t['delete.memories']));
     await click(button(dialog, t['actions.delete']));
-    expect(app.remote.methods.delete).toHaveBeenCalledExactlyOnceWith('alpha-bot', { deleteMemories: false });
+    expect(app.remote.methods.delete).toHaveBeenCalledExactlyOnceWith('alpha-bot', { deleteMemories: false, deleteHome: false });
     expect(app.container.textContent).toContain(t['delete.keptSuccess']);
     expect(app.container.textContent).not.toContain(t['delete.success']);
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);

@@ -6,7 +6,7 @@ import { agentEvents } from '@deepseek-ai/dsh-agent';
 import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { getBotBinding } from 'dsh-bot/bot-context';
 
-export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel', 'systemPrompt', 'skills', 'tools', 'llm'];
+export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel', 'systemPrompt', 'skills', 'tools', 'llm', 'workspaceRegistry'];
 
 async function saveResult(path, value) {
   await writeFile(`${path}.tmp`, JSON.stringify(value, null, 2));
@@ -170,4 +170,32 @@ async function inspect(ctx, config, signal, calls) {
     streamCalls: calls.stream, idleSessionsCreated: 6,
     defaultModel: { provider: defaults.provider, model: defaults.model }, promptsSent: 0,
   });
+  // The supervisor creates this Session through the real Remote, after the
+  // original idle probes finish. Inspect public Host services only; no mock
+  // workspace catalogue or inferred sidebar DOM is used here.
+  if (config.homeRequestPath) {
+    try {
+      let homeRequest;
+      while (!signal.aborted && homeRequest === undefined) {
+        try { homeRequest = JSON.parse(await readFile(config.homeRequestPath, 'utf8')); }
+        catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+          await setTimeout(100, undefined, { signal });
+        }
+      }
+      if (signal.aborted) return;
+      const agent = ctx.agents.get(homeRequest.sessionId);
+      if (!agent) throw new Error('Remote-created Bot home Agent is not live');
+      const workspaces = ctx.workspaceRegistry.list().map((workspace) => ({
+        id: workspace.id, path: workspace.path, sessionIds: [...workspace.sessionIds],
+      }));
+      await saveResult(config.homeResponsePath, {
+        ok: true, sessionId: agent.id, cwd: agent.session.header.cwd, binding: getBotBinding(agent) ?? null,
+        workspaces, workspaceIds: workspaces.filter((workspace) => workspace.sessionIds.includes(agent.id))
+          .map((workspace) => workspace.id),
+      });
+    } catch (error) {
+      if (!signal.aborted) await saveResult(config.homeResponsePath, { ok: false, error: String(error.stack ?? error) });
+    }
+  }
 }

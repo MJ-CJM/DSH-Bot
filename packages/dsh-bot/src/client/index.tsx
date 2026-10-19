@@ -83,7 +83,14 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     return service;
   };
   const mutate = async (operation: () => Promise<RemoteResult<unknown>>) => {
-    unwrap(await operation());
+    const result = await operation();
+    if (!result.ok && result.error.code === 'bot/home-cleanup-failed') {
+      // The Host deletion has committed even though cleanup failed. Reflect
+      // the authoritative catalog, then report the incomplete cleanup clearly.
+      await Promise.all([catalog.refresh(), activity.refresh()]);
+      throw Object.assign(new Error(t('delete.homeCleanupFailed')), { code: result.error.code });
+    }
+    unwrap(result);
     // A successful commit must not reuse a read begun before that commit.
     await Promise.all([catalog.refresh(), activity.refresh()]);
   };
@@ -102,7 +109,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ctx.uiWorkspace.openSession(id as SessionId);
     }
   };
-  const startBot = async (id: string, workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) => {
+  const startBotInWorkspace = async (id: string, workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) => {
     if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
     const target = () => {
@@ -134,6 +141,29 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       preferredWorkspace = workspaceId;
       beforeOpen?.(sessionId);
     }, { agentPreset: status.presetId });
+    if (active) await refresh();
+  };
+  const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) => {
+    if (!active || signal?.aborted) return;
+    const navigation = ctx.layout.beginNavigation();
+    const current = () => active && !signal?.aborted && !navigation.aborted;
+    // Read the authoritative Bot at click time so another Client's cwd edit is respected.
+    const [record, statuses] = await Promise.all([remote().get(id), remote().status()]);
+    if (!current()) return;
+    const bot = unwrap(record);
+    const status = unwrap(statuses).find((entry) => entry.id === id);
+    if (status?.preset.state !== 'ok') {
+      void catalog.refresh();
+      throw new Error(status?.preset.reason ?? t(status?.preset.state === 'broken'
+        ? 'card.statusBroken' : status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown'));
+    }
+    const cwd = bot.defaultCwd || unwrap(await remote().ensureHome(id)).path;
+    if (!current()) return;
+    const sessionId = await sessions.create({ cwd, agentPreset: status.presetId });
+    if (!current()) return;
+    // Keep the right-tab continuation before native navigation can unmount its origin.
+    beforeOpen?.(sessionId);
+    ctx.uiWorkspace.openSession(sessionId);
     if (active) await refresh();
   };
   const page: BotsPageInjected = {
@@ -168,16 +198,18 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onCreate: (input) => mutate(() => remote().create(input)),
     onUpdate: (id, patch) => mutate(() => remote().update(id, patch)),
     onDuplicate: (id, newId) => mutate(() => remote().duplicate(id, newId)),
-    onDelete: (id, deleteMemories) => mutate(() => remote().delete(id, { deleteMemories })),
-    onStart: startBot,
+    onDelete: (id, deleteMemories, deleteHome) => mutate(() => remote().delete(id, { deleteMemories, deleteHome })),
+    onEnsureHome: async (id) => unwrap(await remote().ensureHome(id)).path,
+    onPickDirectory: typeof ctx.uiWorkspace.pickDirectory === 'function' ? () => ctx.uiWorkspace.pickDirectory() : undefined,
+    onStart: startBot, onStartInWorkspace: startBotInWorkspace,
   };
   registerBotsRightTab(ctx, {
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list },
     onOpenSession: (id, signal) => openSession(id, undefined, signal),
-    onStart: startBot, getPreferredWorkspace: page.getPreferredWorkspace,
+    onStart: startBot, onStartInWorkspace: startBotInWorkspace, getPreferredWorkspace: page.getPreferredWorkspace,
     onRefresh: refresh,
     onManage: () => { if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId); },
-  }, { open: openSession, start: startBot });
+  }, { open: openSession, start: startBot, startInWorkspace: startBotInWorkspace });
   ctx.effect(() => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities', id: 'dsh-bot', locale: namespace,
     inject: () => ({ hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity }, onMarkRead: activity.markRead, onOpenBot: (id: string) => {
@@ -210,6 +242,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity, workspaceCatalog: ctx.workspaces.list },
       sessionLimit: config.sidebarSessionLimit,
       onStart: page.onStart,
+      onStartInWorkspace: page.onStartInWorkspace,
       getPreferredWorkspace: page.getPreferredWorkspace,
       onRefresh: refresh,
       onOpenSession: openSession,

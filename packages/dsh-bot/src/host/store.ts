@@ -4,6 +4,7 @@ import { defineDomain, DomainError, domainTable } from '@deepseek-ai/dsh-storage
 import type { Domain } from '@deepseek-ai/dsh-storage-domain';
 import { z } from 'zod';
 import { DshBotError, type DshBotErrorCode, parseInput } from './errors.js';
+import { validateDefaultCwd } from './home.js';
 import { botIdSchema, memoryIdSchema } from '../shared/ids.js';
 import {
   activityListOptionsSchema, activityRecordSchema, activitySessionIdSchema, isActivityUnread,
@@ -97,6 +98,7 @@ export class BotStore {
    */
   async seedExamples(inputs: readonly BotCreateInput[]): Promise<void> {
     const examples = inputs.map((input) => parseInput(botCreateSchema, input));
+    await Promise.all(examples.map((example) => validateDefaultCwd(example.defaultCwd)));
     await write(this.domain, async () => {
       const state = this.domain.table('registry_state');
       const bots = this.domain.table('bots');
@@ -137,6 +139,7 @@ export class BotStore {
 
   async create(input: BotCreateInput, createdAt = Date.now()): Promise<BotRecord> {
     const fields = parseInput(botCreateSchema, input);
+    await validateDefaultCwd(fields.defaultCwd);
     const now = parseInput(timestampSchema, createdAt);
     return write(this.domain, async () => {
       const table = this.domain.table('bots');
@@ -150,6 +153,7 @@ export class BotStore {
   async update(id: string, patch: BotPatch, expectedUpdatedAt?: number): Promise<BotRecord> {
     const key = parseInput(botIdSchema, id);
     const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
+    await validateDefaultCwd(fields.defaultCwd);
     const expected = parseInput(timestampSchema.optional(), expectedUpdatedAt);
     return write(this.domain, async () => publicBot(await this.domain.table('bots').update(key, (current) => {
       // Check at the domain's write slot, never against a pre-queue snapshot.

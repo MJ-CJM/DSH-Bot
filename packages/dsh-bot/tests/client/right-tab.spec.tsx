@@ -136,10 +136,12 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     await app.setRightSession('source-session');
     const tab = await app.mountRightTab();
     await click(option(tab));
-    expect(app.openWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-one', expect.any(Function), { agentPreset: 'host-custom/preset-v2' });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-custom/preset-v2' });
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
+    expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.remote.methods.activity.markRead).not.toHaveBeenCalled();
     expect(app.openRightTab).not.toHaveBeenCalled();
-    await app.mountRightOpener('test-opened-session', true);
+    await app.mountRightOpener('test-created-session', true);
     expect(app.openRightTab).toHaveBeenCalledExactlyOnceWith(BOTS_TAB_KIND);
   });
 
@@ -176,7 +178,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     await click(option(tab));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     await click(button(tab, zh.ui['actions.retry']));
-    app.openWorkspace.mockRejectedValueOnce(new Error('private workspace path'));
+    app.createSession.mockRejectedValueOnce(new Error('private workspace path'));
     await click(option(tab));
     expect(tab.querySelector('[role="alert"]')?.textContent).toContain(zh.ui['activity.openError']);
     expect(tab.textContent).not.toContain('private workspace path');
@@ -263,7 +265,8 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     const actions = app.core.entries('sidebar.right.pane.tab')[0]?.inject?.() as unknown as BotsRightTabInjected;
     await app.unloadPlugin();
     await actions.onOpenSession('latest');
-    await actions.onStart('alpha-bot', 'workspace-one');
+    await actions.onStart('alpha-bot');
+    await actions.onStartInWorkspace('alpha-bot', 'workspace-one');
     expect(app.openSession).not.toHaveBeenCalled();
     expect(app.openWorkspace).not.toHaveBeenCalled();
   });

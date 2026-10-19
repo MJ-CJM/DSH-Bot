@@ -3,12 +3,13 @@
  * Run after build, from repository root:
  * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/composer-profile.mjs
  * The composer/memory probes stay idle; activity uses three loopback mock
- * replies across two Host processes. No real model or browser is used.
+ * replies across two Host processes, using a T08h Bot home without a Workspace.
+ * No real model or browser is used.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
@@ -32,6 +33,8 @@ const profileDir = resolve(home, 'profiles', profile);
 const patchPath = resolve(runDir, 'profile.patch.yml');
 const requestPath = resolve(runDir, 'host-probe-request.json');
 const responsePath = resolve(runDir, 'host-probe-result.json');
+const homeRequestPath = resolve(runDir, 'home-probe-request.json');
+const homeResponsePath = resolve(runDir, 'home-probe-result.json');
 const dataDir = resolve(runDir, 'data');
 const sharedStore = resolve(home, 'storages/dsh_bot.json');
 const hashFile = (path) => existsSync(path)
@@ -44,7 +47,7 @@ let interrupted = false;
 let idleSessionsCreated = 0;
 let mock;
 let mockPromptsSent = 0;
-const activityBotId = 't08c-activity';
+const activityBotId = `t08h-${Date.now()}-${process.pid}`;
 const activityTitle = 'T08c local mock activity';
 const mockReply = 'T08C_LOCAL_MOCK_REPLY 活动跟踪已完成 😀';
 mkdirSync(runDir, { recursive: true });
@@ -160,7 +163,13 @@ async function activityTurn(bots, raw, sessionId, turn, previousAt = 0) {
       check(`activity turn ${turn}: complete assistant preview`, session.lastMessage.preview, mockReply);
       check(`activity turn ${turn}: session is unread`, session.unread);
       check(`activity turn ${turn}: session belongs to the Bot`, session.botId, activityBotId);
-      check(`activity turn ${turn}: public session title is retained`, session.title, activityTitle);
+      // The native session-title service remains enabled: with its LLM provider
+      // disabled it persists a five-word first-prompt fallback, not cwd basename.
+      check(`activity turn ${turn}: public session title is retained`, session.title,
+        turn === 1 ? 'T08c local mock activity round' : activityTitle);
+      check(`activity turn ${turn}: activity title matches native durable title`, session.title, projection.values.title);
+      check(`activity turn ${turn}: first user preview survives the home cwd fallback`,
+        session.firstUserPreview, 'T08c local mock activity round 1.');
       const aggregate = activity.bots.find((row) => row.botId === activityBotId);
       check(`activity turn ${turn}: aggregate has one unread session`, aggregate?.unreadCount, 1);
       check(`activity turn ${turn}: aggregate uses latest assistant`, aggregate?.latest, {
@@ -256,6 +265,8 @@ async function probe(startupUrl, phase) {
       const coldSessions = ok(await raw('session/list', { _request: {} }), 'cold activity session list');
       check('activity session is persisted and cold after Host restart',
         coldSessions.items.find((row) => row.sessionId === sessionId)?.agentAvailable, false);
+      check('Bot home cwd survives Host restart', coldSessions.items.find((row) => row.sessionId === sessionId)?.cwd,
+        activityPrepared.home.path);
       const restored = ok(await bots.activity.list(), 'cold activity list');
       check('activity and read marker survive Host restart', restored, activityPrepared.afterRead);
       const continued = await activityTurn(bots, raw, sessionId, 3, activityPrepared.lastMessageAt);
@@ -266,6 +277,7 @@ async function probe(startupUrl, phase) {
         lastMessage: afterRepeat.lastMessage, unread: afterRepeat.unread,
       }, { lastMessage: continued.session.lastMessage, unread: false });
       ok(await bots.delete(activityBotId, { deleteMemories: true }), 'delete activity Bot');
+      check('default Bot deletion retains the private home', existsSync(activityPrepared.home.path));
       const deleted = ok(await bots.activity.list(), 'activity after Bot cascade deletion');
       check('Bot cascade deletion removes all its session activity', deleted.sessions.some((row) => row.botId === activityBotId), false);
       check('Bot cascade deletion removes its activity aggregate', deleted.bots.some((row) => row.botId === activityBotId), false);
@@ -381,17 +393,37 @@ async function probe(startupUrl, phase) {
     const emptyActivity = ok(await bots.activity.list(), 'activity before prompts');
     check('Bot without messages has a zero activity aggregate', emptyActivity.bots.find((row) => row.botId === activityBotId),
       { botId: activityBotId, lastActivityAt: 0, unreadCount: 0 });
-    const { sessionId } = ok(await raw('session/create', { request: {
-      cwd: resolve(runDir, 'workspace'), agentPreset: `bot-${activityBotId}`,
-    } }), 'create activity session');
-    ok(await raw('session/rename', { request: { sessionId, title: activityTitle } }), 'name activity session');
+    const botHome = ok(await bots.ensureHome(activityBotId), 'Remote ensureHome');
+    const expectedHome = resolve(home, 'dsh-bot', 'bots', activityBotId, 'home');
+    check('Remote ensureHome uses the public DSH home independent of skills dataDir', botHome.path, realpathSync(expectedHome));
+    check('Remote ensureHome creates a private directory', statSync(botHome.path).isDirectory());
+    check('Remote ensureHome enforces 0700', statSync(botHome.path).mode & 0o777, 0o700);
+    check('Remote ensureHome is idempotent', ok(await bots.ensureHome(activityBotId), 'repeat Remote ensureHome'), botHome);
+    const createRequest = { cwd: botHome.path, agentPreset: `bot-${activityBotId}` };
+    const { sessionId } = ok(await raw('session/create', { request: createRequest }), 'create Bot home activity session');
+    const homeSessions = ok(await raw('session/list', { _request: {} }), 'home session list');
+    const homeSession = homeSessions.items.find((row) => row.sessionId === sessionId);
+    check('real session/create keeps the private home cwd', homeSession?.cwd, botHome.path);
+    check('new Bot home conversation has no durable title from cwd basename', homeSession?.projections?.values?.title, null);
+    writeFileSync(`${homeRequestPath}.tmp`, JSON.stringify({ sessionId }));
+    renameSync(`${homeRequestPath}.tmp`, homeRequestPath);
+    await until(() => existsSync(homeResponsePath), 'Bot home Host inspection');
+    const homeEvidence = JSON.parse(readFileSync(homeResponsePath, 'utf8'));
+    check('real Host Bot home inspection succeeds', homeEvidence.ok);
+    check('real Agent uses the Bot home cwd', homeEvidence.cwd, botHome.path);
+    check('real home session is attached to no Workspace', homeEvidence.workspaceIds, []);
+    check('creating a home session does not synthesize a Workspace', homeEvidence.workspaces, []);
+    check('real home Agent is bound to its Bot', homeEvidence.binding, { botId: activityBotId });
+    save('home-prepare.json', { botId: activityBotId, sessionId, home: botHome, createRequest, session: homeSession,
+      host: homeEvidence, nativeSidebarGrouping: 'ungrouped-by-public-workspace-membership', browserVerified: false });
     const first = await activityTurn(bots, raw, sessionId, 1);
     await clientActivityRoundTrip(ctx, sessionId, 'completed-mock');
     await readActivity(bots, sessionId, 'first activity round');
+    ok(await raw('session/rename', { request: { sessionId, title: activityTitle } }), 'name activity session');
     const second = await activityTurn(bots, raw, sessionId, 2, first.session.lastMessage.at);
     const afterRead = await readActivity(bots, sessionId, 'second activity round');
     check('local mock completed exactly two requests before restart', mock.requests.length, 2);
-    save('activity-prepare.json', { sessionId, first, second, afterRead, lastMessageAt: second.session.lastMessage.at });
+    save('activity-prepare.json', { sessionId, home: botHome, first, second, afterRead, lastMessageAt: second.session.lastMessage.at });
     await unmount();
     check('Remote namespace disposed', ctx.get('remote.dshBot') === undefined);
   } finally {
@@ -453,7 +485,11 @@ try {
   writeFileSync(patchPath, [
     '- insert:', '    - id: t05-composer-observer', `      name: ${JSON.stringify(fixture)}`, '      config:',
     `        requestPath: ${JSON.stringify(requestPath)}`, `        responsePath: ${JSON.stringify(responsePath)}`,
+    `        homeRequestPath: ${JSON.stringify(homeRequestPath)}`, `        homeResponsePath: ${JSON.stringify(homeResponsePath)}`,
     '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'storages'))}`,
+    // A new workspace domain bootstraps legacy session headers. Isolate both
+    // backends, so prior probes cannot become this run's Workspace catalogue.
+    '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'sessions'))}`,
     '- id: agent-default-model', '  config:', '    provider: t05-default-provider', '    model: t05-default-model',
     '- id: llm-deepseek', '  disabled: false', '  config:', '    apiKeyEnv: DSH_BOT_T08C_MOCK_KEY',
     `    baseURL: ${JSON.stringify(`${mock.baseURL}/v1`)}`, '    thinking: disabled', '    reasoningEffort: off', '    maxTokens: 128',
@@ -468,6 +504,7 @@ try {
   writeFileSync(resolve(runDir, 'dump.yml'), dump);
   check('dump includes formal bundle layer', /^# == dsh-bot(?:,|\s*$)/m.test(dump));
   check('storage backend points at isolated run directory', dump.includes(resolve(runDir, 'storages')));
+  check('session persistence points at isolated run directory', dump.includes(resolve(runDir, 'sessions')));
   const manifest = JSON.parse(readFileSync(resolve(profileDir, 'package.json'), 'utf8'));
   check('profile links formal package', manifest.dependencies['dsh-bot'], `link:${resolve(root, 'packages/dsh-bot')}`);
   await runHost();

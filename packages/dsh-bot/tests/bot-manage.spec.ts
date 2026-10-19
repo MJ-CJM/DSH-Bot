@@ -383,6 +383,7 @@ describe('bot_manage through published ToolRuntime, approval audit and JSON-back
       { action: 'update', id: 'alpha' }, { action: 'update', input: { name: 'Changed' } },
       { action: 'update', id: 'alpha', input: { id: 'beta' } }, { action: 'update', id: 'alpha', input: { memory: { enabled: 'yes' } } },
       { action: 'delete' }, { action: 'delete', id: 'alpha', input: { deleteMemories: 'false' } },
+      { action: 'delete', id: 'alpha', input: { deleteHome: true } },
       { action: 'delete', id: 'alpha', input: { name: 'Wrong action input' } },
     ];
     for (const input of invalid) {

@@ -1,17 +1,18 @@
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { type Context, Service } from '@deepseek-ai/cordis';
 import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry';
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import Schema from '@deepseek-ai/schemastery';
 import { botIdSchema } from '../shared/ids.js';
-import { botChangeSchema, type CatalogInfo, type BotStatus, type BotChange, type DshBotMethods } from '../shared/remote-contract.js';
+import { botChangeSchema, type CatalogInfo, type BotStatus, type BotChange, type BotHome, type DshBotMethods } from '../shared/remote-contract.js';
 import {
   type BotCreateInput, type BotPatch, type BotRecord, type BotRemoveOptions, MEMORY_LIST_MAX_LIMIT,
   botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, normalizeBotPatch,
 } from '../shared/schema.js';
 import { DshBotError, parseInput } from './errors.js';
+import { BotHomes, validateDefaultCwd } from './home.js';
 import { composeBotPreset, ensureBotSkillsDirectory } from './composer.js';
 export { composeBotPreset } from './composer.js';
 import { openBotStores } from './store.js';
@@ -115,12 +116,14 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   private changeRevision = 0;
   private readonly changeListeners = new Set<() => void>();
   private readonly watchOwner: Context;
+  private readonly homes: BotHomes;
 
   constructor(ctx: Context, config: Config, start: () => Promise<void> = async () => {}) {
     super(ctx, 'dshBots', { namespace: 'dshBot' });
     this.watchOwner = ctx;
     const parsed = Config(config);
-    const home = process.env.DSH_HOME ?? join(homedir(), '.dsh');
+    const home = resolveDshHome();
+    this.homes = new BotHomes(home);
     this.config = { ...parsed, dataDir: resolve(parsed.dataDir.replace(/^\$DSH_HOME(?=\/|$)/, home)) };
     this.ready = (async () => {
       await start();
@@ -445,8 +448,17 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   @Remote
   async get(id: string): Promise<BotRecord> { return this.enqueue(() => this.stores.bots.get(id)); }
 
+  @Remote
+  async ensureHome(botId: string): Promise<BotHome> {
+    return this.enqueue(async () => {
+      const bot = this.stores.bots.get(botId);
+      return this.homes.ensure(bot.id);
+    });
+  }
+
   private async createRecord(input: BotCreateInput, action: 'create' | 'duplicate'): Promise<BotRecord> {
     const fields = parseInput(botCreateSchema, input);
+    await validateDefaultCwd(fields.defaultCwd);
     if (this.stores.bots.list().some((bot) => bot.id === fields.id)) {
       throw new DshBotError('bot/conflict', `Bot '${fields.id}' already exists`);
     }
@@ -471,6 +483,7 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
       const previous = this.stores.bots.get(id);
       const candidate = parseInput(botSchema, { ...previous, ...fields });
+      await validateDefaultCwd(candidate.defaultCwd);
       const record = await this.transition(id, candidate, () => this.stores.bots.update(id, fields, previous.updatedAt));
       this.changed(id, 'update');
       return record;
@@ -492,8 +505,14 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const key = parseInput(botIdSchema, id);
       const fields = parseInput(botRemoveOptionsSchema, options ?? {});
       this.stores.bots.get(key);
+      const removeHome = fields.deleteHome ? await this.homes.prepareRemoval(key) : undefined;
       await this.transition(key, undefined, () => this.stores.bots.remove(key, fields));
       this.changed(key, 'remove');
+      try { await removeHome?.(); }
+      catch (error) {
+        throw new DshBotError('bot/home-cleanup-failed',
+          'Bot was deleted, but its private home cleanup failed; its remaining private files may need manual cleanup', { cause: error });
+      }
     }, true);
   }
 }

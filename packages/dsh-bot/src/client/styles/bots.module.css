@@ -130,3 +130,6 @@
 .compact .botList { padding: 12px 0; border-right: 0; }
 .compact .botDetail { padding: 20px 0; }
 .compact .pageScroll { padding-right: 20px; padding-left: 20px; }
+
+.cwdSection { display: grid; gap: 8px; min-width: 0; }
+.cwdSection p { margin: 0; overflow-wrap: anywhere; }
