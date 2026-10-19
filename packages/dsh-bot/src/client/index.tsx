@@ -17,6 +17,7 @@ import type { DshBotRemoteMethods } from '../shared/remote-contract.js';
 import { Config } from './config.js';
 import { BotsPage, type BotsPageInjected } from './pages/BotsPage.js';
 import { SessionBotBadge } from './components/SessionBotBadge.js';
+import { BotSessionsSidebar, type BotSessionsSidebarInjected } from './components/BotSessionsSidebar.js';
 import { createMemoryCatalog, type MemoryCatalog } from './memory-state.js';
 import { createBotDetailSource } from './detail-state.js';
 import { createBotCatalog } from './state.js';
@@ -59,6 +60,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const catalog = createBotCatalog(ctx, config);
   const detail = createBotDetailSource(ctx);
   const memories = new Set<MemoryCatalog>();
+  // Client memory only: shared by page/sidebar, cleared on plugin unload.
+  let preferredWorkspace = '';
   let active = true;
   ctx.effect(() => () => { active = false; }, 'dsh-bot: action lifetime');
   const remote = (): DshBotRemoteMethods => {
@@ -92,6 +95,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       };
     },
     onRefresh: catalog.refresh,
+    getPreferredWorkspace: () => preferredWorkspace,
     onPollInterval: (value) => {
       const interval = Config({ pollIntervalMs: value }).pollIntervalMs;
       catalog.setPollIntervalMs(interval);
@@ -126,6 +130,9 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       // Revalidate after the status query in case the workspace was removed.
       await ctx.uiWorkspace.openWorkspace(target().workspaceId, () => {
         if (!active || signal?.aborted) throw new Error(t('chat.cancelled'));
+        // This callback is skipped for superseded navigation and runs before
+        // selectPanel unmounts the Bots page (and aborts its local lifetime).
+        preferredWorkspace = workspaceId;
       }, { agentPreset: status.presetId });
     },
   };
@@ -144,4 +151,16 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     name: 'sidebar.panellist', id: 'dsh-bot', order: 20, locale: namespace,
     label: () => t('bots.title'),
   }, BotsIcon)), 'dsh-bot: sidebar entry');
+  ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+    name: 'sidebar.footer.action', id: 'dsh-bot-sessions', order: 20, locale: namespace,
+    inject: (): BotSessionsSidebarInjected => ({
+      hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, workspaceCatalog: ctx.workspaces.list },
+      sessionLimit: config.sidebarSessionLimit,
+      onStart: page.onStart,
+      getPreferredWorkspace: page.getPreferredWorkspace,
+      onRefresh: catalog.refresh,
+      onOpenSession: (id) => { if (active) ctx.uiWorkspace.openSession(id); },
+      onManage: () => { if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId); },
+    }),
+  }, BotSessionsSidebar)), 'dsh-bot: sidebar conversations');
 }

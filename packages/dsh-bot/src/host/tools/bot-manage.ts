@@ -7,7 +7,7 @@ import { z } from 'zod';
 import en from '../../../locale/en.json' with { type: 'json' };
 import zh from '../../../locale/zh.json' with { type: 'json' };
 import { botIdSchema } from '../../shared/ids.js';
-import { type BotRecord, botCreateSchema, botPatchSchema, botRemoveOptionsSchema } from '../../shared/schema.js';
+import { AVATAR_COLOR_TOKENS, type BotRecord, botCreateSchema, botPatchSchema, botRemoveOptionsSchema } from '../../shared/schema.js';
 import { DshBotError, parseInput } from '../errors.js';
 import type { DshBotRegistry } from '../registry.js';
 
@@ -48,6 +48,7 @@ const botViewSchema = {
   type: 'object', additionalProperties: false, properties: {
     id: { type: 'string', required: true }, name: { type: 'string', required: true },
     avatar: { type: 'string', description: 'Emoji or [data-url avatar]; inline image payloads are omitted.' },
+    avatarColor: { type: 'string', enum: AVATAR_COLOR_TOKENS },
     description: { type: 'string', required: true },
     persona: { type: 'object', additionalProperties: false, required: true, properties: {
       prefix: { type: 'string', required: true }, suffix: { type: 'string' }, complete: { type: 'boolean' },
@@ -154,10 +155,11 @@ export function registerBotManageTool(owner: Agent, registry: Registry, onDispos
           id: { type: 'string', description: 'Required for get/update/delete. For create put id inside input. Lowercase letters, digits and hyphens; 2–32 characters.' },
           input: {
             type: 'object', additionalProperties: true,
-            description: 'create: Bot fields including required id and name. update: a partial Bot patch, replacing whole top-level fields; id is immutable. delete: only optional deleteMemories (default true). Omit for list/get. Optional avatar/model/defaultCwd/order can be cleared with null on update.',
+            description: 'create: Bot fields including required id and name. update: a partial Bot patch, replacing whole top-level fields; id is immutable. delete: only optional deleteMemories (default true). Omit for list/get. Optional avatar/avatarColor/model/defaultCwd/order can be cleared with null on update.',
             properties: {
               id: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' },
               avatar: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+              avatarColor: { oneOf: [{ type: 'string', enum: AVATAR_COLOR_TOKENS }, { type: 'null' }] },
               template: { type: 'string', enum: ['standard', 'minimal'] },
               persona: { type: 'object', additionalProperties: false, properties: {
                 prefix: { type: 'string', required: true }, suffix: { type: 'string' }, complete: { type: 'boolean' },

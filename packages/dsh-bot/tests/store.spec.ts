@@ -55,6 +55,22 @@ async function expectCode(operation: () => unknown, code: DshBotErrorCode) {
 }
 
 describe('BotStore with the published JSON storage backend', () => {
+  it('keeps version-one records without colors compatible and persists only the curated theme palette', async () => withStores(async ({ ctx, bots, close }) => {
+    const old = await bots.create({ id: 'legacy-color', name: 'Legacy' });
+    expect(old).not.toHaveProperty('avatarColor');
+    expect(old.schemaVersion).toBe(1);
+    const colored = await bots.update(old.id, { avatarColor: '--dsw-alias-state-success-primary' });
+    expect(colored.avatarColor).toBe('--dsw-alias-state-success-primary');
+    for (const avatarColor of ['#123456', 'red', '--dsw-alias-bg-base', 'var(--dsw-alias-state-error-primary)']) {
+      await expectCode(() => bots.update(old.id, { avatarColor } as never), 'bot/invalid');
+      expect(bots.get(old.id)).toEqual(colored);
+    }
+    await close();
+    const reopened = await openOwned(ctx);
+    expect(reopened.bots.get(old.id)).toEqual(colored);
+    expect(await reopened.bots.update(old.id, { avatarColor: null })).not.toHaveProperty('avatarColor');
+  }));
+
   it('shares strict raster base64 avatar validation across write and wire schemas', async () => withStores(async ({ bots }) => {
     for (const type of ['png', 'jpeg', 'gif', 'webp']) {
       const avatar = `data:image/${type};base64,aGVsbG8=`;

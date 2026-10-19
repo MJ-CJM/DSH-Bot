@@ -15,6 +15,7 @@ import { assertClientInput } from '../build/client-policy.js';
 import * as host from '../lib/index.js';
 import en from '../locale/en.json';
 import zh from '../locale/zh.json';
+import * as primitives from './client/platform-primitives.js';
 
 const require = createRequire(import.meta.url);
 
@@ -93,10 +94,11 @@ describe('built bundle contract', () => {
     const requests: string[] = [];
     const plugin = entry?.factory((id) => {
       requests.push(id);
+      if (id === '@deepseek-ai/dsh-client-ui-primitives') return primitives;
       if (!['react', 'react/jsx-runtime', 'zod'].includes(id)) throw new Error(`Unexpected platform import: ${id}`);
       return require(id);
     });
-    expect([...new Set(requests)].sort()).toEqual(['react', 'react/jsx-runtime', 'zod']);
+    expect([...new Set(requests)].sort()).toEqual(['@deepseek-ai/dsh-client-ui-primitives', 'react', 'react/jsx-runtime', 'zod']);
     expect(plugin?.inject).toEqual(['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces', 'layout']);
     expect(typeof plugin?.apply).toBe('function');
   });
@@ -200,14 +202,16 @@ describe('built bundle contract', () => {
     let plugin: { inject: string[]; apply: (ctx: Context) => Promise<void> } | undefined;
     runInNewContext(readFileSync(require.resolve('dsh-bot/client'), 'utf8'), {
       window: { __ModuleLoader__: {
-        load: (entry: { factory: (require: NodeJS.Require) => typeof plugin }) => { plugin = entry.factory(require); },
+        load: (entry: { factory: (require: (id: string) => unknown) => typeof plugin }) => {
+          plugin = entry.factory((id) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : require(id));
+        },
       } },
     }, { timeout: 1000 });
     if (!plugin) throw new Error('Client factory did not register');
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      expect([...active].sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
+      expect([...active].sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.footer.action', 'sidebar.panellist']);
       expect(mountedEndpoints.sort()).toEqual([
         'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update',
@@ -215,7 +219,7 @@ describe('built bundle contract', () => {
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);
-      expect(releases.sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.panellist']);
+      expect(releases.sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.footer.action', 'sidebar.panellist']);
     } finally {
       await ctx.fiber.dispose();
     }

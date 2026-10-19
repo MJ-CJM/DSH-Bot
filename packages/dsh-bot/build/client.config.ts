@@ -37,6 +37,7 @@ const external = [
   'zod',
   '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
+  '@deepseek-ai/dsh-client-ui-primitives',
 ];
 
 const result = await build({

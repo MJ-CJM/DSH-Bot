@@ -5,6 +5,7 @@ import type { MemoryCatalog } from '../memory-state.js';
 import styles from '../styles/bots.module.css';
 import panel from '../styles/memory.module.css';
 import css from '../styles/memory.module.css?inline';
+import { BotAvatar } from './BotAvatar.js';
 
 export type MemoryPanelInput = Pick<MemoryRecord, 'content' | 'kind' | 'tags' | 'pinned'>;
 export interface MemoryPanelProps {
@@ -99,6 +100,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
 
   return <section className={panel.panel} aria-label={t('memory.title')}>
     <style data-dsh-bot-memory-styles="">{css}</style>
+    <div className={styles.actions}><BotAvatar bot={bot} size={32} /><strong>{bot.name}</strong></div>
     {!bot.memory.enabled && <p className={styles.notice}>{t('memory.disabled')}</p>}
     {bot.memory.enabled && bot.persona.complete && <p className={styles.notice}>{t('memory.complete')}</p>}
     <p className={styles.hint}>{t('memory.sessionNotice')}</p>

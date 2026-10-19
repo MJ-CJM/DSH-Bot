@@ -24,6 +24,7 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
   const [id, setId] = useState(duplicate && bot ? `${bot.id.slice(0, 27)}-copy` : bot?.id ?? '');
   const [name, setName] = useState(duplicate && bot ? t('editor.copyName', { name: bot.name }) : bot?.name ?? '');
   const [avatar, setAvatar] = useState(bot?.avatar);
+  const [avatarColor, setAvatarColor] = useState(bot?.avatarColor);
   const [description, setDescription] = useState(bot?.description ?? '');
   const [persona, setPersona] = useState(bot?.persona.prefix ?? '');
   const [template, setTemplate] = useState<'standard' | 'minimal'>(bot?.template ?? 'standard');
@@ -45,14 +46,14 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
     if (disabled) return;
     setFailure(false);
     const fields: BotPatch = {
-      name, avatar: avatar ?? null, description,
+      name, avatar: avatar ?? null, avatarColor: avatarColor ?? null, description,
       // Patches replace a whole top-level field, so retain advanced persona flags.
       persona: { ...bot?.persona, prefix: persona }, template,
       memory: { enabled: memory, injectLimit: injectLimit.trim() === '' ? Number.NaN : Number(injectLimit) },
       tools: { deny: [...new Set(deny.split(/[\n,]/u).map((item) => item.trim()).filter(Boolean))] },
     };
     const input = editing ? fields : {
-      ...fields, id, avatar,
+      ...fields, id, avatar, avatarColor,
       ...(bot ? {
         model: bot.model, skills: bot.skills, defaultCwd: bot.defaultCwd,
         mcpServers: bot.mcpServers, channels: bot.channels, order: bot.order,
@@ -97,7 +98,7 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
               </label>
             </div>
             {avatarWarning && <p className={styles.warning}>{t('avatar.invalidStored')}</p>}
-            <AvatarPicker value={avatar} onChange={setAvatar} disabled={disabled} t={t} />
+            <AvatarPicker id={id} value={avatar} color={avatarColor} onChange={setAvatar} onColorChange={setAvatarColor} disabled={disabled} t={t} />
             <label className={styles.field}>{t('editor.description')}
               <textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} disabled={disabled} />
             </label>

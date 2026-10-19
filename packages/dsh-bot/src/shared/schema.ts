@@ -3,6 +3,15 @@ import { botIdSchema, memoryIdSchema } from './ids.js';
 
 export const MEMORY_MAX_BYTES = 2 * 1024;
 export const AVATAR_MAX_BYTES = 64 * 1024;
+/** Persist only reviewed DSH theme aliases, never arbitrary CSS or colors. */
+export const AVATAR_COLOR_TOKENS = [
+  '--dsw-alias-state-business-primary',
+  '--dsw-alias-state-success-primary',
+  '--dsw-alias-state-warn-label',
+  '--dsw-alias-state-error-primary',
+] as const;
+export const avatarColorSchema = z.enum(AVATAR_COLOR_TOKENS);
+export type AvatarColor = z.infer<typeof avatarColorSchema>;
 export const MEMORY_LIST_MAX_LIMIT = 200;
 export const BOT_NAME_MAX_CHARS = 64;
 export const PERSONA_PREFIX_MAX_BYTES = 16 * 1024;
@@ -46,7 +55,7 @@ export const channelBindingSchema = z.strictObject({
 
 const botFields = z.strictObject({
   name: nonempty.refine((value) => [...value].length <= BOT_NAME_MAX_CHARS, 'Name exceeds 64 characters'),
-  avatar: avatarSchema.optional(), description: z.string(),
+  avatar: avatarSchema.optional(), avatarColor: avatarColorSchema.optional(), description: z.string(),
   persona: z.strictObject({
     prefix: z.string().refine((value) => utf8Bytes(value) <= PERSONA_PREFIX_MAX_BYTES, 'Persona prefix exceeds 16 KiB'),
     suffix: z.string().optional(), complete: z.boolean().optional(),
@@ -81,7 +90,7 @@ export const botCreateSchema = botFields.extend({
  */
 const botPatchFields = botFields.partial();
 export const botPatchSchema = botPatchFields.extend({
-  avatar: botFields.shape.avatar.nullable(), model: botFields.shape.model.nullable(),
+  avatar: botFields.shape.avatar.nullable(), avatarColor: botFields.shape.avatarColor.nullable(), model: botFields.shape.model.nullable(),
   defaultCwd: botFields.shape.defaultCwd.nullable(), order: botFields.shape.order.nullable(),
 });
 export const botRemoveOptionsSchema = z.strictObject({ deleteMemories: z.boolean().default(true) });
@@ -115,10 +124,11 @@ export type BotRecord = z.infer<typeof botSchema>;
 export type BotCreateInput = z.input<typeof botCreateSchema>;
 export type BotPatch = z.input<typeof botPatchSchema>;
 export function normalizeBotPatch(patch: BotPatch): z.output<typeof botPatchFields> {
-  const { avatar, model, defaultCwd, order, ...fields } = patch;
+  const { avatar, avatarColor, model, defaultCwd, order, ...fields } = patch;
   return {
     ...fields,
     ...('avatar' in patch ? { avatar: avatar ?? undefined } : {}),
+    ...('avatarColor' in patch ? { avatarColor: avatarColor ?? undefined } : {}),
     ...('model' in patch ? { model: model ?? undefined } : {}),
     ...('defaultCwd' in patch ? { defaultCwd: defaultCwd ?? undefined } : {}),
     ...('order' in patch ? { order: order ?? undefined } : {}),

@@ -149,6 +149,23 @@
     "memory.timeUnavailable": "Time unavailable",
     "badge.deleted": "Deleted Bot",
     "badge.deletedHint": "This Bot is no longer available. Historical sessions cannot be restored until the same Bot ID is recreated.",
-    "avatar.invalidStored": "The saved avatar is unsupported and has been hidden. Choose a new avatar or clear it and save to repair this Bot."
+    "avatar.invalidStored": "The saved avatar is unsupported and has been hidden. Choose a new avatar or clear it and save to repair this Bot.",
+    "sidebar.sessions": "Bot chats",
+    "sidebar.manage": "Manage Bots",
+    "sidebar.newSession": "New conversation with {name}",
+    "sidebar.emptySessions": "No conversations yet.",
+    "sidebar.more": "More conversations",
+    "sidebar.untitled": "Untitled conversation",
+    "sidebar.loading": "Loading conversations…",
+    "sidebar.toggle": "Toggle conversations for {name}",
+    "avatar.color": "Whale color",
+    "avatar.blue": "Blue",
+    "avatar.green": "Green",
+    "avatar.amber": "Amber",
+    "avatar.red": "Red",
+    "avatar.automatic": "Use automatic color",
+    "avatar.otherOptions": "Emoji or uploaded image",
+    "avatar.upload": "Upload image",
+    "avatar.uploadHint": "PNG, JPEG, GIF or WebP; encoded data must fit within 64 KiB."
   }
 }

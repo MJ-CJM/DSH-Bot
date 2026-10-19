@@ -293,11 +293,13 @@ try {
     check('Remote error has a transport-safe details object', missing.error.details, {});
     const created = ok(await remote.create({
       id: 't04-probe', name: '运行验证', persona: { prefix: '仅用于注册表验证。' },
-      avatar: '🤖', defaultCwd: root, order: 67,
+      avatar: '🤖', avatarColor: '--dsw-alias-state-success-primary', defaultCwd: root, order: 67,
     }), 'create');
     check('create stores optional fields before clear',
       { avatar: created.avatar, defaultCwd: created.defaultCwd, order: created.order },
       { avatar: '🤖', defaultCwd: root, order: 67 });
+    check('avatarColor survives real Remote codec and storage',
+      ok(await remote.get(created.id), 'read avatar color').avatarColor, '--dsw-alias-state-success-primary');
     check('create registers healthy preset', (await roster()).some((row) => row.id === 'review-t04-probe' && !row.broken));
     const conflict = await remote.create({ id: 't04-probe', name: '重复' });
     save('initial-error-results.json', {
@@ -306,6 +308,8 @@ try {
     check('Remote duplicate id conflict code', conflict.ok ? null : conflict.error.code, 'bot/conflict');
     const badAvatar = await raw('dshBot/update', { id: created.id, patch: { avatar: 'data:image/svg+xml;base64,PHN2Zz4=' } });
     check('strict Host rejects SVG avatar on real transport', badAvatar.error?.code, 'gateway/input-invalid');
+    const badColor = await raw('dshBot/update', { id: created.id, patch: { avatarColor: '#123456' } });
+    check('strict Host rejects colors outside the theme palette', badColor.error?.code, 'gateway/input-invalid');
     const manual = ok(await remote.memory.save(created.id, { content: 'T09 profile manual memory' }), 'manual memory');
     check('memory Remote stamps manual source', ok(await remote.memory.list(created.id, {}), 'memory list')[0]?.source.by, 'user');
     check('memory Remote count', ok(await remote.memory.count(created.id), 'memory count'), 1);
@@ -316,9 +320,9 @@ try {
     check('created Bot status supplies actual preset id', createdStatus, { id: created.id, presetId: 'review-t04-probe', preset: { state: 'ok' } });
     const updated = ok(await remote.update(created.id, {
       name: '已更新', persona: { prefix: '更新后的中文人设。' },
-      avatar: null, defaultCwd: null, order: null,
+      avatar: null, avatarColor: null, defaultCwd: null, order: null,
     }), 'update and clear optional fields through JSON');
-    const clearedKeys = ['avatar', 'defaultCwd', 'order'];
+    const clearedKeys = ['avatar', 'avatarColor', 'defaultCwd', 'order'];
     check('Remote null patch clears optional fields in update result', clearedKeys.every((key) => !Object.hasOwn(updated, key)));
     const clearedFetched = ok(await remote.get(created.id), 'read cleared optional fields');
     check('Remote null patch persists absent optional fields', clearedKeys.every((key) => !Object.hasOwn(clearedFetched, key)));

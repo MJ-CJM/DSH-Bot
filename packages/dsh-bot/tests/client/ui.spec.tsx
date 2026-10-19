@@ -35,7 +35,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   });
 
   it('defaults to 5 seconds and validates the inclusive 1000–60000 ms Client configuration range', () => {
-    expect(Config({})).toEqual({ pollIntervalMs: 5000, memoryPageSize: 50 });
+    expect(Config({})).toEqual({ pollIntervalMs: 5000, memoryPageSize: 50, sidebarSessionLimit: 5 });
     for (const value of [1000, 2000, 60000]) expect(Config({ pollIntervalMs: value }).pollIntervalMs).toBe(value);
     for (const value of [999, 60001, 0, -1, 1000.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => Config({ pollIntervalMs: value })).toThrow();
@@ -67,45 +67,85 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.remote.methods.delete).not.toHaveBeenCalled();
   });
 
-  it('changes the polling cadence from the page and preserves it across page remounts', async () => {
+  it('retains the default polling cadence without exposing refresh interval controls', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const app = await mount([bot()]);
-    const interval = field(app.container, t['bots.pollInterval']);
-    expect(interval.value).toBe('5000');
-    await fill(interval, '15000');
-    expect(interval.value).toBe('15000');
-    await act(async () => { await vi.advanceTimersByTimeAsync(14999); });
+    expect(app.container.querySelector('header select')).toBeNull();
+    expect(app.container.textContent).not.toContain(t['bots.pollInterval']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     await app.unmountPage();
-    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     await app.remountPage();
-    expect(field(app.container, t['bots.pollInterval']).value).toBe('15000');
     expect(app.remote.methods.list).toHaveBeenCalledTimes(3);
-    await act(async () => { await vi.advanceTimersByTimeAsync(14999); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(3);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(4);
   });
 
-  it('displays a custom 2000 ms configured interval as a selected option and polls at that cadence', async () => {
+  it('polls at the configured custom cadence with no visible interval selector', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const app = await mount([bot()], 'en', undefined, { pollIntervalMs: 2000 });
-    const interval = field(app.container, t['bots.pollInterval']) as HTMLSelectElement;
-    expect(interval.value).toBe('2000');
-    expect(interval.selectedOptions[0]?.textContent).toBe(t['bots.pollSeconds'].replace('{seconds}', '2'));
+    expect(app.container.querySelector('header select')).toBeNull();
+    expect(app.container.textContent).not.toContain(t['bots.pollInterval']);
     await act(async () => { await vi.advanceTimersByTimeAsync(1999); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
-    await fill(interval, '5000');
-    expect(interval.value).toBe('5000');
-    await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1999); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(3);
+  });
+
+  it('renders the native page frame and card anatomy with only create and refresh in its header', async () => {
+    const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha Bot', description: 'A careful helper' })]);
+    const page = app.container.querySelector('[data-bots-page]');
+    const header = page?.querySelector('header');
+    const article = page?.querySelector('article');
+    expect(page?.className).toContain('page');
+    expect(header?.parentElement?.className).toContain('pageContent');
+    expect(header?.parentElement?.parentElement?.className).toContain('pageScroll');
+    expect(header?.querySelector('h1')?.textContent).toBe(t['bots.title']);
+    expect(header?.textContent).toContain(t['bots.subtitle']);
+    expect(header?.querySelectorAll('button')).toHaveLength(2);
+    expect(header?.querySelector('select')).toBeNull();
+    expect(header?.textContent).not.toContain(t['chat.workspace']);
+    expect(article?.querySelector('header h2')?.textContent).toBe('Alpha Bot');
+    expect(article?.querySelector('header')?.textContent).toContain('alpha-bot');
+    expect(article?.querySelector('header button[aria-haspopup="menu"]')?.getAttribute('aria-label')).toBe(t['card.more']);
+    expect(article?.querySelector('footer')?.textContent).toBe(`${t['card.start']}${t['card.edit']}`);
+    expect(article?.querySelector('footer button[aria-haspopup="menu"]')).toBeNull();
+    expect([...article?.querySelectorAll('footer button') ?? []].map((item) => item.getAttribute('data-platform-size'))).toEqual(['sm', 'sm']);
+    expect(article?.querySelector('p')?.textContent).toBe('A careful helper');
+  });
+
+  it('switches narrow and wide classes from the actual main panel width and disconnects its observer', async () => {
+    let resize: ResizeObserverCallback | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { resize = callback; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    try {
+      const app = await mount([bot()]);
+      const page = app.container.querySelector('[data-bots-page]');
+      expect(observe).toHaveBeenCalledWith(page);
+      await act(async () => { resize?.([{ contentRect: { width: 540 } } as ResizeObserverEntry], {} as ResizeObserver); });
+      expect(page?.className).toContain('compact');
+      expect(page?.className).not.toContain('wide');
+      await act(async () => { resize?.([{ contentRect: { width: 1080 } } as ResizeObserverEntry], {} as ResizeObserver); });
+      expect(page?.className).toContain('wide');
+      expect(page?.className).not.toContain('compact');
+      await app.unmountPage();
+      expect(disconnect).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('renders a Bot card and opens the server-selected preset, without constructing a Client prefix', async () => {
@@ -168,6 +208,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.remote.methods.create).not.toHaveBeenCalled();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['validation.memory']);
     await fill(field(app.container, t['editor.injectLimit']), '7');
+    await click(app.container.querySelector('details > summary') as HTMLElement);
     await click(button(app.container, '🧠'));
     await submit(app.container);
     expect(app.remote.methods.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
@@ -192,6 +233,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     const id = field(app.container, t['editor.id']) as HTMLInputElement;
     expect(id.value).toBe('alpha-bot');
     expect(id.readOnly).toBe(true);
+    await click(app.container.querySelector('details > summary') as HTMLElement);
     await click(button(app.container, t['avatar.clear']));
     await fill(field(app.container, t['editor.persona']), 'Updated');
     await submit(app.container);
@@ -256,17 +298,23 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.remote.methods.status).toHaveBeenCalledTimes(1);
   });
 
-  it('requires an explicit choice among multiple workspaces and forwards it to the public async API', async () => {
-    const app = await mount([bot()]);
+  it.each(['en', 'zh'] as const)('confirms the multi-workspace launcher through the real form and public API in %s', async (language) => {
+    const app = await mount([bot()], language);
+    const t = language === 'zh' ? zh.ui : en.ui;
     await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second project')] });
     await click(button(app.container, t['card.start']));
     expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceChoose']);
+    expect(app.container.querySelector('dialog')?.textContent).toContain(t['chat.workspaceChoose']);
     await fill(field(app.container, t['chat.workspace']), 'workspace-two');
-    await click(button(app.container, t['card.start']));
+    expect(app.openWorkspace).not.toHaveBeenCalled();
+    const dialog = app.container.querySelector('dialog');
+    if (!dialog) throw new Error('Workspace picker is missing');
+    await click(button(dialog, t['card.start']));
     expect(app.openWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-two', expect.any(Function), {
       agentPreset: 'host-selected/alpha-bot',
     });
+    expect(app.container.querySelector('dialog')).toBeNull();
+    expect(app.container.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('shows pending and failed workspace catalogs and revalidates a workspace after querying status', async () => {
@@ -408,7 +456,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(styleCount()).toBe(1);
     const style = app.container.querySelector('style[data-dsh-bot-styles]');
     expect(style?.textContent).toContain('.bots_page');
-    expect(app.container.querySelector('section')?.className).toBe('bots_page');
+    expect(app.container.querySelector('section')?.className).toContain('bots_page');
     await click(button(app.container, t['bots.refresh']));
     expect(styleCount()).toBe(1);
     expect(style?.isConnected).toBe(true);

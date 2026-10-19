@@ -215,7 +215,7 @@ describe('single-source Remote contract', () => {
     if (!descriptor) throw new Error('Missing update descriptor');
     const input = descriptor.input({ strict: true }).create();
     expect(input.parse({ id: 'test-bot', patch: {} })).toEqual({ id: 'test-bot', patch: {} });
-    const patch = { avatar: null, model: null, defaultCwd: null, order: null };
+    const patch = { avatar: null, avatarColor: null, model: null, defaultCwd: null, order: null };
     const parsed = input.parse({ id: 'test-bot', patch });
     expect(parsed).toEqual({ id: 'test-bot', patch });
     const wire = JSON.parse(JSON.stringify(parsed));

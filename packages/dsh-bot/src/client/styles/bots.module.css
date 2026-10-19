@@ -1,16 +1,34 @@
 .page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   box-sizing: border-box;
+  width: 100%;
   height: 100%;
-  overflow: auto;
-  padding: 36px clamp(20px, 4vw, 64px);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
   font: inherit;
 }
-.header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px; margin-bottom: 30px; }
-.title { margin: 0 0 8px; font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
-.subtitle { margin: 0; color: var(--dsw-alias-label-secondary); line-height: 1.6; }
-.actions, .cardActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* DSH rc.2 PluginManagerPage's 960px column and 24–48px / 48px page insets;
+   TaskManagerPage's flex scroll region keeps the full main panel height. */
+.pageScroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 clamp(24px, 4vw, 48px) 48px; }
+.pageContent { width: 100%; max-width: 960px; margin: 0 auto; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; padding-top: 28px; margin-bottom: 32px; }
+/* Locked rc.2 AppFrame adds a 48px macOS window-control clearance. Keep its
+   28 + 48px measure without depending on the frame's private CSS variable. */
+:global([data-platform='darwin']) .header { padding-top: 76px; }
+.heading { min-width: 0; max-width: 100%; }
+.title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 500; }
+.subtitle { margin: 4px 0 0; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
+.actions { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 16px; white-space: nowrap; }
+.createButton { height: 32px; padding: 0 12px; border-radius: 16px; font-size: 13px; line-height: 20px; }
+.iconButton { width: 28px; height: 28px; padding: 0; color: var(--dsw-alias-label-caption); }
+/* PluginManagerPage.module.css:397: compact intrinsic-width controls, 8px gap.
+   Both buttons use the public Button sm size (28px), irrespective of variant. */
+.cardActions { display: inline-flex; align-self: flex-start; flex: none; align-items: center; gap: 8px; margin-top: auto; }
 .button, .primaryButton, .dangerButton, .emojiButton {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-sizing: border-box; border: 1px solid var(--dsw-alias-border-l3); border-radius: 9px;
@@ -25,19 +43,21 @@
   outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 3px;
 }
 .button:disabled, .primaryButton:disabled, .dangerButton:disabled, .emojiButton:disabled { cursor: not-allowed; opacity: 0.55; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 18px; align-items: stretch; }
-.card { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 22px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 16px; background: var(--dsw-alias-bg-layer-1); }
-.cardHeading { display: flex; align-items: center; gap: 12px; }
-.avatar, .avatarPreview { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 12px; background: var(--dsw-alias-bg-base); font-size: 29px; overflow: hidden; }
-.avatarImage { display: block; width: 100%; height: 100%; object-fit: cover; }
-.cardIdentity { min-width: 0; }
-.cardTitle { margin: 0 0 4px; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
-.botId { font-size: 12px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
-.description { flex: 1; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); line-height: 1.6; }
-.moreContainer { position: relative; margin-left: auto; }
-.moreActions { position: absolute; right: 0; top: calc(100% + 5px); display: grid; gap: 4px; min-width: 120px; padding: 6px; z-index: 2; border: 1px solid var(--dsw-alias-border-l3); border-radius: 10px; background: var(--dsw-alias-bg-layer-1); }
-.empty { padding: 64px 24px; border: 1px dashed var(--dsw-alias-border-l3); border-radius: 16px; text-align: center; }
-.empty h2 { font-size: 20px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); grid-auto-rows: 1fr; gap: 16px; align-items: stretch; }
+.compact .grid { grid-template-columns: minmax(0, 1fr); }
+.wide .grid { align-items: stretch; }
+.card { display: flex; flex-direction: column; gap: 16px; min-width: 0; box-sizing: border-box; padding: 20px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); }
+.cardHeading { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.cardIdentity { flex: 1; min-width: 0; }
+.cardTitle { margin: 0 0 4px; font-size: 14px; line-height: 20px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.botId { display: block; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.description { display: -webkit-box; margin: 0; max-height: 60px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
+.moreContainer { flex: none; align-self: flex-start; margin-left: auto; }
+.statusNotice { margin: 0; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 10px; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 20px; overflow-wrap: anywhere; }
+.empty { display: flex; align-items: center; flex-direction: column; padding: 48px 20px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 14px; }
+.empty h2 { margin: 0 0 8px; font-size: 14px; line-height: 1.6; font-weight: 400; }
+.empty p { margin: 0; }
+.emptyAction { margin-top: 16px; }
 .empty p, .loading, .notice, .hint { color: var(--dsw-alias-label-secondary); line-height: 1.6; }
 .notice { margin: 0; font-size: 13px; }
 .warning, .error { margin: 0; color: var(--dsw-alias-state-error-primary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -47,6 +67,9 @@
 .dialog { position: relative; margin: 0; padding: 0; width: min(680px, 100%); max-height: calc(100dvh - 40px); overflow: auto; border: 1px solid var(--dsw-alias-border-l3); border-radius: 16px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
 .dialogHeader { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px 24px 16px; border-bottom: 1px solid var(--dsw-alias-border-l3); }
 .dialogHeader h2 { margin: 0; font-size: 21px; }
+.dialogTitleAction { border: 0; padding: 0; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.dialogTitleAction:hover { text-decoration: underline; }
+.dialogTitleAction:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 3px; }
 .dialogDescription { margin: 0; padding: 18px 24px 0; font-size: 13px; color: var(--dsw-alias-label-secondary); line-height: 1.6; }
 .editorBody { display: grid; gap: 20px; padding: 22px 24px; }
 .dialogFooter { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px 22px; border-top: 1px solid var(--dsw-alias-border-l3); }
@@ -59,13 +82,9 @@
 .hint { font-size: 12px; font-weight: 400; }
 .checkboxField { display: flex; align-items: center; gap: 9px; font-size: 13px; padding-top: 24px; }
 .checkboxField input { width: 16px; height: 16px; accent-color: var(--dsw-alias-state-business-primary); }
-.avatarPicker { padding: 0; margin: 0; border: 0; min-width: 0; }
-.avatarPicker legend { margin-bottom: 9px; font-size: 13px; font-weight: 550; }
-.avatarOptions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .emojiButton { font-size: 22px; width: 38px; height: 38px; padding: 4px; }
 .emojiButton[aria-pressed="true"] { border-color: var(--dsw-alias-state-business-primary); background: var(--dsw-alias-interactive-bg-hover); }
 @media (max-width: 600px) {
-  .page { padding: 24px 16px; }
   .formRow { grid-template-columns: 1fr; }
   .checkboxField { padding-top: 0; }
   .backdrop { padding: 10px; }

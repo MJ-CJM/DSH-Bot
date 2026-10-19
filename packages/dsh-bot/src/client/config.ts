@@ -1,9 +1,13 @@
 import Schema from '@deepseek-ai/schemastery';
 import { DEFAULT_POLL_INTERVAL_MS, MAX_POLL_INTERVAL_MS, MIN_POLL_INTERVAL_MS } from './state.js';
 
-export interface Config { pollIntervalMs: number; memoryPageSize: number }
+export interface Config { pollIntervalMs: number; memoryPageSize: number; sidebarSessionLimit: number }
 /** Client-local configuration. rc.2 does not forward the Host row's config. */
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
+  sidebarSessionLimit: Schema.transform(Schema.number(), (value) => {
+    if (!Number.isInteger(value) || value < 1 || value > 50) throw new TypeError('sidebarSessionLimit must be an integer from 1 to 50');
+    return value;
+  }).default(5),
   memoryPageSize: Schema.transform(Schema.number(), (value) => {
     if (!Number.isInteger(value) || value < 1 || value > 199) throw new TypeError('memoryPageSize must be an integer from 1 to 199');
     return value;

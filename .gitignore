@@ -2,7 +2,8 @@ node_modules/
 lib/
 dist/
 .dsh-dev/
+.dsh-shot/
 .codex/runs/
 *.tgz
 .dsh-desktop
-.dsh-pack
+.dsh-pack*

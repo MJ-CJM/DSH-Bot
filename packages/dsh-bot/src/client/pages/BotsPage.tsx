@@ -1,5 +1,6 @@
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { Context } from '@deepseek-ai/cordis';
+import { Button, IconPlusOutlineRegular, IconRefreshOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { useEffect, useId, useRef, useState } from 'react';
 import { botIdSchema } from '../../shared/ids.js';
 import type { BotCreateInput, BotPatch, BotRecord } from '../../shared/schema.js';
@@ -9,6 +10,7 @@ import { MemoryPanel, type MemoryPanelProps } from '../components/MemoryPanel.js
 import type { BotDetailSource } from '../detail-state.js';
 import { Modal } from '../components/Modal.js';
 import type { BotCatalog } from '../state.js';
+import { useChatLauncher } from '../chat-launcher.js';
 import styles from '../styles/bots.module.css';
 import css from '../styles/bots.module.css?inline';
 
@@ -24,6 +26,7 @@ export interface BotsPageInjected {
   onDuplicate(id: string, newId: string): Promise<void>;
   onDelete(id: string, deleteMemories: boolean): Promise<void>;
   onStart(id: string, workspaceId: string, signal?: AbortSignal): Promise<void>;
+  getPreferredWorkspace(): string;
 }
 export type BotsPageProps = InjectFace<BotsPageInjected> & PropsLocale<'dsh-bot'>;
 type Dialog = { kind: 'create' } | { kind: 'edit' | 'delete' | 'duplicate'; bot: BotRecord };
@@ -33,12 +36,13 @@ function detail(error: unknown): string {
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ useCatalog, useWorkspaceCatalog, useBotDetail, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onPollInterval, onCreate, onUpdate, onDuplicate, onDelete, onStart, t }: BotsPageProps) {
+export function BotsPage({ useCatalog, useWorkspaceCatalog, useBotDetail, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, getPreferredWorkspace, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
   const requestedDetail = useBotDetail((value) => value);
   const workspaces = useWorkspaceCatalog((value) => value);
-  const [chosenWorkspace, setChosenWorkspace] = useState('');
-  const workspaceId = chosenWorkspace || (workspaces.items.length === 1 ? workspaces.items[0]?.workspaceId ?? '' : '');
+  const chat = useChatLauncher({ workspaces, onStart, getPreferredWorkspace, t });
+  const pageElement = useRef<HTMLElement>(null);
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 600);
   const [memoryCount, setMemoryCount] = useState<{ count?: number; failed?: boolean }>({});
   const [countAttempt, setCountAttempt] = useState(0);
   const [deleteMemories, setDeleteMemories] = useState(true);
@@ -50,6 +54,20 @@ export function BotsPage({ useCatalog, useWorkspaceCatalog, useBotDetail, onDeta
   const [copyInvalid, setCopyInvalid] = useState(false);
   const copyInput = useId();
   const lifetime = useRef<AbortController>();
+  useEffect(() => {
+    const page = pageElement.current;
+    if (!page) return;
+    const update = (width: number) => { if (width > 0) setCompact(width <= 600); };
+    update(page.clientWidth || window.innerWidth);
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(([entry]) => { if (entry) update(entry.contentRect.width); });
+      observer.observe(page);
+      return () => observer.disconnect();
+    }
+    const onResize = () => update(page.clientWidth || window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
@@ -111,45 +129,40 @@ export function BotsPage({ useCatalog, useWorkspaceCatalog, useBotDetail, onDeta
   const unavailable = snapshot.error?.code === 'bot/unavailable'
     || snapshot.error?.code === 'gateway/service-unavailable';
   return (
-    <section className={styles.page} aria-label={t('bots.title')}>
+    <section ref={pageElement} className={`${styles.page} ${compact ? styles.compact : styles.wide}`} data-bots-page="" aria-label={t('bots.title')}>
       <style data-dsh-bot-styles="">{css}</style>
-      <header className={styles.header}>
-        <div><h1 className={styles.title}>{t('bots.title')}</h1><p className={styles.subtitle}>{t('bots.subtitle')}</p></div>
-        <div className={styles.actions}>
-          <label className={styles.field}>{t('chat.workspace')}
-            <select value={workspaceId} disabled={busy || workspaces.phase !== 'ready'} onChange={(event) => setChosenWorkspace(event.target.value)}>
-              <option value="">{t('chat.workspaceChoose')}</option>
-              {workspaces.items.map((item) => <option key={item.workspaceId} value={item.workspaceId}>{item.title || item.path}</option>)}
-            </select>
-          </label>
-          <label className={styles.field}>{t('bots.pollInterval')}
-            <select value={snapshot.pollIntervalMs} onChange={(event) => onPollInterval(Number(event.target.value))}>
-              {[...new Set([1000, 5000, 15000, 30000, 60000, snapshot.pollIntervalMs])].sort((a, b) => a - b)
-                .map((ms) => <option key={ms} value={ms}>{t('bots.pollSeconds', { seconds: ms / 1000 })}</option>)}
-            </select>
-          </label>
-          <button type="button" className={styles.button} disabled={busy} onClick={() => { void onRefresh(); }}>{t('bots.refresh')}</button>
-          <button type="button" className={styles.primaryButton} disabled={busy || !snapshot.loaded || Boolean(snapshot.error)} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</button>
+      <div className={styles.pageScroll}>
+        <div className={styles.pageContent}>
+          <header className={styles.header}>
+            <div className={styles.heading}><h1 className={styles.title}>{t('bots.title')}</h1><p className={styles.subtitle}>{t('bots.subtitle')}</p></div>
+            <div className={styles.actions}>
+              <Button variant="ghost" size="sm" className={styles.iconButton} aria-label={t('bots.refresh')} title={t('bots.refresh')}
+                disabled={busy || snapshot.loading} onClick={() => { void onRefresh(); }}><IconRefreshOutlineRegular size={16} /></Button>
+              <Button variant="primary" size="sm" className={styles.createButton} icon={<IconPlusOutlineRegular size={13} />}
+                disabled={busy || !snapshot.loaded || Boolean(snapshot.error)} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
+            </div>
+          </header>
+          {snapshot.error && <div role="alert" className={styles.error}>
+            <p>{t(unavailable ? 'errors.unavailable' : 'errors.load')}</p>
+            {snapshot.error.code && <p>{snapshot.error.code}</p>}
+            {snapshot.error.message && <p>{snapshot.error.message}</p>}
+            <button type="button" className={styles.button} onClick={() => { void onRefresh(); }}>{t('actions.retry')}</button>
+          </div>}
+          {snapshot.loading && <p className={styles.loading} role="status">{t('bots.loading')}</p>}
+          {snapshot.loaded && !snapshot.error && snapshot.entries.length === 0 && <div className={styles.empty}>
+            <h2>{t('bots.empty')}</h2><p>{t('bots.emptyHint')}</p>
+            <Button variant="primary" size="sm" className={styles.emptyAction} disabled={busy} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
+          </div>}
+          <div className={styles.grid}>
+            {snapshot.entries.map(({ bot, status }) => <BotCard key={bot.id} bot={bot} status={snapshot.error || snapshot.loading ? undefined : status}
+              busy={busy}
+              onStart={() => { void perform(() => chat.start(bot.id), 'errors.start').catch(() => {}); }}
+              onEdit={() => open({ kind: 'edit', bot })} onDuplicate={() => open({ kind: 'duplicate', bot })}
+              onDelete={() => open({ kind: 'delete', bot })} t={t} />)}
+          </div>
         </div>
-      </header>
-      {snapshot.error && <div role="alert" className={styles.error}>
-        <p>{t(unavailable ? 'errors.unavailable' : 'errors.load')}</p>
-        {snapshot.error.code && <p>{snapshot.error.code}</p>}
-        {snapshot.error.message && <p>{snapshot.error.message}</p>}
-        <button type="button" className={styles.button} onClick={() => { void onRefresh(); }}>{t('actions.retry')}</button>
-      </div>}
-      {snapshot.loading && <p className={styles.loading} role="status">{t('bots.loading')}</p>}
-      {snapshot.loaded && !snapshot.error && snapshot.entries.length === 0 && <div className={styles.empty}>
-        <h2>{t('bots.empty')}</h2><p>{t('bots.emptyHint')}</p>
-        <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</button>
-      </div>}
-      <div className={styles.grid}>
-        {snapshot.entries.map(({ bot, status }) => <BotCard key={bot.id} bot={bot} status={snapshot.error || snapshot.loading ? undefined : status}
-          busy={busy}
-          onStart={() => { void perform(() => onStart(bot.id, workspaceId, lifetime.current?.signal), 'errors.start').catch(() => {}); }}
-          onEdit={() => open({ kind: 'edit', bot })} onDuplicate={() => open({ kind: 'duplicate', bot })}
-          onDelete={() => open({ kind: 'delete', bot })} t={t} />)}
       </div>
+      {chat.dialog}
       {(dialog?.kind === 'create' || dialog?.kind === 'edit') && <BotEditor
         avatarWarning={dialog.kind === 'edit' && snapshot.entries.find(({ bot }) => bot.id === dialog.bot.id)?.status?.warnings?.includes('avatar/invalid')}
         key={dialog.kind === 'edit' ? dialog.bot.id : 'new'}

@@ -268,15 +268,16 @@ describe('bot_manage through published ToolRuntime, approval audit and JSON-back
     const avatar = `data:image/png;base64,${'A'.repeat(Math.floor((64 * 1024 - 22) / 4) * 4)}`;
     const prefix = '🧠'.repeat(201);
     const suffix = 'Suffix'.repeat(200);
-    const created = await execute(owner.agent, { action: 'create', input: { id: 'alpha', name: 'Alpha', avatar, persona: { prefix, suffix, complete: false } } });
+    const avatarColor = '--dsw-alias-state-business-primary';
+    const created = await execute(owner.agent, { action: 'create', input: { id: 'alpha', name: 'Alpha', avatar, avatarColor, persona: { prefix, suffix, complete: false } } });
     const original = await registry.get('alpha');
     expect(original.avatar).toBe(avatar);
-    expect(successful(created)).toMatchObject({ bots: [{ avatar: '[data-url avatar]', persona: original.persona }] });
+    expect(successful(created)).toMatchObject({ bots: [{ avatar: '[data-url avatar]', avatarColor, persona: original.persona }] });
     await registry.create({ id: 'beta', name: 'Beta', avatar: '🤖', persona: { prefix: 'b'.repeat(190), suffix: 's'.repeat(11) } });
     await registry.create({ id: 'gamma', name: 'Gamma', persona: { prefix: 'c'.repeat(200) } });
     const listed = await execute(owner.agent, { action: 'list' });
     const rows = (successful(listed) as { bots: Array<BotRecord & { persona: { truncated?: boolean } }> }).bots;
-    expect(rows.find((bot) => bot.id === 'alpha')).toMatchObject({ avatar: '[data-url avatar]', persona: { prefix: '🧠'.repeat(200), suffix: '', complete: false, truncated: true } });
+    expect(rows.find((bot) => bot.id === 'alpha')).toMatchObject({ avatar: '[data-url avatar]', avatarColor, persona: { prefix: '🧠'.repeat(200), suffix: '', complete: false, truncated: true } });
     expect(rows.find((bot) => bot.id === 'beta')).toMatchObject({ avatar: '🤖', persona: { prefix: 'b'.repeat(190), suffix: 's'.repeat(10), truncated: true } });
     expect(rows.find((bot) => bot.id === 'gamma')?.persona).toEqual({ prefix: 'c'.repeat(200) });
     expect(rows.every((bot) => [...bot.persona.prefix, ...(bot.persona.suffix ?? '')].length <= 200)).toBe(true);
@@ -353,16 +354,16 @@ describe('bot_manage through published ToolRuntime, approval audit and JSON-back
     const owner = create();
     ctx.on('approval/request', async () => 'allowed-once');
     successful(await execute(owner.agent, { action: 'create', input: {
-      id: 'alpha', name: 'Alpha', avatar: '🤖', model: { provider: 'fixture', model: 'fixture-model' },
+      id: 'alpha', name: 'Alpha', avatar: '🤖', avatarColor: '--dsw-alias-state-warn-label', model: { provider: 'fixture', model: 'fixture-model' },
       defaultCwd: isolatedHome, order: 3,
     } }));
     successful(await execute(owner.agent, { action: 'update', id: 'alpha', input: {
-      avatar: null, model: null, defaultCwd: null, order: null,
+      avatar: null, avatarColor: null, model: null, defaultCwd: null, order: null,
       persona: { prefix: 'Updated persona', suffix: 'Be concise.', complete: true },
       tools: { deny: ['write'] }, skills: { extraDirs: [] }, memory: { enabled: false, injectLimit: 0 },
     } }));
     const bot = await registry.get('alpha');
-    for (const key of ['avatar', 'model', 'defaultCwd', 'order']) expect(bot).not.toHaveProperty(key);
+    for (const key of ['avatar', 'avatarColor', 'model', 'defaultCwd', 'order']) expect(bot).not.toHaveProperty(key);
     expect(bot).toMatchObject({ persona: { prefix: 'Updated persona', suffix: 'Be concise.', complete: true },
       tools: { deny: ['write'] }, memory: { enabled: false, injectLimit: 0 } });
   }));

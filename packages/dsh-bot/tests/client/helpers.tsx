@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { SlotCore, type StoredEntry, resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import { type ComponentType, act, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { vi } from 'vitest';
 import * as client from '../../src/client/index.js';
+import * as primitives from './platform-primitives.js';
 import type { BotStatus, DshBotRemoteMethods } from '../../src/shared/remote-contract.js';
 import {
   type BotCreateInput, type BotRecord, type MemoryRecord, botCreateSchema, botSchema, normalizeBotPatch,
@@ -88,9 +90,16 @@ export function loadBuiltClient(): typeof client {
   const require = createRequire(import.meta.url);
   let plugin: typeof client | undefined;
   const source = readFileSync(require.resolve('dsh-bot/client'), 'utf8');
-  new Function('window', source)({ __ModuleLoader__: {
-    load(entry: { factory: (require: NodeJS.Require) => typeof client }) { plugin = entry.factory(require); },
+  const platformRequire = ((id: string) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : require(id)) as NodeJS.Require;
+  const previousLoader = Object.getOwnPropertyDescriptor(window, '__ModuleLoader__');
+  Object.defineProperty(window, '__ModuleLoader__', { configurable: true, value: {
+    load(entry: { factory: (require: NodeJS.Require) => typeof client }) { plugin = entry.factory(platformRequire); },
   } });
+  try { new Function('window', source)(window); }
+  finally {
+    if (previousLoader) Object.defineProperty(window, '__ModuleLoader__', previousLoader);
+    else Reflect.deleteProperty(window, '__ModuleLoader__');
+  }
   if (!plugin) throw new Error('Built Client factory did not load');
   return plugin;
 }
@@ -111,6 +120,7 @@ export async function mountClient(
     children: {
       main: { kind: 'keyed', scope: 'root' },
       'sidebar.panellist': { kind: 'list', scope: 'root' },
+      'sidebar.footer.action': { kind: 'list', scope: 'root' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
     },
   }, (() => null) as never);
@@ -131,11 +141,19 @@ export async function mountClient(
   const openSession = vi.fn<Context['uiWorkspace']['openSession']>();
   const selectPanel = vi.fn<Context['layout']['selectPanel']>();
   ctx.provide('layout', { selectPanel } as unknown as Context['layout']);
-  const openWorkspace = vi.fn<Context['uiWorkspace']['openWorkspace']>(async () => {});
+  const openWorkspace = vi.fn<Context['uiWorkspace']['openWorkspace']>(async (_id, beforeOpen) => {
+    beforeOpen?.('test-opened-session' as never);
+  });
   let workspaceSnapshot: WorkspaceSnapshot = {
     items: [workspace()], state: 'idle', phase: 'ready', error: null, archivedSessionIds: [], pinnedSessionIds: [],
   };
   const workspaceListeners = new Set<() => void>();
+  let sessionSnapshot: SessionListState = { ids: [], byId: {}, phase: 'ready', projectionsBySession: {} };
+  const sessionListeners = new Set<() => void>();
+  const sessionSource = {
+    getSnapshot: () => sessionSnapshot,
+    subscribe(listener: () => void) { sessionListeners.add(listener); return () => { sessionListeners.delete(listener); }; },
+  };
   const workspaceSource: Context['workspaces']['list'] = {
     getSnapshot: () => workspaceSnapshot,
     subscribe(listener) { workspaceListeners.add(listener); return () => { workspaceListeners.delete(listener); }; },
@@ -161,8 +179,8 @@ export async function mountClient(
   let root = createRoot(container);
   const main = core.entries('main')[0];
   if (!main) throw new Error('Client did not register its main page');
-  const renderEntry = (entry: StoredEntry | undefined) => {
-    if (!entry) { root.render(null); return; }
+  const renderEntry = (entry: StoredEntry | undefined, target = root, runtime: Record<string, unknown> = {}) => {
+    if (!entry) { target.render(null); return; }
     const Component = entry.component as ComponentType<Record<string, unknown>>;
     const { hooks, ...injected } = entry.inject?.() ?? {};
     const boundHooks: Record<string, unknown> = {};
@@ -175,11 +193,25 @@ export async function mountClient(
         return selector ? selector(snapshot) : snapshot;
       };
     }
-    root.render(<Component {...injected} {...boundHooks} t={translate(entry.locale ?? 'dsh-bot')} />);
+    target.render(<Component {...runtime} {...injected} {...boundHooks} t={translate(entry.locale ?? 'dsh-bot')} />);
   };
   await act(async () => { renderEntry(main); });
   let disposed = false;
   let viewMounted = true;
+  let sidebarRoot: ReturnType<typeof createRoot> | undefined;
+  let sidebarContainer: HTMLDivElement | undefined;
+  let sidebarWide = true;
+  const renderSidebar = () => {
+    if (!sidebarRoot) return;
+    renderEntry(core.entries('sidebar.footer.action')[0], sidebarRoot, {
+      wide: sidebarWide,
+      useSessions: (selector: (value: SessionListState) => unknown) => {
+        const value = useSyncExternalStore(sessionSource.subscribe, sessionSource.getSnapshot, sessionSource.getSnapshot);
+        return selector(value);
+      },
+    });
+  };
+  const unsubscribeSidebar = core.subscribe('sidebar.footer.action', renderSidebar);
   // Model the renderer's public slot subscription, including unmount when its entry disappears.
   const unsubscribeMain = core.subscribe('main', () => {
     if (viewMounted) renderEntry(core.entries('main')[0]);
@@ -191,6 +223,23 @@ export async function mountClient(
   };
   return {
     ctx, core, remote, openWorkspace, openSession, selectPanel, mountRemote, container, main, dictionaries,
+    sessionListeners,
+    async mountSidebar(wide = true) {
+      sidebarWide = wide;
+      if (!sidebarContainer) {
+        sidebarContainer = document.createElement('div');
+        document.body.append(sidebarContainer);
+        sidebarRoot = createRoot(sidebarContainer);
+      }
+      await act(async () => { renderSidebar(); });
+      return sidebarContainer;
+    },
+    async setSessions(patch: Partial<SessionListState>) {
+      await act(async () => {
+        sessionSnapshot = { ...sessionSnapshot, ...patch };
+        for (const listener of sessionListeners) listener();
+      });
+    },
     async setWorkspaces(patch: Partial<WorkspaceSnapshot>) {
       await act(async () => {
         workspaceSnapshot = { ...workspaceSnapshot, ...patch };
@@ -211,7 +260,11 @@ export async function mountClient(
       if (disposed) return;
       disposed = true;
       await unmountPage();
+      await act(async () => { sidebarRoot?.unmount(); });
+      sidebarRoot = undefined;
+      sidebarContainer?.remove();
       unsubscribeMain();
+      unsubscribeSidebar();
       container.remove();
       await fork.dispose();
       unmountFrame();
@@ -226,7 +279,7 @@ export async function mountClient(
 }
 
 export function button(container: ParentNode, text: string): HTMLButtonElement {
-  const element = [...container.querySelectorAll('button')].find((item) => item.textContent?.trim() === text);
+  const element = [...container.querySelectorAll('button')].find((item) => item.textContent?.trim() === text || item.getAttribute('aria-label') === text);
   if (!element) throw new Error(`Button ${JSON.stringify(text)} not found in ${container.textContent}`);
   return element;
 }

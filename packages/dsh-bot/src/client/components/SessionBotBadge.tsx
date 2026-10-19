@@ -2,6 +2,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotCatalog } from '../state.js';
+import { BotAvatar } from './BotAvatar.js';
 
 export interface SessionBotBadgeInjected {
   hooks: { catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'> };
@@ -43,11 +44,7 @@ export function SessionBotBadge({ sessionId, useSessions, useCatalog, onOpenBot,
       color: 'var(--dsw-alias-label-primary)', background: 'var(--dsw-alias-bg-base)',
       border: '1px solid var(--dsw-alias-border-l3)',
     }}>
-    <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '1.5rem', height: '1.5rem', flexShrink: 0 }}>
-      {bot.avatar?.startsWith('data:')
-        ? <img src={bot.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '0.25rem' }} />
-        : bot.avatar ?? '🤖'}
-    </span>
+    <BotAvatar bot={bot} size={24} />
     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bot.name}</span>
   </button>;
 }
