@@ -13,16 +13,24 @@
 .group { border-top: 1px solid var(--dsw-alias-border-l3); padding: 6px 0; }
 .botRow { display: flex; align-items: center; min-width: 0; gap: 8px; }
 .botButton { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-.name, .session { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.name { font-weight: 600; font-size: 14px; }
+.name, .sessionTitle, .preview { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.name { flex: 1; font-weight: 600; font-size: 14px; }
 .chevron { flex: none; width: 12px; color: var(--dsw-alias-label-tertiary); }
 .newSession { flex: none; font-size: 22px; line-height: 1; width: 32px; text-align: center; }
-.newSession:disabled { cursor: not-allowed; opacity: 0.5; }
+.newSession:disabled, .session:disabled { cursor: not-allowed; opacity: 0.5; }
 .sessions { display: grid; min-width: 0; padding: 0 8px 4px 36px; }
-.session { display: block; width: 100%; font-size: 13px; padding: 8px 10px; }
+.session { display: grid; gap: 4px; width: 100%; font-size: 13px; padding: 8px 10px; }
 .empty { font-size: 13px; color: var(--dsw-alias-label-secondary); padding: 4px 10px; }
 .error { color: var(--dsw-alias-state-error-primary); font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .content { padding: 10px 12px 18px; }
   .sessions { padding-left: 22px; }
 }
+
+.sessionHeading { display: flex; align-items: center; min-width: 0; gap: 7px; }
+.sessionTitle { flex: 1; min-width: 0; }
+.preview { display: block; min-width: 0; color: var(--dsw-alias-label-secondary); line-height: 1.5; }
+.time, .running { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 1.5; }
+.running { color: var(--dsw-alias-state-business-primary); }
+.unreadDot { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--dsw-alias-state-error-primary); }
+.unreadCount { flex: none; min-width: 18px; padding: 1px 5px; border-radius: 9px; text-align: center; font-size: 11px; color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-bg-layer-1); }

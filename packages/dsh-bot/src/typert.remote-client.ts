@@ -6,6 +6,7 @@ export type {
   DshBotActivityMethods, DshBotActivityRemoteMethods, DshBotRemoteMethods,
   ActivityRecord, ActivitySession, ActivityListResult,
 } from './shared/remote-contract.js';
+export { ACTIVITY_HIDDEN_PREVIEW, isHiddenActivityPreview, type BotActivity } from './shared/activity.js';
 
 export const TYPERT_REMOTE = createTypertRemoteInfo(dshBotRemoteSpec, z);
 export default TYPERT_REMOTE;

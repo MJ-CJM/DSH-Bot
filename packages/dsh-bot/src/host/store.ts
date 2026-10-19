@@ -190,8 +190,14 @@ export interface ActivityRecordInput {
 const activityOrder = (a: ActivityRecord, b: ActivityRecord) =>
   b.updatedAt - a.updatedAt || compareId(a.sessionId, b.sessionId);
 function activityRecord(record: StoredActivity): ActivityRecord {
-  const { lastEventSeq: _lastEventSeq, ...fields } = record;
-  return structuredClone(fields);
+  // Deliberate allowlist: neither lastEventSeq nor future storage-only fields
+  // can escape through list, record or either markRead return branch.
+  return {
+    sessionId: record.sessionId, botId: record.botId, updatedAt: record.updatedAt,
+    lastMessage: { role: record.lastMessage.role, preview: record.lastMessage.preview, at: record.lastMessage.at },
+    ...(record.title === undefined ? {} : { title: record.title }),
+    ...(record.lastReadAt === undefined ? {} : { lastReadAt: record.lastReadAt }),
+  };
 }
 const publicActivity = (record: StoredActivity): ActivitySession =>
   ({ ...activityRecord(record), unread: isActivityUnread(record) });

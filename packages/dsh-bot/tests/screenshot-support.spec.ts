@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import type { Page } from 'playwright-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readFailureState, redactScreenshotText, verifyAvatarContrast, type OverlayEvent } from '../scripts/screenshot-support.js';
+import { captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readFailureState, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity, type OverlayEvent } from '../scripts/screenshot-support.js';
+import type { ActivityListResult } from '../src/shared/activity.js';
 import en from '../locale/en.json';
 import zh from '../locale/zh.json';
 
@@ -63,6 +64,37 @@ function show(title: string, label: string, after?: () => void, role = 'dialog')
   return button;
 }
 beforeEach(() => { document.body.replaceChildren(); });
+
+describe('T08d screenshot preparation', () => {
+  const fixtures = [
+    { botId: 'atlas', sessionId: 'old', title: 'Earlier conversation', unread: false },
+    { botId: 'atlas', sessionId: 'new', title: 'Latest conversation', unread: true },
+  ];
+  const activity = (): ActivityListResult => ({
+    sessions: fixtures.map((fixture, index) => ({ ...fixture, updatedAt: index + 1,
+      ...(fixture.unread ? {} : { lastReadAt: 1 }), lastMessage: { role: 'assistant', preview: 'Mock reply', at: index + 1 } })),
+    bots: [{ botId: 'atlas', lastActivityAt: 2, unreadCount: 1, latest: { sessionId: 'new', role: 'assistant', preview: 'Mock reply', at: 2 } }],
+  });
+  it('requires committed assistant preview/title/unread and matching Bot aggregates', () => {
+    expect(() => verifyScreenshotActivity(activity(), fixtures, 'Mock reply')).not.toThrow();
+    const missing = activity(); missing.sessions = [];
+    expect(() => verifyScreenshotActivity(missing, fixtures, 'Mock reply')).toThrow('activity mismatch');
+    const userOnly = activity(); const row = userOnly.sessions[1]; if (row) row.lastMessage.role = 'user';
+    expect(() => verifyScreenshotActivity(userOnly, fixtures, 'Mock reply')).toThrow('activity mismatch');
+    const read = activity(); const readRow = read.sessions[1]; if (readRow) readRow.unread = false;
+    expect(() => verifyScreenshotActivity(read, fixtures, 'Mock reply')).toThrow('activity mismatch');
+    expect(() => verifyScreenshotActivity(activity(), fixtures, 'different reply')).toThrow('activity mismatch');
+    const staleAggregate = activity(); const bot = staleAggregate.bots[0]; if (bot) bot.unreadCount = 2;
+    expect(() => verifyScreenshotActivity(staleAggregate, fixtures, 'Mock reply')).toThrow('aggregate mismatch');
+  });
+  it('defines all requested language/theme/width cases and keeps optional editor regression separate', () => {
+    expect(screenshotCases().map(({ language, theme, viewport }) => `${language}-${theme}-${viewport}`)).toEqual([
+      'en-light-wide', 'en-dark-wide', 'zh-light-wide', 'zh-dark-wide', 'zh-light-narrow',
+    ]);
+    expect(screenshotCases().filter((entry) => entry.language === 'zh' && entry.viewport === 'wide')).toHaveLength(2);
+    expect(screenshotCases(true).map(({ language, theme, viewport }) => `${language}-${theme}-${viewport}`)).toEqual(['zh-light-wide', 'zh-dark-wide']);
+  });
+});
 
 describe('screenshot first-run handling', () => {
   it.each([

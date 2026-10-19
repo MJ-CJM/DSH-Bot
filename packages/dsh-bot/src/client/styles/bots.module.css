@@ -94,3 +94,35 @@
 
 .tabs { display: flex; gap: 8px; padding: 18px 24px 0; }
 .tabs [aria-selected="true"] { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-state-business-primary); }
+
+/* Both panes share the native page header and theme; collapse is based on the
+   measured main panel width, so an expanded host sidebar is accounted for. */
+.twoPane { display: grid; grid-template-columns: minmax(240px, 31%) minmax(0, 1fr); min-height: 440px; border-top: 1px solid var(--dsw-alias-border-l3); }
+.botList { min-width: 0; padding: 12px 12px 12px 0; border-right: 1px solid var(--dsw-alias-border-l3); outline-offset: 2px; }
+.botList:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); }
+.botOption { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 14px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }
+.botOption:hover, .historyRow:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.botOption[aria-selected='true'] { background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, var(--dsw-alias-bg-base)); }
+.botOptionBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.rowHeading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rowName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; font-weight: 500; }
+.activityPreview { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 20px; }
+.relativeTime { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; white-space: nowrap; }
+.unreadDot { flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dsw-alias-state-error-primary); }
+.botDetail { min-width: 0; padding: 24px 0 24px 28px; }
+.detailHeader { display: flex; flex-direction: column; gap: 16px; }
+.detailTitle { margin: 0 0 5px; font-size: 18px; line-height: 26px; font-weight: 500; overflow-wrap: anywhere; }
+.detailActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.readyStatus { margin: -6px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.sessionHistory { margin-top: 32px; }
+.historyTitle { margin: 0 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
+.historyList { display: flex; flex-direction: column; gap: 4px; }
+.historyRow { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 12px; border: 0; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }
+.historyRow:focus-visible, .botOption:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
+.historyRow:disabled { cursor: wait; opacity: 0.55; }
+.running { flex: none; font-size: 11px; line-height: 18px; color: var(--dsw-alias-state-business-primary); }
+.backButton { margin-bottom: 20px; }
+.compact .twoPane { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.compact .botList { padding: 12px 0; border-right: 0; }
+.compact .botDetail { padding: 20px 0; }
+.compact .pageScroll { padding-right: 20px; padding-left: 20px; }

@@ -19,6 +19,7 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
+import { createClientActivityProbe } from './fixtures/client-activity-probe.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 assert.equal(process.cwd(), root, 'Run this probe from the repository root');
@@ -176,12 +177,34 @@ async function activityTurn(bots, raw, sessionId, turn, previousAt = 0) {
 
 async function readActivity(bots, sessionId, label) {
   const marked = ok(await bots.activity.markRead(sessionId), `${label} markRead`);
+  check(`${label}: markRead excludes storage-only fields`, !('lastEventSeq' in marked));
+  const descriptor = remoteContribution.descriptors.find((item) => item.namespace === 'dshBot.activity' && item.method === 'markRead');
+  check(`${label}: markRead strict codec roundtrip`, descriptor.result.decode(JSON.parse(JSON.stringify(marked))), marked);
   check(`${label}: markRead returns read session`, marked.unread, false);
   check(`${label}: lastReadAt covers assistant time`, marked.lastReadAt >= marked.lastMessage.at);
   const activity = ok(await bots.activity.list(), `${label} list after markRead`);
   check(`${label}: list reports read session`, activity.sessions.find((row) => row.sessionId === sessionId)?.unread, false);
   check(`${label}: aggregate unread count clears`, activity.bots.find((row) => row.botId === activityBotId)?.unreadCount, 0);
   return activity;
+}
+
+async function clientActivityRoundTrip(ctx, sessionId, label) {
+  const client = await createClientActivityProbe(ctx.connection);
+  try {
+    await client.activity.refresh();
+    const before = client.activity.getSnapshot();
+    save(`client-activity-${label}.json`, { error: before.error, sessions: before.sessions });
+    check(`${label}: shipped Client activity list succeeds`, before.error === undefined);
+    check(`${label}: shipped Client sees unread assistant`, before.sessions.find((row) => row.sessionId === sessionId)?.unread);
+    const stored = JSON.parse(readFileSync(resolve(runDir, 'storages/dsh_bot.json'), 'utf8')).tables.activities[sessionId];
+    check(`${label}: real mock persisted an internal event sequence`, Number.isInteger(stored.lastEventSeq) && stored.lastEventSeq > 0);
+    check(`${label}: decoded Client list excludes internal event sequence`, before.sessions.every((row) => !('lastEventSeq' in row)));
+    await client.activity.markRead(sessionId);
+    check(`${label}: shipped Client markRead and decoded refetch clear unread`,
+      client.activity.getSnapshot().sessions.find((row) => row.sessionId === sessionId)?.unread, false);
+    save(`client-activity-${label}.json`, { before: before.sessions, after: client.activity.getSnapshot().sessions,
+      storedKeys: Object.keys(stored).sort(), shippedClientFactory: true, realGatewayAndConnection: true });
+  } finally { await client.dispose(); }
 }
 
 async function probe(startupUrl, phase) {
@@ -232,6 +255,7 @@ async function probe(startupUrl, phase) {
       const restored = ok(await bots.activity.list(), 'cold activity list');
       check('activity and read marker survive Host restart', restored, activityPrepared.afterRead);
       const continued = await activityTurn(bots, raw, sessionId, 3, activityPrepared.lastMessageAt);
+      await clientActivityRoundTrip(ctx, sessionId, 'cold-resume');
       const afterRead = await readActivity(bots, sessionId, 'cold resumed activity');
       const afterRepeat = ok(await bots.activity.markRead(sessionId), 'repeat cold markRead');
       check('repeated markRead preserves message and read state', {
@@ -358,6 +382,7 @@ async function probe(startupUrl, phase) {
     } }), 'create activity session');
     ok(await raw('session/rename', { request: { sessionId, title: activityTitle } }), 'name activity session');
     const first = await activityTurn(bots, raw, sessionId, 1);
+    await clientActivityRoundTrip(ctx, sessionId, 'completed-mock');
     await readActivity(bots, sessionId, 'first activity round');
     const second = await activityTurn(bots, raw, sessionId, 2, first.session.lastMessage.at);
     const afterRead = await readActivity(bots, sessionId, 'second activity round');

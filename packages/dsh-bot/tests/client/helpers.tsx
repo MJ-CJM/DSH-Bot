@@ -2,6 +2,7 @@ import { Context } from '@deepseek-ai/cordis';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { SlotCore, type StoredEntry, resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import { type ComponentType, act, useSyncExternalStore } from 'react';
@@ -10,6 +11,7 @@ import { vi } from 'vitest';
 import * as client from '../../src/client/index.js';
 import * as primitives from './platform-primitives.js';
 import type { BotStatus, DshBotRemoteMethods } from '../../src/shared/remote-contract.js';
+import { type ActivitySession, isActivityUnread } from '../../src/shared/activity.js';
 import {
   type BotCreateInput, type BotRecord, type MemoryRecord, botCreateSchema, botSchema, normalizeBotPatch,
 } from '../../src/shared/schema.js';
@@ -19,7 +21,25 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], statuses: undefined as BotStatus[] | undefined };
+  const data = { records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const activity = {
+    list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
+      sessions: [...data.activities], bots: data.records.map((bot) => {
+        const sessions = data.activities.filter((row) => row.botId === bot.id).sort((a, b) => b.updatedAt - a.updatedAt);
+        const latest = sessions[0];
+        return { botId: bot.id, lastActivityAt: latest?.updatedAt ?? 0, unreadCount: sessions.filter((row) => row.unread).length,
+          ...(latest ? { latest: { ...latest.lastMessage, sessionId: latest.sessionId } } : {}) };
+      }),
+    } })),
+    markRead: vi.fn<DshBotRemoteMethods['activity']['markRead']>(async (sessionId) => {
+      const row = data.activities.find((item) => item.sessionId === sessionId);
+      if (!row) return { ok: false, error: new RemoteError('activity/not-found', '', {}) };
+      const read = { ...row, lastReadAt: Math.max(Date.now(), row.lastMessage.at, row.lastReadAt ?? 0) };
+      const next = { ...read, unread: isActivityUnread(read) };
+      data.activities = data.activities.map((item) => item.sessionId === sessionId ? next : item);
+      return { ok: true, value: next };
+    }),
+  };
   const memory = {
     list: vi.fn<DshBotRemoteMethods['memory']['list']>(async (id) => ({ ok: true, value: data.memories.filter((row) => row.botId === id) })),
     search: vi.fn<DshBotRemoteMethods['memory']['search']>(async (id, input) => ({ ok: true, value: data.memories.filter((row) => row.botId === id && row.content.includes(input.query)) })),
@@ -38,6 +58,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
     }),
   };
   const methods = {
+    activity,
     memory,
     catalogInfo: vi.fn<DshBotRemoteMethods['catalogInfo']>(async () => ({ ok: true, value: { presetIdPrefix: data.presetIdPrefix } })),
     list: vi.fn<DshBotRemoteMethods['list']>(async () => ({ ok: true, value: [...data.records] })),
@@ -135,13 +156,18 @@ export async function mountClient(
   const mountRemote = vi.fn(async () => {
     remoteMounted = true;
     const release = ctx.provide('remote.dshBot', remote.methods);
-    return async () => { remoteMounted = false; await release(); };
+    const releaseActivity = ctx.provide('remote.dshBot.activity', remote.methods.activity);
+    const releaseMemory = ctx.provide('remote.dshBot.memory', remote.methods.memory);
+    return async () => { remoteMounted = false; await releaseActivity(); await releaseMemory(); await release(); };
   });
   let remoteMounted = true;
-  const openSession = vi.fn<Context['uiWorkspace']['openSession']>();
-  const selectPanel = vi.fn<Context['layout']['selectPanel']>();
-  ctx.provide('layout', { selectPanel } as unknown as Context['layout']);
+  let navigation = new AbortController();
+  const beginNavigation = () => { navigation.abort(); navigation = new AbortController(); return navigation.signal; };
+  const openSession = vi.fn<Context['uiWorkspace']['openSession']>(() => { beginNavigation(); });
+  const selectPanel = vi.fn<Context['layout']['selectPanel']>(() => { beginNavigation(); });
+  ctx.provide('layout', { selectPanel, beginNavigation } as unknown as Context['layout']);
   const openWorkspace = vi.fn<Context['uiWorkspace']['openWorkspace']>(async (_id, beforeOpen) => {
+    beginNavigation();
     beforeOpen?.('test-opened-session' as never);
   });
   let workspaceSnapshot: WorkspaceSnapshot = {
@@ -172,6 +198,7 @@ export async function mountClient(
   ctx.provide('remote', { $mount: mountRemote, dshBot: remote.methods } as unknown as Context['remote']);
   ctx.provide('uiWorkspace', { openWorkspace, openSession } as unknown as Context['uiWorkspace']);
   ctx.provide('workspaces', { list: workspaceSource } as unknown as Context['workspaces']);
+  ctx.provide('sessions', { list: sessionSource } as unknown as Context['sessions']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();
   const container = document.createElement('div');

@@ -16,7 +16,7 @@ function setup() {
     search: vi.fn(async (_botId: string, _input: unknown) => ({ ok: true as const, value: [row('match')] })),
     count: vi.fn(async (_botId: string) => ({ ok: true as const, value: 205 })),
   };
-  ctx.provide('remote.dshBot', { memory });
+  ctx.provide('remote.dshBot.memory', memory);
   const catalog = createMemoryCatalog(ctx, 'alpha', { pageSize: 2 });
   return { ctx, memory, catalog };
 }

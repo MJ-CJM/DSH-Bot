@@ -166,6 +166,23 @@
     "avatar.automatic": "使用自动配色",
     "avatar.otherOptions": "表情或上传图片",
     "avatar.upload": "上传图片",
-    "avatar.uploadHint": "支持 PNG、JPEG、GIF 或 WebP，编码后数据不得超过 64 KiB。"
+    "avatar.uploadHint": "支持 PNG、JPEG、GIF 或 WebP，编码后数据不得超过 64 KiB。",
+    "activity.locale": "zh",
+    "activity.hidden": "内容已隐藏",
+    "activity.unreadCount": "{count} 个未读会话",
+    "activity.unread": "未读",
+    "activity.openError": "无法打开此会话，请重试。",
+    "activity.readFailed": "标记已读失败，仍将打开会话；可重新打开以重试。",
+    "activity.loading": "正在加载会话…",
+    "activity.loadError": "无法刷新会话活动，请重试刷新。",
+    "activity.running": "运行中",
+    "activity.noPreview": "暂无消息预览",
+    "bots.list": "Bot 列表",
+    "bots.back": "返回 Bot 列表",
+    "bots.ready": "就绪",
+    "bots.newSession": "新会话",
+    "bots.history": "会话历史",
+    "bots.noSessions": "还没有会话",
+    "bots.emptySessionsHint": "点击上方“新会话”，开始与这个 Bot 聊天。"
   }
 }

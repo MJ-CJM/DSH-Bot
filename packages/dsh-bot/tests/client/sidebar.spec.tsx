@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
+import type { ActivitySession } from '../../src/shared/activity.js';
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +15,7 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function session(id: string, preset: string, updatedAt: number, extra: Partial<SessionSummary> = {}): SessionSummary {
@@ -32,6 +36,102 @@ async function setup(language: 'en' | 'zh' = 'en', limit = 2) {
 }
 
 describe('Bot conversations through the supported sidebar footer action', () => {
+  const summary = (sessionId: string, preview = 'Assistant reply', updatedAt = Date.now()): ActivitySession => ({
+    sessionId, botId: 'alpha-bot', updatedAt, unread: true, lastMessage: { role: 'assistant', preview, at: updatedAt },
+  });
+
+  it.each(['en', 'zh'] as const)('renders unread counts, localized hidden previews, and awaits markRead before navigating in %s', async (language) => {
+    const app = await setup(language);
+    const now = Date.now();
+    app.remote.data.activities = [summary('alpha-new', '[已隐藏]', now - 60_000),
+      { ...summary('beta-one', 'Research reply', now), botId: 'beta-bot' }];
+    const actions = app.core.entries('sidebar.footer.action')[0]?.inject?.() as unknown as BotSessionsSidebarInjected;
+    await act(async () => actions.onRefresh());
+    await app.setSessions(catalog([session('alpha-new', 'host-selected/alpha-bot', now - 60_000, { running: true }),
+      session('beta-one', 'host-selected/beta-bot', now)]));
+    expect(app.sidebar.querySelector('[data-bot-unread="footer"]')?.getAttribute('aria-label'))
+      .toBe(app.dictionary['activity.unreadCount'].replace('{count}', '2'));
+    await app.show();
+    expect([...app.sidebar.querySelectorAll('section[data-bot-id]')].map((item) => item.getAttribute('data-bot-id')))
+      .toEqual(['beta-bot', 'alpha-bot']);
+    expect(app.sidebar.querySelector('[data-bot-unread="alpha-bot"]')?.textContent).toBe('1');
+    const row = app.sidebar.querySelector<HTMLButtonElement>('[data-session-id="alpha-new"]');
+    if (!row) throw new Error('Missing activity session');
+    expect(row.querySelector('[data-activity-preview]')?.textContent).toBe(app.dictionary['activity.hidden']);
+    expect(row.textContent).toContain(new Intl.RelativeTimeFormat(language, { numeric: 'auto', style: 'short' }).format(-1, 'minute'));
+    expect(row.textContent).toContain(app.dictionary['activity.running']);
+    expect(row.querySelector('[data-session-unread]')).not.toBeNull();
+    const originalMarkRead = app.remote.methods.activity.markRead.getMockImplementation();
+    if (!originalMarkRead) throw new Error('Missing markRead double');
+    let resolveRead!: () => void;
+    app.remote.methods.activity.markRead.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => { resolveRead = resolve; });
+      return originalMarkRead(...args);
+    });
+    await click(row);
+    expect(app.remote.methods.activity.markRead).toHaveBeenCalledExactlyOnceWith('alpha-new');
+    expect(app.openSession).not.toHaveBeenCalled();
+    expect(app.sidebar.querySelector('dialog')).not.toBeNull();
+    expect(row.disabled).toBe(true);
+    await act(async () => resolveRead());
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('alpha-new');
+    expect(app.sidebar.querySelector('dialog')).toBeNull();
+    await app.show();
+    expect(app.sidebar.querySelector('[data-session-unread="alpha-new"]')).toBeNull();
+    expect(app.sidebar.querySelector('[data-bot-unread="alpha-bot"]')).toBeNull();
+  });
+
+  it('opens the session and closes the dialog after markRead failure, retaining unread for retry', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const app = await setup();
+    app.remote.data.activities = [summary('alpha-new')];
+    const actions = app.core.entries('sidebar.footer.action')[0]?.inject?.() as unknown as BotSessionsSidebarInjected;
+    await act(async () => actions.onRefresh());
+    await app.setSessions(catalog([session('alpha-new', 'host-selected/alpha-bot', Date.now())]));
+    await app.show();
+    app.remote.methods.activity.markRead.mockResolvedValueOnce({ ok: false, error: new RemoteError('store/unavailable', 'private transport detail', {}) });
+    await click(button(app.sidebar, 'alpha-new'));
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('alpha-new');
+    expect(app.sidebar.querySelector('dialog')).toBeNull();
+    expect(warning).toHaveBeenCalledExactlyOnceWith(en.ui['activity.readFailed']);
+    await app.show();
+    expect(app.sidebar.textContent).not.toContain('private transport detail');
+    expect(app.sidebar.querySelector('[data-session-unread="alpha-new"]')).not.toBeNull();
+    await click(button(app.sidebar, 'alpha-new'));
+    expect(app.openSession).toHaveBeenCalledTimes(2);
+    expect(app.sidebar.querySelector('dialog')).toBeNull();
+  });
+
+  it('does not navigate or refresh after an in-flight read finishes following plugin unload', async () => {
+    const app = await setup();
+    app.remote.data.activities = [summary('alpha-new')];
+    const actions = app.core.entries('sidebar.footer.action')[0]?.inject?.() as unknown as BotSessionsSidebarInjected;
+    await act(async () => actions.onRefresh());
+    await app.setSessions(catalog([session('alpha-new', 'host-selected/alpha-bot', Date.now())]));
+    await app.show();
+    const originalMarkRead = app.remote.methods.activity.markRead.getMockImplementation();
+    if (!originalMarkRead) throw new Error('Missing markRead double');
+    let resolveRead!: () => void;
+    app.remote.methods.activity.markRead.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => { resolveRead = resolve; });
+      return originalMarkRead(...args);
+    });
+    await click(button(app.sidebar, 'alpha-new'));
+    await app.unloadPlugin();
+    const before = app.remote.methods.activity.list.mock.calls.length;
+    await act(async () => resolveRead());
+    expect(app.openSession).not.toHaveBeenCalled();
+    expect(app.remote.methods.activity.list).toHaveBeenCalledTimes(before);
+    expect(app.sidebar.textContent).toBe('');
+    expect(app.sessionListeners.size).toBe(0);
+  });
+
+  it('keeps previews on a single ellipsized line using theme tokens', () => {
+    const css = readFileSync('src/client/styles/sidebar.module.css', 'utf8');
+    expect(css).toMatch(/\.name, \.sessionTitle, \.preview\s*\{[^}]*overflow:\s*hidden;[^}]*white-space:\s*nowrap;[^}]*text-overflow:\s*ellipsis/s);
+    expect(css).toMatch(/\.unreadDot\s*\{[^}]*var\(--dsw-alias-state-error-primary\)/s);
+  });
+
   it('groups only Host list members by exact status preset id, sorts by recency, and leaves native data intact', () => {
     const rows = catalog([
       session('older', 'namespace/alpha', 1), session('newer', 'namespace/alpha', 9),
@@ -57,7 +157,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     expect(app.sidebar.querySelector('dialog h2')?.textContent).toBe(app.dictionary['sidebar.sessions']);
     expect(app.core.entries('sidebar.footer.action')[0]?.component).toBe(BotSessionsSidebar);
     expect(app.core.entries('sidebar.panellist')).toHaveLength(1);
-    expect([...app.sidebar.querySelectorAll('[data-session-id]')].map((node) => node.textContent)).toEqual(['alpha-new', 'alpha-mid', 'beta-one']);
+    expect([...app.sidebar.querySelectorAll('[data-session-id]')].map((node) => node.getAttribute('data-session-id'))).toEqual(['alpha-new', 'alpha-mid', 'beta-one']);
     await click(button(app.sidebar, app.dictionary['sidebar.more']));
     expect(app.sidebar.textContent).toContain('alpha-old');
     const toggle = button(app.sidebar, app.dictionary['sidebar.toggle'].replace('{name}', 'Alpha Bot'));
@@ -80,13 +180,15 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     expect(app.sidebar.querySelector('dialog')).toBeNull();
   });
 
-  it('subscribes passively, follows session events and mutation refreshes, and cleans up on unload', async () => {
+  it('polls only activity in the footer, follows session events and mutation refreshes, and cleans up on unload', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const app = await setup();
     const startCalls = app.remote.methods.list.mock.calls.length;
     await app.show();
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(1);
+    const activityCalls = app.remote.methods.activity.list.mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(app.remote.methods.activity.list).toHaveBeenCalledTimes(activityCalls + 12);
     expect(app.remote.methods.list).toHaveBeenCalledTimes(startCalls);
     await app.setSessions(catalog([session('first', 'host-selected/alpha-bot', 1)]));
     expect(app.sidebar.textContent).toContain('first');
@@ -96,12 +198,19 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     const actions = app.main.inject?.() as unknown as { onUpdate(id: string, patch: { name: string }): Promise<void> };
     await act(async () => actions.onUpdate('alpha-bot', { name: 'Renamed Bot' }));
     expect(app.sidebar.textContent).toContain('Renamed Bot');
+    expect(vi.getTimerCount()).toBe(1);
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
     expect(vi.getTimerCount()).toBe(0);
+    visibility.mockReturnValue('visible');
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    expect(vi.getTimerCount()).toBe(1);
     expect(app.sessionListeners.size).toBe(1);
     await app.unloadPlugin();
     expect(app.core.entries('sidebar.footer.action')).toHaveLength(0);
     expect(app.sidebar.textContent).toBe('');
     expect(app.sessionListeners.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('opens in the only workspace with the Host preset and offers a keyboard-accessible collapsed action', async () => {
@@ -127,7 +236,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     await submit(app.sidebar);
     expect(app.openWorkspace).toHaveBeenCalledWith('workspace-two', expect.any(Function), { agentPreset: 'host-selected/alpha-bot' });
     await app.remountPage();
-    await click(button(app.container, en.ui['card.start']));
+    await click(button(app.container, en.ui['bots.newSession']));
     expect(field(app.container, en.ui['chat.workspace']).value).toBe('workspace-two');
     await click(button(app.container, en.ui['actions.cancel']));
     expect(app.openWorkspace).toHaveBeenCalledTimes(1);
@@ -189,7 +298,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     const actions = app.core.entries('sidebar.footer.action')[0]?.inject?.() as unknown as BotSessionsSidebarInjected;
     await app.unloadPlugin();
     actions.onManage();
-    actions.onOpenSession('late' as SessionSummary['id']);
+    await actions.onOpenSession('late' as SessionSummary['id']);
     expect(app.selectPanel).not.toHaveBeenCalled();
     expect(app.openSession).not.toHaveBeenCalled();
   });

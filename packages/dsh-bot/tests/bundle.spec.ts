@@ -99,7 +99,7 @@ describe('built bundle contract', () => {
       return require(id);
     });
     expect([...new Set(requests)].sort()).toEqual(['@deepseek-ai/dsh-client-ui-primitives', 'react', 'react/jsx-runtime', 'zod']);
-    expect(plugin?.inject).toEqual(['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces', 'layout']);
+    expect(plugin?.inject).toEqual(['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces', 'sessions', 'layout']);
     expect(typeof plugin?.apply).toBe('function');
   });
 
@@ -189,6 +189,7 @@ describe('built bundle contract', () => {
     ctx.provide('uiWorkspace', { openWorkspace: vi.fn() } as unknown as Context['uiWorkspace']);
     ctx.provide('layout', { selectPanel: vi.fn() } as unknown as Context['layout']);
     ctx.provide('workspaces', { list: {} } as unknown as Context['workspaces']);
+    ctx.provide('sessions', { list: {} } as unknown as Context['sessions']);
     const mountedEndpoints: string[] = [];
     ctx.provide('remote', {
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {

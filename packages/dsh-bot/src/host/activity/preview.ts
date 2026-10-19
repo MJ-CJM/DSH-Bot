@@ -1,8 +1,8 @@
-import { ACTIVITY_PREVIEW_MAX_CHARS } from '../../shared/activity.js';
+import { ACTIVITY_HIDDEN_PREVIEW, ACTIVITY_PREVIEW_MAX_CHARS } from '../../shared/activity.js';
 import { DshBotError } from '../errors.js';
 import { rejectMemorySecrets } from '../memory/secrets.js';
 
-export const ACTIVITY_HIDDEN_PREVIEW = '[已隐藏]';
+export { ACTIVITY_HIDDEN_PREVIEW } from '../../shared/activity.js';
 
 function hasSecret(text: string): boolean {
   try { rejectMemorySecrets({ content: text }); return false; }

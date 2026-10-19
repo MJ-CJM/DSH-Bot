@@ -1,5 +1,38 @@
 # DSH API 核实记录
 
+## T08d r1：宿主截图活动读取失败的根因与修复
+
+宿主截图 `dist/screenshots/2026-10-19T04-41-47.579Z-63798/` 的活动错误已用**正式浏览器 factory + 独立 Cordis Client 插件作用域 + 真实 Gateway/Connection/Host + mock 持久活动**复现。修复前 `.dsh-dev/t05/run-2026-10-19T04-47-02.994Z-67384/client-activity-completed-mock.json` 报 `cannot get property "remote.dshBot.activity" without inject`。请求在 Client 子服务访问时就失败，并非 `lastEventSeq` 解码失败。
+
+rc.2 每个 namespace 是独立 Cordis service。`ctx.get('remote.dshBot')` 只读取父服务，其追踪后的 `.activity`/`.memory` 属性仍触发子服务的 inject 检查。根 Context profile 没有该限制，普通嵌套对象 doubles 也不会模拟它，因此此前真实 HTTP profile 和组件测试都漏过这个**插件作用域差异**。修复为分别通过公开 `ctx.get('remote.dshBot.activity')` / `ctx.get('remote.dshBot.memory')` 取准确服务名；不把自己负责挂载的 namespace 加进 assembly 的启动 inject，避免自等待。来源：`vendor/cordis/src/reflect.ts:144-165,225-235`（property 检查及公开 get 的免 inject 读取），`packages/api/gateway/src/client/index.ts:368-379,647-654`（namespace service 的构造）。Memory 读取和计数/修改入口有同一模式，一并修正以保持管理可达。
+
+Store 原本已通过移除 `lastEventSeq` 的投影返回公开数据，本轮进一步改为逐字段白名单（包括 lastMessage 子字段），让未来存储内部字段也不透传，`list` 和两条 `markRead` 返回分支共用它。此外核实 **strict/create 不等于输出自动校验**：Host `encodeRpcResult` 仅调用可选 encode（`api/gateway/src/index.ts:1106-1115`）；Client 仅调用显式 decode（`src/client/index.ts:461-466`）；`createTypertRemoteInfo` 不会从 create 自动生成两者（`typert/protocol/src/remote-info.ts:49-59`）。因此活动的 list/markRead result 现显式声明 `encode/decode = schema.parse`，Host 输出和 Client wire 都执行相同严格合约。未将 lastEventSeq 加入公开合约。
+
+新增 `tests/fixtures/client-activity-probe.mjs` 执行真实 `lib/client.js` factory，仅视觉/shell services 为 doubles；生产插件自行挂载真实 Remote，其页面 activity catalog 执行 list/markRead。Composer profile 在 mock 完成后和冷恢复后分别检查持久 lastEventSeq 存在、decoded list 不含它、unread true→false、严格返回合约。截图 `--seed-only` 也运行该 production-scope probe，不再仅用根 Context 验证。另有 real Gateway + Connection JSON parser 的负例，确保 wire 中多一个 lastEventSeq 会拒绝，并保留上一份成功快照。
+
+UX 调整：markRead 尽力而为。真实失败仅记录本地化 `activity.readFailed` warning，不记录原始异常/载荷，仍打开会话；保留导航取消/卸载门禁。轮询失败继续保留最近成功的 sessions/bots，显示带重试提示的错误；成功重取再清错误。最终运行与宿主重截边界见 [T08d r1 验收](acceptance/P1-T08d.md#r1-宿主截图-fail-修复)。
+
+## T08d：双栏 Bots、活动展示与当前会话已读
+
+正式 Client 仍注册公开 `main` 的 `dsh-bot` keyed entry，不嵌入原生会话。`main.conversation` 由 ui-conversation 独占，rc.2 没有整段会话 Factory；历史会话使用 `ctx.uiWorkspace.openSession(id)`，新会话仍走既有 `openWorkspace(workspaceId, beforeOpen, { agentPreset: status.presetId })`。页面、footer 弹层及记忆来源链接统一先尝试 `activity.markRead` 再导航；`activity/not-found` 表示空白、安装前或被淘汰摘要，直接允许打开；其他写入失败也不阻止导航，仅记录无载荷的本地化 warning（r1 修订）。
+
+| 公开 API / 语义 | 锁定源码位置（相对 `deepseek-harness@dsh-v0.2.1-rc.2`） | T08d 用法 |
+| --- | --- | --- |
+| `sessions.list` / `SessionListState` / `SessionSummary` | `packages/api/session-controller/src/client/sessions/service.ts:27-65,243` | `ids` 是 Host authoritative membership；`byId` 还可能含保留投影。按 Host status 的精确 presetId 分组，排除 subagent 与公开 archivedSessionIds；活动补充预览/未读，`running` 仍由宿主提供。没有 currentSelection 字段 |
+| `usePanelInfo` / `PanelInfo.activePanelId` | `packages/client/ui-layout/src/client/index.ts:48-50`、`service.ts:18-21,28-41` | 全局标准 hook 可在 header slot 取得；`null` 为原生 Conversation，选择其它全局页面不会清当前会话 |
+| `retainedBy.mainView` | `packages/client/ui-session/src/client/index.ts:189-192`、`ui-workspace/src/client/navigation.ts:499-519` | 公开主视图引用来源；结合 session-bound `sessionId` 与 `activePanelId===null` 判断当前原生会话。上游 `ui-layout/src/client/DocumentTitle.tsx:17-22` 也用此方式识别当前会话 |
+| `conversation.session.header.utilities` | `packages/client/ui-conversation/src/client/skeleton/ConversationSession.tsx:70,131-135` | 已有徽标在 Bot 映射有效、当前主会话、文档可见且活动 unread 时 markRead；新回复的活动轮询也会触发。空白 hideChrome 不挂此 slot，且没有 assistant 未读 |
+| `layout.beginNavigation(): AbortSignal` | `packages/client/ui-layout/src/client/service.ts:41,73-85` | 在等待 markRead 前持有公开导航 signal；期间其它导航/面板选择使其 aborted，晚响应不得抢回旧会话。Host markRead 已提交的读状态不会回滚 |
+| `sidebar.footer.action` | `packages/client/ui-sidebar/src/client/contract/slots.ts:49-53` | additive list slot 允许自定义 React 组件，本轮在其按钮直接加未读红点，使用 `--dsw-alias-state-error-primary`，不需要私有 API/DOM 注入 |
+
+新增共享 activity catalog 复用原 `createPollingCatalog`，`list()` 严格零参数。页面、常驻 footer 和徽标共享最多一个活动轮询，默认沿用 Config.pollIntervalMs=5000；文档 hidden 停 timer，卸载最后订阅者停止 timer/reset/visibility 监听和本地等待。重新显示、connection reset、显式刷新、成功修改 Bot/标已读都重取。footer 常驻时保持活动轮询以便红点更新，Bot 元数据 catalog 在 footer/徽标中仍为被动订阅。并发同 session markRead 合并；成功写入后 supersede 旧读，重新读取 Host 状态，因此写后出现的新回复仍可保持未读。unary Remote 没有取消 Host 操作参数，epoch/AbortController 仅取消本地等待与拒绝晚响应。
+
+持久与 Remote schema 保持原 string 字段，新增保留 ASCII 哨兵 **`[dsh-bot:hidden]`**，适用于 `lastMessage.preview` 和脱敏 `title`。常量与识别函数通过 `dsh-bot/remote` 导出；Client 对新哨兵及旧 **`[已隐藏]`** 都显示 locale 的“内容已隐藏 / Hidden”。旧数据可直接读，不重写存储、不升级 schemaVersion；普通字符串恰等于保留哨兵时同样显示为隐藏。Host 不写 UI 语言。`Intl.RelativeTimeFormat` 的 locale 从随 UI 翻译切换的 `activity.locale` 读取。
+
+UI 使用公开 primitives/slot、既有 BotAvatar 与 alias tokens；按实际 main 宽度 `<760px` 切为列表→详情，并管理键盘选择、焦点恢复与轮询重排后的选中保持。Client 显式依赖 `sessions`，在共享 TS program 中以公开 `ISessions`/`ObservableSnapshot<SessionListState>` 隔离 Host 同名 Context 声明；这只影响类型，不读取 Host 私有状态。
+
+验证层级：公开 Cordis/SlotCore + React/jsdom 测试覆盖导航顺序、可见性、竞争与卸载；真实 Registry/Composer profile 和截图 `--seed-only` 验证 Host/Remote/mock 活动。**r0 未运行 Chromium；编排方随后实测首轮 FAIL，r1 已按上节修复，修复后宿主矩阵待重跑，不将组件/profile/seed 结果称为真实浏览器视觉通过。** 截图脚本默认 7 张（中英亮暗宽屏 4、中文亮窄屏 1、中文亮暗弹层 2），mock 种子包含 3 个 assistant 回复、1 已读/2 未读。脚本使用 `.dsh-dev/screenshots/<run>` 与独立 storage root，保留此前 `.dsh-shot` 证据。详见 [T08d 验收](acceptance/P1-T08d.md)。
+
 ## T08c：Bot 会话活动（Host + Remote）
 
 正式代码为 `packages/dsh-bot/src/host/activity/`、共享 `activity.ts` 和既有 Registry/Store 扩展，无 spike import、无 UI 改动。运行证据与边界见 [T08c 验收记录](acceptance/P1-T08c.md)。下列源码路径相对只读参考 `deepseek-harness@dsh-v0.2.1-rc.2`。
@@ -21,7 +54,7 @@
 
 完成事件 `at=max(event.time,previous.at+1,lastReadAt+1)`；`markRead` 写 `max(Date.now(),lastMessage.at,previous.lastReadAt)`。该微小逻辑时钟补偿同毫秒消息与系统时钟回退，保证严格 `>` 的未读规则在读后新回复时成立。相同时间重复 markRead 不再写盘；重复/旧 seq 不改预览或读状态。
 
-预览对完整原文先复用 T06 `memory/secrets.rejectMemorySecrets`，清洗 markdown/代码块/图片及控制字符后再次检查，再按 Unicode 码点截到最多 120（含 `…`）。命中用 `[已隐藏]`，原文、原始标题及异常 cause 不进入活动存储或观察器日志。此为原有签名启发式检测，无法保证识别所有秘密。
+预览对完整原文先复用 T06 `memory/secrets.rejectMemorySecrets`，清洗 markdown/代码块/图片及控制字符后再次检查，再按 Unicode 码点截到最多 120（含 `…`）。T08c 命中原用 `[已隐藏]`，T08d 改为上节的 locale 无关哨兵并兼容旧值；原文、原始标题及异常 cause 不进入活动存储或观察器日志。此为原有签名启发式检测，无法保证识别所有秘密。
 
 Remote 继续使用单一手写 Zod spec、`TypertRemoteService` + `@Remote`、Host `ctx.typert.register` 与已有 Client `$mount`。新增 `dshBot.activity/list` → `{sessions,bots}`（所有现存 Bot 均有聚合，尚无消息时 `lastActivityAt:0,unreadCount:0`）；`dshBot.activity/markRead(sessionId)` → 带 unread 的 session。未知/已淘汰活动返回结构化 `activity/not-found`；存储不可用时 list 降级为 `{sessions:[],bots:[]}`、markRead 返回 `store/unavailable`。**list 是零参数**：rc.2 Client `prepareInvocation` 强制实参数量（`api/gateway/src/client/index.ts:508-518`），不能以 TS 可选参数伪装真正的 `list()`；本轮不提供可选 Bot 过滤端点，调用方可对完整结果筛选。合约类型经公开 `dsh-bot/remote` 导出，未引入 Client Host-only 事件转发；T08d 仍需轮询/重取。
 

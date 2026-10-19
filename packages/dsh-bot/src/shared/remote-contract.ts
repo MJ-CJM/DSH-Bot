@@ -101,6 +101,11 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 const codec = <Schema extends z.ZodType>(type: string, schema: Schema) => ({
   mode: 'strict' as const, typeSymbol: `dsh-bot#${type}`, create: () => schema,
 });
+// rc.2 only invokes explicit result encode/decode hooks; mode/create alone
+// describe a parser but do not validate the Host response or Client wire value.
+const activityResultCodec = <Schema extends z.ZodType>(type: string, schema: Schema) => ({
+  ...codec(type, schema), encode: (value: unknown) => schema.parse(value), decode: (value: unknown) => schema.parse(value),
+});
 const parameter = <Schema extends z.ZodType>(name: string, type: string, schema: Schema) => {
   const value = codec(type, schema);
   return { name, source: 'json' as const, codec: value, strictCodec: value };
@@ -121,11 +126,11 @@ export const dshBotRemoteSpec = {
     // Zero parameters deliberately support activity.list() on rc.2, whose
     // Client enforces exact arity even for optional descriptor parameters.
     'dshBot.activity/list': {
-      ...activityOwner, parameters: [], result: codec('ActivityListResult', activityListResultSchema),
+      ...activityOwner, parameters: [], result: activityResultCodec('ActivityListResult', activityListResultSchema),
     },
     'dshBot.activity/markRead': {
       ...activityOwner, parameters: [parameter('sessionId', 'ActivitySessionId', activitySessionIdSchema)],
-      result: codec('ActivitySession', activitySessionSchema),
+      result: activityResultCodec('ActivitySession', activitySessionSchema),
     },
     'dshBot/list': { ...owner, parameters: [], result: codec('BotRecord[]', z.array(botSchema)) },
     'dshBot/catalogInfo': { ...owner, parameters: [], result: codec('CatalogInfo', catalogInfoSchema) },

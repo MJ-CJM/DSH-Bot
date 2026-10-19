@@ -1,6 +1,79 @@
 import type { Locator, Page } from 'playwright-core';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
+import type { ActivityListResult } from '../src/shared/activity.js';
+
+export interface ScreenshotSessionFixture {
+  botId: string;
+  sessionId: string;
+  title: string;
+  unread: boolean;
+}
+/** Verify committed assistant activity, rather than treating session turn counts
+ * or a successful prompt receipt as proof that previews/unread were produced. */
+export function verifyScreenshotActivity(activity: ActivityListResult, fixtures: readonly ScreenshotSessionFixture[], preview: string): void {
+  for (const fixture of fixtures) {
+    const row = activity.sessions.find((session) => session.sessionId === fixture.sessionId);
+    if (!row || row.botId !== fixture.botId || row.title !== fixture.title || row.lastMessage.role !== 'assistant'
+      || row.lastMessage.preview !== preview || row.unread !== fixture.unread) {
+      throw new Error(`Screenshot assistant activity mismatch: ${fixture.botId}/${fixture.sessionId}`);
+    }
+  }
+  for (const botId of new Set(fixtures.map((fixture) => fixture.botId))) {
+    const rows = activity.sessions.filter((session) => session.botId === botId);
+    const bot = activity.bots.find((entry) => entry.botId === botId);
+    const latest = [...rows].sort((a, b) => b.updatedAt - a.updatedAt || a.sessionId.localeCompare(b.sessionId))[0];
+    if (!bot || !latest || bot.unreadCount !== rows.filter((session) => session.unread).length
+      || bot.lastActivityAt !== latest.updatedAt || bot.latest?.sessionId !== latest.sessionId
+      || bot.latest.preview !== preview) throw new Error(`Screenshot Bot aggregate mismatch: ${botId}`);
+  }
+}
+
+export interface ScreenshotCase {
+  language: 'en' | 'zh';
+  theme: 'light' | 'dark';
+  viewport: 'wide' | 'narrow';
+  width: number;
+  height: number;
+}
+export function screenshotCases(extrasOnly = false): ScreenshotCase[] {
+  const cases: ScreenshotCase[] = [];
+  for (const language of ['en', 'zh'] as const) for (const theme of ['light', 'dark'] as const) {
+    if (!extrasOnly || language === 'zh') cases.push({ language, theme, viewport: 'wide', width: 1440, height: 1000 });
+  }
+  if (!extrasOnly) cases.push({ language: 'zh', theme: 'light', viewport: 'narrow', width: 600, height: 900 });
+  return cases;
+}
+
+/** DOM-only layout evidence. This measures actual displayed boxes and CSS;
+ * responsive classes or jsdom render results are not screenshot evidence. */
+export function readBotsLayout() {
+  const visible = (element: Element | null) => {
+    if (!element) return false;
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+  };
+  const region = document.querySelector('[data-bots-page]');
+  const list = region?.querySelector('[role="listbox"]') ?? null;
+  const detail = region?.querySelector('[data-bot-detail]') ?? null;
+  const box = (element: Element | null) => {
+    const rect = element?.getBoundingClientRect();
+    return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  };
+  return {
+    listVisible: visible(list), detailVisible: visible(detail), list: box(list), detail: box(detail),
+    selectedBotId: list?.querySelector('[aria-selected="true"]')?.getAttribute('data-bot-id') ?? null,
+    detailBotId: detail?.getAttribute('data-bot-detail') ?? null,
+    optionIds: Array.from(list?.querySelectorAll('[role="option"]') ?? []).map((option) => option.getAttribute('data-bot-id')),
+    sessionIds: Array.from(detail?.querySelectorAll('[data-session-id]') ?? []).map((row) => row.getAttribute('data-session-id')),
+    unreadDots: Array.from(region?.querySelectorAll('[data-unread]') ?? []).filter(visible).length,
+    previews: Array.from(region?.querySelectorAll<HTMLElement>('[data-activity-preview]') ?? []).filter(visible).map((element) => {
+      const style = getComputedStyle(element);
+      return { text: element.textContent, overflow: style.overflow, textOverflow: style.textOverflow, whiteSpace: style.whiteSpace };
+    }),
+  };
+}
 
 export interface OverlayEvent {
   checkpoint: string;

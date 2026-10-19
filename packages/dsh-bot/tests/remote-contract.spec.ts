@@ -18,6 +18,7 @@ import {
 import { type BotRecord, type BotRemoveOptions, botCreateSchema, botSchema, memorySchema } from '../src/shared/schema.js';
 import TYPERT from '../src/typert.host.js';
 import TYPERT_REMOTE from '../src/typert.remote-client.js';
+import { createActivityCatalog, type ActivityCatalog } from '../src/client/activity-state.js';
 
 const require = createRequire(import.meta.url);
 const record = botSchema.parse({
@@ -30,6 +31,41 @@ const memory = memorySchema.parse({
 });
 
 describe('single-source Remote contract', () => {
+  it('loads activity from a plugin scope through real Gateway result decoding and rejects storage fields on the wire', async () => {
+    const ctx = new Context();
+    const row = { sessionId: 'session-1', botId: 'test-bot', lastMessage: { role: 'assistant', preview: 'Reply', at: 1 }, updatedAt: 1, unread: true };
+    let invalid = false;
+    let catalog: ActivityCatalog | undefined;
+    try {
+      new TypertRegistry(ctx);
+      installConnection(ctx, { interactions: 'none', transport: { async fetch(_input, init) {
+        const { rpcId } = JSON.parse(String(init.body));
+        return Response.json({ type: 'server-response', rpcId, result: { ok: true, value: {
+          sessions: [{ ...row, ...(invalid ? { lastEventSeq: 3 } : {}) }], bots: [],
+        } } });
+      } } });
+      await ctx.plugin(Gateway).await();
+      await ctx.effect(() => ctx.remote.$mount(TYPERT_REMOTE));
+      await ctx.plugin({ inject: ['remote'], apply(owner: Context) { catalog = createActivityCatalog(owner); } }).await();
+      if (!catalog) throw new Error('Missing production catalog');
+      await catalog.refresh();
+      expect(catalog.getSnapshot().error).toBeUndefined();
+      expect(catalog.getSnapshot().sessions).toEqual([row]);
+      invalid = true;
+      await catalog.refresh();
+      expect(catalog.getSnapshot().error).toBeDefined();
+      expect(catalog.getSnapshot().sessions).toEqual([row]);
+      for (const method of ['list', 'markRead']) {
+        const result = TYPERT_REMOTE.descriptors.find((descriptor) => descriptor.namespace === 'dshBot.activity' && descriptor.method === method)?.result;
+        if (result?.mode !== 'strict' || !result.encode || !result.decode) throw new Error('Missing activity wire validation');
+        const valid = method === 'list' ? { sessions: [row], bots: [] } : row;
+        const bad = method === 'list' ? { sessions: [{ ...row, lastEventSeq: 3 }], bots: [] } : { ...row, lastEventSeq: 3 };
+        expect(result.decode(JSON.parse(JSON.stringify(result.encode(valid, () => null))))).toEqual(valid);
+        expect(() => result.encode?.(bad, () => null)).toThrow();
+        expect(() => result.decode?.(bad)).toThrow();
+      }
+    } finally { await ctx.fiber.dispose(); }
+  });
   it('preserves domain failures through the published Connection JSON response parser', async () => {
     const ctx = new Context();
     const error = new DshBotError('bot/not-found', 'Missing Bot');

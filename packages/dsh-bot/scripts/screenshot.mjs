@@ -1,9 +1,10 @@
 /**
  * Real rc.2 Web screenshots, with the installed Desktop CLI and cached Chromium.
  * Run from the repository root after scripts/pnpm check:
- *   DSH_HOME="$PWD/.dsh-shot" node scripts/screenshot.mjs
- * --extras-only adds the two Chinese/wide dialog surfaces using loopback mock
- * sessions; --seed-only verifies that preparation without launching Chromium.
+ *   DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs
+ * Default: five responsive Bots pages plus two Chinese Bot-chat dialogs.
+ * --extras-only keeps the Chinese editor/dialog regression surfaces.
+ * --seed-only verifies committed mock assistant activity without Chromium.
  * No browser download, global install, Desktop mutation or real model calls.
  */
 import assert from 'node:assert/strict';
@@ -22,22 +23,24 @@ import { chromium } from 'playwright-core';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
-import { captureFailureEvidence, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, redactScreenshotText, verifyAvatarContrast } from './screenshot-support.ts';
+import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
+import { captureFailureEvidence, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity } from './screenshot-support.ts';
 import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const seedOnly = process.argv.includes('--seed-only');
-const extrasOnly = seedOnly || process.argv.includes('--extras-only');
+const extrasOnly = process.argv.includes('--extras-only');
+const mockReply = 'Mock assistant reply / 本地模拟回复：已经整理好资料、关键结论和下一步建议。打开会话即可继续讨论具体细节。';
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-shot" node scripts/screenshot.mjs\nDefault: 16 Bots/blank-session screenshots. --extras-only: 4 zh/light+dark/wide editor/Bot-chats screenshots, two loopback mock sessions. --seed-only: verify mock preparation without Chromium (0 screenshots).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-shot logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow) and 2 zh light/dark Bot-chat dialogs. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
-  const home = resolve(root, '.dsh-shot');
-  assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-shot home is allowed');
+  const home = resolve(root, '.dsh-dev');
+  assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-dev home is allowed');
   const stamp = `${new Date().toISOString().replaceAll(':', '-')}-${process.pid}`;
   const output = resolve(root, 'dist/screenshots', stamp);
-  const run = resolve(home, 'runs', stamp);
+  const run = resolve(home, 'screenshots', stamp);
   const profile = `shot-${Date.now()}-${process.pid}`;
   const patch = resolve(run, 'profile.patch.yml');
   for (const dir of [output, run, resolve(run, 'tmp'), resolve(run, 'workspace')]) mkdirSync(dir, { recursive: true });
@@ -140,17 +143,15 @@ if (process.argv.includes('--help')) {
       activeContext = await browser.newContext();
       activePage = await activeContext.newPage();
     }
-    if (extrasOnly) {
-      step = 'mock-start';
-      mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success', 'success'], successText: '本地模拟回复：示例对话已准备好。', randomSeed: 2 });
-      assert.equal(new URL(mock.baseURL).hostname, '127.0.0.1');
-      Object.assign(env, { DSH_BOT_MOCK_KEY: 'mock-key', DEEPSEEK_API_KEY: '', DEEPSEEK_BASE_URL: `${mock.baseURL}/v1` });
-    }
+    step = 'mock-start';
+    mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success', 'success', 'success'], successText: mockReply, randomSeed: 2 });
+    assert.equal(new URL(mock.baseURL).hostname, '127.0.0.1');
+    Object.assign(env, { DSH_BOT_MOCK_KEY: 'mock-key', DEEPSEEK_API_KEY: '', DEEPSEEK_BASE_URL: `${mock.baseURL}/v1` });
     stage = 'profile';
     const versionOutput = await command(['--version'], 'version');
     // macOS can emit an Electron codesign diagnostic on stderr before stdout.
     assert.equal(versionOutput.split('\n').find((line) => /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(line)), '0.2.1-rc.2', 'Expected installed rc.2 CLI');
-    const disabled = [...(extrasOnly ? [] : ['llm-deepseek']), 'llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry', 'session-telemetry-otel', 'desktop-product-telemetry'];
+    const disabled = ['llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry', 'session-telemetry-otel', 'desktop-product-telemetry'];
     writeFileSync(patch, [
       ...disabled.flatMap((id) => [`- id: ${id}`, '  disabled: true']),
       ...(mock ? [
@@ -213,11 +214,14 @@ if (process.argv.includes('--help')) {
     const status = statuses.find((entry) => entry.id === bot.id);
     assert.equal(status?.preset.state, 'ok', 'Screenshot Bot preset healthy');
     if (mock) {
-      for (const sample of [bot, researcher]) {
+      for (const [index, sample] of [bot, researcher, bot].entries()) {
         step = `seed-${sample.id}`;
         const preset = statuses.find((entry) => entry.id === sample.id);
         assert.equal(preset?.preset.state, 'ok');
         const { sessionId } = await raw('session/create', { request: { workspaceId: workspace.workspaceId, agentPreset: preset.presetId } });
+        const title = `${sample.name} · ${index === 2 ? '最新进展 / Latest update' : '示例对话 / Example conversation'}`;
+        // Activity snapshots the public title when the assistant message commits.
+        await raw('session/rename', { request: { sessionId, title } });
         const receipt = await raw('session/prompt', { request: { sessionId, requestId: randomUUID(), mode: 'queue',
           content: [{ type: 'text', text: `为 ${sample.name} 准备一条本地模拟示例对话。` }] } });
         assert.equal(receipt.accepted, true);
@@ -237,148 +241,158 @@ if (process.argv.includes('--help')) {
           }
         } while (!finished);
         assert.equal(values.agentPreset, preset.presetId);
-        const title = `${sample.name} · 示例对话`;
-        await raw('session/rename', { request: { sessionId, title } });
-        sessionFixtures.push({ botId: sample.id, sessionId, title, agentPreset: preset.presetId, blank: false, turns: values.sessionStats.turns });
+        // Read the older Atlas conversation to cover a real read/unread mix.
+        if (index === 0) unwrap(await api.remote.dshBot.activity.markRead(sessionId));
+        sessionFixtures.push({ botId: sample.id, sessionId, title, agentPreset: preset.presetId, blank: false, turns: values.sessionStats.turns, unread: index !== 0 });
       }
-      assert.equal(mock.requests.length, 2, 'Only two loopback model requests');
-      assert.ok(mock.requests.every((request) => request.outcome === 'completed'), 'Both mock replies completed');
-      save('mock-sessions.json', { sessionFixtures, mockPromptsSent, requests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) });
+      assert.equal(mock.requests.length, 3, 'Only three loopback model requests');
+      assert.ok(mock.requests.every((request) => request.outcome === 'completed'), 'All mock replies completed');
+      const activity = unwrap(await api.remote.dshBot.activity.list());
+      verifyScreenshotActivity(activity, sessionFixtures, mockReply);
+      assert.equal(activity.sessions.filter((row) => row.unread).length, 2, 'Two assistant sessions remain unread');
+      // Also exercise the shipped factory's plugin scope: root-context Remote
+      // calls alone cannot detect missing nested Cordis service access.
+      const client = await createClientActivityProbe(api.connection);
+      let clientActivity;
+      try {
+        await client.activity.refresh();
+        assert.equal(client.activity.getSnapshot().error, undefined, 'Shipped Client activity list succeeds');
+        verifyScreenshotActivity(client.activity.getSnapshot(), sessionFixtures, mockReply);
+        await client.activity.markRead(sessionFixtures[0].sessionId);
+        assert.equal(client.activity.getSnapshot().error, undefined, 'Shipped Client markRead refetch succeeds');
+        clientActivity = client.activity.getSnapshot();
+        verifyScreenshotActivity(clientActivity, sessionFixtures, mockReply);
+      } finally { await client.dispose(); }
+      save('mock-sessions.json', { sessionFixtures, activity, clientActivity, shippedClientFactory: true,
+        mockPromptsSent, requests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) });
     }
-    stage = 'screenshots';
-    // rc.2 collapses the sidebar to a 56px rail below 1024px. A 720px
-    // viewport still leaves a 664px main pane, above Bots' 600px breakpoint.
-    for (const language of ['en', 'zh']) for (const theme of ['light', 'dark']) for (const [viewport, width, height] of [['wide', 1440, 1000], ['narrow', 600, 900]]) {
-      if (seedOnly || (extrasOnly && (language !== 'zh' || viewport !== 'wide'))) continue;
+    stage = seedOnly ? 'seed-validation' : 'screenshots';
+    for (const { language, theme, viewport, width, height } of seedOnly ? [] : screenshotCases(extrasOnly)) {
+      const copy = language === 'zh' ? zh.ui : en.ui;
       const filename = `${language}-${theme}-${viewport}`;
       step = `${filename}-new-page`;
       assert.ok(!interrupted, 'Screenshot run interrupted');
       await activeContext.close();
       const context = await browser.newContext({ viewport: { width, height }, locale: language === 'zh' ? 'zh-CN' : 'en-US', colorScheme: theme, reducedMotion: 'reduce' });
       activeContext = context;
-      {
-        await context.addCookies(cookies);
-        // Guard the harness too: UI actions must create idle sessions, never prompts.
-        await context.route('**/api/session/prompt', (route) => { prompts++; return route.abort('blockedbyclient'); });
-        const page = await context.newPage();
-        activePage = page;
-        page.setDefaultTimeout(30_000);
-        page.on('pageerror', (error) => browserErrors.push(redact(error.message)));
-        const recordOverlay = (event) => overlays.push({ language, theme, viewport, ...event });
-        await installOverlayHandler(page, recordOverlay);
-        await page.goto(origin, { waitUntil: 'domcontentloaded' });
-        step = `${filename}-bots-navigation`;
-        // A new context also changes locale/theme. Handle both localized preview
-        // titles and exact allowlisted actions on subsequent first-run steps.
-        await dismissFirstRunOverlays(page, recordOverlay, 'new-page-language-and-theme');
-        await page.getByRole('button', { name: 'Bots', exact: true }).click();
-        await dismissFirstRunOverlays(page, recordOverlay, 'bots-navigation');
-        const bots = page.getByRole('region', { name: 'Bots', exact: true });
-        await bots.getByRole('heading', { name: bot.name, exact: true }).waitFor();
-        const createText = language === 'zh' ? '新建 Bot' : 'New Bot';
-        await bots.getByRole('button', { name: createText, exact: true }).waitFor();
-        step = `${filename}-bots-layout`;
-        await page.evaluate(() => document.fonts.ready);
-        await page.waitForFunction((narrow) => {
-          const region = document.querySelector('[data-bots-page]');
-          const cards = region?.querySelectorAll('article');
-          if (!region || !cards || cards.length < 2) return false;
-          const first = cards[0].getBoundingClientRect();
-          const second = cards[1].getBoundingClientRect();
-          return narrow ? second.top > first.top : Math.abs(second.top - first.top) < 1;
-        }, viewport === 'narrow');
-        const mainWidth = await bots.evaluate((element) => element.getBoundingClientRect().width);
-        const cardLayouts = await bots.locator('article').evaluateAll((cards) => cards.map((card) => {
-          const footer = card.querySelector('footer');
-          const buttons = Array.from(footer?.querySelectorAll('button') ?? []);
-          return { height: card.getBoundingClientRect().height, minHeight: getComputedStyle(card).minHeight,
-            descriptionHeight: card.querySelector('p')?.getBoundingClientRect().height,
-            actionsWidth: footer?.getBoundingClientRect().width,
-            buttons: buttons.map((button) => ({ width: button.getBoundingClientRect().width,
-              height: button.getBoundingClientRect().height, flexGrow: getComputedStyle(button).flexGrow })) };
-        }));
-        for (const layout of cardLayouts) {
-          assert.equal(layout.buttons.length, 2, 'Card primary/secondary button group');
-          assert.ok(layout.buttons.every((button) => Math.abs(button.height - 28) < 1 && button.flexGrow === '0'), 'Intrinsic-width, equal-height native sm buttons');
+      await context.addCookies(cookies);
+      // UI exercise creates idle sessions only. All intentional prompts above
+      // were sent through the local mock profile's authenticated Remote API.
+      await context.route('**/api/session/prompt', (route) => { prompts++; return route.abort('blockedbyclient'); });
+      const page = await context.newPage();
+      activePage = page;
+      page.setDefaultTimeout(30_000);
+      page.on('pageerror', (error) => browserErrors.push(redact(error.message)));
+      const recordOverlay = (event) => overlays.push({ language, theme, viewport, ...event });
+      await installOverlayHandler(page, recordOverlay);
+      await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      step = `${filename}-bots-navigation`;
+      await dismissFirstRunOverlays(page, recordOverlay, 'new-page-language-and-theme');
+      await page.getByRole('button', { name: 'Bots', exact: true }).click();
+      await dismissFirstRunOverlays(page, recordOverlay, 'bots-navigation');
+      const bots = page.locator('[data-bots-page]');
+      const option = bots.locator(`[role="option"][data-bot-id="${bot.id}"]`);
+      await option.getByText(mockReply, { exact: true }).waitFor();
+      const create = bots.getByRole('button', { name: copy['bots.create'], exact: true });
+      await create.waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      if (viewport === 'wide') await option.click();
+      step = `${filename}-bots-layout`;
+      await page.waitForFunction((narrow) => {
+        const region = document.querySelector('[data-bots-page]');
+        const list = region?.querySelector('[role="listbox"]')?.getBoundingClientRect();
+        const detail = region?.querySelector('[data-bot-detail]')?.getBoundingClientRect();
+        return list && list.width > 0 && (narrow ? !detail || detail.width === 0 : detail && detail.width > 0 && list.right <= detail.left + 1);
+      }, viewport === 'narrow');
+      const layout = await page.evaluate(readBotsLayout);
+      assert.deepEqual(layout.optionIds, [bot.id, researcher.id], 'Bots sorted by newest activity');
+      assert.ok(layout.previews.length >= 2 && layout.previews.every((preview) => preview.textOverflow === 'ellipsis' && preview.whiteSpace === 'nowrap' && preview.overflow === 'hidden'), 'Visible previews have single-line ellipsis CSS');
+      assert.ok(layout.unreadDots >= 1, 'Bots show unread assistant activity');
+      if (viewport === 'wide') {
+        assert.equal(layout.selectedBotId, bot.id);
+        assert.equal(layout.detailBotId, bot.id);
+        assert.deepEqual(layout.sessionIds, [...sessionFixtures].reverse().filter((fixture) => fixture.botId === bot.id).map((fixture) => fixture.sessionId), 'Selected Bot history sorted newest first');
+      }
+      const mainWidth = await bots.evaluate((element) => element.getBoundingClientRect().width);
+      const bodyTheme = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim());
+      const capture = async (surface, readyTarget, expectedIds) => {
+        step = `${filename}-${surface}-capture`;
+        await dismissFirstRunOverlays(page, recordOverlay, `before-${surface}-capture`);
+        await readyTarget.click({ trial: true });
+        await dismissFirstRunOverlays(page, recordOverlay, `${surface}-ready`);
+        const avatars = await measureAvatars(page);
+        contrastChecks.push({ language, theme, viewport, surface, avatars, expectedIds });
+        save('progress.json', { overlays, workspaceChoices, conversationChecks, contrastChecks, screenshots: shots });
+        verifyAvatarContrast(avatars, expectedIds);
+        await page.screenshot({ path: resolve(output, `${filename}-${surface}.png`), fullPage: true, animations: 'disabled' });
+        shots.push({ file: `${filename}-${surface}.png`, language, theme, viewport, width, height, surface, bodyTheme, mainWidth, avatars,
+          ...(surface === 'bots' ? { layout } : {}) });
+      };
+      if (!extrasOnly) await capture('bots', create, [bot.id, researcher.id]);
+      const detail = bots.locator(`[data-bot-detail="${bot.id}"]`);
+      if (viewport === 'narrow') {
+        await option.click();
+        await detail.waitFor();
+        const narrowDetail = await page.evaluate(readBotsLayout);
+        assert.equal(narrowDetail.listVisible, false, 'Narrow selection hides the list');
+        assert.equal(narrowDetail.detailVisible, true, 'Narrow selection reveals detail');
+        await detail.getByRole('button', { name: copy['bots.back'], exact: true }).click();
+        await option.waitFor();
+        const narrowList = await page.evaluate(readBotsLayout);
+        assert.equal(narrowList.listVisible, true, 'Back returns to the list');
+        assert.equal(narrowList.detailVisible, false, 'Back hides detail');
+        conversationChecks.push({ language, theme, viewport, kind: 'narrow-navigation', selectedBotId: bot.id, detail: narrowDetail, back: narrowList });
+        await option.click();
+      }
+      if (extrasOnly) {
+        step = `${filename}-editor-open`;
+        await detail.getByRole('button', { name: copy['card.edit'], exact: true }).click();
+        const editor = page.getByRole('dialog', { name: copy['editor.edit'], exact: true });
+        await editor.getByRole('img', { name: copy['avatar.current'], exact: true }).scrollIntoViewIfNeeded();
+        await editor.getByRole('group', { name: copy['avatar.color'], exact: true }).waitFor();
+        await capture('editor', editor.getByRole('button', { name: copy['actions.close'], exact: true }), [bot.id]);
+        await editor.getByRole('button', { name: copy['actions.close'], exact: true }).click();
+        await editor.waitFor({ state: 'hidden' });
+      }
+      if (language === 'zh' && viewport === 'wide') {
+        step = `${filename}-bot-chats-open`;
+        await page.getByRole('button', { name: copy['sidebar.sessions'], exact: true }).click();
+        const chats = page.getByRole('dialog', { name: copy['sidebar.sessions'], exact: true });
+        for (const fixture of sessionFixtures) {
+          const row = chats.locator(`section[data-bot-id="${fixture.botId}"] [data-session-id="${fixture.sessionId}"]`);
+          await row.getByText(mockReply, { exact: true }).waitFor();
         }
-        const bodyTheme = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim());
-        let conversationEvidence;
-        const capture = async (surface, readyTarget) => {
-          step = `${filename}-${surface}-capture`;
-          await dismissFirstRunOverlays(page, recordOverlay, `before-${surface}-capture`);
-          // Trial performs normal actionability checks, invoking the installed
-          // handler for a delayed notice, without starting a chat/opening detail.
-          await readyTarget.click({ trial: true });
-          await dismissFirstRunOverlays(page, recordOverlay, `${surface}-ready`);
-          const avatars = await measureAvatars(page);
-          // rc.2 hides header utilities on blank sessions, so no BotAvatar
-          // is expected there. Do not mislabel missing draft chrome as a pass
-          // for the real, nonblank session badge's contrast.
-          const expectedIds = surface === 'blank-session' ? [] : surface === 'editor' ? [bot.id] : [bot.id, researcher.id];
-          const measurement = { language, theme, viewport, surface, avatars, expectedIds };
-          contrastChecks.push(measurement);
-          // Persist actual measured values even if contrast or screenshot fails.
-          save('progress.json', { overlays, workspaceChoices, conversationChecks, contrastChecks, screenshots: shots });
-          verifyAvatarContrast(avatars, expectedIds);
-          const path = resolve(output, `${filename}-${surface}.png`);
-          await page.screenshot({ path, fullPage: true, animations: 'disabled' });
-          shots.push({ file: `${filename}-${surface}.png`, language, theme, viewport, width, height, surface, bodyTheme, mainWidth, avatars,
-            ...(conversationEvidence ? { conversationEvidence } : {}),
-            ...(surface === 'bots' ? { cardLayouts } : {}) });
-        };
-        const card = bots.locator('article').filter({ has: page.getByRole('heading', { name: bot.name, exact: true }) });
-        if (extrasOnly) {
-          step = `${filename}-editor-open`;
-          await card.getByRole('button', { name: zh.ui['card.edit'], exact: true }).click();
-          const editor = page.getByRole('dialog', { name: zh.ui['editor.edit'], exact: true });
-          const preview = editor.getByRole('img', { name: zh.ui['avatar.current'], exact: true });
-          await preview.scrollIntoViewIfNeeded();
-          await editor.getByRole('group', { name: zh.ui['avatar.color'], exact: true }).waitFor();
-          await capture('editor', editor.getByRole('button', { name: zh.ui['actions.close'], exact: true }));
-          await editor.getByRole('button', { name: zh.ui['actions.close'], exact: true }).click();
-          await editor.waitFor({ state: 'hidden' });
-          step = `${filename}-bot-chats-open`;
-          await page.getByRole('button', { name: zh.ui['sidebar.sessions'], exact: true }).click();
-          const chats = page.getByRole('dialog', { name: zh.ui['sidebar.sessions'], exact: true });
-          for (const fixture of sessionFixtures) {
-            await chats.locator(`section[data-bot-id="${fixture.botId}"] [data-session-id="${fixture.sessionId}"]`).waitFor();
-          }
-          await capture('bot-chats', chats.getByRole('button', { name: zh.ui['actions.close'], exact: true }));
-          console.log(`PASS: ${language}/${theme}/${viewport} editor and Bot chats with two nonblank mock sessions`);
-          continue;
-        }
-        const start = card.getByRole('button', { name: language === 'zh' ? '开始聊天' : 'Start chat', exact: true });
-        await capture('bots', start);
+        assert.ok(await chats.locator('[data-unread]').count() > 0, 'Bot-chat dialog displays unread activity');
+        await capture('bot-chats', chats.getByRole('button', { name: copy['actions.close'], exact: true }), [bot.id, researcher.id]);
+        await chats.getByRole('button', { name: copy['actions.close'], exact: true }).click();
+        await chats.waitFor({ state: 'hidden' });
+      }
+      // Exercise new-conversation after the final matrix capture so earlier
+      // screenshots keep exactly the seeded history and its unread state.
+      if (!extrasOnly && viewport === 'narrow') {
         step = `${filename}-start-chat`;
-        await dismissFirstRunOverlays(page, recordOverlay, 'before-start-chat');
-        await start.click();
+        await detail.getByRole('button', { name: copy['bots.newSession'], exact: true }).click();
         const conversation = page.locator('[data-conversation-content][data-conversation-session][data-content-phase="hero"]');
         const editor = conversation.getByRole('textbox');
         await dismissFirstRunOverlays(page, recordOverlay, 'after-start-chat');
-        step = `${filename}-workspace-choice`;
-        const choice = await completeChatWorkspaceChoice(page, editor, workspace.workspaceId, language === 'zh' ? zh.ui : en.ui);
+        const choice = await completeChatWorkspaceChoice(page, editor, workspace.workspaceId, copy);
         workspaceChoices.push({ language, theme, viewport, workspaceId: workspace.workspaceId, outcome: choice });
-        step = `${filename}-blank-session-ready`;
         await editor.waitFor();
         await bots.waitFor({ state: 'hidden' });
-        await conversation.getByRole('button', { name: bot.name, exact: true }).waitFor();
         const sessionId = await conversation.getAttribute('data-conversation-session');
-        assert.ok(sessionId, 'Blank session must have an actual Host session id');
-        step = `${filename}-blank-session-projection`;
+        assert.ok(sessionId, 'Blank session has an actual Host session id');
         const projection = await raw('session/projections', { request: { sessionId } });
-        assert.equal(projection?.kind, 'sequenced', 'Active session projection is authoritative');
-        assert.equal(projection.values.agentPreset, status.presetId, 'Blank session uses the selected Bot preset');
-        conversationEvidence = { sessionId, workspaceId: workspace.workspaceId, agentPreset: projection.values.agentPreset,
-          phase: 'hero', botLabel: bot.name, headerBadgeExpected: false, promptsSent: 0 };
-        conversationChecks.push({ language, theme, viewport, ...conversationEvidence });
-        await capture('blank-session', editor);
-        console.log(`PASS: ${language}/${theme}/${viewport} Bots page and blank Bot session (no prompt)`);
+        assert.equal(projection?.kind, 'sequenced');
+        assert.equal(projection.values.agentPreset, status.presetId, 'New conversation uses selected Bot preset');
+        conversationChecks.push({ language, theme, viewport, sessionId, workspaceId: workspace.workspaceId,
+          agentPreset: projection.values.agentPreset, phase: 'hero', headerBadgeExpected: false, promptsSent: 0 });
       }
+      console.log(`PASS: ${language}/${theme}/${viewport} ${extrasOnly ? 'editor/Bot-chat dialogs' : viewport === 'narrow' ? 'responsive Bots page and new conversation' : 'two-pane Bots page'} with committed mock previews/unread`);
     }
     step = 'matrix-validation';
-    assert.equal(prompts, 0, 'No model prompt attempted');
+    assert.equal(prompts, 0, 'No browser model prompt attempted');
     assert.equal(browserErrors.length, 0, 'Browser page errors; inspect summary');
-    assert.equal(shots.length, seedOnly ? 0 : extrasOnly ? 4 : 16, 'Complete the requested screenshot set');
+    assert.equal(shots.length, seedOnly ? 0 : extrasOnly ? 4 : 7, 'Complete the requested screenshot set');
     if (!seedOnly) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
   } catch (error) {
     failure = redact(error instanceof Error ? error.message : error);

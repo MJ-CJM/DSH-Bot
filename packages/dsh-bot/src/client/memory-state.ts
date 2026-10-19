@@ -29,7 +29,7 @@ export function createMemoryCatalog(ctx: Context, botId: string, options: Memory
     // Capture the requested page before the first await; old responses cannot change it.
     const requestedQuery = query;
     const requestedBefore = before;
-    const memory = (ctx.get('remote.dshBot') as DshBotRemoteMethods | undefined)?.memory;
+    const memory = ctx.get('remote.dshBot.memory') as DshBotRemoteMethods['memory'] | undefined;
     if (!memory) throw { code: 'bot/unavailable', message: '' };
     const input = { limit: pageSize + 1, before: requestedBefore };
     const [rows, count] = await Promise.all([

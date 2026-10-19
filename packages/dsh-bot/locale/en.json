@@ -166,6 +166,23 @@
     "avatar.automatic": "Use automatic color",
     "avatar.otherOptions": "Emoji or uploaded image",
     "avatar.upload": "Upload image",
-    "avatar.uploadHint": "PNG, JPEG, GIF or WebP; encoded data must fit within 64 KiB."
+    "avatar.uploadHint": "PNG, JPEG, GIF or WebP; encoded data must fit within 64 KiB.",
+    "activity.locale": "en",
+    "activity.hidden": "Hidden",
+    "activity.unreadCount": "{count} unread conversations",
+    "activity.unread": "Unread",
+    "activity.openError": "Could not open this conversation. Try again.",
+    "activity.readFailed": "Could not mark the conversation as read. Opening it anyway; retry by reopening it.",
+    "activity.loading": "Loading conversations…",
+    "activity.loadError": "Could not refresh conversation activity. Try refreshing again.",
+    "activity.running": "Running",
+    "activity.noPreview": "No message preview",
+    "bots.list": "Bots",
+    "bots.back": "Back to Bots",
+    "bots.ready": "Ready",
+    "bots.newSession": "New conversation",
+    "bots.history": "Conversation history",
+    "bots.noSessions": "No conversations yet",
+    "bots.emptySessionsHint": "Start a new conversation using the button above."
   }
 }

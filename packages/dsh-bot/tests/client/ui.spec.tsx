@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 import { act } from 'react';
+import { readFileSync } from 'node:fs';
+import type { ActivitySession } from '../../src/shared/activity.js';
+import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -22,14 +25,152 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+
+function session(id: string, botId: string, updatedAt: number, extra: Partial<SessionSummary> = {}): SessionSummary {
+  return { id: id as SessionSummary['id'], displayTitle: id, updatedAt, running: false, blank: false,
+    retainedBy: {}, projectionValues: { agentPreset: `host-selected/${botId}` }, ...extra };
+}
+function activity(sessionId: string, botId: string, updatedAt: number, preview = 'Assistant answer'): ActivitySession {
+  return { sessionId, botId, updatedAt, unread: true, lastMessage: { role: 'assistant', preview, at: updatedAt } };
+}
+async function setSessions(app: Awaited<ReturnType<typeof mount>>, rows: SessionSummary[]) {
+  await app.setSessions({ ids: rows.map((row) => row.id), byId: Object.fromEntries(rows.map((row) => [row.id, row])) });
+}
+async function key(element: HTMLElement, value: string) {
+  await act(async () => { element.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true })); });
+}
+
 describe('Bots main page through the public Cordis and Slot registration contract', () => {
+  it('orders Bots by activity then name, retains the selected Bot across polls, and supports listbox keys', async () => {
+    const now = Date.now();
+    const app = await mount([bot({ id: 'gamma-bot', name: 'Gamma' }), bot(), bot({ id: 'beta-bot', name: 'Beta' })], 'en', (remote) => {
+      remote.data.activities = [activity('beta-session', 'beta-bot', now - 1000)];
+    });
+    const options = () => [...app.container.querySelectorAll('[role="option"]')];
+    expect(options().map((item) => item.getAttribute('data-bot-id'))).toEqual(['beta-bot', 'alpha-bot', 'gamma-bot']);
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('beta-bot');
+    const list = app.container.querySelector<HTMLElement>('[role="listbox"]');
+    if (!list) throw new Error('Bot list is missing');
+    await key(list, 'ArrowDown');
+    expect(options()[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(list.getAttribute('aria-activedescendant')).toBe(options()[1]?.id);
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('alpha-bot');
+    app.remote.data.activities = [activity('gamma-session', 'gamma-bot', now)];
+    await click(button(app.container, t['bots.refresh']));
+    expect(options().map((item) => item.getAttribute('data-bot-id'))).toEqual(['gamma-bot', 'alpha-bot', 'beta-bot']);
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('alpha-bot');
+    await key(list, 'End');
+    expect(options()[2]?.getAttribute('aria-selected')).toBe('true');
+    await key(list, 'ArrowUp');
+    expect(options()[1]?.getAttribute('aria-selected')).toBe('true');
+    await key(list, 'Home');
+    expect(options()[0]?.getAttribute('aria-selected')).toBe('true');
+    app.remote.data.records = app.remote.data.records.filter((row) => row.id !== 'gamma-bot');
+    await click(button(app.container, t['bots.refresh']));
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('alpha-bot');
+  });
+
+  it.each(['en', 'zh'] as const)('renders session previews, unread and running states with locale-relative times in %s', async (language) => {
+    const now = Date.now();
+    const dictionary = language === 'en' ? en.ui : zh.ui;
+    const preview = 'This is a long assistant reply. '.repeat(4);
+    const app = await mount([bot()], language, (remote) => {
+      remote.data.activities = [activity('older', 'alpha-bot', now - 120_000, preview),
+        { ...activity('newer', 'alpha-bot', now - 60_000, '[已隐藏]'), title: 'Latest conversation' }];
+    });
+    await setSessions(app, [session('older', 'alpha-bot', now - 120_000), session('newer', 'alpha-bot', now - 60_000, { running: true })]);
+    const rows = [...app.container.querySelectorAll('[data-session-id]')];
+    expect(rows.map((row) => row.getAttribute('data-session-id'))).toEqual(['newer', 'older']);
+    expect(rows[0]?.textContent).toContain('Latest conversation');
+    expect(rows[0]?.textContent).toContain(dictionary['activity.hidden']);
+    expect(rows[0]?.textContent).toContain(dictionary['activity.running']);
+    expect(rows[0]?.querySelector('[data-unread]')).not.toBeNull();
+    expect(rows[0]?.querySelector('time')?.textContent).toBe(new Intl.RelativeTimeFormat(language, { numeric: 'auto', style: 'short' }).format(-1, 'minute'));
+    const option = app.container.querySelector('[role="option"]');
+    expect(option?.querySelector('[data-unread]')?.getAttribute('aria-label')).toBe(dictionary['activity.unreadCount'].replace('{count}', '2'));
+    expect(option?.querySelector('[data-activity-preview]')?.textContent).toBe(dictionary['activity.hidden']);
+    expect(rows[1]?.querySelector('[data-activity-preview]')?.getAttribute('title')).toBe(preview);
+    // jsdom cannot measure ellipsis; verify the CSS contract without claiming a screenshot.
+    const css = readFileSync('src/client/styles/bots.module.css', 'utf8');
+    expect(css.match(/\.activityPreview\s*\{([^}]+)\}/)?.[1]).toMatch(/overflow:\s*hidden/);
+    expect(css.match(/\.activityPreview\s*\{([^}]+)\}/)?.[1]).toMatch(/text-overflow:\s*ellipsis/);
+    expect(css.match(/\.activityPreview\s*\{([^}]+)\}/)?.[1]).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it('opens history even if markRead fails, logs only localized text, and preserves unread for retry', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const now = Date.now();
+    const app = await mount([bot()], 'en', (remote) => { remote.data.activities = [activity('history', 'alpha-bot', now)]; });
+    await setSessions(app, [session('history', 'alpha-bot', now)]);
+    const row = app.container.querySelector<HTMLButtonElement>('[data-session-id="history"]');
+    if (!row) throw new Error('History row is missing');
+    app.remote.methods.activity.markRead.mockResolvedValueOnce({ ok: false, error: new RemoteError('store/unavailable', 'Sensitive transport detail', {}) });
+    await click(row);
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('history');
+    expect(row.querySelector('[data-unread]')).not.toBeNull();
+    expect(warning).toHaveBeenCalledExactlyOnceWith(t['activity.readFailed']);
+    expect(app.container.textContent).not.toContain('Sensitive transport detail');
+    app.openSession.mockClear();
+    const original = app.remote.methods.activity.markRead.getMockImplementation();
+    if (!original) throw new Error('markRead implementation missing');
+    let release!: () => void;
+    app.remote.methods.activity.markRead.mockImplementationOnce(async (id) => { await new Promise<void>((resolve) => { release = resolve; }); return original(id); });
+    await click(row);
+    expect(app.openSession).not.toHaveBeenCalled();
+    expect(row.disabled).toBe(true);
+    await act(async () => { release(); });
+    expect(app.remote.methods.activity.markRead).toHaveBeenLastCalledWith('history');
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('history');
+    expect(row.querySelector('[data-unread]')).toBeNull();
+  });
+
+  it('shows list then detail on narrow panels, restores keyboard focus on return, and exposes all management actions', async () => {
+    let resize: ResizeObserverCallback | undefined;
+    vi.stubGlobal('ResizeObserver', class { constructor(callback: ResizeObserverCallback) { resize = callback; } observe() {} disconnect() {} });
+    try {
+      const app = await mount([bot()]);
+      await act(async () => { resize?.([{ contentRect: { width: 759 } } as ResizeObserverEntry], {} as ResizeObserver); });
+      expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
+      const list = app.container.querySelector<HTMLElement>('[role="listbox"]');
+      if (!list) throw new Error('Narrow Bot list is missing');
+      await key(list, 'Enter');
+      expect(app.container.querySelector('[role="listbox"]')).toBeNull();
+      expect(document.activeElement).toBe(button(app.container, t['bots.back']));
+      for (const name of ['bots.newSession', 'card.edit', 'memory.title', 'card.more', 'bots.create'] as const) expect(button(app.container, t[name])).toBeDefined();
+      await click(button(app.container, t['memory.title']));
+      expect(app.container.querySelector('dialog')?.textContent).toContain(t['memory.empty']);
+      expect(button(app.container, t['memory.add'])).toBeDefined();
+      await click(button(app.container.querySelector('dialog') as HTMLElement, t['actions.close']));
+      await click(button(app.container, t['card.more']));
+      expect(button(app.container, t['card.duplicate'])).toBeDefined();
+      expect(button(app.container, t['actions.delete'])).toBeDefined();
+      await click(button(app.container, t['bots.back']));
+      expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
+      expect(document.activeElement).toBe(app.container.querySelector('[role="listbox"]'));
+      await click(app.container.querySelector<HTMLElement>('[role="option"]') as HTMLElement);
+      expect(app.container.querySelector('[data-bot-detail]')).not.toBeNull();
+      await act(async () => { resize?.([{ contentRect: { width: 760 } } as ResizeObserverEntry], {} as ResizeObserver); });
+      expect(app.container.querySelector('[role="listbox"]')).not.toBeNull();
+      expect(app.container.querySelector('[data-bot-detail]')).not.toBeNull();
+      expect(app.container.textContent).toContain(t['bots.emptySessionsHint']);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('falls back to the description or localized no-conversation message in the Bot list', async () => {
+    const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha', description: 'A useful helper' }), bot({ id: 'beta-bot', name: 'Beta' })]);
+    const previews = [...app.container.querySelectorAll('[role="option"] [data-activity-preview]')].map((item) => item.textContent);
+    expect(previews).toEqual(['A useful helper', t['bots.noSessions']]);
+    expect(app.container.querySelector('[data-session-id]')).toBeNull();
+    expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
+  });
+
   it('renders a stored-avatar warning without disabling the healthy Bot or failing its list', async () => {
     const app = await mount([bot()], 'en', (remote) => {
       remote.data.statuses = [{ id: 'alpha-bot', presetId: 'custom-alpha', preset: { state: 'ok' }, warnings: ['avatar/invalid'] }];
     });
     expect(app.container.textContent).toContain(t['avatar.invalidStored']);
     expect(app.container.querySelector('img')).toBeNull();
-    expect(button(app.container, t['card.start']).disabled).toBe(false);
+    expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
     await click(button(app.container, t['card.edit']));
     expect(app.container.querySelector('dialog')?.textContent).toContain(t['avatar.invalidStored']);
   });
@@ -102,7 +243,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.remote.methods.list).toHaveBeenCalledTimes(3);
   });
 
-  it('renders the native page frame and card anatomy with only create and refresh in its header', async () => {
+  it('renders the native page frame and two-pane detail anatomy with only create and refresh in its header', async () => {
     const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha Bot', description: 'A careful helper' })]);
     const page = app.container.querySelector('[data-bots-page]');
     const header = page?.querySelector('header');
@@ -118,9 +259,11 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(article?.querySelector('header h2')?.textContent).toBe('Alpha Bot');
     expect(article?.querySelector('header')?.textContent).toContain('alpha-bot');
     expect(article?.querySelector('header button[aria-haspopup="menu"]')?.getAttribute('aria-label')).toBe(t['card.more']);
-    expect(article?.querySelector('footer')?.textContent).toBe(`${t['card.start']}${t['card.edit']}`);
-    expect(article?.querySelector('footer button[aria-haspopup="menu"]')).toBeNull();
-    expect([...article?.querySelectorAll('footer button') ?? []].map((item) => item.getAttribute('data-platform-size'))).toEqual(['sm', 'sm']);
+    expect(page?.querySelector('[role="listbox"]')).not.toBeNull();
+    expect(article?.getAttribute('data-bot-detail')).toBe('alpha-bot');
+    for (const action of ['bots.newSession', 'card.edit', 'memory.title'] as const) {
+      expect(button(article as HTMLElement, t[action]).getAttribute('data-platform-size')).toBe('sm');
+    }
     expect(article?.querySelector('p')?.textContent).toBe('A careful helper');
   });
 
@@ -148,7 +291,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it('renders a Bot card and opens the server-selected preset, without constructing a Client prefix', async () => {
+  it('renders Bot details and opens the server-selected preset, without constructing a Client prefix', async () => {
     const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha Bot', avatar: '🦊', description: 'A careful helper' })]);
     expect(app.sidebarLabel()).toBe(t['bots.title']);
     expect(app.main.options.key).toBe('dsh-bot');
@@ -156,7 +299,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.container.querySelector('article')?.textContent).toContain('Alpha Bot');
     expect(app.container.querySelector('article')?.textContent).toContain('A careful helper');
     expect(app.container.querySelector('article')?.textContent).toContain('🦊');
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.openWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-one', expect.any(Function), {
       agentPreset: 'host-selected/alpha-bot',
     });
@@ -175,7 +318,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     const app = await mount([bot()], 'en', (remote) => {
       remote.data.statuses = [{ id: 'alpha-bot', presetId: 'private-server-preset', preset: { state, reason: 'Host activation failed' } }];
     });
-    const start = button(app.container, t['card.start']);
+    const start = button(app.container, t['bots.newSession']);
     expect(start.disabled).toBe(true);
     expect(app.container.textContent).toContain('Host activation failed');
     await click(start);
@@ -184,7 +327,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
 
   it('disables a Bot without a matching status instead of guessing its preset id', async () => {
     const app = await mount([bot()], 'en', (remote) => { remote.data.statuses = []; });
-    expect(button(app.container, t['card.start']).disabled).toBe(true);
+    expect(button(app.container, t['bots.newSession']).disabled).toBe(true);
     expect(app.container.textContent).toContain(t['card.statusUnknown']);
     expect(app.openWorkspace).not.toHaveBeenCalled();
   });
@@ -280,11 +423,11 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   it('awaits an asynchronous Host refusal and displays the reason on the page', async () => {
     const app = await mount([bot()]);
     app.openWorkspace.mockRejectedValueOnce(new Error('Host refused the selected preset')); 
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain('Host refused the selected preset');
-    expect(button(app.container, t['card.start']).disabled).toBe(false);
-    await click(button(app.container, t['card.start']));
+    expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
+    await click(button(app.container, t['bots.newSession']));
     expect(app.openWorkspace).toHaveBeenCalledTimes(2);
     expect(app.container.querySelector('[role="alert"]')).toBeNull();
   });
@@ -292,7 +435,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   it('explains that a workspace must be opened when none is available, without silent navigation', async () => {
     const app = await mount([bot()]);
     await app.setWorkspaces({ items: [] });
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceRequired']);
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.remote.methods.status).toHaveBeenCalledTimes(1);
@@ -302,7 +445,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     const app = await mount([bot()], language);
     const t = language === 'zh' ? zh.ui : en.ui;
     await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second project')] });
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.container.querySelector('dialog')?.textContent).toContain(t['chat.workspaceChoose']);
     await fill(field(app.container, t['chat.workspace']), 'workspace-two');
@@ -320,15 +463,15 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   it('shows pending and failed workspace catalogs and revalidates a workspace after querying status', async () => {
     const app = await mount([bot()]);
     await app.setWorkspaces({ phase: 'pending', state: 'loading' });
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceLoading']);
     await app.setWorkspaces({ phase: 'ready', state: 'error', error: new RemoteError('gateway/service-unavailable', 'Offline', { endpoint: 'workspace/watch' }) });
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceUnavailable']);
     await app.setWorkspaces({ state: 'idle', error: null });
     let finish: ((value: RemoteResult<BotStatus[]>) => void) | undefined;
     app.remote.methods.status.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     await app.setWorkspaces({ items: [] });
     await act(async () => { finish?.({ ok: true, value: [{ id: 'alpha-bot', presetId: 'correct-preset', preset: { state: 'ok' } }] }); });
     expect(app.openWorkspace).not.toHaveBeenCalled();
@@ -343,7 +486,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
         try { beforeOpen?.('late-session' as never); resolve(); } catch (error) { reject(error); }
       };
     }));
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     await app.unmountPage();
     await act(async () => { finish?.(); });
     expect(app.container.textContent).toBe('');
@@ -352,21 +495,21 @@ describe('Bots main page through the public Cordis and Slot registration contrac
 
   it('rechecks preset status when clicked and refuses a preset that broke since rendering', async () => {
     const app = await mount([bot()]);
-    expect(button(app.container, t['card.start']).disabled).toBe(false);
+    expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
     app.remote.data.statuses = [{
       id: 'alpha-bot', presetId: 'host-selected/alpha-bot', preset: { state: 'broken', reason: 'Preset changed while open' },
     }];
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain('Preset changed while open');
-    expect(button(app.container, t['card.start']).disabled).toBe(true);
+    expect(button(app.container, t['bots.newSession']).disabled).toBe(true);
   });
 
   it('does not start a session when its pending status response arrives after the page unmounts', async () => {
     const app = await mount([bot()]);
     let resolveStatus: ((result: RemoteResult<BotStatus[]>) => void) | undefined;
     app.remote.methods.status.mockReturnValueOnce(new Promise((resolve) => { resolveStatus = resolve; }));
-    await click(button(app.container, t['card.start']));
+    await click(button(app.container, t['bots.newSession']));
     expect(app.remote.methods.status).toHaveBeenCalledTimes(2);
     await app.unmountPage();
     await act(async () => {
@@ -394,7 +537,8 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.remote.methods.duplicate).toHaveBeenCalledExactlyOnceWith('alpha-bot', 'copied-bot');
     expect(app.remote.methods.create).not.toHaveBeenCalled();
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
-    expect(app.container.querySelectorAll('article')).toHaveLength(2);
+    expect(app.container.querySelectorAll('[role="option"]')).toHaveLength(2);
+    expect(app.container.querySelectorAll('[data-bot-detail]')).toHaveLength(1);
   });
 
   it('requires deletion confirmation with memory and history consequences; cancellation does not delete', async () => {

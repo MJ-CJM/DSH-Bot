@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ActivityStore, botDomain, openBotStores } from '../src/host/store.js';
 import type { ActivityStoreOptions } from '../src/host/store.js';
 import { ACTIVITY_HIDDEN_PREVIEW } from '../src/host/activity/preview.js';
-import { activityListResultSchema } from '../src/shared/activity.js';
+import { activityListResultSchema, activitySessionSchema } from '../src/shared/activity.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
 type Stores = Awaited<ReturnType<typeof openBotStores>>;
@@ -117,7 +117,12 @@ describe('ActivityStore with the published JSON storage backend', () => {
       await activities.record({ ...event('session', 100), seq: 1 });
       const firstRead = await activities.markRead('session');
       expect(firstRead).toMatchObject({ lastReadAt: 100, updatedAt: 100, unread: false });
-      expect(await activities.markRead('session')).toEqual(firstRead);
+      const repeatedRead = await activities.markRead('session');
+      expect(repeatedRead).toEqual(firstRead);
+      for (const result of [firstRead, repeatedRead]) {
+        expect(activitySessionSchema.parse(result)).toEqual(result);
+        expect(Object.keys(result).sort()).toEqual(['botId', 'lastMessage', 'lastReadAt', 'sessionId', 'unread', 'updatedAt']);
+      }
       expect(activityWrites).toBe(2);
       await activities.record({ ...event('session', 100), seq: 2, text: 'Again' });
       expect(activities.list().sessions[0]).toMatchObject({ updatedAt: 101, unread: true });

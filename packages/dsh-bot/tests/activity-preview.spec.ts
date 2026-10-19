@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { ACTIVITY_HIDDEN_PREVIEW, createActivityPreview } from '../src/host/activity/preview.js';
-import { ACTIVITY_PREVIEW_MAX_CHARS, isActivityUnread } from '../src/shared/activity.js';
+import { ACTIVITY_PREVIEW_MAX_CHARS, activityRecordSchema, isActivityUnread, isHiddenActivityPreview } from '../src/shared/activity.js';
 
 describe('completed-message activity previews', () => {
+  it('uses a locale-neutral wire sentinel and recognizes persisted legacy markers', () => {
+    expect(ACTIVITY_HIDDEN_PREVIEW).toMatch(/^[\x20-\x7e]+$/u);
+    for (const marker of [ACTIVITY_HIDDEN_PREVIEW, '[已隐藏]']) {
+      expect(isHiddenActivityPreview(marker)).toBe(true);
+      expect(activityRecordSchema.parse({ sessionId: 'legacy', botId: 'alpha-bot', title: marker,
+        lastMessage: { role: 'assistant', preview: marker, at: 1 }, updatedAt: 1 }).lastMessage.preview).toBe(marker);
+    }
+    expect(isHiddenActivityPreview('ordinary text')).toBe(false);
+  });
   it('collapses whitespace and removes control characters', () => {
     expect(createActivityPreview('  Hello\n\tworld\u0000 你好\u00a0!  ')).toBe('Hello world 你好 !');
     expect(createActivityPreview(' \n\t ')).toBe('');

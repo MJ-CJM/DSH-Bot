@@ -1,20 +1,27 @@
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client';
+import { useEffect, useState } from 'react';
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotCatalog } from '../state.js';
+import type { ActivityCatalog } from '../activity-state.js';
 import { BotAvatar } from './BotAvatar.js';
 
 export interface SessionBotBadgeInjected {
-  hooks: { catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'> };
+  hooks: {
+    catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>;
+    activity: Pick<ActivityCatalog, 'getSnapshot' | 'subscribe'>;
+  };
+  onMarkRead(id: string): Promise<void>;
   onOpenBot(id: string): void;
 }
 
 export type SessionBotBadgeProps =
-  Pick<PropsRuntime<'conversation.session.header.utilities'>, 'sessionId' | 'useSessions'>
+  Pick<PropsRuntime<'conversation.session.header.utilities'>, 'sessionId' | 'useSessions' | 'usePanelInfo'>
   & PropsLocale<'dsh-bot'>
   & InjectFace<SessionBotBadgeInjected>;
 
-export function SessionBotBadge({ sessionId, useSessions, useCatalog, onOpenBot, t }: SessionBotBadgeProps) {
+export function SessionBotBadge({ sessionId, useSessions, usePanelInfo, useCatalog, useActivity, onMarkRead, onOpenBot, t }: SessionBotBadgeProps) {
   // The public projection follows blank-session preset selection; the creation
   // header does not. The Host status is the authority for Bot/preset identity.
   const presetId = useSessions((state) => {
@@ -24,6 +31,25 @@ export function SessionBotBadge({ sessionId, useSessions, useCatalog, onOpenBot,
   const snapshot = useCatalog((value) => value);
   const entry = presetId === undefined ? undefined
     : snapshot.entries.find((item) => item.status?.presetId === presetId);
+  const activity = useActivity((value) => value.sessions.find((item) => item.sessionId === sessionId));
+  const mainPanel = usePanelInfo((value) => value.activePanelId === null);
+  // The public mainView retention source is also how DSH's DocumentTitle
+  // identifies the selected session. Header slots may appear in other views.
+  const mainSession = useSessions((value) => (value.byId[sessionId]?.retainedBy.mainView ?? 0) > 0);
+  const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden');
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
+  }, []);
+  const botId = entry?.bot.id;
+  useEffect(() => {
+    if (!botId || activity?.botId !== botId || !activity.unread || !mainPanel || !mainSession
+      || !visible || document.visibilityState === 'hidden') return;
+    // Failure retains unread state. A later activity refresh or visibility
+    // change retries; no transport details are rendered in the header.
+    void onMarkRead(sessionId).catch(() => {});
+  }, [activity, botId, mainPanel, mainSession, onMarkRead, sessionId, visible]);
   if (!entry) {
     const prefix = snapshot.presetIdPrefix;
     const deleted = snapshot.loaded && !snapshot.loading && !snapshot.error

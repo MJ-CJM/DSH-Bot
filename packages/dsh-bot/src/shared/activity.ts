@@ -4,6 +4,12 @@ import { timestampSchema } from './schema.js';
 
 // Persisted summary contract, measured in Unicode code points including ellipsis.
 export const ACTIVITY_PREVIEW_MAX_CHARS = 120;
+/** Reserved wire/persistence sentinel. Clients localize this value, including
+ * the legacy T08c Chinese marker, for both preview and sanitized titles. */
+export const ACTIVITY_HIDDEN_PREVIEW = '[dsh-bot:hidden]';
+export function isHiddenActivityPreview(value: string | undefined): boolean {
+  return value === ACTIVITY_HIDDEN_PREVIEW || value === '[已隐藏]';
+}
 export const activitySessionIdSchema = z.string().min(1);
 const summaryText = z.string().refine((value) => [...value].length <= ACTIVITY_PREVIEW_MAX_CHARS,
   'Activity summary exceeds its code point limit');
@@ -25,6 +31,7 @@ export const activityListResultSchema = z.strictObject({
 });
 export type ActivityRecord = z.output<typeof activityRecordSchema>;
 export type ActivitySession = z.output<typeof activitySessionSchema>;
+export type BotActivity = z.output<typeof activityBotSchema>;
 export type ActivityListOptions = z.input<typeof activityListOptionsSchema>;
 export type ActivityListResult = z.output<typeof activityListResultSchema>;
 
