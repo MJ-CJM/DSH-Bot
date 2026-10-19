@@ -1,4 +1,5 @@
-import type { Locator, Page } from 'playwright-core';
+import type { Locator, Page, Response } from 'playwright-core';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import type { ActivityListResult } from '../src/shared/activity.js';
@@ -43,6 +44,115 @@ export function screenshotCases(extrasOnly = false): ScreenshotCase[] {
   }
   if (!extrasOnly) cases.push({ language: 'zh', theme: 'light', viewport: 'narrow', width: 600, height: 900 });
   return cases;
+}
+
+interface RefreshProbe {
+  root: HTMLElement;
+  nodes: Element[];
+  html: string;
+  focus: Element | null;
+  scroll: Array<{ node: HTMLElement; top: number; left: number }>;
+  observer: MutationObserver;
+  mutations: number;
+}
+type ProbeDocument = Document & { dshBotRefreshProbe?: RefreshProbe };
+
+/** Executed in the real page. Keep actual node references, not marker attributes
+ * which a remount could accidentally reproduce. Observe transient changes too. */
+export function beginRefreshProbe(): void {
+  const page = document as ProbeDocument;
+  page.dshBotRefreshProbe?.observer.disconnect();
+  const root = page.querySelector<HTMLElement>('[data-bots-page]');
+  if (!root?.querySelector('[role="option"]')) throw new Error('Loaded Bots page is required for refresh stability');
+  if (page.visibilityState !== 'visible' || !page.hasFocus()) throw new Error('Refresh stability requires a visible focused window');
+  const nodes = [root, ...root.querySelectorAll('*')];
+  const probe: RefreshProbe = {
+    root, nodes, html: root.outerHTML, focus: page.activeElement, mutations: 0,
+    scroll: nodes.filter((node): node is HTMLElement => node instanceof HTMLElement)
+      .map((node) => ({ node, top: node.scrollTop, left: node.scrollLeft })),
+    observer: new MutationObserver((records) => { probe.mutations += records.length; }),
+  };
+  probe.observer.observe(root, { subtree: true, attributes: true, characterData: true, childList: true });
+  page.dshBotRefreshProbe = probe;
+}
+
+export function endRefreshProbe() {
+  const page = document as ProbeDocument;
+  const probe = page.dshBotRefreshProbe;
+  if (!probe) throw new Error('Refresh stability probe was not started');
+  probe.mutations += probe.observer.takeRecords().length;
+  probe.observer.disconnect();
+  delete page.dshBotRefreshProbe;
+  const current = page.querySelector<HTMLElement>('[data-bots-page]');
+  const nodes = current ? [current, ...current.querySelectorAll('*')] : [];
+  return {
+    nodeCount: probe.nodes.length,
+    sameNodes: nodes.length === probe.nodes.length && nodes.every((node, index) => node === probe.nodes[index]),
+    sameDOM: current?.outerHTML === probe.html,
+    sameFocus: page.activeElement === probe.focus,
+    sameScroll: probe.scroll.every(({ node, top, left }) => node.scrollTop === top && node.scrollLeft === left),
+    mutations: probe.mutations,
+    visibleAndFocused: page.visibilityState === 'visible' && page.hasFocus(),
+  };
+}
+
+export function verifyRefreshStability(evidence: ReturnType<typeof endRefreshProbe>): void {
+  if (!evidence.sameNodes || !evidence.sameDOM || !evidence.sameFocus || !evidence.sameScroll
+    || evidence.mutations !== 0 || !evidence.visibleAndFocused) throw new Error('Bots changed during background refresh');
+}
+
+/** Additional A/B pair; the original screenshot matrix is unchanged. Real
+ * successful RPC responses spaced by >=5 seconds prove two fallback cycles. */
+export async function captureRefreshStability(page: Page, directory: string, prefix: string) {
+  await page.bringToFront();
+  const region = page.locator('[data-bots-page]');
+  await region.getByRole('listbox').focus();
+  const files = [`${prefix}-refresh-A.png`, `${prefix}-refresh-B.png`];
+  const first = await region.screenshot({ path: join(directory, files[0] ?? ''), animations: 'disabled' });
+  await page.evaluate(beginRefreshProbe);
+  const start = Date.now();
+  const paths = ['/api/dshBot/list', '/api/dshBot/status', '/api/dshBot.activity/list'];
+  const cycles: Record<string, number[]> = Object.fromEntries(paths.map((path) => [path, []]));
+  const onResponse = (response: Response) => {
+    const times = cycles[new URL(response.url()).pathname];
+    if (!response.ok() || !times) return;
+    void (async () => {
+      if (await response.finished()) return;
+      const body: unknown = await response.json();
+      if (!isSuccessfulRefreshResponse(body)) return;
+      const elapsed = Date.now() - start;
+      if (elapsed >= 5000 && elapsed - (times.at(-1) ?? -Infinity) >= 5000) times.push(elapsed);
+    })().catch(() => {});
+  };
+  page.on('response', onResponse);
+  try {
+    while (!paths.every((path) => (cycles[path]?.length ?? 0) >= 2)) {
+      if (Date.now() - start > 90_000) throw new Error('Two real background polling cycles were not observed within 90 seconds');
+      await page.waitForTimeout(250);
+    }
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const second = await region.screenshot({ path: join(directory, files[1] ?? ''), animations: 'disabled' });
+    const dom = await page.evaluate(endRefreshProbe);
+    const evidence = { files, elapsedMs: Date.now() - start, cycles, dom, pixelsIdentical: first.equals(second),
+      sha256: [first, second].map((buffer) => createHash('sha256').update(buffer).digest('hex')) };
+    // Return failed comparisons as evidence; the caller saves it before failing.
+    return evidence;
+  } finally {
+    page.off('response', onResponse);
+    await page.evaluate(() => {
+      const page = document as ProbeDocument;
+      page.dshBotRefreshProbe?.observer.disconnect();
+      delete page.dshBotRefreshProbe;
+    });
+  }
+}
+
+/** Gateway domain success/failure is the Connection envelope's result; the
+ * Client adds its own RemoteResult wrapper only after decoding result.value. */
+export function isSuccessfulRefreshResponse(body: unknown): boolean {
+  if (!body || typeof body !== 'object' || !('type' in body) || body.type !== 'server-response' || !('result' in body)) return false;
+  const carrier = body.result;
+  return !!carrier && typeof carrier === 'object' && 'ok' in carrier && carrier.ok === true && 'value' in carrier;
 }
 
 /** Inspect only native workspace tree rows, never the Bot page or its dialog.
@@ -140,6 +250,16 @@ export function verifyBotsRightTab(evidence: ReturnType<typeof readBotsRightTab>
   if (!evidence.rows.some((row) => row.unreadVisible)) throw new Error('Native Bots right tab unread indicator missing');
 }
 
+/** Each matrix case creates a fresh Client. Bot/activity readiness does not
+ * imply that the independent native sessions list has completed its first pull.
+ * Wait only for that initial loading UI, never for the expected row IDs/order:
+ * a loaded empty, incorrect or reordered history must still fail immediately. */
+export async function waitForInitialBotHistory(detail: Locator, historyLabel: string): Promise<void> {
+  const history = detail.getByRole('region', { name: historyLabel, exact: true });
+  await history.waitFor({ state: 'visible' });
+  await history.getByRole('status').waitFor({ state: 'hidden' });
+}
+
 /** DOM-only layout evidence. This measures actual displayed boxes and CSS;
  * responsive classes or jsdom render results are not screenshot evidence. */
 export function readBotsLayout() {
@@ -157,6 +277,8 @@ export function readBotsLayout() {
     return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
   };
   return {
+    capturedAt: new Date().toISOString(),
+    detailStatuses: Array.from(detail?.querySelectorAll('[role="status"]') ?? []).map((element) => element.textContent),
     listVisible: visible(list), detailVisible: visible(detail), list: box(list), detail: box(detail),
     selectedBotId: list?.querySelector('[aria-selected="true"]')?.getAttribute('data-bot-id') ?? null,
     detailBotId: detail?.getAttribute('data-bot-detail') ?? null,
@@ -306,23 +428,29 @@ export function readFailureState() {
 export async function captureFailureEvidence(page: Page | undefined, output: string, step: string,
   redact: (value: unknown) => string) {
   const evidence: { step: string; screenshot?: string; screenshotError?: string; url?: string;
-    dialogs?: string[]; mainSource?: string; mainText?: string; diagnosticError?: string } = { step };
+    dialogs?: string[]; mainSource?: string; mainText?: string; diagnosticError?: string;
+    domCapturedAt?: string; screenshotStartedAt?: string; screenshotFinishedAt?: string } = { step };
   if (!page || page.isClosed()) {
     evidence.screenshotError = 'No live browser page; screenshot unavailable';
     return evidence;
   }
   evidence.url = redact(page.url());
-  const filename = `failure-${step.replace(/[^a-zA-Z0-9_-]+/gu, '-').slice(0, 120)}.png`;
-  try {
-    await page.screenshot({ path: join(output, filename), fullPage: true, animations: 'disabled', timeout: 5000 });
-    evidence.screenshot = filename;
-  } catch (error) { evidence.screenshotError = redact(error); }
+  // DOM and PNG are separate samples. Read text before the asynchronous
+  // screenshot, and label their timing rather than implying they are atomic.
   try {
     const state = await page.evaluate(readFailureState);
+    evidence.domCapturedAt = new Date().toISOString();
     evidence.dialogs = state.dialogs.map((title) => redact(title));
     evidence.mainSource = state.mainSource;
     evidence.mainText = redact(state.mainText).slice(0, 12_000);
   } catch (error) { evidence.diagnosticError = redact(error); }
+  const filename = `failure-${step.replace(/[^a-zA-Z0-9_-]+/gu, '-').slice(0, 120)}.png`;
+  evidence.screenshotStartedAt = new Date().toISOString();
+  try {
+    await page.screenshot({ path: join(output, filename), fullPage: true, animations: 'disabled', timeout: 5000 });
+    evidence.screenshot = filename;
+  } catch (error) { evidence.screenshotError = redact(error); }
+  evidence.screenshotFinishedAt = new Date().toISOString();
   return evidence;
 }
 

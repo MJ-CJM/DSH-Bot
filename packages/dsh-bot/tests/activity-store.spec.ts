@@ -79,6 +79,47 @@ describe('ActivityStore with the published JSON storage backend', () => {
       lastMessage: { preview: 'Next' } });
   }));
 
+  it('persists the first user summary across later messages, markRead and cold reopen', async () => stores(async (current, ctx, root) => {
+    await current.bots.create({ id: 'alpha', name: 'Alpha' });
+    await current.activities.record({ ...event('session', 1), role: 'user', text: '**Original** question', firstUserText: '**Original** question' });
+    await current.activities.record(event('session', 2));
+    await current.activities.record({ ...event('session', 3), role: 'user', text: 'Later question', firstUserText: 'Do not replace' });
+    const read = await current.activities.markRead('session');
+    expect(activitySessionSchema.parse(read)).toMatchObject({ firstUserPreview: 'Original question' });
+    expect(current.activities.list().sessions[0]).toMatchObject({ firstUserPreview: 'Original question',
+      lastMessage: { preview: 'Later question' } });
+    const persisted = JSON.parse(await readFile(join(root, 'dsh_bot.json'), 'utf8'));
+    expect(persisted.tables.activities.session).toHaveProperty('firstUserPreview', 'Original question');
+    expect(persisted.tables.activities.session).not.toHaveProperty('firstUserText');
+    await current.close();
+    const restored = await openBotStores(ctx);
+    expect(restored.activities.list().sessions[0]).toHaveProperty('firstUserPreview', 'Original question');
+  }));
+
+  it('preserves an empty first image-only user preview instead of taking a later message', async () => stores(async ({ bots, activities }) => {
+    await bots.create({ id: 'alpha', name: 'Alpha' });
+    await activities.record({ ...event('session', 1), role: 'user', text: '', firstUserText: '' });
+    await activities.record({ ...event('session', 2), role: 'user', text: 'Second input', firstUserText: 'Second input' });
+    expect(activities.list().sessions[0]).toHaveProperty('firstUserPreview', '');
+  }));
+
+  it('does not invent an older record first message and backfills only actual log metadata', async () => stores(async ({ bots, activities }) => {
+    await bots.create({ id: 'alpha', name: 'Alpha' });
+    await activities.record(event('legacy', 1));
+    await activities.record({ ...event('legacy', 2), role: 'user', text: 'Later user message' });
+    expect(activities.list().sessions[0]).not.toHaveProperty('firstUserPreview');
+    await activities.record({ ...event('legacy', 3), firstUserText: '# Real first input' });
+    expect(activities.list().sessions[0]).toHaveProperty('firstUserPreview', 'Real first input');
+  }));
+
+  it('screens the complete first-user text before truncating or persisting it', async () => stores(async ({ bots, activities }, _ctx, root) => {
+    await bots.create({ id: 'alpha', name: 'Alpha' });
+    const secret = `sk-${'b'.repeat(24)}`;
+    await activities.record({ ...event('session', 1), firstUserText: 'Safe '.repeat(50) + secret });
+    expect(activities.list().sessions[0]).toHaveProperty('firstUserPreview', ACTIVITY_HIDDEN_PREVIEW);
+    expect(await readFile(join(root, 'dsh_bot.json'), 'utf8')).not.toContain(secret);
+  }));
+
   it('opens older version-one domains with no activity table without losing other data', async () => stores(async (current, ctx, root) => {
     const bot = await current.bots.create({ id: 'alpha', name: 'Legacy' });
     const memory = await current.memories.add({ botId: 'alpha', content: 'Keep' });

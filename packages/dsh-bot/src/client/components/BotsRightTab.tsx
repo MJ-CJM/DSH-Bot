@@ -45,6 +45,11 @@ export function BotsRightTab({ useCatalog, useActivity, useSessionCatalog, useWo
     return () => controller.abort();
   }, []);
   const selected = entries.some(({ bot }) => bot.id === selectedId) ? selectedId : entries[0]?.bot.id;
+  useEffect(() => {
+    // Remember the initial selection before later activity can reorder Bots.
+    if (!catalog.loaded || (!activity.loaded && !activity.error)) return;
+    if (!entries.some(({ bot }) => bot.id === selectedId)) setSelectedId(entries[0]?.bot.id);
+  }, [catalog.loaded, activity.loaded, activity.error, entries, selectedId]);
   const activate = async (id: string) => {
     // An incomplete Host catalog must never be interpreted as "no sessions".
     if (pending.current || sessions.phase !== 'ready' || !catalog.loaded || catalog.loading || catalog.error) return;
@@ -73,7 +78,7 @@ export function BotsRightTab({ useCatalog, useActivity, useSessionCatalog, useWo
       <Button variant="ghost" size="sm" aria-label={t('bots.refresh')} title={t('bots.refresh')}
         disabled={busy || catalog.loading} onClick={() => { void onRefresh(); }}><IconRefreshOutlineRegular size={16} /></Button>
     </header>
-    {(catalog.loading || sessions.phase !== 'ready') && <p role="status" className={styles.notice}>{t('bots.loading')}</p>}
+    {((!catalog.loaded && catalog.loading) || sessions.phase !== 'ready') && <p role="status" className={styles.notice}>{t('bots.loading')}</p>}
     {(catalog.error || activity.error) && <div role="alert" className={styles.notice}>
       <p>{t(catalog.error ? 'errors.load' : 'activity.loadError')}</p>
       <Button variant="ghost" size="sm" onClick={() => { void onRefresh(); }}>{t('actions.retry')}</Button>

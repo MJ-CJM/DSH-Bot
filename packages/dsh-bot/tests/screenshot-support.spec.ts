@@ -1,10 +1,103 @@
 // @vitest-environment jsdom
-import type { Page } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readBotsRightTab, readFailureState, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyScreenshotActivity, verifyWorkspaceSessionRows, type OverlayEvent } from '../scripts/screenshot-support.js';
+import { beginRefreshProbe, endRefreshProbe, verifyRefreshStability, isSuccessfulRefreshResponse, captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readBotsRightTab, readFailureState, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyScreenshotActivity, verifyWorkspaceSessionRows, type OverlayEvent } from '../scripts/screenshot-support.js';
 import type { ActivityListResult } from '../src/shared/activity.js';
 import en from '../locale/en.json';
 import zh from '../locale/zh.json';
+import { readBotsLayout, waitForInitialBotHistory } from '../scripts/screenshot-support.js';
+
+describe('initial Bot history screenshot barrier', () => {
+  it.each(['en', 'zh'] as const)('waits for the history region then its initial status, without retrying row IDs/order (%s)', async (language) => {
+    const copy = language === 'zh' ? zh.ui : en.ui;
+    let showHistory!: () => void;
+    let finishLoading!: () => void;
+    const regionVisible = new Promise<void>((resolve) => { showHistory = resolve; });
+    const loadingHidden = new Promise<void>((resolve) => { finishLoading = resolve; });
+    const waitForStatus = vi.fn(() => loadingHidden);
+    const history = { waitFor: vi.fn(() => regionVisible), getByRole: vi.fn(() => ({ waitFor: waitForStatus })) };
+    const detail = { getByRole: vi.fn(() => history) } as unknown as Locator;
+    let finished = false;
+    const pending = waitForInitialBotHistory(detail, copy['bots.history']).then(() => { finished = true; });
+    expect(detail.getByRole).toHaveBeenCalledWith('region', { name: copy['bots.history'], exact: true });
+    expect(history.waitFor).toHaveBeenCalledWith({ state: 'visible' });
+    expect(waitForStatus).not.toHaveBeenCalled();
+    showHistory(); await regionVisible;
+    expect(history.getByRole).toHaveBeenCalledExactlyOnceWith('status');
+    expect(waitForStatus).toHaveBeenCalledExactlyOnceWith({ state: 'hidden' });
+    expect(finished).toBe(false);
+    finishLoading(); await pending;
+    // An empty or incorrectly ordered loaded list is returned as-is, not
+    // retried until it happens to match the screenshot's strict assertion.
+    document.body.innerHTML = '<section data-bots-page><article data-bot-detail="atlas"></article></section>';
+    expect(readBotsLayout().sessionIds).toEqual([]);
+    const article = document.querySelector('article');
+    if (!article) throw new Error('Missing detail fixture');
+    article.innerHTML = '<button data-session-id="old"></button><button data-session-id="new"></button>';
+    expect(readBotsLayout().sessionIds).toEqual(['old', 'new']);
+    expect(waitForStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates initial-load timeout instead of accepting an empty history', async () => {
+    const timeout = new Error('Initial history still loading');
+    const detail = { getByRole: () => ({ waitFor: async () => {},
+      getByRole: () => ({ waitFor: async () => { throw timeout; } }) }) } as unknown as Locator;
+    await expect(waitForInitialBotHistory(detail, zh.ui['bots.history'])).rejects.toBe(timeout);
+  });
+});
+
+describe('refresh stability DOM evidence', () => {
+  it('only counts completed successful Gateway result envelopes, not HTTP-only success or business errors', () => {
+    expect(isSuccessfulRefreshResponse({ type: 'server-response', result: { ok: true, value: [] } })).toBe(true);
+    expect(isSuccessfulRefreshResponse({ type: 'server-response', result: { ok: false, error: { code: 'store/unavailable' } } })).toBe(false);
+    expect(isSuccessfulRefreshResponse({ ok: true })).toBe(false);
+    expect(isSuccessfulRefreshResponse({ type: 'server-response', result: { ok: true } })).toBe(false);
+  });
+  function setup() {
+    document.body.innerHTML = '<section data-bots-page><div role="listbox" tabindex="0"><button role="option" aria-selected="true">Alpha</button></div></section>';
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const list = document.querySelector<HTMLElement>('[role="listbox"]');
+    if (!list) throw new Error('Missing fixture');
+    list.focus(); list.scrollTop = 14;
+    return { focus, list };
+  }
+  it('compares actual node identities, focus, scrolling and complete DOM without adding DOM markers', () => {
+    const { focus } = setup();
+    try {
+      const before = document.body.innerHTML;
+      beginRefreshProbe();
+      expect(document.body.innerHTML).toBe(before);
+      const evidence = endRefreshProbe();
+      expect(evidence).toMatchObject({ sameNodes: true, sameDOM: true, sameFocus: true, sameScroll: true, mutations: 0 });
+      expect(() => verifyRefreshStability(evidence)).not.toThrow();
+    } finally { focus.mockRestore(); }
+  });
+  it('fails a same-markup remount and even a transient loading attribute restored before B', () => {
+    const { focus, list } = setup();
+    try {
+      beginRefreshProbe();
+      list.firstElementChild?.replaceWith(list.firstElementChild.cloneNode(true));
+      let evidence = endRefreshProbe();
+      expect(evidence.sameDOM).toBe(true); expect(evidence.sameNodes).toBe(false);
+      expect(() => verifyRefreshStability(evidence)).toThrow();
+      beginRefreshProbe();
+      list.setAttribute('aria-busy', 'true'); list.removeAttribute('aria-busy');
+      evidence = endRefreshProbe();
+      expect(evidence.sameDOM).toBe(true); expect(evidence.mutations).toBe(2);
+      expect(() => verifyRefreshStability(evidence)).toThrow();
+    } finally { focus.mockRestore(); }
+  });
+  it('rejects loss of scroll or focus even when the nodes and text do not change', () => {
+    const { focus, list } = setup();
+    try {
+      beginRefreshProbe(); list.scrollTop = 0; list.blur();
+      const evidence = endRefreshProbe();
+      expect(evidence.sameNodes).toBe(true); expect(evidence.sameDOM).toBe(true);
+      expect(evidence.sameScroll).toBe(false); expect(evidence.sameFocus).toBe(false);
+      expect(() => verifyRefreshStability(evidence)).toThrow();
+    } finally { focus.mockRestore(); }
+  });
+});
 
 /** Semantic DOM adapter for the small Playwright surface used by the helper.
  * These tests verify sequencing/decisions, not browser actionability or pixels. */
@@ -262,6 +355,22 @@ describe('explicit screenshot workspace choice', () => {
 });
 
 describe('failure evidence captured before context disposal', () => {
+  it('samples DOM before the asynchronous PNG and labels their separate timing', async () => {
+    document.body.innerHTML = '<main>Loading sessions</main>';
+    const evaluate = vi.fn(async () => readFailureState());
+    const screenshot = vi.fn(async () => {
+      document.body.innerHTML = '<main>Conversation new / Conversation old</main>';
+      return Buffer.from([]);
+    });
+    const page = { isClosed: () => false, url: () => 'http://localhost/', evaluate, screenshot } as unknown as Page;
+    const evidence = await captureFailureEvidence(page, '/evidence', 'initial-history', redactScreenshotText);
+    expect(evidence.mainText).toBe('Loading sessions');
+    expect(readFailureState().mainText).toContain('Conversation new');
+    expect(evidence.domCapturedAt).toEqual(expect.any(String));
+    expect(evidence.screenshotStartedAt).toEqual(expect.any(String));
+    expect(evidence.screenshotFinishedAt).toEqual(expect.any(String));
+    expect(evaluate).toHaveBeenCalledBefore(screenshot);
+  });
   it('redacts tokens in URLs, text, encoded secrets and credentials', () => {
     const text = 'http://localhost/?token=abc&x=1 plain secret/a encoded secret%2Fa\nCookie: private';
     expect(redactScreenshotText(text, ['secret/a'])).toBe('http://localhost/?token=[REDACTED]&x=1 plain [REDACTED] encoded [REDACTED]\nCookie: [REDACTED]');

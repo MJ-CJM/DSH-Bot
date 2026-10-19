@@ -156,7 +156,7 @@
     "sidebar.newSession": "与 {name} 新建会话",
     "sidebar.emptySessions": "暂无会话。",
     "sidebar.more": "更多会话",
-    "sidebar.untitled": "未命名会话",
+    "sidebar.untitled": "新会话",
     "sidebar.loading": "正在加载会话…",
     "sidebar.toggle": "展开或收起 {name} 的会话",
     "avatar.color": "鲸鱼颜色",

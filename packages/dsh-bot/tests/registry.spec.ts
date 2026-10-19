@@ -119,6 +119,33 @@ async function withFacility(run: (fixture: Fixture) => Promise<void>) {
 }
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('streams opening and coalesced catalog/activity invalidations, and drains cancelled/Host-disposed watchers', async () => withFacility(async ({ start }) => {
+    const { registry, stop } = await start();
+    const abort = new AbortController();
+    const iterator = registry.watch(abort.signal)[Symbol.asyncIterator]();
+    expect(await iterator.next()).toEqual({ done: false, value: { revision: 0 } });
+    await registry.create({ id: 'alpha', name: 'Alpha' });
+    await registry.update('alpha', { name: 'Updated' });
+    // Slow readers get the latest invalidation instead of an unbounded queue.
+    expect(await iterator.next()).toEqual({ done: false, value: { revision: 2 } });
+    const input = { sessionId: 'session-1', botId: 'alpha', role: 'assistant' as const, text: 'Reply', at: 100, seq: 1 };
+    await registry.recordActivity(input);
+    expect(await iterator.next()).toEqual({ done: false, value: { revision: 3 } });
+    await registry.recordActivity(input); // replay does not invalidate
+    await registry.markActivityRead('session-1');
+    expect(await iterator.next()).toEqual({ done: false, value: { revision: 4 } });
+    const pending = iterator.next();
+    abort.abort();
+    expect(await pending).toEqual({ done: true, value: undefined });
+    const stopped = new AbortController(); stopped.abort();
+    expect(await registry.watch(stopped.signal)[Symbol.asyncIterator]().next()).toEqual({ done: true, value: undefined });
+    const next = registry.watch(new AbortController().signal)[Symbol.asyncIterator]();
+    expect(await next.next()).toEqual({ done: false, value: { revision: 4 } });
+    const waiting = next.next();
+    await stop();
+    expect(await waiting).toEqual({ done: true, value: undefined });
+  }));
+
   it('validates configurable activity retention limits', () => {
     expect(Config({})).toMatchObject({ activityMaxSessionsPerBot: 50, activityMaxSessionsTotal: 1000 });
     for (const field of ['activityMaxSessionsPerBot', 'activityMaxSessionsTotal']) {

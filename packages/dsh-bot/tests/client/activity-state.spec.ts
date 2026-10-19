@@ -42,7 +42,8 @@ describe('shared activity refresh and read ordering', () => {
     expect(catalog.getSnapshot().sessions).toEqual([row]);
   });
   it('calls zero-argument list, polls only while visible, and clears resources at the last subscriber', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     let visibility = 'visible';
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility as DocumentVisibilityState);
     const { catalog, list, ctx } = setup();

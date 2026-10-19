@@ -193,7 +193,10 @@ async function clientActivityRoundTrip(ctx, sessionId, label) {
   try {
     await client.activity.refresh();
     const before = client.activity.getSnapshot();
-    save(`client-activity-${label}.json`, { error: before.error, sessions: before.sessions });
+    save(`client-activity-${label}.json`, { error: before.error, sessions: before.sessions, changeStream: client.changeStream });
+    check(`${label}: real watch receives catalog commits and cancels`, client.changeStream.cancelled && client.changeStream.temporaryBotRemoved
+      && client.changeStream.openingRevision < client.changeStream.createRevision
+      && client.changeStream.createRevision < client.changeStream.removeRevision);
     check(`${label}: shipped Client activity list succeeds`, before.error === undefined);
     check(`${label}: shipped Client sees unread assistant`, before.sessions.find((row) => row.sessionId === sessionId)?.unread);
     const stored = JSON.parse(readFileSync(resolve(runDir, 'storages/dsh_bot.json'), 'utf8')).tables.activities[sessionId];
@@ -203,7 +206,8 @@ async function clientActivityRoundTrip(ctx, sessionId, label) {
     check(`${label}: shipped Client markRead and decoded refetch clear unread`,
       client.activity.getSnapshot().sessions.find((row) => row.sessionId === sessionId)?.unread, false);
     save(`client-activity-${label}.json`, { before: before.sessions, after: client.activity.getSnapshot().sessions,
-      storedKeys: Object.keys(stored).sort(), shippedClientFactory: true, realGatewayAndConnection: true });
+      storedKeys: Object.keys(stored).sort(), shippedClientFactory: true, realGatewayAndConnection: true,
+      changeStream: client.changeStream });
   } finally { await client.dispose(); }
 }
 

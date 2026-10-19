@@ -3,7 +3,7 @@ import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/c
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { ACTIVITY_HIDDEN_PREVIEW, type ActivitySession } from '../../src/shared/activity.js';
 import { botCreateSchema, botSchema } from '../../src/shared/schema.js';
-import { botSessionRows, previewText, relativeTime, sortBotEntries } from '../../src/client/activity-view.js';
+import { botSessionRows, previewText, relativeTime, sessionTitle, sortBotEntries } from '../../src/client/activity-view.js';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 
@@ -29,7 +29,7 @@ describe('activity display projection', () => {
   it('uses authoritative Host membership and preset identity, enriched with sanitized activity and running state', () => {
     const summary = { id: 'current', displayTitle: 'Host title', updatedAt: 5, running: true, projectionValues: { agentPreset: 'custom/alpha-bot' } };
     const sessions = { ids: ['current', 'old', 'sub', 'archived', 'other'], byId: {
-      current: summary, old: { ...summary, id: 'old', updatedAt: 2, running: false },
+      current: summary, old: { ...summary, title: 'Host title', id: 'old', updatedAt: 2, running: false },
       cached: { ...summary, id: 'cached' }, sub: { ...summary, id: 'sub', origin: 'subagent' },
       archived: { ...summary, id: 'archived' }, other: { ...summary, id: 'other', projectionValues: { agentPreset: 'wrong' } },
     }, phase: 'ready', projectionsBySession: {} } as unknown as SessionListState;
@@ -38,5 +38,40 @@ describe('activity display projection', () => {
     expect(botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [activity], ['archived' as never]))
       .toEqual([{ id: 'current', title: ACTIVITY_HIDDEN_PREVIEW, preview: ACTIVITY_HIDDEN_PREVIEW, updatedAt: 10, unread: true, running: true },
         { id: 'old', title: 'Host title', preview: '', updatedAt: 2, unread: false, running: false }]);
+  });
+
+  it('uses the live durable title, activity title, first human preview, then an empty locale fallback; never displayTitle/cwd', () => {
+    const activity: ActivitySession = { botId: 'alpha-bot', sessionId: 'test', title: 'Earlier title', firstUserPreview: 'First question',
+      lastMessage: { role: 'assistant', at: 10, preview: 'Latest answer' }, updatedAt: 10, unread: false };
+    expect(sessionTitle({ title: '  Renamed live  ' }, activity)).toBe('Renamed live');
+    expect(sessionTitle({ title: '  ' }, activity)).toBe('Earlier title');
+    expect(sessionTitle({}, { ...activity, title: '' })).toBe('First question');
+    expect(sessionTitle({}, { ...activity, title: '', firstUserPreview: '' })).toBe('');
+    const session = { id: 'test', displayTitle: 'pod_0814', cwd: '/projects/pod_0814', updatedAt: 5,
+      running: false, projectionValues: { agentPreset: 'custom/alpha-bot' } };
+    const sessions = { ids: ['test'], byId: { test: session }, phase: 'ready', projectionsBySession: {} } as unknown as SessionListState;
+    expect(botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [])[0]?.title).toBe('');
+  });
+
+  it('only adds a workspace label for a known workspace different from the current main-view context', () => {
+    const summary = { displayTitle: 'pod_0814', updatedAt: 5, running: false, projectionValues: { agentPreset: 'custom/alpha-bot' } };
+    const sessions = { ids: ['same', 'other'], byId: {
+      same: { ...summary, id: 'same', cwd: '/current', retainedBy: { mainView: 1 } },
+      other: { ...summary, id: 'other', cwd: '/other', retainedBy: {} },
+    }, phase: 'ready', projectionsBySession: {} } as unknown as SessionListState;
+    const workspaces = [{ path: '/current', title: 'Current' }, { path: '/other', title: 'Other workspace' }];
+    const rows = botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [], [], workspaces);
+    expect(rows.find((row) => row.id === 'same')?.workspaceTitle).toBeUndefined();
+    expect(rows.find((row) => row.id === 'other')?.workspaceTitle).toBe('Other workspace');
+    expect(botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [], [], []).every((row) => !row.workspaceTitle)).toBe(true);
+  });
+
+  it('screens live public titles before truncation and uses the same hidden marker as Host summaries', () => {
+    const secret = `sk-${'a'.repeat(24)}`;
+    for (const title of [secret, `${'safe '.repeat(50)}${secret}`, `**sk-**${'a'.repeat(24)}`]) {
+      expect(sessionTitle({ title })).toBe(ACTIVITY_HIDDEN_PREVIEW);
+    }
+    expect(sessionTitle({ title: '# **Visible** title' })).toBe('Visible title');
+    expect([...sessionTitle({ title: '好'.repeat(121) })]).toHaveLength(120);
   });
 });

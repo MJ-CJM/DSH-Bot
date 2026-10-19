@@ -118,7 +118,6 @@
 .detailHeader { display: flex; flex-direction: column; gap: 16px; }
 .detailTitle { margin: 0 0 5px; font-size: 18px; line-height: 26px; font-weight: 500; overflow-wrap: anywhere; }
 .detailActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.readyStatus { margin: -6px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
 .sessionHistory { margin-top: 32px; }
 .historyTitle { margin: 0 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
 .historyList { display: flex; flex-direction: column; gap: 4px; }

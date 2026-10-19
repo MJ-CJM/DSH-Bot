@@ -197,13 +197,14 @@ describe('Bot identity in public native session row seats', () => {
     expect(container.querySelector('[data-test-schedule]')).not.toBeNull();
   });
 
-  it('shares two polling timers across many leading and hover instances and releases them with the last row', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  it('shares one polling timer across many leading and hover instances and releases it with the last row', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const { app, ids } = await setup('en', false, 12);
     expect(vi.getTimerCount()).toBe(0);
     const rows = await mountRows(app, ids, 'en', true);
     expect(rows.container.querySelectorAll('[data-bot-session-leading]')).toHaveLength(12);
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(1);
     const calls = [app.remote.methods.list.mock.calls.length, app.remote.methods.activity.list.mock.calls.length];
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes((calls[0] ?? 0) + 1);
@@ -213,7 +214,7 @@ describe('Bot identity in public native session row seats', () => {
     expect(vi.getTimerCount()).toBe(0);
     visibility.mockReturnValue('visible');
     await act(async () => document.dispatchEvent(new Event('visibilitychange')));
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(1);
     await rows.unmount();
     expect(vi.getTimerCount()).toBe(0);
     const stopped = [app.remote.methods.list.mock.calls.length, app.remote.methods.activity.list.mock.calls.length];
@@ -225,7 +226,7 @@ describe('Bot identity in public native session row seats', () => {
     expect(app.remote.methods.list).toHaveBeenCalledTimes(stopped[0] ?? 0);
     expect(app.remote.methods.activity.list).toHaveBeenCalledTimes(stopped[1] ?? 0);
     await mountRows(app, ids);
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(1);
     await app.unloadPlugin();
     expect(vi.getTimerCount()).toBe(0);
   });

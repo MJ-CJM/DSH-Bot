@@ -27,7 +27,7 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
 import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
-import { captureFailureEvidence, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyScreenshotActivity, verifyWorkspaceSessionRows } from './screenshot-support.ts';
+import { captureFailureEvidence, captureRefreshStability, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
 import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
@@ -39,7 +39,7 @@ const rightTabOnly = process.argv.includes('--right-tab-only');
 const manualBrowser = process.argv.includes('--manual-browser');
 const mockReply = 'Mock assistant reply / 本地模拟回复：已经整理好资料、关键结论和下一步建议。打开会话即可继续讨论具体细节。';
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
   assert.ok([seedOnly, extrasOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
@@ -74,6 +74,8 @@ if (process.argv.includes('--help')) {
   const conversationChecks = [];
   const workspaceRowChecks = [];
   const rightTabChecks = [];
+  const refreshStabilityChecks = [];
+  const layoutChecks = [];
   const failureEvidence = [];
   const sessionFixtures = [];
   let mock;
@@ -276,7 +278,7 @@ if (process.argv.includes('--help')) {
         clientActivity = client.activity.getSnapshot();
         verifyScreenshotActivity(clientActivity, sessionFixtures, mockReply);
       } finally { await client.dispose(); }
-      save('mock-sessions.json', { sessionFixtures, activity, clientActivity, shippedClientFactory: true,
+      save('mock-sessions.json', { sessionFixtures, activity, clientActivity, changeStream: client.changeStream, shippedClientFactory: true,
         mockPromptsSent, requests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) });
     }
     if (manualBrowser) {
@@ -336,6 +338,11 @@ if (process.argv.includes('--help')) {
       await create.waitFor();
       await page.evaluate(() => document.fonts.ready);
       if (viewport === 'wide') await option.click();
+      const detail = bots.locator(`[data-bot-detail="${bot.id}"]`);
+      if (viewport === 'wide') {
+        step = `${filename}-initial-history`;
+        await waitForInitialBotHistory(detail, copy['bots.history']);
+      }
       step = `${filename}-bots-layout`;
       await page.waitForFunction((narrow) => {
         const region = document.querySelector('[data-bots-page]');
@@ -344,6 +351,10 @@ if (process.argv.includes('--help')) {
         return list && list.width > 0 && (narrow ? !detail || detail.width === 0 : detail && detail.width > 0 && list.right <= detail.left + 1);
       }, viewport === 'narrow');
       const layout = await page.evaluate(readBotsLayout);
+      // Persist exactly the sample being asserted, before any failure PNG can
+      // await another frame/network response and observe a different state.
+      layoutChecks.push({ step, layout });
+      save('layout-checks.json', layoutChecks);
       assert.deepEqual(layout.optionIds, [bot.id, researcher.id], 'Bots sorted by newest activity');
       assert.ok(layout.previews.length >= 2 && layout.previews.every((preview) => preview.textOverflow === 'ellipsis' && preview.whiteSpace === 'nowrap' && preview.overflow === 'hidden'), 'Visible previews have single-line ellipsis CSS');
       assert.ok(layout.unreadDots >= 1, 'Bots show unread assistant activity');
@@ -368,7 +379,14 @@ if (process.argv.includes('--help')) {
           ...(surface === 'bots' ? { layout } : {}) });
       };
       if (!extrasOnly) await capture('bots', create, [bot.id, researcher.id]);
-      const detail = bots.locator(`[data-bot-detail="${bot.id}"]`);
+      if (!extrasOnly && language === 'zh' && theme === 'light' && viewport === 'wide') {
+        step = `${filename}-refresh-stability`;
+        const evidence = await captureRefreshStability(page, output, filename);
+        refreshStabilityChecks.push(evidence);
+        save('progress.json', { overlays, workspaceChoices, conversationChecks, refreshStabilityChecks, screenshots: shots });
+        verifyRefreshStability(evidence.dom);
+        assert.ok(evidence.pixelsIdentical, 'Bots A/B pixels must be identical after two real polling cycles');
+      }
       if (viewport === 'narrow') {
         await option.click();
         await detail.waitFor();
@@ -563,6 +581,7 @@ if (process.argv.includes('--help')) {
     if (!manualBrowser) assert.equal(prompts, 0, 'No browser model prompt attempted');
     assert.equal(browserErrors.length, 0, 'Browser page errors; inspect summary');
     assert.equal(shots.length, seedOnly || manualBrowser ? 0 : extrasOnly ? 4 : workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
+    if (!seedOnly && !manualBrowser && !extrasOnly && !workspaceOnly && !rightTabOnly) assert.equal(refreshStabilityChecks.length, 1, 'Complete the additional refresh stability pair');
     if (!seedOnly && !manualBrowser) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
   } catch (error) {
     failure = redact(error instanceof Error ? error.message : error);
@@ -588,7 +607,7 @@ if (process.argv.includes('--help')) {
       stage, step, failure, failureEvidence, profile, run, prompts: manualBrowser ? null : prompts, browserErrors,
       ...(manualBrowser ? { manualHostOnly: true, visualValidation: 'NOT_RUN', browserPromptInterception: false,
         browserAccessFile, browserAccessRemoved: manualAccessWritten && !existsSync(browserAccessFile), manualStopFile, manualStoppedBy } : {}),
-      overlays, workspaceChoices, conversationChecks, workspaceRowChecks, rightTabChecks, contrastChecks, screenshots: shots });
+      overlays, workspaceChoices, conversationChecks, workspaceRowChecks, rightTabChecks, refreshStabilityChecks, contrastChecks, screenshots: shots });
     console.log(`Evidence: ${output}`);
   }
 }

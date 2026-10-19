@@ -151,7 +151,8 @@ describe('Session Bot badge with public session projection and the shared catalo
   });
 
   it('mounts a real badge without a timer and refreshes on reset/visibility only', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const app = await mountBadge('host-selected/alpha-bot');
     expect(vi.getTimerCount()).toBe(0);
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
@@ -165,7 +166,8 @@ describe('Session Bot badge with public session projection and the shared catalo
   });
 
   it('activates polling only for the Bots page and shares mutation refreshes with passive badge subscribers', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const app = await mountClient([bot()]);
     cleanups.push(app.dispose);
     const badge = app.core.entries('conversation.session.header.utilities')[0]?.inject?.() as unknown as SessionBotBadgeInjected;
@@ -177,7 +179,7 @@ describe('Session Bot badge with public session projection and the shared catalo
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(oldCalls);
     await app.remountPage();
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(1);
     const mountedCalls = app.remote.methods.list.mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(mountedCalls + 1);

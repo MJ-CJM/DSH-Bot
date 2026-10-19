@@ -67,7 +67,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
   const locale = t('activity.locale');
   const entries = sortBotEntries(snapshot.entries, activity.bots, locale);
   const selected = entries.find(({ bot }) => bot.id === selectedId) ?? entries[0];
-  const rows = selected ? botSessionRows(selected.bot.id, snapshot.entries, sessions, activity.sessions, workspaces.archivedSessionIds) : [];
+  const rows = selected ? botSessionRows(selected.bot.id, snapshot.entries, sessions, activity.sessions, workspaces.archivedSessionIds, workspaces.items) : [];
   const ready = !snapshot.error && !snapshot.loading && selected?.status?.preset.state === 'ok';
   const [memoryCount, setMemoryCount] = useState<{ count?: number; failed?: boolean }>({});
   const [countAttempt, setCountAttempt] = useState(0);
@@ -184,7 +184,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
             {snapshot.error.message && <p>{snapshot.error.message}</p>}
             <button type="button" className={styles.button} onClick={() => { void onRefresh(); }}>{t('actions.retry')}</button>
           </div>}
-          {snapshot.loading && <p className={styles.loading} role="status">{t('bots.loading')}</p>}
+          {!snapshot.loaded && snapshot.loading && <p className={styles.loading} role="status">{t('bots.loading')}</p>}
           {snapshot.loaded && !snapshot.error && snapshot.entries.length === 0 && <div className={styles.empty}>
             <h2>{t('bots.empty')}</h2><p>{t('bots.emptyHint')}</p>
             <Button variant="primary" size="sm" className={styles.emptyAction} disabled={busy} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
@@ -213,11 +213,11 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
                 </div>
                 <p className={styles.description}>{selected.bot.description || t('card.noDescription')}</p>
                 {selected.status?.warnings?.includes('avatar/invalid') && <p className={styles.statusNotice}>{t('avatar.invalidStored')}</p>}
-                <p className={ready ? styles.readyStatus : styles.statusNotice} role="status" id={`${listId}-status`}>
-                  {ready ? t('bots.ready') : t(!selected.status || snapshot.error || snapshot.loading ? 'card.statusUnknown'
+                {!ready && <p className={styles.statusNotice} role="status" id={`${listId}-status`}>
+                  {t(!selected.status || snapshot.error || snapshot.loading ? 'card.statusUnknown'
                     : selected.status.preset.state === 'broken' ? 'card.statusBroken' : 'card.statusMissing')}
-                  {!ready && selected.status?.preset.reason ? ` ${selected.status.preset.reason}` : ''}
-                </p>
+                  {selected.status?.preset.reason ? ` ${selected.status.preset.reason}` : ''}
+                </p>}
                 <div className={styles.detailActions}>
                   <Button variant="primary" size="sm" disabled={busy || !ready} aria-describedby={!ready ? `${listId}-status` : undefined}
                     onClick={() => { void perform(() => chat.start(selected.bot.id), 'errors.start').catch(() => {}); }}>{t('bots.newSession')}</Button>
@@ -233,7 +233,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
                   : rows.length === 0 ? <div className={styles.empty}><h2>{t('bots.noSessions')}</h2><p>{t('bots.emptySessionsHint')}</p></div>
                     : <div className={styles.historyList}>{rows.map((session) => {
                       const title = previewText(session.title, t) || t('sidebar.untitled');
-                      const preview = previewText(session.preview, t) || t('activity.noPreview');
+                      const preview = previewText(session.preview, t);
                       return <button type="button" key={session.id} className={styles.historyRow} data-session-id={session.id}
                         disabled={busy} onClick={() => { void perform(() => onOpenSession(session.id), 'activity.openError').catch(() => {}); }}>
                         <span className={styles.rowHeading}><span className={styles.rowName} title={title}>{title}</span>
@@ -241,7 +241,8 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
                           {session.running && <span className={styles.running}>{t('activity.running')}</span>}
                           <time className={styles.relativeTime} dateTime={new Date(session.updatedAt).toISOString()}>{relativeTime(session.updatedAt, locale)}</time>
                         </span>
-                        <span className={styles.activityPreview} data-activity-preview="" title={preview}>{preview}</span>
+                        {session.workspaceTitle && <span className={styles.relativeTime} data-workspace-meta="">{session.workspaceTitle}</span>}
+                        {preview && <span className={styles.activityPreview} data-activity-preview="" title={preview}>{preview}</span>}
                       </button>;
                     })}</div>}
               </section>

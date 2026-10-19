@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SidebarRightTabDefinition, SidebarRightTabInjected } from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import { type ComponentType, act, useSyncExternalStore } from 'react';
+import { type ComponentType, Profiler, act, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { vi } from 'vitest';
 import * as client from '../../src/client/index.js';
@@ -135,6 +135,7 @@ export async function mountClient(
   config: Partial<client.Config> = {},
   plugin: typeof client = client,
   rightSidebar = false,
+  initialSessions: Partial<SessionListState> = {},
 ) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const ctx = new Context();
@@ -210,7 +211,7 @@ export async function mountClient(
     items: [workspace()], state: 'idle', phase: 'ready', error: null, archivedSessionIds: [], pinnedSessionIds: [],
   };
   const workspaceListeners = new Set<() => void>();
-  let sessionSnapshot: SessionListState = { ids: [], byId: {}, phase: 'ready', projectionsBySession: {} };
+  let sessionSnapshot: SessionListState = { ids: [], byId: {}, phase: 'ready', projectionsBySession: {}, ...initialSessions };
   const sessionListeners = new Set<() => void>();
   const sessionSource = {
     getSnapshot: () => sessionSnapshot,
@@ -242,6 +243,7 @@ export async function mountClient(
   let root = createRoot(container);
   const main = core.entries('main')[0];
   if (!main) throw new Error('Client did not register its main page');
+  const renderCounts = new Map<StoredEntry, number>();
   const renderEntry = (entry: StoredEntry | undefined, target = root, runtime: Record<string, unknown> = {}) => {
     if (!entry) { target.render(null); return; }
     const Component = entry.component as ComponentType<Record<string, unknown>>;
@@ -256,7 +258,9 @@ export async function mountClient(
         return selector ? selector(snapshot) : snapshot;
       };
     }
-    target.render(<Component {...runtime} {...injected} {...boundHooks} t={translate(entry.locale ?? 'dsh-bot')} />);
+    target.render(<Profiler id="dsh-bot-test" onRender={() => renderCounts.set(entry, (renderCounts.get(entry) ?? 0) + 1)}>
+      <Component {...runtime} {...injected} {...boundHooks} t={translate(entry.locale ?? 'dsh-bot')} />
+    </Profiler>);
   };
   await act(async () => { renderEntry(main); });
   let disposed = false;
@@ -323,6 +327,7 @@ export async function mountClient(
   ] : [];
   return {
     ctx, core, remote, openWorkspace, openSession, selectPanel, mountRemote, container, main, dictionaries,
+    renderCount: (entry: StoredEntry = main) => renderCounts.get(entry) ?? 0,
     sessionListeners,
     rightDefinitions, registerRightTab, openRightTab, rightSessionListeners,
     rightSession: () => rightSession,

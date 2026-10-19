@@ -156,7 +156,7 @@
     "sidebar.newSession": "New conversation with {name}",
     "sidebar.emptySessions": "No conversations yet.",
     "sidebar.more": "More conversations",
-    "sidebar.untitled": "Untitled conversation",
+    "sidebar.untitled": "New conversation",
     "sidebar.loading": "Loading conversations…",
     "sidebar.toggle": "Toggle conversations for {name}",
     "avatar.color": "Whale color",

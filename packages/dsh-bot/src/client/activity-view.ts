@@ -1,9 +1,10 @@
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types';
-import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import { type ActivitySession, type BotActivity, isHiddenActivityPreview } from '../shared/activity.js';
 import type { BotCatalogEntry } from './state.js';
+import { createActivityPreview } from '../shared/activity-preview.js';
 
 export function previewText(preview: string | undefined, t: PropsLocale<'dsh-bot'>['t']): string {
   return isHiddenActivityPreview(preview) ? t('activity.hidden') : preview ?? '';
@@ -33,21 +34,44 @@ export interface SessionRow {
   updatedAt: number;
   unread: boolean;
   running: boolean;
+  workspaceTitle?: string;
 }
+
+/** displayTitle includes cwd basename/id fallbacks; it is not a conversation title.
+ * The public live summary wins over the activity snapshot (which updates on messages).
+ */
+export function sessionTitle(session: Pick<SessionSummary, 'title'>, activity?: ActivitySession): string {
+  for (const candidate of [session.title, activity?.title, activity?.firstUserPreview]) {
+    if (typeof candidate !== 'string') continue;
+    // Live public titles have not passed through the Host activity sanitizer.
+    // Screen the complete text before truncation, just like persisted previews.
+    const title = createActivityPreview(candidate);
+    if (title) return title;
+  }
+  return '';
+}
+
+interface WorkspaceLabel { path: string; title: string }
 
 /** The public Host catalog owns membership/preset identity and live running
  * state. Activity only enriches those rows; a retained projection is not a row. */
 export function botSessionRows(botId: string, entries: readonly BotCatalogEntry[], sessions: SessionListState,
-  activities: readonly ActivitySession[], archived: readonly SessionId[] = []): SessionRow[] {
+  activities: readonly ActivitySession[], archived: readonly SessionId[] = [], workspaces: readonly WorkspaceLabel[] = []): SessionRow[] {
   const presetId = entries.find((entry) => entry.bot.id === botId)?.status?.presetId;
   if (!presetId) return [];
   const hidden = new Set(archived);
   const summaries = new Map(activities.filter((item) => item.botId === botId).map((item) => [item.sessionId, item]));
+  const current = Object.values(sessions.byId).filter((session) => (session.retainedBy?.mainView ?? 0) > 0);
+  const currentPath = current.length === 1 ? current[0]?.cwd : undefined;
+  const knownContext = workspaces.some((workspace) => workspace.path === currentPath);
   return sessions.ids.flatMap((id): SessionRow[] => {
     const session = sessions.byId[id];
     if (!session || session.origin === 'subagent' || hidden.has(id) || session.projectionValues?.agentPreset !== presetId) return [];
     const activity = summaries.get(id);
-    return [{ id, title: activity?.title ?? session.displayTitle ?? '', preview: activity?.lastMessage.preview ?? '',
+    const workspaceTitle = knownContext && session.cwd !== currentPath
+      ? workspaces.find((workspace) => workspace.path === session.cwd)?.title.trim() : undefined;
+    return [{ id, title: sessionTitle(session, activity), preview: activity?.lastMessage.preview ?? '',
+      ...(workspaceTitle ? { workspaceTitle } : {}),
       updatedAt: Math.max(session.updatedAt, activity?.updatedAt ?? 0), unread: activity?.unread ?? false, running: session.running }];
   }).sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
 }

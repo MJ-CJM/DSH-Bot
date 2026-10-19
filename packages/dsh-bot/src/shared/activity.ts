@@ -18,6 +18,9 @@ export const activityMessageSchema = z.strictObject({
 });
 export const activityRecordSchema = z.strictObject({
   sessionId: activitySessionIdSchema, botId: botIdSchema, title: summaryText.optional(),
+  // Optional for older records. Empty means the first human message had no
+  // visible text; a later user message must never replace that first input.
+  firstUserPreview: summaryText.optional(),
   lastMessage: activityMessageSchema, updatedAt: timestampSchema, lastReadAt: timestampSchema.optional(),
 });
 export const activitySessionSchema = activityRecordSchema.extend({ unread: z.boolean() });

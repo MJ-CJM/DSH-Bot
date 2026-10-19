@@ -56,7 +56,7 @@ export function BotList({ entries, activities, t, selectedId, onSelect, onActiva
     }}>
     {entries.map(({ bot }) => {
       const latest = activityByBot.get(bot.id);
-      const preview = latest?.latest ? previewText(latest.latest.preview, t) || t('activity.noPreview') : bot.description || t('bots.noSessions');
+      const preview = latest?.latest ? previewText(latest.latest.preview, t) : bot.description || t('bots.noSessions');
       return <button type="button" role="option" tabIndex={-1} key={bot.id} id={`${listId}-${bot.id}`} data-bot-id={bot.id}
         aria-selected={bot.id === activeId} className={styles.botOption} disabled={disabled}
         onClick={() => { onSelect(bot.id); onActivate(bot.id); element.current?.focus(); }}>
@@ -65,7 +65,7 @@ export function BotList({ entries, activities, t, selectedId, onSelect, onActiva
           <span className={styles.rowHeading}><span className={styles.rowName}>{bot.name}</span>
             {!!latest?.lastActivityAt && <time className={styles.relativeTime} dateTime={new Date(latest.lastActivityAt).toISOString()}>{relativeTime(latest.lastActivityAt, locale)}</time>}
           </span>
-          <span className={styles.rowHeading}><span className={styles.activityPreview} data-activity-preview="" title={preview}>{preview}</span>
+          <span className={styles.rowHeading}>{preview && <span className={styles.activityPreview} data-activity-preview="" title={preview}>{preview}</span>}
             {!!latest?.unreadCount && <span className={styles.unreadDot} data-unread="" role="img" aria-label={t('activity.unreadCount', { count: latest.unreadCount })} />}
           </span>
         </span>

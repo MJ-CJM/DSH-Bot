@@ -1,5 +1,32 @@
 # DSH API 核实记录
 
+## T08g：公开变更流与轮询兜底
+
+刷新状态统一由同一 Client Context 的共享调度器管理（Bot catalog、activity 及打开的 memory catalog 共用 timer/浏览器监听）。默认 `pollIntervalMs=5000`、新增 `maxPollIntervalMs=30000`，无变化逐次加基础间隔至上限；为兼容原配置，最大间隔不低于基础间隔。只在 visible + focused 且存在主动订阅时周期读取/开流，focus/visibility 恢复立即读取；pointer/keyboard 交互重置基础间隔。本插件成功 CRUD、markRead、新会话立即读回，显式修改后的读回即使窗口已失焦也完成；普通周期停止。相同结构保持快照引用，不 publish；后台不进入 loading；相同错误不重复通知，恢复清错误。最后订阅/插件卸载释放资源，epoch 拒绝迟到响应。
+
+### 真实标题来源与根因
+
+`pod_0814` 的根因是原 `botSessionRows` 使用 `activity.title ?? session.displayTitle`。rc.2 `packages/api/session-controller/src/client/sessions/service.ts:29-32,116-126,630,639` 明确定义 `displayTitle = durable title → cwd basename → session id`；公开 `SessionSummary.title` 才是未含工作区回退的持久标题。因此改为 **Client live `title` → Host activity title → firstUserPreview → 本地化“新会话 / New conversation”**。Client live title 随公开 session list 投影更新，优先于只在消息时更新的 activity title；全部候选复用同一纯摘要/凭据筛查函数，不能让新来源绕过原有脱敏。Host title 来源仍为 `sessionProjections.snapshot(session).values.title`，定义 `packages/session/session-title/src/index.ts:267-281` 只投影 `session/title` 事件。
+
+首条用户摘要用公开 `sessionProjections.register/stateOf` 增加 Host-only `dshBotFirstUserPreview`（stateVersion 1，`string|null`）。`packages/session/session-projection/src/index.ts:240-289` 对同 key/version 引用计数，`:313-352` 提供公开 state/snapshot，`:599-628` 在需要时惰性 materialize。注册与注销归 Agent effect，启动只注册；投影只收首个 human `user/message` append，保存已脱敏的至多 120 码点摘要，空串记录纯图片首条，不允许后续用户输入替代。记录增量加可选 `firstUserPreview`，旧数据仍可读；旧会话下一条完成消息可从公开投影补齐，没有 projection 服务时省略，绝不猜测“第一条”。不使用已 deprecated 的 `Session.snapshotEvents()`。真实 Session + ProjectionRegistry 测试覆盖恢复、共享租约、卸载、秘密 checkpoint 与空首条；真实隔离 Host mock 另验证三条首摘要，完整冷启动磁盘恢复未在本轮重复运行。
+
+历史行无预览就不输出该行；工作区名只在能从公开 mainView retention 确认当前路径、且目标是另一个已知工作区时显示次要 meta。正常 Bot 资料没有“就绪”行。主页面和右侧栏都锁定初次成功选择，后续活动重排不自行切换；会话行和 Bot 行使用稳定 id key。组件和截图脚本的证据边界、逐项结果见 [T08g 验收](acceptance/P1-T08g.md)。
+
+**结论：rc.2 有干净可用的公开 Remote stream，因此本轮采用 `dshBot/watch`，不修改宿主事件名单。** `dsh-bot/changed` 仍然不能直接通过 `$on` 转发；T02 的白名单结论不等于第三方插件不能提供自己的流。以下源码均为只读 `deepseek-harness@dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`）。
+
+| 核实项 | 公开源码依据 | 正式实现与取舍 |
+| --- | --- | --- |
+| 第三方事件不能自行进入 `$on` 白名单 | `packages/api/remotes/src/remote-events.ts:20-55` | 保留 Host 本地 changed 事件；另提供插件自有 `watch`，不 monkey patch 宿主名单 |
+| `@Remote({ mode:'stream' })` + final `AbortSignal` | `packages/api/account-controller/src/index.ts:96-119`；`packages/typert/protocol/src/types.ts:400-435` | 单一手写 spec 新增第 17 个端点：零业务参数、`mode:'stream'`、`cancellation:{parameter:'signal'}`；Host stream 由所属 registry 的 effect 清理 |
+| 公开原始 stream handle 与取消 | `packages/typert/protocol/src/types.ts:137-178`；`packages/api/gateway/src/client/index.ts:476-496,508-544,550-627` | `ctx.get('remote.dshBot').watch(signal)`，每 Client 共享一个；blur/hidden/最后 polling lease 关闭。终止后由共享调度器下一周期或重新聚焦重开，没有第二套 retry timer |
+| `$stream` 与 `RemoteSnapshotStream` 也公开，但前者需要 answering Client | `packages/api/gateway/src/client/index.ts:47-48`；`README.zh.md:64`；`src/client/snapshot-stream.ts:24-96` | 本业务只需 invalidation，采用兼容 passive Node probe 的 raw stream。opening 即刷新完整 catalog/activity，断线期间保留旧数据；轮询兜底覆盖断线及宿主自身 preset 健康等非本插件写入变化 |
+| raw stream 不自动调用严格 result encode/decode | Host `packages/api/gateway/src/index.ts:444-471`；Client `src/client/index.ts:476-496`（对比 unary `:461-465`） | Host yield 前与 Client 收帧后均显式 `botChangeSchema.parse`，不能仅靠 spec 的 `mode:'strict'` 声称 wire 已校验 |
+| Cordis 服务方法的 `ctx` 随调用者追踪 | `vendor/cordis/src/utils.ts:165-196`、`src/reflect.ts:233-234` | registry 构造期捕获自己的 owner Context，watch 注册在此 owner effect，不能把网关/root 调用方的生命周期当 Host 插件生命周期；真实 Cordis 卸载回归覆盖此差异 |
+
+帧只携带 `{revision}`，是进程内的刷新提示，不是可恢复日志游标或数据快照。每次开流先发一帧，之后同一 watcher 最多保留一个待发通知，慢消费时合并 revision；Bot CRUD、成功的活动写入与已读变更提交后通知。活动 replay/no-op 经有界公开快照结构比较不发通知；Client 仍对真正读取结果比较后才发布。没有传输标题、预览、工作区或其它业务内容，也不以 stream 到达代替权威 list/status 的结果。取消、iterator 退出和 Host 卸载均移除 watcher 并唤醒 pending pull。
+
+本轮自动测试已实际运行公开 Cordis + JSON storage/Registry 的开流、提交、合并、活动、已读、abort、Host 卸载；已发布 Connection + Gateway + 实际 RemoteStreamHandle 的 plugin scope、opening、严格拒绝额外帧字段、取消、Client 卸载、即开即断不自动自旋（仅 transport 为 double）。`tests/fixtures/client-activity-probe.mjs` 另增加真实隔离 Host 网络探针：通过现有鉴权 Connection 开流，创建/删除独立临时 Bot，接收两次提交通知并取消 pending pull；截图 seed 与 composer profile 均复用它。**网络探针的执行结果以本轮验收报告为准；这些测试均不等于真实浏览器 A/B 像素、DOM 身份或亮暗主题验收。**
+
 ## T08f：会话右栏 Bots tab
 
 锁定 rc.2 公开 `sidebarRightTabs.register` + `sidebar.right.pane.tab`（key=`definition.id`，非 kind）+ `sidebarRight.openTab(kind)` 可干净扩展。正式实现 `kind:dsh-bot-bots` / `id:dsh-bot.right-bots`，复用 T08d `BotList` 紧凑模式及原 catalog/markRead/新会话动作；guide、header utilities 与空白 Hero options 为入口。只有右栏内明确点击导航才一次性跟随目标会话；其它导航及卸载取消。默认 keepMounted=false，各注册归 effect，不写宿主内部 store 或 localStorage。新增 Client dev 依赖精确 rc.2，Host peer 不变。

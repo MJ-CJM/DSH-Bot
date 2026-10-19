@@ -5,6 +5,7 @@ import { scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope';
 import type {} from '@deepseek-ai/dsh-session';
 import type {} from '@deepseek-ai/dsh-session-projection';
 import type {} from '../registry.js';
+import { firstUserProjection } from './first-user.js';
 
 type ActivitySink = Pick<Context['dshBots'], 'recordActivity'>;
 
@@ -64,7 +65,14 @@ export function registerBotPresetActivity(ctx: Context, botId: string, botCreate
 /** Called within the Bot's agent/created effect. Only complete, newly appended
  * human/assistant text is observed; streaming deltas and replay are not writes. */
 export function registerActivityTracking(agent: Agent, botId: string, botCreatedAt: number, registry: ActivitySink): () => void {
-  return agent.ctx.on('session/event', (session, event) => {
+  const projections = agent.ctx.get('sessionProjections');
+  let offProjection: (() => void) | undefined;
+  try {
+    // The public registry ref-counts this one shared definition. Registration is
+    // owned by the requesting Agent effect and reads no history during startup.
+    offProjection = projections?.register(firstUserProjection);
+  } catch { /* Optional metadata must not prevent a Bot session from starting. */ }
+  const offEvent = agent.ctx.on('session/event', (session, event) => {
     if (session !== agent.session) return;
     let role: 'user' | 'assistant';
     let text: string;
@@ -81,10 +89,15 @@ export function registerActivityTracking(agent: Agent, botId: string, botCreated
     // Public projection view is optional in reduced Host compositions. Reading
     // a title must not make conversation progress depend on that service.
     let title: string | undefined;
+    let firstUserText: string | undefined;
     try {
-      const value = agent.ctx.get('sessionProjections')?.snapshot(session).values.title;
+      const value = projections?.snapshot(session).values.title;
       if (typeof value === 'string') title = value;
     } catch { /* Title is optional metadata. */ }
+    try {
+      const value = offProjection ? projections?.stateOf(session, 'dshBotFirstUserPreview') : undefined;
+      if (typeof value === 'string') firstUserText = value;
+    } catch { /* Never infer first input from a later event when unavailable. */ }
     const reportUnavailable = () => {
       // Never include raw messages, title, or backend causes in this observer log.
       agent.ctx.logger.warn('[dsh-bot] activity update unavailable');
@@ -93,7 +106,9 @@ export function registerActivityTracking(agent: Agent, botId: string, botCreated
       void registry.recordActivity({
         sessionId: session.id, botId, expectedBotCreatedAt: botCreatedAt,
         role, text, at: event.time, seq: event.seq, ...(title === undefined ? {} : { title }),
+        ...(firstUserText === undefined ? {} : { firstUserText }),
       }).catch(reportUnavailable);
     } catch { reportUnavailable(); }
   });
+  return () => { offEvent(); offProjection?.(); };
 }

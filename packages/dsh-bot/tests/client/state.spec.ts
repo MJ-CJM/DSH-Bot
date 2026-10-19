@@ -1,7 +1,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createBotCatalog } from '../../src/client/state.js';
+import { createBotCatalog, createPollingCatalog } from '../../src/client/state.js';
 import type { BotStatus } from '../../src/shared/remote-contract.js';
 import { botCreateSchema, botSchema, type BotRecord } from '../../src/shared/schema.js';
 
@@ -36,6 +36,35 @@ afterEach(async () => {
 });
 
 describe('Bot catalog refresh lifecycle', () => {
+  it('keeps equal decoded results and pending background refreshes at zero subscriber notifications', async () => {
+    const { ctx, list } = setup();
+    const catalog = createBotCatalog(ctx);
+    const listener = vi.fn(); catalog.subscribe(listener); await settle();
+    const previous = catalog.getSnapshot(); listener.mockClear();
+    await catalog.refresh(); await catalog.refresh();
+    expect(catalog.getSnapshot()).toBe(previous); expect(listener).not.toHaveBeenCalled();
+    const pending = deferred<RemoteResult<BotRecord[]>>(); list.mockReturnValueOnce(pending.promise);
+    const refresh = catalog.refresh();
+    expect(catalog.getSnapshot()).toBe(previous); expect(listener).not.toHaveBeenCalled();
+    pending.resolve(ok([makeBot()])); await refresh;
+    expect(listener).not.toHaveBeenCalled();
+    list.mockRejectedValue(new Error('offline'));
+    await catalog.refresh(); await catalog.refresh();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(catalog.getSnapshot().entries).toBe(previous.entries);
+  });
+
+  it('does not toggle loading or re-notify an unchanged initial failure on background retries', async () => {
+    const { ctx } = setup();
+    const catalog = createPollingCatalog(ctx, { rows: [] }, async () => { throw new Error('offline'); });
+    const listener = vi.fn(); catalog.observe(listener);
+    await catalog.refresh(); listener.mockClear();
+    const previous = catalog.getSnapshot();
+    await catalog.refresh(); await catalog.refresh();
+    expect(catalog.getSnapshot()).toBe(previous); expect(listener).not.toHaveBeenCalled();
+    expect(previous).toMatchObject({ loading: false, loaded: false, error: { message: 'offline' } });
+  });
+
   it('loads one joint catalog on first subscribe and retains the Host preset id', async () => {
     const { ctx, list, status } = setup();
     const catalog = createBotCatalog(ctx);
@@ -155,8 +184,8 @@ describe('Bot catalog refresh lifecycle', () => {
     status.mockReturnValueOnce(pendingStatus.promise);
     const refreshing = catalog.refresh();
     await settle();
-    // Until the two reads settle, consumers must gate actions on loading/error.
-    expect(catalog.getSnapshot().loading).toBe(true);
+    // The previous authoritative pair stays rendered until both reads settle.
+    expect(catalog.getSnapshot().loading).toBe(false);
     expect(catalog.getSnapshot().entries[0]?.bot.name).toBe('First Bot');
     pendingStatus.resolve(ok([]));
     await refreshing;
@@ -306,7 +335,8 @@ describe('Bot catalog refresh lifecycle', () => {
     const originalEffects = ctx.fiber.getEffects().length;
     const catalog = createBotCatalog(ctx);
     const catalogEffects = ctx.fiber.getEffects().length;
-    expect(catalogEffects).toBe(originalEffects + 1);
+    // Catalog plus the context-wide stream owner (which outlives one store).
+    expect(catalogEffects).toBe(originalEffects + 2);
     for (let iteration = 0; iteration < 5; iteration++) {
       const unsubscribe = catalog.subscribe(() => {});
       await settle();
@@ -321,6 +351,6 @@ describe('Bot catalog refresh lifecycle', () => {
     expect(list).toHaveBeenCalledTimes(calls);
     catalog.dispose();
     catalog.dispose();
-    expect(ctx.fiber.getEffects()).toHaveLength(originalEffects);
+    expect(ctx.fiber.getEffects()).toHaveLength(originalEffects + 1);
   });
 });

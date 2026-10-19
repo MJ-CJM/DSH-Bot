@@ -107,14 +107,14 @@ export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity,
         {snapshot.error && <div role="alert" className={styles.error}>
           <p>{t('errors.load')}</p><button type="button" className={styles.action} onClick={() => { void onRefresh(); }}>{t('actions.retry')}</button>
         </div>}
-        {snapshot.loading && <p role="status" className={styles.empty}>{t('bots.loading')}</p>}
+        {!snapshot.loaded && snapshot.loading && <p role="status" className={styles.empty}>{t('bots.loading')}</p>}
         {activity.error && <div role="alert" className={styles.error}>
           <p>{t('activity.loadError')}</p><button type="button" className={styles.action} onClick={() => { void onRefresh(); }}>{t('actions.retry')}</button>
         </div>}
         {snapshot.loaded && !snapshot.error && !snapshot.entries.length && <p className={styles.empty}>{t('bots.empty')}</p>}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         {entries.map(({ bot, status }) => {
-          const rows = botSessionRows(bot.id, snapshot.entries, sessions, activity.sessions, workspaces.archivedSessionIds);
+          const rows = botSessionRows(bot.id, snapshot.entries, sessions, activity.sessions, workspaces.archivedSessionIds, workspaces.items);
           const botUnread = activity.bots.find((item) => item.botId === bot.id)?.unreadCount ?? 0;
           const limit = limits[bot.id] ?? sessionLimit;
           const expanded = !collapsed.has(bot.id);
@@ -141,7 +141,7 @@ export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity,
                 : rows.length === 0 ? <p className={styles.empty}>{t('sidebar.emptySessions')}</p>
                   : rows.slice(0, limit).map((session) => {
                     const title = previewText(session.title, t) || t('sidebar.untitled');
-                    const preview = previewText(session.preview, t) || t('activity.noPreview');
+                    const preview = previewText(session.preview, t);
                     return <button type="button" key={session.id} className={styles.session} disabled={busy}
                       data-session-id={session.id} aria-label={title} title={title}
                       onClick={() => openSession(session.id)}>
@@ -151,7 +151,8 @@ export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity,
                         {session.unread && <span className={styles.unreadDot} role="img" data-session-unread={session.id} data-unread="true"
                           aria-label={t('activity.unread')} />}
                       </span>
-                      <span className={styles.preview} data-activity-preview="" title={preview}>{preview}</span>
+                      {session.workspaceTitle && <span className={styles.time} data-workspace-meta="">{session.workspaceTitle}</span>}
+                      {preview && <span className={styles.preview} data-activity-preview="" title={preview}>{preview}</span>}
                       {session.running && <span className={styles.running}>{t('activity.running')}</span>}
                     </button>;
                   })}

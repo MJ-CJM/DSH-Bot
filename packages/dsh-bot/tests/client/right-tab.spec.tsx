@@ -41,6 +41,23 @@ afterEach(async () => {
 });
 
 describe('Bots right tab through public Cordis and SlotCore contracts', () => {
+  it('retains its initial selection, focus and scroll when new activity reorders Bots', async () => {
+    const app = await mount('en', (remote) => { remote.data.records.push(bot({ id: 'beta-bot', name: 'Beta' })); });
+    const tab = await app.mountRightTab();
+    const row = option(tab);
+    const list = tab.querySelector<HTMLElement>('[role="listbox"]');
+    if (!list) throw new Error('Missing listbox');
+    expect(row.getAttribute('aria-selected')).toBe('true');
+    list.focus(); list.scrollTop = 30;
+    app.remote.data.activities = [{ ...activity('beta-latest'), botId: 'beta-bot' }];
+    const actions = app.core.entries('sidebar.right.pane.tab')[0]?.inject?.() as unknown as BotsRightTabInjected;
+    await act(async () => actions.onRefresh());
+    expect(list.querySelector('[role="option"]')?.getAttribute('data-bot-id')).toBe('beta-bot');
+    expect(option(tab)).toBe(row);
+    expect(row.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(list);
+    expect(list.scrollTop).toBe(30);
+  });
   it.each(['en', 'zh'] as const)('registers a localized type, guide, keyed body/title and both openers, then releases them (%s)', async (language) => {
     const dictionary = language === 'zh' ? zh.ui : en.ui;
     const app = await mount(language);
@@ -126,7 +143,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     expect(app.openRightTab).toHaveBeenCalledExactlyOnceWith(BOTS_TAB_KIND);
   });
 
-  it('does not create a session while the Host session catalog or Bot catalog is loading', async () => {
+  it('blocks initial catalog loading but keeps the prior loaded view usable during background refresh', async () => {
     const app = await mount();
     await app.setSessions({ phase: 'pending' });
     const tab = await app.mountRightTab();
@@ -140,10 +157,12 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     if (!original) throw new Error('Missing list double');
     app.remote.methods.list.mockImplementationOnce(async () => { await new Promise<void>((resolve) => { finish = resolve; }); return original(); });
     await click(button(tab, en.ui['bots.refresh']));
-    expect(option(tab).disabled).toBe(true);
-    await click(option(tab));
+    const row = option(tab);
+    expect(row.disabled).toBe(false);
+    expect(tab.textContent).not.toContain(en.ui['bots.loading']);
     expect(app.openWorkspace).not.toHaveBeenCalled();
     await act(async () => { finish(); });
+    expect(option(tab)).toBe(row);
     expect(option(tab).disabled).toBe(false);
   });
 

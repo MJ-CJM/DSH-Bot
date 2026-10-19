@@ -218,7 +218,7 @@ describe('built bundle contract', () => {
       expect(mountedEndpoints.sort()).toEqual([
         'dshBot.activity/list', 'dshBot.activity/markRead',
         'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
-        'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update',
+        'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
       ]);
       await fork.dispose();
       await fork.dispose();

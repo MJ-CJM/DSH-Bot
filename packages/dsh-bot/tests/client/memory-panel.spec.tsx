@@ -285,6 +285,7 @@ describe('MemoryPanel integrated with the public Client slots', () => {
 
   it('releases memory polling, reset subscription and styles when leaving its tab or closing details', async () => {
     vi.useFakeTimers();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const app = await mountClient([bot()], 'en', (remote) => { remote.data.memories = [record()]; });
     cleanups.push(app.dispose);
     await click(button(app.container, t['card.edit']));

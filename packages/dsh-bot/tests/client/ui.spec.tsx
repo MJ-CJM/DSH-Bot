@@ -27,7 +27,7 @@ afterEach(async () => {
 
 
 function session(id: string, botId: string, updatedAt: number, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionSummary['id'], displayTitle: id, updatedAt, running: false, blank: false,
+  return { id: id as SessionSummary['id'], title: id, displayTitle: id, updatedAt, running: false, blank: false,
     retainedBy: {}, projectionValues: { agentPreset: `host-selected/${botId}` }, ...extra };
 }
 function activity(sessionId: string, botId: string, updatedAt: number, preview = 'Assistant answer'): ActivitySession {
@@ -78,7 +78,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
       remote.data.activities = [activity('older', 'alpha-bot', now - 120_000, preview),
         { ...activity('newer', 'alpha-bot', now - 60_000, '[已隐藏]'), title: 'Latest conversation' }];
     });
-    await setSessions(app, [session('older', 'alpha-bot', now - 120_000), session('newer', 'alpha-bot', now - 60_000, { running: true })]);
+    await setSessions(app, [session('older', 'alpha-bot', now - 120_000), session('newer', 'alpha-bot', now - 60_000, { running: true, title: undefined })]);
     const rows = [...app.container.querySelectorAll('[data-session-id]')];
     expect(rows.map((row) => row.getAttribute('data-session-id'))).toEqual(['newer', 'older']);
     expect(rows[0]?.textContent).toContain('Latest conversation');
@@ -176,7 +176,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   });
 
   it('defaults to 5 seconds and validates the inclusive 1000–60000 ms Client configuration range', () => {
-    expect(Config({})).toEqual({ pollIntervalMs: 5000, memoryPageSize: 50, sidebarSessionLimit: 5 });
+    expect(Config({})).toEqual({ pollIntervalMs: 5000, maxPollIntervalMs: 30000, memoryPageSize: 50, sidebarSessionLimit: 5 });
     for (const value of [1000, 2000, 60000]) expect(Config({ pollIntervalMs: value }).pollIntervalMs).toBe(value);
     for (const value of [999, 60001, 0, -1, 1000.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => Config({ pollIntervalMs: value })).toThrow();
@@ -209,7 +209,8 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   });
 
   it('retains the default polling cadence without exposing refresh interval controls', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const app = await mount([bot()]);
     expect(app.container.querySelector('header select')).toBeNull();
     expect(app.container.textContent).not.toContain(t['bots.pollInterval']);
@@ -229,7 +230,8 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   });
 
   it('polls at the configured custom cadence with no visible interval selector', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const app = await mount([bot()], 'en', undefined, { pollIntervalMs: 2000 });
     expect(app.container.querySelector('header select')).toBeNull();
     expect(app.container.textContent).not.toContain(t['bots.pollInterval']);
@@ -237,7 +239,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.remote.methods.list).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1999); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(3999); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(3);

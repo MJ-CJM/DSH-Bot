@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { dshBotRemoteSpec } from './shared/remote-contract.js';
 export type {
   DshBotActivityMethods, DshBotActivityRemoteMethods, DshBotRemoteMethods,
-  ActivityRecord, ActivitySession, ActivityListResult,
+  ActivityRecord, ActivitySession, ActivityListResult, BotChange,
 } from './shared/remote-contract.js';
 export { ACTIVITY_HIDDEN_PREVIEW, isHiddenActivityPreview, type BotActivity } from './shared/activity.js';
 

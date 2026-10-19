@@ -46,8 +46,8 @@ export function SessionBotBadge({ sessionId, useSessions, usePanelInfo, useCatal
   useEffect(() => {
     if (!botId || activity?.botId !== botId || !activity.unread || !mainPanel || !mainSession
       || !visible || document.visibilityState === 'hidden') return;
-    // Failure retains unread state. A later activity refresh or visibility
-    // change retries; no transport details are rendered in the header.
+    // Failure retains unread state. A changed activity or visibility transition
+    // retries; identical background data deliberately causes no React effect.
     void onMarkRead(sessionId).catch(() => {});
   }, [activity, botId, mainPanel, mainSession, onMarkRead, sessionId, visible]);
   if (!entry) {

@@ -3,6 +3,9 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client';
 import type {} from '@deepseek-ai/dsh-client-connection/client';
 import type { BotStatus, DshBotRemoteMethods } from '../shared/remote-contract.js';
 import type { BotRecord } from '../shared/schema.js';
+import { DEFAULT_POLL_INTERVAL_MS, sharedPollingScheduler, validatePollInterval, type PollingOptions } from './polling-scheduler.js';
+import { structuralEqual } from './structural-equal.js';
+export { DEFAULT_POLL_INTERVAL_MS, DEFAULT_MAX_POLL_INTERVAL_MS, MIN_POLL_INTERVAL_MS, MAX_POLL_INTERVAL_MS } from './polling-scheduler.js';
 
 export type BotPresetStatus = BotStatus;
 export interface BotCatalogEntry { bot: BotRecord; status?: BotPresetStatus }
@@ -27,16 +30,7 @@ export interface BotCatalog {
   setPollIntervalMs(value: number): void;
   dispose(): void;
 }
-export interface BotCatalogOptions { pollIntervalMs?: number }
-export const DEFAULT_POLL_INTERVAL_MS = 5_000;
-export const MIN_POLL_INTERVAL_MS = 1_000;
-export const MAX_POLL_INTERVAL_MS = 60_000;
-
-function validatePollInterval(value: number): void {
-  if (!Number.isInteger(value) || value < MIN_POLL_INTERVAL_MS || value > MAX_POLL_INTERVAL_MS) {
-    throw new RangeError(`pollIntervalMs must be an integer from ${MIN_POLL_INTERVAL_MS} to ${MAX_POLL_INTERVAL_MS}`);
-  }
-}
+export interface BotCatalogOptions extends PollingOptions {}
 
 function diagnostic(error: unknown): CatalogError {
   if (typeof error === 'object' && error !== null) {
@@ -68,8 +62,7 @@ function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T | 
 
 /** Framework-independent catalog; its active resources follow the first/last
  * subscriber, while the owning Cordis effect permanently disposes the store.
- * There is deliberately no custom changed-event subscription: rc.2 does not
- * forward third-party events. Mutation callers must await refresh() afterward.
+ * Mutation callers await refresh() to supersede reads predating their writes.
  */
 export interface PollingCatalog<Payload> {
   subscribe(listener: () => void): () => void;
@@ -86,62 +79,60 @@ export function createPollingCatalog<Payload>(
 ): PollingCatalog<Payload> {
   let pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   validatePollInterval(pollIntervalMs);
+  const scheduler = sharedPollingScheduler(ctx, options);
   let snapshot: Payload & PollingSnapshot = { ...initial, loading: true, loaded: false, pollIntervalMs };
   const listeners = new Set<() => void>();
   const pollers = new Set<() => void>();
   let epoch = 0;
   let disposed = false;
   let controller: AbortController | undefined;
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let unsubscribeReset: (() => void) | undefined;
-  const page = typeof document === 'undefined' ? undefined : document;
-  const visible = () => page?.visibilityState !== 'hidden';
+  let releaseScheduler: (() => void) | undefined;
   const publish = (next: Payload & PollingSnapshot) => {
+    if (structuralEqual(snapshot, next)) return false;
     snapshot = next;
     for (const listener of listeners) listener();
+    return true;
   };
   const cancelRead = () => {
     epoch++;
     controller?.abort();
     controller = undefined;
   };
-  const refresh = async (): Promise<void> => {
-    if (disposed) return;
+  const read = async (): Promise<boolean | undefined> => {
+    if (disposed) return undefined;
     cancelRead();
     const current = epoch;
     const request = new AbortController();
     controller = request;
-    publish({ ...snapshot, loading: true });
+    // Background fetches leave successful data and its UI state untouched.
+    if (!snapshot.loaded && !snapshot.error) publish({ ...snapshot, loading: true });
     try {
       if (request.signal.aborted || disposed) return;
       const result = await untilAborted(load(), request.signal);
       if (!result || disposed || request.signal.aborted || current !== epoch) return;
-      publish({ ...result, loading: false, loaded: true, pollIntervalMs });
+      return publish({ ...result, loading: false, loaded: true, pollIntervalMs });
     } catch (error: unknown) {
       if (disposed || request.signal.aborted || current !== epoch) return;
-      publish({ ...snapshot, loading: false, error: diagnostic(error) });
+      return publish({ ...snapshot, loading: false, error: diagnostic(error) });
     } finally {
       if (controller === request) controller = undefined;
     }
   };
-  const schedulePoll = () => {
-    if (timer !== undefined) clearInterval(timer);
-    timer = undefined;
-    if (!pollers.size || disposed || !visible()) return;
-    timer = setInterval(() => {
-      // Slow reads finish instead of being starved by periodic invalidation.
-      if (visible() && !controller) void refresh();
-    }, pollIntervalMs);
+  const refresh = async (): Promise<void> => {
+    if (disposed) return;
+    scheduler.interact();
+    if (await read()) scheduler.changed();
   };
-  const onVisibility = () => { schedulePoll(); if (visible()) void refresh(); };
+  const source = {
+    polling: false,
+    // Slow requests finish instead of being starved by periodic invalidation.
+    refresh: (supersede: boolean) => !supersede && controller ? Promise.resolve(undefined) : read(),
+  };
   const stop = () => {
     cancelRead();
-    if (timer !== undefined) clearInterval(timer);
-    timer = undefined;
-    unsubscribeReset?.();
-    unsubscribeReset = undefined;
-    page?.removeEventListener('visibilitychange', onVisibility);
-    snapshot = { ...snapshot, loading: false };
+    releaseScheduler?.();
+    releaseScheduler = undefined;
+    if (snapshot.loading) snapshot = { ...snapshot, loading: false };
   };
   const dispose = () => {
     if (disposed) return;
@@ -155,11 +146,10 @@ export function createPollingCatalog<Payload>(
     const subscription = () => listener();
     listeners.add(subscription);
     if (polling) pollers.add(subscription);
-    schedulePoll();
+    source.polling = pollers.size > 0;
     if (listeners.size === 1) {
-      unsubscribeReset = ctx.on('connection/reset', () => { void refresh(); });
-      page?.addEventListener('visibilitychange', onVisibility);
-    }
+      releaseScheduler = scheduler.register(source);
+    } else scheduler.reschedule();
     // A newly mounted page/badge gets a current view, even when another consumer remains.
     if (listeners.size === 1 || (polling && pollers.size === 1)) void refresh();
     let active = true;
@@ -168,8 +158,9 @@ export function createPollingCatalog<Payload>(
       active = false;
       listeners.delete(subscription);
       pollers.delete(subscription);
-      schedulePoll();
+      source.polling = pollers.size > 0;
       if (listeners.size === 0) stop();
+      else scheduler.reschedule();
     };
   };
   const disposeOwner = ctx.effect(() => dispose, 'dsh-bot: catalog');
@@ -185,7 +176,7 @@ export function createPollingCatalog<Payload>(
       validatePollInterval(value);
       if (disposed || value === pollIntervalMs) return;
       pollIntervalMs = value;
-      schedulePoll();
+      scheduler.setPollIntervalMs(value);
       publish({ ...snapshot, pollIntervalMs });
     },
     dispose: () => { void disposeOwner(); },

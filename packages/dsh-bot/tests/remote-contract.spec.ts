@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis';
 import * as Gateway from '@deepseek-ai/dsh-api-gateway/client';
 import { type ConnectionHandle, installConnection } from '@deepseek-ai/dsh-client-connection/client';
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol';
-import type { RemoteResult, TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol';
+import type { RemoteResult, RemoteStreamHandle, TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { DshBotRegistry } from '../src/host/registry.js';
@@ -13,7 +13,7 @@ import { DshBotError } from '../src/host/errors.js';
 import {
   type CatalogInfo, type BotStatus, type DshBotMethods, type DshBotMemoryMethods,
   type DshBotMemoryRemoteMethods, type DshBotRemoteMethods, dshBotRemoteSpec,
-  type DshBotActivityMethods, type DshBotActivityRemoteMethods,
+  type DshBotActivityMethods, type DshBotActivityRemoteMethods, type BotChange,
 } from '../src/shared/remote-contract.js';
 import { type BotRecord, type BotRemoveOptions, botCreateSchema, botSchema, memorySchema } from '../src/shared/schema.js';
 import TYPERT from '../src/typert.host.js';
@@ -152,6 +152,8 @@ describe('single-source Remote contract', () => {
   });
 
   it('matches all Host and Client method signatures at compile time', () => {
+    expectTypeOf<DshBotRegistry['watch']>().toEqualTypeOf<DshBotMethods['watch']>();
+    expectTypeOf<DshBotRemoteMethods['watch']>().toEqualTypeOf<(signal?: AbortSignal) => RemoteStreamHandle<BotChange, never>>();
     expectTypeOf<DshBotActivityRemote['list']>().toEqualTypeOf<DshBotActivityMethods['list']>();
     expectTypeOf<DshBotActivityRemote['markRead']>().toEqualTypeOf<DshBotActivityMethods['markRead']>();
     expectTypeOf<TypertRemoteNamespaceMap['dshBot.activity']>().toEqualTypeOf<DshBotActivityRemoteMethods>();
@@ -179,18 +181,18 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
-      .toEqualTypeOf<'list' | 'status' | 'catalogInfo' | 'get' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
+      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'>();
   });
 
-  it('shares all sixteen strict descriptors between Host and Client exports', () => {
+  it('shares all seventeen strict descriptors between Host and Client exports', () => {
     expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
     // The Host owns registration in ctx.effect. ./typert would also be picked
     // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(16);
+    expect(TYPERT.invocations).toHaveLength(17);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -202,6 +204,18 @@ describe('single-source Remote contract', () => {
     }
     expect(TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'delete'))
       .toMatchObject({ implementation: 'remove', namespace: 'dshBot' });
+  });
+
+  it('declares a zero-argument cancellable stream and validates every invalidation frame', () => {
+    const watch = TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'watch');
+    expect(watch).toMatchObject({ service: 'dshBots', namespace: 'dshBot', mode: 'stream', parameters: [], cancellation: { parameter: 'signal' } });
+    if (watch?.result.mode !== 'strict' || !watch.result.encode || !watch.result.decode) throw new Error('Missing watch codec');
+    const result = watch.result;
+    expect(result.decode?.(result.encode?.({ revision: 0 }, () => null))).toEqual({ revision: 0 });
+    for (const invalid of [{ revision: -1 }, { revision: 0.5 }, { revision: 1, title: 'private' }, {}]) {
+      expect(() => result.encode?.(invalid, () => null)).toThrow();
+      expect(() => result.decode?.(invalid)).toThrow();
+    }
   });
 
   it('strictly validates activity arguments and wrapped unknown-session errors', () => {
@@ -317,6 +331,9 @@ describe('single-source Remote contract', () => {
         if (!value) throw new Error(`Missing memory result case ${descriptor.method}`);
         expect(codec.parse(value[0])).toEqual(value[0]);
         expect(() => codec.parse(value[1])).toThrow();
+      } else if (descriptor.method === 'watch') {
+        expect(codec.parse({ revision: 0 })).toEqual({ revision: 0 });
+        expect(() => codec.parse({ revision: -1 })).toThrow();
       } else if (descriptor.method === 'catalogInfo') {
         expect(codec.parse({ presetIdPrefix: 'custom-' })).toEqual({ presetIdPrefix: 'custom-' });
         expect(() => codec.parse({ presetIdPrefix: '', extra: true })).toThrow();

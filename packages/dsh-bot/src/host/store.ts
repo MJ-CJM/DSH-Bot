@@ -183,6 +183,9 @@ export interface ActivityStoreOptions {
 }
 export interface ActivityRecordInput {
   sessionId: string; botId: string; role: 'user' | 'assistant'; text: string; at: number; title?: string;
+  /** First actual human message (or screened summary) from a public projection,
+   * never a later message inferred from a row that lacks this metadata. */
+  firstUserText?: string;
   seq?: number;
   /** Guards queued events from an Agent belonging to a deleted Bot incarnation. */
   expectedBotCreatedAt?: number;
@@ -196,6 +199,7 @@ function activityRecord(record: StoredActivity): ActivityRecord {
     sessionId: record.sessionId, botId: record.botId, updatedAt: record.updatedAt,
     lastMessage: { role: record.lastMessage.role, preview: record.lastMessage.preview, at: record.lastMessage.at },
     ...(record.title === undefined ? {} : { title: record.title }),
+    ...(record.firstUserPreview === undefined ? {} : { firstUserPreview: record.firstUserPreview }),
     ...(record.lastReadAt === undefined ? {} : { lastReadAt: record.lastReadAt }),
   };
 }
@@ -240,7 +244,8 @@ export class ActivityStore {
 
   async record(input: ActivityRecordInput): Promise<ActivityRecord | undefined> {
     // Do not pass raw text/title to validation errors or the persistence layer.
-    if (typeof input.text !== 'string' || (input.title !== undefined && typeof input.title !== 'string')) {
+    if (typeof input.text !== 'string' || (input.title !== undefined && typeof input.title !== 'string')
+      || (input.firstUserText !== undefined && typeof input.firstUserText !== 'string')) {
       throw new DshBotError('bot/invalid', 'Activity text and title must be strings');
     }
     const fields = parseInput(activityRecordSchema, {
@@ -250,6 +255,7 @@ export class ActivityStore {
     });
     const expected = parseInput(timestampSchema.optional(), input.expectedBotCreatedAt);
     const seq = parseInput(timestampSchema.optional(), input.seq);
+    const firstUserPreview = input.firstUserText === undefined ? undefined : createActivityPreview(input.firstUserText);
     return write(this.domain, async () => {
       const bot = this.domain.table('bots').get(fields.botId);
       // A deleted Bot cannot be resurrected by a still-live Agent or late event.
@@ -270,6 +276,8 @@ export class ActivityStore {
         previous?.lastReadAt === undefined ? 0 : previous.lastReadAt + 1);
       const record = parseInput(storedActivitySchema, { ...previous, ...fields,
         updatedAt: at, lastMessage: { ...fields.lastMessage, at },
+        ...(previous?.firstUserPreview !== undefined ? { firstUserPreview: previous.firstUserPreview }
+          : firstUserPreview !== undefined ? { firstUserPreview } : {}),
         ...(seq === undefined ? {} : { lastEventSeq: seq }) });
       // Evict before adding so even partial backend failures cannot exceed caps.
       const retained = await this.pruneRows(record);

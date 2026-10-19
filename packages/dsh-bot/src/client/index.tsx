@@ -134,6 +134,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       preferredWorkspace = workspaceId;
       beforeOpen?.(sessionId);
     }, { agentPreset: status.presetId });
+    if (active) await refresh();
   };
   const page: BotsPageInjected = {
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },

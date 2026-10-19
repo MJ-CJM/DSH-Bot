@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 function session(id: string, preset: string, updatedAt: number, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionSummary['id'], displayTitle: id, updatedAt, running: false, blank: false,
+  return { id: id as SessionSummary['id'], title: id, displayTitle: id, updatedAt, running: false, blank: false,
     retainedBy: {} as SessionSummary['retainedBy'], projectionValues: { agentPreset: preset }, ...extra };
 }
 function catalog(rows: SessionSummary[]): SessionListState {
@@ -181,14 +181,18 @@ describe('Bot conversations through the supported sidebar footer action', () => 
   });
 
   it('polls only activity in the footer, follows session events and mutation refreshes, and cleans up on unload', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const app = await setup();
     const startCalls = app.remote.methods.list.mock.calls.length;
     await app.show();
+    // jsdom queues a zero-delay selectionchange when the modal focuses a control.
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(vi.getTimerCount()).toBe(1);
     const activityCalls = app.remote.methods.activity.list.mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-    expect(app.remote.methods.activity.list).toHaveBeenCalledTimes(activityCalls + 12);
+    // Unchanged results back off through 5, 10, 15 and 20 seconds.
+    expect(app.remote.methods.activity.list).toHaveBeenCalledTimes(activityCalls + 4);
     expect(app.remote.methods.list).toHaveBeenCalledTimes(startCalls);
     await app.setSessions(catalog([session('first', 'host-selected/alpha-bot', 1)]));
     expect(app.sidebar.textContent).toContain('first');

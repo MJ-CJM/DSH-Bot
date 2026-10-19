@@ -1,5 +1,5 @@
 /** Hand-authored, browser-safe contract for the locked DSH release's public Typert API. */
-import type { RemoteResult, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
+import type { RemoteResult, RemoteStreamHandle, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import { z } from 'zod';
 import { botIdSchema, memoryIdSchema } from './ids.js';
 import { activityListResultSchema, activitySessionIdSchema, activitySessionSchema } from './activity.js';
@@ -18,6 +18,10 @@ export const botStatusSchema = z.strictObject({
 export const catalogInfoSchema = z.strictObject({ presetIdPrefix: z.string().regex(/^[a-z][a-z0-9-]*$/) });
 export type CatalogInfo = z.output<typeof catalogInfoSchema>;
 export type BotStatus = z.output<typeof botStatusSchema>;
+// Process-local invalidation only: consumers always re-read authoritative data.
+// No persisted revision, user text, paths or credential-shaped payloads travel here.
+export const botChangeSchema = z.strictObject({ revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) });
+export type BotChange = z.output<typeof botChangeSchema>;
 
 // UI may choose the Bot, never the persisted identity or provenance of a memory.
 export const memoryRemoteSaveSchema = memoryAddSchema.omit({ botId: true, source: true });
@@ -48,8 +52,10 @@ type HostMethods<Namespace extends string> = {
     { readonly implementation: infer Implementation extends string }
     ? Endpoint extends `${Namespace}/${string}` ? Implementation : never
     : Endpoint extends `${Namespace}/${infer Method}` ? Method : never]:
-    (...args: MethodParameters<typeof dshBotRemoteSpec.methods[Endpoint]['parameters']>) =>
-      Promise<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>;
+    typeof dshBotRemoteSpec.methods[Endpoint] extends { readonly mode: 'stream' }
+      ? (signal: AbortSignal) => AsyncIterable<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>
+      : (...args: MethodParameters<typeof dshBotRemoteSpec.methods[Endpoint]['parameters']>) =>
+        Promise<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>;
 };
 export type DshBotMethods = HostMethods<'dshBot'>;
 export type DshBotMemoryMethods = HostMethods<'dshBot.memory'>;
@@ -59,8 +65,10 @@ type RemoteMethods<Namespace extends string> = {
   // rc.2's Gateway enforces the descriptor arity even for acceptsUndefined.
   // Call delete(id, undefined) when using the Host's default removal options.
   [Endpoint in keyof typeof dshBotRemoteSpec.methods as Endpoint extends `${Namespace}/${infer Method}` ? Method : never]:
-    (...args: RequiredParameters<typeof dshBotRemoteSpec.methods[Endpoint]['parameters']>) =>
-      Promise<RemoteResult<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>>;
+    typeof dshBotRemoteSpec.methods[Endpoint] extends { readonly mode: 'stream' }
+      ? (signal?: AbortSignal) => RemoteStreamHandle<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>, never>
+      : (...args: RequiredParameters<typeof dshBotRemoteSpec.methods[Endpoint]['parameters']>) =>
+        Promise<RemoteResult<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>>;
 };
 export type DshBotMemoryRemoteMethods = RemoteMethods<'dshBot.memory'>;
 export type DshBotActivityRemoteMethods = RemoteMethods<'dshBot.activity'>;
@@ -123,6 +131,10 @@ const memories = codec('MemoryRecord[]', z.array(memorySchema));
 export const dshBotRemoteSpec = {
   package: 'dsh-bot',
   methods: {
+    'dshBot/watch': {
+      ...owner, mode: 'stream', parameters: [], cancellation: { parameter: 'signal' },
+      result: activityResultCodec('BotChange', botChangeSchema),
+    },
     // Zero parameters deliberately support activity.list() on rc.2, whose
     // Client enforces exact arity even for optional descriptor parameters.
     'dshBot.activity/list': {

@@ -6,7 +6,7 @@ import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import Schema from '@deepseek-ai/schemastery';
 import { botIdSchema } from '../shared/ids.js';
-import type { CatalogInfo, BotStatus, DshBotMethods } from '../shared/remote-contract.js';
+import { botChangeSchema, type CatalogInfo, type BotStatus, type BotChange, type DshBotMethods } from '../shared/remote-contract.js';
 import {
   type BotCreateInput, type BotPatch, type BotRecord, type BotRemoveOptions, MEMORY_LIST_MAX_LIMIT,
   botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, normalizeBotPatch,
@@ -112,9 +112,13 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   // clock stalls or moves backwards. A scalar suffices for this Host lifetime.
   private creationTime = 0;
   private readonly diagnostics = new Map<string, string>();
+  private changeRevision = 0;
+  private readonly changeListeners = new Set<() => void>();
+  private readonly watchOwner: Context;
 
   constructor(ctx: Context, config: Config, start: () => Promise<void> = async () => {}) {
     super(ctx, 'dshBots', { namespace: 'dshBot' });
+    this.watchOwner = ctx;
     const parsed = Config(config);
     const home = process.env.DSH_HOME ?? join(homedir(), '.dsh');
     this.config = { ...parsed, dataDir: resolve(parsed.dataDir.replace(/^\$DSH_HOME(?=\/|$)/, home)) };
@@ -298,7 +302,11 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   /** Host-only completion sink. The same queue drains before domain shutdown
    * and serializes accepted messages with Bot deletion and Remote reads. */
   async recordActivity(input: Parameters<ActivityStore['record']>[0]): Promise<void> {
-    await this.enqueue(async () => { await this.stores.activities.record(input); });
+    await this.enqueue(async () => {
+      const previous = this.stores.activities.list();
+      await this.stores.activities.record(input);
+      if (!isDeepStrictEqual(previous, this.stores.activities.list())) this.invalidate();
+    });
   }
 
   async listActivity(): Promise<ActivityListResult> {
@@ -313,7 +321,12 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
 
   async markActivityRead(sessionId: string): Promise<ActivitySession> {
     const key = parseInput(activitySessionIdSchema, sessionId);
-    try { return await this.enqueue(() => this.stores.activities.markRead(key)); }
+    try { return await this.enqueue(async () => {
+      const previous = this.stores.activities.list();
+      const result = await this.stores.activities.markRead(key);
+      if (!isDeepStrictEqual(previous, this.stores.activities.list())) this.invalidate();
+      return result;
+    }); }
     catch (error) {
       if (error instanceof DshBotError && error.code === 'bot/unavailable') {
         throw new DshBotError('store/unavailable', 'Activity store is unavailable', { cause: error });
@@ -375,11 +388,47 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   }
 
   private changed(id: string, action: BotChanged['action']): void {
+    this.invalidate();
     // Host-only event. Do not await listeners inside the writer queue: listeners
     // may themselves read the registry. Their failures cannot undo a commit.
     void this.ctx.parallel('dsh-bot/changed', { id, action }).catch((error: unknown) => {
       this.ctx.logger.warn(`[dsh-bot] changed listener failed: ${messageOf(error)}`);
     });
+  }
+
+  private invalidate(): void {
+    this.changeRevision++;
+    for (const changed of this.changeListeners) changed();
+  }
+
+  /** A fresh opening invalidation closes the subscribe/read race; each Client
+   * keeps one coalesced pending revision, then refetches its ordinary catalogs.
+   * Remote cancellation and Host effect disposal both wake a suspended pull.
+   */
+  @Remote({ mode: 'stream' })
+  async *watch(signal: AbortSignal): AsyncIterable<BotChange> {
+    await this.waitUntilReady();
+    if (signal.aborted) return;
+    let stopped = false;
+    let pending = true;
+    let wake: (() => void) | undefined;
+    const changed = () => { pending = true; wake?.(); };
+    const release = this.watchOwner.effect(() => {
+      this.changeListeners.add(changed);
+      return () => { this.changeListeners.delete(changed); stopped = true; wake?.(); };
+    }, 'dsh-bot: change stream');
+    const abort = () => { release(); };
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      while (!stopped && !signal.aborted) {
+        if (pending) { pending = false; yield botChangeSchema.parse({ revision: this.changeRevision }); continue; }
+        await new Promise<void>((resolve) => { wake = resolve; });
+        wake = undefined;
+      }
+    } finally {
+      signal.removeEventListener('abort', abort);
+      release();
+    }
   }
 
   @Remote

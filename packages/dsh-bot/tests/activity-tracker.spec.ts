@@ -3,6 +3,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { bindScopeParent, createScope, scopeTarget } from '@deepseek-ai/dsh-scope';
 import SessionStore, { Session, SessionId, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session';
+import SessionProjections from '@deepseek-ai/dsh-session-projection';
 import { describe, expect, it, vi } from 'vitest';
 import { registerActivityTracking, registerBotPresetActivity } from '../lib/host/activity/tracker.js';
 import { DshBotError } from '../lib/host/errors.js';
@@ -152,6 +153,62 @@ describe('Bot activity tracking through public scoped session events', () => {
     expect(snapshot.mock.calls.map(([session]) => session)).toEqual([tracked.session, tracked.session]);
   }));
 
+  it('uses a public bounded projection for seeded history and shares its Agent-owned leases', async () => {
+    const ctx = new Context();
+    try {
+      await ctx.plugin(SessionStore).await();
+      await ctx.plugin(SessionProjections).await();
+      let owner!: Context;
+      await ctx.plugin({ inject: ['sessions', 'sessionProjections'], apply(injected: Context) { owner = injected; } }).await();
+      const recordActivity = vi.fn(async (_input: unknown): Promise<void> => {});
+      const source = Session.create(SessionId('activity-seed'));
+      for (const [kind, text] of [['system-prompt', 'Injected context'], ['user', 'Actual first question'], ['user', 'Later question']] as const) {
+        source.append('user/message', createUserMessage({ content: [{ type: 'text', text }],
+          source: kind === 'user' ? { kind: 'user' } : { kind: 'system-prompt' } }), { surfaceOp: 'append' });
+      }
+      // Reading history here creates a test restore seed; production only uses
+      // register/stateOf, not the deprecated synchronous Session readers.
+      const restored = Session.create(SessionId('activity-restored-first-user'), source.snapshotEvents());
+      const mount = (session: Session) => {
+        const payload = { id: session.id, session, ctx: owner };
+        const subject = payload as unknown as Agent;
+        const scope = createScope(owner, subject);
+        payload.ctx = scope.ctx;
+        scope.ctx.effect(() => scope.ctx.sessions.enter(session));
+        scope.ctx.sessions.announce(session);
+        scope.ctx.effect(() => registerActivityTracking(subject, 'alpha', 100, { recordActivity }));
+        return scope;
+      };
+      const snapshotEvents = vi.spyOn(restored, 'snapshotEvents');
+      const restoredScope = mount(restored);
+      const sibling = Session.create(SessionId('activity-sibling'));
+      const siblingScope = mount(sibling);
+      // Registering the Agent lease must not scan history or block startup.
+      expect(snapshotEvents).not.toHaveBeenCalled();
+      for (const text of ['Next user input', 'Another input']) {
+        restored.append('user/message', createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }), { surfaceOp: 'append' });
+      }
+      expect(recordActivity).toHaveBeenCalledTimes(2);
+      for (const [input] of recordActivity.mock.calls) expect(input).toMatchObject({ firstUserText: 'Actual first question' });
+      expect(ctx.sessionProjections.snapshot(restored).values).not.toHaveProperty('dshBotFirstUserPreview');
+      expect(ctx.sessionProjections.stateOf(restored, 'dshBotFirstUserPreview')).toBe('Actual first question');
+      await restoredScope.dispose();
+      sibling.append('user/message', createUserMessage({ content: [], source: { kind: 'user' } }), { surfaceOp: 'append' });
+      sibling.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'After empty first input' }], source: { kind: 'user' } }), { surfaceOp: 'append' });
+      expect(recordActivity.mock.calls.at(-1)?.[0]).toMatchObject({ firstUserText: '' });
+      expect(ctx.sessionProjections.stateOf(sibling, 'dshBotFirstUserPreview')).toBe('');
+      const secretSession = Session.create(SessionId('activity-secret-first-user'));
+      const secretScope = mount(secretSession);
+      const secret = `sk-${'c'.repeat(24)}`;
+      secretSession.append('user/message', createUserMessage({ content: [{ type: 'text', text: secret }], source: { kind: 'user' } }), { surfaceOp: 'append' });
+      expect(ctx.sessionProjections.stateOf(secretSession, 'dshBotFirstUserPreview')).toBe('[dsh-bot:hidden]');
+      expect(JSON.stringify(ctx.sessionProjections.checkpoint(secretSession))).not.toContain(secret);
+      await secretScope.dispose();
+      await siblingScope.dispose();
+      expect(ctx.sessionProjections.stateOf(sibling, 'dshBotFirstUserPreview')).toBeUndefined();
+    } finally { await ctx.fiber.dispose(); }
+  });
+
   it('routes two Agents independently without duplicating or crossing Bot activity', async () => withFixture(async ({ agent, recordActivity }) => {
     const alpha = agent('alpha', 11);
     const beta = agent('beta', 22);
@@ -216,6 +273,7 @@ describe('Bot activity tracking through public scoped session events', () => {
     expect(recordActivity).toHaveBeenCalledTimes(2);
     expect(recordActivity.mock.calls[0]?.[0]).toMatchObject({ role: 'user', text: '', seq: 10 });
     expect(recordActivity.mock.calls[1]?.[0]).toMatchObject({ role: 'user', text: ' \n\t ', seq: 11 });
+    for (const [input] of recordActivity.mock.calls) expect(input).not.toHaveProperty('firstUserText');
     expect(JSON.stringify(recordActivity.mock.calls)).not.toContain('not persisted');
   }));
 
