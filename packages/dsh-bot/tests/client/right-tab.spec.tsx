@@ -136,7 +136,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     await app.setRightSession('source-session');
     const tab = await app.mountRightTab();
     await click(option(tab));
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-custom/preset-v2' });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-custom/preset-v2' });
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.remote.methods.activity.markRead).not.toHaveBeenCalled();

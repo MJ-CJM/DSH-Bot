@@ -40,6 +40,22 @@ describe('activity display projection', () => {
         { id: 'old', title: 'Host title', preview: '', updatedAt: 2, unread: false, running: false }]);
   });
 
+  it('keeps a blank session out of history after its preset refreshes, then shows it after the first message', () => {
+    const id = 'new-session';
+    const summary = { id, displayTitle: 'Bots', cwd: '/shared/bots', updatedAt: 5, running: false, blank: true };
+    const snapshot = (row: typeof summary & { projectionValues?: { agentPreset: string } }) => ({
+      ids: [id], byId: { [id]: row }, phase: 'ready', projectionsBySession: {},
+    }) as unknown as SessionListState;
+    const entries = [entry('alpha-bot', 'Alpha')];
+    expect(botSessionRows('alpha-bot', entries, snapshot(summary), [])).toEqual([]);
+    const resolved = { ...summary, projectionValues: { agentPreset: 'custom/alpha-bot' } };
+    expect(botSessionRows('alpha-bot', entries, snapshot(resolved), [])).toEqual([]);
+    // Native message state is authoritative; a delayed/evicted plugin activity
+    // summary must not hide an otherwise valid conversation after its first send.
+    expect(botSessionRows('alpha-bot', entries, snapshot({ ...resolved, blank: false }), []).map((row) => row.id))
+      .toEqual([id]);
+  });
+
   it('uses the live durable title, activity title, first human preview, then an empty locale fallback; never displayTitle/cwd', () => {
     const activity: ActivitySession = { botId: 'alpha-bot', sessionId: 'test', title: 'Earlier title', firstUserPreview: 'First question',
       lastMessage: { role: 'assistant', at: 10, preview: 'Latest answer' }, updatedAt: 10, unread: false };

@@ -1,5 +1,5 @@
-import { chmod, lstat, mkdir, open, realpath, rm, stat, unlink } from 'node:fs/promises';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { chmod, lstat, mkdir, open, realpath, rm, rmdir, stat, unlink } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { constants, type Stats } from 'node:fs';
 import { z } from 'zod';
 import { botIdSchema } from '../shared/ids.js';
@@ -26,7 +26,8 @@ export async function validateDefaultCwd(path: string | undefined): Promise<void
 
 /** Directory ownership is separate from Bot records, so keeping a home across
  * Bot deletion/recreation or Host restart never silently transfers user data.
- * The marker is outside the session cwd; it records the exact directory inode.
+ * The marker is outside the private home; it records the exact directory inode.
+ * All Bots share the workspace root, including these per-Bot markers.
  */
 export class BotHomes {
   constructor(private readonly dshHome: string) {}
@@ -48,18 +49,39 @@ export class BotHomes {
     return true;
   }
 
-  private async paths(botId: string, create: boolean) {
-    const id = parseInput(botIdSchema, botId);
+  private async botsRoot(create: boolean) {
     if (create) await mkdir(this.dshHome, { recursive: true, mode: 0o700 });
     let root: string;
     try { root = await realpath(this.dshHome); }
     catch (error) { if (!create && missing(error)) return undefined; throw error; }
     let parent = root;
-    for (const component of ['dsh-bot', 'bots', id]) {
+    for (const component of ['dsh-bot', 'bots']) {
       parent = join(parent, component);
       if (!await this.directory(parent, root, create)) return undefined;
     }
-    return { root, home: join(parent, 'home'), marker: join(parent, '.home-owner.json') };
+    return { root, path: parent };
+  }
+
+  /** Shared cwd, separate from configurable skills data; never follows a managed symlink. */
+  async ensureRoot(): Promise<{ path: string }> {
+    try {
+      const result = await this.botsRoot(true);
+      if (!result) throw invalidHome('root is unavailable');
+      await chmod(result.path, 0o700);
+      return { path: result.path };
+    } catch (error) {
+      if (error instanceof DshBotError) throw error;
+      throw new DshBotError('bot/unavailable', 'Cannot create or access the shared Bots root', { cause: error });
+    }
+  }
+
+  private async paths(botId: string, create: boolean) {
+    const id = parseInput(botIdSchema, botId);
+    const root = await this.botsRoot(create);
+    if (!root) return undefined;
+    const parent = join(root.path, id);
+    if (!await this.directory(parent, root.root, create)) return undefined;
+    return { root: root.root, home: join(parent, 'home'), marker: join(parent, '.home-owner.json') };
   }
 
   private async identity(path: string, botId: string): Promise<Owner> {
@@ -126,6 +148,12 @@ export class BotHomes {
       // recursive; siblings (skills, marker and user defaultCwd) are excluded.
       await rm(current.home, { recursive: true });
       await unlink(current.marker);
+      // Only an empty Bot parent may disappear. Never recursively remove it:
+      // sibling skills/user files and every other Bot must survive.
+      try { await rmdir(dirname(current.home)); }
+      catch (error) {
+        if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      }
     };
   }
 }

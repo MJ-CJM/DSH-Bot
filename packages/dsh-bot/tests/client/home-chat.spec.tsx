@@ -12,6 +12,7 @@ const apps: Awaited<ReturnType<typeof mountClient>>[] = [];
 type App = Awaited<ReturnType<typeof mountClient>>;
 type Surface = 'page' | 'footer' | 'right';
 const surfaces = ['page', 'footer', 'right'] as const;
+const botsRoot = '/test/dsh-bot/bots';
 const home = '/test/dsh-bot/bots/alpha-bot/home';
 async function mount(language: 'en' | 'zh' = 'en', records = [bot()]) {
   const app = await mountClient(records, language, undefined, {}, undefined, true);
@@ -34,52 +35,69 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe('workspace-free Bot chat', () => {
-  it.each(surfaces)('creates from %s with cwd and the Host preset even when no workspace exists', async (name) => {
+describe('shared Bots workspace chat', () => {
+  it.each(surfaces)('creates from %s with workspaceId and the Host preset without a workspace picker', async (name) => {
     const app = await mount();
     await app.setWorkspaces({ items: [], phase: 'pending', state: 'loading' });
     const view = await surface(app, name);
     await view.start();
     expect(app.remote.methods.ensureHome).toHaveBeenCalledExactlyOnceWith('alpha-bot');
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: home, agentPreset: 'host-selected/alpha-bot' });
+    expect(app.remote.methods.ensureBotsWorkspace).toHaveBeenCalledExactlyOnceWith();
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.createSession.mock.calls[0]?.[0]).not.toHaveProperty('cwd');
+    expect(app.createWorkspace).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(view.container.querySelector('select')).toBeNull();
   });
 
-  it('uses the latest custom cwd without preparing the private home or choosing from multiple workspaces', async () => {
+  it.each(surfaces)('uses the latest custom cwd workspace from %s without choosing among workspaces', async (name) => {
     const app = await mount();
     await app.setWorkspaces({ items: [workspace(), workspace('second')] });
     app.remote.data.records = [bot({ id: 'alpha-bot', name: 'Alpha Bot', defaultCwd: '/test/custom-work' })];
-    await click(button(app.container, en.ui['bots.newSession']));
+    const view = await surface(app, name);
+    await view.start();
     expect(app.remote.methods.get).toHaveBeenCalledExactlyOnceWith('alpha-bot');
     expect(app.remote.methods.ensureHome).not.toHaveBeenCalled();
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/custom-work', agentPreset: 'host-selected/alpha-bot' });
-    expect(app.container.querySelector('dialog')).toBeNull();
+    expect(app.remote.methods.ensureBotsWorkspace).not.toHaveBeenCalled();
+    expect(app.createWorkspace).toHaveBeenCalledExactlyOnceWith({ path: '/test/custom-work' });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'custom-workspace', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.createSession.mock.calls[0]?.[0]).not.toHaveProperty('cwd');
+    expect(view.container.querySelector('select')).toBeNull();
     expect(app.openWorkspace).not.toHaveBeenCalled();
   });
 
-  it.each(surfaces.flatMap((name) => ['home', 'create'].map((stage) => ({ name, stage }))))('keeps $name open and reports $stage refusal without navigation', async ({ name, stage }) => {
+  it.each(surfaces.flatMap((name) => ['home', 'workspace', 'custom', 'create'].map((stage) => ({ name, stage }))))('keeps $name open and reports $stage refusal without navigation', async ({ name, stage }) => {
     const app = await mount();
+    if (stage === 'custom') app.remote.data.records = [bot({ id: 'alpha-bot', name: 'Alpha Bot', defaultCwd: '/test/custom-work' })];
     const view = await surface(app, name);
     if (stage === 'home') app.remote.methods.ensureHome.mockResolvedValueOnce({ ok: false, error: new RemoteError('bot/invalid', 'Home unavailable', {}) });
+    else if (stage === 'workspace') app.remote.methods.ensureBotsWorkspace.mockResolvedValueOnce({ ok: false, error: new RemoteError('bot/invalid', 'Workspace unavailable', {}) });
+    else if (stage === 'custom') app.createWorkspace.mockRejectedValueOnce(new Error('Workspace refused'));
     else app.createSession.mockRejectedValueOnce(new Error('Creation denied'));
     await view.start();
     expect(view.container.querySelector('[role="alert"]')).not.toBeNull();
     if (name === 'page') expect(view.container.querySelector('[data-bot-detail] [data-chat-error]')).not.toBeNull();
-    if (stage === 'home') expect(app.createSession).not.toHaveBeenCalled();
+    if (stage !== 'create') expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).not.toHaveBeenCalled();
     expect(app.openWorkspace).not.toHaveBeenCalled();
     await view.start();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
   });
 
-  it.each(surfaces.flatMap((name) => ['home', 'create'].map((stage) => ({ name, stage }))))('ignores late $stage completion after $name unload', async ({ name, stage }) => {
+  it.each(surfaces.flatMap((name) => ['home', 'workspace', 'custom', 'create'].map((stage) => ({ name, stage }))))('ignores late $stage completion after $name unload', async ({ name, stage }) => {
     const app = await mount();
+    if (stage === 'custom') app.remote.data.records = [bot({ id: 'alpha-bot', name: 'Alpha Bot', defaultCwd: '/test/custom-work' })];
     const view = await surface(app, name);
     let finish!: () => void;
     if (stage === 'home') app.remote.methods.ensureHome.mockImplementationOnce(() => new Promise((resolve) => {
       finish = () => resolve({ ok: true, value: { path: home } });
+    }));
+    else if (stage === 'workspace') app.remote.methods.ensureBotsWorkspace.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = () => resolve({ ok: true, value: { workspaceId: 'bots-workspace', path: botsRoot } });
+    }));
+    else if (stage === 'custom') app.createWorkspace.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = () => resolve(workspace('custom-workspace'));
     }));
     else app.createSession.mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve('late-session' as SessionId); }));
     await view.start();
@@ -87,7 +105,8 @@ describe('workspace-free Bot chat', () => {
     else if (name === 'right') await app.unmountRightTab();
     else await app.unloadPlugin();
     await act(async () => finish());
-    if (stage === 'home') expect(app.createSession).not.toHaveBeenCalled();
+    if (stage !== 'create') expect(app.createSession).not.toHaveBeenCalled();
+    if (stage === 'home') expect(app.remote.methods.ensureBotsWorkspace).not.toHaveBeenCalled();
     expect(app.openSession).not.toHaveBeenCalled();
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.openRightTab).not.toHaveBeenCalled();
@@ -104,6 +123,8 @@ describe('workspace-free Bot chat', () => {
     expect(app.openWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-two', expect.any(Function), { agentPreset: 'host-selected/alpha-bot' });
     expect(app.createSession).not.toHaveBeenCalled();
     expect(app.remote.methods.ensureHome).not.toHaveBeenCalled();
+    expect(app.remote.methods.ensureBotsWorkspace).not.toHaveBeenCalled();
+    expect(app.createWorkspace).not.toHaveBeenCalled();
   });
 
   it.each(['en', 'zh'] as const)('never shows home basename as the conversation title in %s', async (language) => {
@@ -124,12 +145,14 @@ describe('workspace-free Bot chat', () => {
 });
 
 describe('default working directory editor and explicit home removal', () => {
-  it.each(['en', 'zh'] as const)('shows private home, accepts a public directory picker and resets with JSON-preserved null in %s', async (language) => {
+  it.each(['en', 'zh'] as const)('shows Bots workspace and private home, accepts a public directory picker and resets with JSON-preserved null in %s', async (language) => {
     const app = await mount(language, [bot({ id: 'alpha-bot', name: 'Alpha Bot', defaultCwd: '/test/existing' })]);
     const dictionary = language === 'en' ? en.ui : zh.ui;
     await click(button(app.container, dictionary['card.edit']));
     const area = app.container.querySelector('[data-bot-default-cwd]');
     expect(area?.querySelector('[data-effective-cwd]')?.textContent).toContain('/test/existing');
+    expect(area?.querySelector('[data-bots-workspace]')?.textContent).toBe(dictionary['editor.cwdDefault'].replace('{path}', botsRoot));
+    expect(area?.querySelector('[data-bot-home]')?.textContent).toBe(dictionary['editor.cwdHome'].replace('{path}', home));
     expect(area?.textContent).toContain(dictionary['editor.cwdPermissions']);
     app.pickDirectory.mockResolvedValueOnce('/test/chosen');
     await click(button(app.container, dictionary['editor.cwdChoose']));
@@ -140,7 +163,8 @@ describe('default working directory editor and explicit home removal', () => {
     await click(button(app.container, dictionary['card.edit']));
     await click(button(app.container, dictionary['editor.cwdReset']));
     expect(area?.isConnected).toBe(false);
-    expect(app.container.querySelector('[data-effective-cwd]')?.textContent).toContain(home);
+    expect(app.container.querySelector('[data-effective-cwd]')?.textContent).toContain(botsRoot);
+    expect(app.container.querySelector('[data-effective-cwd]')?.textContent).not.toContain(home);
     await submit(app.container);
     const patch = app.remote.methods.update.mock.calls.at(-1)?.[1];
     expect(JSON.parse(JSON.stringify(patch))).toHaveProperty('defaultCwd', null);
@@ -168,12 +192,27 @@ describe('default working directory editor and explicit home removal', () => {
     await click(button(app.container, en.ui['card.edit']));
     expect(app.container.querySelector('[data-bot-default-cwd] [role="alert"]')?.textContent).toContain(en.ui['editor.cwdHomeError']);
     await click(button(app.container, en.ui['actions.retry']));
-    expect(app.container.querySelector('[data-effective-cwd]')?.textContent).toContain(home);
+    expect(app.container.querySelector('[data-bot-home]')?.textContent).toContain(home);
     await click(button(app.container, en.ui['actions.cancel']));
     app.remote.methods.ensureHome.mockClear();
     await click(button(app.container, en.ui['bots.create']));
-    expect(app.container.querySelector('[data-effective-cwd]')?.textContent).toContain(en.ui['editor.cwdAfterSave']);
+    expect(app.container.querySelector('[data-bot-home]')?.textContent).toContain(en.ui['editor.cwdAfterSave']);
+    expect(app.container.querySelector('[data-effective-cwd]')?.textContent).toContain(botsRoot);
     expect(app.remote.methods.ensureHome).not.toHaveBeenCalled();
+    expect(app.openSession).not.toHaveBeenCalled();
+  });
+
+  it('retries the workspace path independently of form values and never navigates from the editor', async () => {
+    const app = await mount();
+    app.remote.methods.ensureBotsWorkspace.mockRejectedValueOnce(new Error('no workspace'));
+    await click(button(app.container, en.ui['card.edit']));
+    expect(app.container.querySelector('[data-bot-default-cwd] [role="alert"]')?.textContent).toContain(en.ui['editor.cwdWorkspaceError']);
+    expect(app.container.querySelector('[data-bot-home]')?.textContent).toContain(home);
+    await fill(field(app.container, en.ui['editor.defaultCwd']), '/test/typed');
+    await click(button(app.container, en.ui['actions.retry']));
+    expect(app.container.querySelector('[data-bots-workspace]')?.textContent).toContain(botsRoot);
+    expect(field(app.container, en.ui['editor.defaultCwd']).value).toBe('/test/typed');
+    expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).not.toHaveBeenCalled();
   });
 

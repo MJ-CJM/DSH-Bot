@@ -3,13 +3,15 @@
  * Run after build, from repository root:
  * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/composer-profile.mjs
  * The composer/memory probes stay idle; activity uses three loopback mock
- * replies across two Host processes, using a T08h Bot home without a Workspace.
+ * replies across two Host processes, using the shared T08i Bots Workspace.
+ * Four further mock model turns exercise the real write tool and approval flow.
  * No real model or browser is used.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { createServer, request as httpRequest } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
@@ -35,6 +37,8 @@ const requestPath = resolve(runDir, 'host-probe-request.json');
 const responsePath = resolve(runDir, 'host-probe-result.json');
 const homeRequestPath = resolve(runDir, 'home-probe-request.json');
 const homeResponsePath = resolve(runDir, 'home-probe-result.json');
+const sandboxRequestPath = resolve(runDir, 'sandbox-probe-request.json');
+const sandboxResponsePath = resolve(runDir, 'sandbox-probe-result.json');
 const dataDir = resolve(runDir, 'data');
 const sharedStore = resolve(home, 'storages/dsh_bot.json');
 const hashFile = (path) => existsSync(path)
@@ -46,8 +50,10 @@ const checks = [];
 let interrupted = false;
 let idleSessionsCreated = 0;
 let mock;
+let mockRouter;
+const sandboxMocks = [];
 let mockPromptsSent = 0;
-const activityBotId = `t08h-${Date.now()}-${process.pid}`;
+const activityBotId = `t08i-${Date.now()}-${process.pid}`;
 const activityTitle = 'T08c local mock activity';
 const mockReply = 'T08C_LOCAL_MOCK_REPLY 活动跟踪已完成 😀';
 mkdirSync(runDir, { recursive: true });
@@ -134,6 +140,134 @@ async function until(condition, label, timeout = 120_000) {
     await new Promise((accept) => setTimeout(accept, 100));
   }
   assert.ok(!interrupted && condition(), `${label}: deadline or interruption; inspect sanitized Host log`);
+}
+
+// The official mock has fixed tool arguments per instance. A loopback-only
+// transport router lets one real Host run independent official mock scripts,
+// without changing its provider, sandbox, or permission settings mid-session.
+async function startMockRouter(initialMock) {
+  let target = initialMock;
+  const server = createServer((incoming, outgoing) => {
+    const upstream = httpRequest(new URL(incoming.url, target.baseURL), {
+      method: incoming.method, headers: incoming.headers,
+    }, (response) => {
+      outgoing.writeHead(response.statusCode, response.headers);
+      response.pipe(outgoing);
+    });
+    upstream.on('error', () => { if (!outgoing.headersSent) outgoing.writeHead(502); outgoing.end(); });
+    incoming.pipe(upstream);
+    outgoing.on('close', () => { if (!outgoing.writableFinished) upstream.destroy(); });
+  });
+  await new Promise((accept, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', accept);
+  });
+  return {
+    baseURL: `http://127.0.0.1:${server.address().port}`,
+    use(next) { target = next; },
+    async close() {
+      server.closeAllConnections();
+      await new Promise((accept, reject) => server.close((error) => error ? reject(error) : accept()));
+    },
+  };
+}
+
+async function sandboxObservation(sessionId, action) {
+  const id = randomUUID();
+  writeFileSync(`${sandboxRequestPath}.tmp`, JSON.stringify({ id, sessionId, action }));
+  renameSync(`${sandboxRequestPath}.tmp`, sandboxRequestPath);
+  let evidence;
+  await until(() => {
+    if (!existsSync(sandboxResponsePath)) return false;
+    evidence = JSON.parse(readFileSync(sandboxResponsePath, 'utf8'));
+    return evidence.id === id || evidence.ok === false;
+  }, `native sandbox observer ${action}`);
+  check(`native sandbox observer ${action} succeeds`, evidence.ok);
+  return evidence;
+}
+
+async function sandboxTurns(raw, sessionId, workspace, botHome) {
+  const outside = resolve(home, `outside-${stamp}`);
+  mkdirSync(outside);
+  const outsideFile = resolve(outside, 'denied.txt');
+  check('outside sandbox fixture is outside Bots root and configured TMPDIR',
+    !outside.startsWith(`${workspace.path}/`) && !outside.startsWith(`${realpathSync(env.TMPDIR)}/`));
+  const cases = [
+    { name: 'outside-denied', filePath: outsideFile, errorCode: 'FS_SANDBOX_DENIED' },
+    { name: 'outside-approval', filePath: outsideFile, escalation: true },
+    { name: 'bots-root', filePath: resolve(workspace.path, `t08i-${stamp}.txt`) },
+    { name: 'private-home', filePath: resolve(botHome.path, 't08i-mock.txt') },
+  ];
+  const results = [];
+  for (const scenario of cases) {
+    const before = await sandboxObservation(sessionId, 'arm');
+    check(`${scenario.name}: real session has workspace-write mode`, before.policy.mode, 'workspace-write');
+    check(`${scenario.name}: sandbox root is Bots cwd`, before.policy.workspaceRoot, workspace.path);
+    check(`${scenario.name}: native permission preset is unchanged`, before.permissions, { currentValue: 'workspace-write' });
+    check(`${scenario.name}: real session is a Bots member`, before.workspaceIds, [workspace.workspaceId]);
+    check(`${scenario.name}: standard Bot exposes the real write tool`, before.writeTool?.name, 'write');
+    const content = `T08I_SANDBOX_${scenario.name}\n`;
+    const args = { file_path: scenario.filePath, content, ...(scenario.escalation ? {
+      sandbox_permissions: 'danger-full-access', justification: 'T08i test requests one write outside the Bots workspace; automatically reject it.',
+    } : {}) };
+    const localMock = await startMockLlmServer({ host: '127.0.0.1', port: 0,
+      sequence: ['tool_call_success', 'success'], successText: `T08I_${scenario.name}_DONE`,
+      toolName: 'write', toolArguments: JSON.stringify(args), apiKey: 't08c-local-mock-key',
+    });
+    sandboxMocks.push({ name: scenario.name, mock: localMock });
+    mockRouter.use(localMock);
+    const receipt = ok(await raw('session/prompt', { request: {
+      sessionId, requestId: randomUUID(), mode: 'queue',
+      content: [{ type: 'text', text: `T08i controlled mock write: ${scenario.name}.` }],
+    } }), `sandbox prompt ${scenario.name}`);
+    check(`${scenario.name}: model prompt admitted`, receipt.accepted);
+    mockPromptsSent++;
+    await until(() => localMock.requests.length === 2 && localMock.requests.every((request) => request.outcome === 'completed'),
+      `${scenario.name} model/tool/model HTTP loop`, 45_000);
+    let after;
+    const deadline = Date.now() + 15_000;
+    do {
+      after = await sandboxObservation(sessionId, 'snapshot');
+      if (after.events.some((event) => event.type === 'turn/end')) break;
+      await new Promise((accept) => setTimeout(accept, 100));
+    } while (Date.now() < deadline);
+    const calls = after.events.filter((event) => event.type === 'tool/call');
+    const toolResults = after.events.filter((event) => event.type === 'tool/result');
+    const audit = after.events.filter((event) => event.type.startsWith('approval/') && event.type !== 'approval/policy');
+    save(`sandbox-${scenario.name}.json`, { scenario: scenario.name, arguments: args, before, after,
+      requests: localMock.requests.map(({ path, behavior, outcome }) => ({ path, behavior, outcome })) });
+    check(`${scenario.name}: model emitted exactly one write call`, calls.map((event) => event.data.name), ['write']);
+    check(`${scenario.name}: tool arguments reached native dispatch unchanged`, JSON.parse(calls[0].data.arguments), args);
+    check(`${scenario.name}: native tool produced one result`, toolResults.length, 1);
+    check(`${scenario.name}: real model/tool loop completed`, after.events.filter((event) => event.type === 'turn/end')
+      .map((event) => event.data.reason.kind), ['completed']);
+    check(`${scenario.name}: sandbox and permission settings remain unchanged`,
+      { policy: after.policy, permissions: after.permissions }, { policy: before.policy, permissions: before.permissions });
+    check(`${scenario.name}: no permission mutation event`, after.events.some((event) =>
+      ['sandbox/mode', 'approval/policy', 'permission/preset'].includes(event.type)), false);
+    if (scenario.escalation) {
+      check(`${scenario.name}: native pending approval observed`, after.approvals.map((item) => item.toolName), ['write']);
+      check(`${scenario.name}: approval includes model justification`, after.approvals[0].reason.includes(args.justification));
+      check(`${scenario.name}: native audit pairs request with rejection`, audit.map((event) => event.type), ['approval/asked', 'approval/decided']);
+      check(`${scenario.name}: approval pair has the same request id`, audit[0].data.id, audit[1].data.id);
+      check(`${scenario.name}: test answerer rejected the native request`, audit[1].data.outcome, 'rejected');
+      check(`${scenario.name}: rejected write remains an error`, toolResults[0].data.message.isError);
+      check(`${scenario.name}: rejected write did not create the external file`, existsSync(scenario.filePath), false);
+    } else {
+      check(`${scenario.name}: no approval request or audit`, { approvals: after.approvals, audit }, { approvals: [], audit: [] });
+      if (scenario.errorCode) {
+        check(`${scenario.name}: native write reports sandbox denial`, toolResults[0].data.error?.code, scenario.errorCode);
+        check(`${scenario.name}: denied write did not create the external file`, existsSync(scenario.filePath), false);
+      } else {
+        check(`${scenario.name}: allowed write succeeds`, Boolean(toolResults[0].data.message.isError), false);
+        check(`${scenario.name}: real filesystem contains the mock content`, readFileSync(scenario.filePath, 'utf8'), content);
+      }
+    }
+    results.push({ name: scenario.name, approvals: after.approvals.length, errorCode: toolResults[0].data.error?.code ?? null });
+  }
+  save('sandbox-summary.json', { sessionId, workspace, privateHome: botHome.path, outside, results,
+    modelDriven: true, nativeApprovalObserved: true, browserApprovalDialogVerified: false, permissionSettingsChanged: false });
+  mockRouter.use(mock);
 }
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, () => {
@@ -265,8 +399,10 @@ async function probe(startupUrl, phase) {
       const coldSessions = ok(await raw('session/list', { _request: {} }), 'cold activity session list');
       check('activity session is persisted and cold after Host restart',
         coldSessions.items.find((row) => row.sessionId === sessionId)?.agentAvailable, false);
-      check('Bot home cwd survives Host restart', coldSessions.items.find((row) => row.sessionId === sessionId)?.cwd,
-        activityPrepared.home.path);
+      check('Bots workspace cwd survives Host restart', coldSessions.items.find((row) => row.sessionId === sessionId)?.cwd,
+        activityPrepared.workspace.path);
+      check('Remote reuses the same Bots workspace after Host restart',
+        ok(await bots.ensureBotsWorkspace(), 'cold ensureBotsWorkspace'), activityPrepared.workspace);
       const restored = ok(await bots.activity.list(), 'cold activity list');
       check('activity and read marker survive Host restart', restored, activityPrepared.afterRead);
       const continued = await activityTurn(bots, raw, sessionId, 3, activityPrepared.lastMessageAt);
@@ -276,8 +412,14 @@ async function probe(startupUrl, phase) {
       check('repeated markRead preserves message and read state', {
         lastMessage: afterRepeat.lastMessage, unread: afterRepeat.unread,
       }, { lastMessage: continued.session.lastMessage, unread: false });
+      check('three activity prompts used exactly three local mock requests across restart', mock.requests.length, 3);
+      await sandboxTurns(raw, sessionId, activityPrepared.workspace, activityPrepared.home);
       ok(await bots.delete(activityBotId, { deleteMemories: true }), 'delete activity Bot');
       check('default Bot deletion retains the private home', existsSync(activityPrepared.home.path));
+      check('default Bot deletion retains the Bots root and workspace', {
+        pathExists: existsSync(activityPrepared.workspace.path),
+        workspace: ok(await bots.ensureBotsWorkspace(), 'workspace after Bot deletion'),
+      }, { pathExists: true, workspace: activityPrepared.workspace });
       const deleted = ok(await bots.activity.list(), 'activity after Bot cascade deletion');
       check('Bot cascade deletion removes all its session activity', deleted.sessions.some((row) => row.botId === activityBotId), false);
       check('Bot cascade deletion removes its activity aggregate', deleted.bots.some((row) => row.botId === activityBotId), false);
@@ -387,7 +529,7 @@ async function probe(startupUrl, phase) {
       id: item.id, rejected: item.rejected, diagnostic: item.message?.includes('is unavailable'),
     })), ['t05-bad-provider', 't05-bad-model'].map((id) => ({ id, rejected: true, diagnostic: true })));
     check('catalog-only adapter never streams model output', evidence.streamCalls, 0);
-    ok(await bots.create({ id: activityBotId, name: 'Activity mock Bot', template: 'minimal',
+    ok(await bots.create({ id: activityBotId, name: 'Activity mock Bot', template: 'standard',
       model: { provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'off' },
     }), 'create activity Bot');
     const emptyActivity = ok(await bots.activity.list(), 'activity before prompts');
@@ -399,23 +541,29 @@ async function probe(startupUrl, phase) {
     check('Remote ensureHome creates a private directory', statSync(botHome.path).isDirectory());
     check('Remote ensureHome enforces 0700', statSync(botHome.path).mode & 0o777, 0o700);
     check('Remote ensureHome is idempotent', ok(await bots.ensureHome(activityBotId), 'repeat Remote ensureHome'), botHome);
-    const createRequest = { cwd: botHome.path, agentPreset: `bot-${activityBotId}` };
-    const { sessionId } = ok(await raw('session/create', { request: createRequest }), 'create Bot home activity session');
+    const workspace = ok(await bots.ensureBotsWorkspace(), 'Remote ensureBotsWorkspace');
+    check('Remote Bots workspace uses the shared Bots root', workspace.path, realpathSync(resolve(home, 'dsh-bot/bots')));
+    check('Remote Bots workspace creation is idempotent', ok(await bots.ensureBotsWorkspace(), 'repeat Remote ensureBotsWorkspace'), workspace);
+    const createRequest = { workspaceId: workspace.workspaceId, agentPreset: `bot-${activityBotId}` };
+    check('Bot session creation sends workspaceId and agentPreset without cwd', Object.keys(createRequest).sort(), ['agentPreset', 'workspaceId']);
+    const { sessionId } = ok(await raw('session/create', { request: createRequest }), 'create Bots workspace activity session');
     const homeSessions = ok(await raw('session/list', { _request: {} }), 'home session list');
     const homeSession = homeSessions.items.find((row) => row.sessionId === sessionId);
-    check('real session/create keeps the private home cwd', homeSession?.cwd, botHome.path);
+    check('real session/create uses the shared Bots cwd', homeSession?.cwd, workspace.path);
     check('new Bot home conversation has no durable title from cwd basename', homeSession?.projections?.values?.title, null);
     writeFileSync(`${homeRequestPath}.tmp`, JSON.stringify({ sessionId }));
     renameSync(`${homeRequestPath}.tmp`, homeRequestPath);
     await until(() => existsSync(homeResponsePath), 'Bot home Host inspection');
     const homeEvidence = JSON.parse(readFileSync(homeResponsePath, 'utf8'));
     check('real Host Bot home inspection succeeds', homeEvidence.ok);
-    check('real Agent uses the Bot home cwd', homeEvidence.cwd, botHome.path);
-    check('real home session is attached to no Workspace', homeEvidence.workspaceIds, []);
-    check('creating a home session does not synthesize a Workspace', homeEvidence.workspaces, []);
+    check('real Agent uses the Bots workspace cwd', homeEvidence.cwd, workspace.path);
+    check('real Bot session is attached to Bots workspace', homeEvidence.workspaceIds, [workspace.workspaceId]);
+    check('one shared Bots workspace exists', homeEvidence.workspaces.map(({ id, path, title }) => ({ id, path, title })),
+      [{ id: workspace.workspaceId, path: workspace.path, title: 'Bots' }]);
     check('real home Agent is bound to its Bot', homeEvidence.binding, { botId: activityBotId });
-    save('home-prepare.json', { botId: activityBotId, sessionId, home: botHome, createRequest, session: homeSession,
-      host: homeEvidence, nativeSidebarGrouping: 'ungrouped-by-public-workspace-membership', browserVerified: false });
+    check('real Bot system prompt contains its private home', JSON.stringify(homeEvidence.botPrompt).includes(botHome.path));
+    save('home-prepare.json', { botId: activityBotId, sessionId, home: botHome, workspace, createRequest, session: homeSession,
+      host: homeEvidence, nativeSidebarGrouping: 'Bots-by-public-workspace-membership', browserVerified: false });
     const first = await activityTurn(bots, raw, sessionId, 1);
     await clientActivityRoundTrip(ctx, sessionId, 'completed-mock');
     await readActivity(bots, sessionId, 'first activity round');
@@ -423,7 +571,7 @@ async function probe(startupUrl, phase) {
     const second = await activityTurn(bots, raw, sessionId, 2, first.session.lastMessage.at);
     const afterRead = await readActivity(bots, sessionId, 'second activity round');
     check('local mock completed exactly two requests before restart', mock.requests.length, 2);
-    save('activity-prepare.json', { sessionId, home: botHome, first, second, afterRead, lastMessageAt: second.session.lastMessage.at });
+    save('activity-prepare.json', { sessionId, home: botHome, workspace, first, second, afterRead, lastMessageAt: second.session.lastMessage.at });
     await unmount();
     check('Remote namespace disposed', ctx.get('remote.dshBot') === undefined);
   } finally {
@@ -475,8 +623,9 @@ try {
     apiKey: 't08c-local-mock-key', chunkSize: 4,
   });
   check('activity mock uses loopback only', new URL(mock.baseURL).hostname, '127.0.0.1');
+  mockRouter = await startMockRouter(mock);
   secrets.add('t08c-local-mock-key');
-  Object.assign(env, { DSH_BOT_T08C_MOCK_KEY: 't08c-local-mock-key', DEEPSEEK_API_KEY: '', DEEPSEEK_BASE_URL: `${mock.baseURL}/v1` });
+  Object.assign(env, { DSH_BOT_T08C_MOCK_KEY: 't08c-local-mock-key', DEEPSEEK_API_KEY: '', DEEPSEEK_BASE_URL: `${mockRouter.baseURL}/v1` });
   // Run the observer inside the profile so its runtime-only dsh-agent import
   // shares the Host's scope module, rather than this package's dev-only copy.
   const fixtureSource = resolve(root, 'packages/dsh-bot/tests/fixtures/composer-observer.mjs');
@@ -486,13 +635,14 @@ try {
     '- insert:', '    - id: t05-composer-observer', `      name: ${JSON.stringify(fixture)}`, '      config:',
     `        requestPath: ${JSON.stringify(requestPath)}`, `        responsePath: ${JSON.stringify(responsePath)}`,
     `        homeRequestPath: ${JSON.stringify(homeRequestPath)}`, `        homeResponsePath: ${JSON.stringify(homeResponsePath)}`,
+    `        sandboxRequestPath: ${JSON.stringify(sandboxRequestPath)}`, `        sandboxResponsePath: ${JSON.stringify(sandboxResponsePath)}`,
     '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'storages'))}`,
     // A new workspace domain bootstraps legacy session headers. Isolate both
     // backends, so prior probes cannot become this run's Workspace catalogue.
     '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'sessions'))}`,
     '- id: agent-default-model', '  config:', '    provider: t05-default-provider', '    model: t05-default-model',
     '- id: llm-deepseek', '  disabled: false', '  config:', '    apiKeyEnv: DSH_BOT_T08C_MOCK_KEY',
-    `    baseURL: ${JSON.stringify(`${mock.baseURL}/v1`)}`, '    thinking: disabled', '    reasoningEffort: off', '    maxTokens: 128',
+    `    baseURL: ${JSON.stringify(`${mockRouter.baseURL}/v1`)}`, '    thinking: disabled', '    reasoningEffort: off', '    maxTokens: 128',
     ...disabled.flatMap((id) => [`- id: ${id}`, '  disabled: true']),
     '- id: dsh-bot', '  inject: [t05LogReady]', '  config:', '    seedExamples: false',
     `    dataDir: ${JSON.stringify(dataDir)}`, '',
@@ -513,14 +663,20 @@ try {
   writeFileSync(`${requestPath}.tmp`, JSON.stringify({ phase: 'resume', sessionId: prepared.sessionId }));
   renameSync(`${requestPath}.tmp`, requestPath);
   await runHost('resume');
-  check('three prompts used three local mock requests across restart', mock.requests.length, 3);
+  check('three activity prompts used three local mock requests across restart', mock.requests.length, 3);
   check('every local mock request completed successfully', mock.requests.every((request) => request.path === '/v1/messages'
     && request.behavior === 'success' && request.outcome === 'completed'));
+  check('four sandbox model turns each completed one tool call and final answer', sandboxMocks.map(({ mock: scenario }) =>
+    scenario.requests.map(({ behavior, outcome }) => ({ behavior, outcome }))), Array.from({ length: 4 }, () => [
+    { behavior: 'tool_call_success', outcome: 'completed' }, { behavior: 'success', outcome: 'completed' },
+  ]));
 } catch (error) {
   failure = redact(error.stack ?? error);
   process.exitCode = 1;
 } finally {
   await mock?.close();
+  for (const { mock: scenario } of sandboxMocks) await scenario.close();
+  await mockRouter?.close();
   const sharedStoreAfter = hashFile(sharedStore);
   try { check('pre-existing shared storage unchanged', sharedStoreAfter, sharedStoreBefore); }
   catch (error) { failure ??= redact(error.stack ?? error); process.exitCode = 1; }
@@ -529,6 +685,9 @@ try {
     sharedStore: { path: sharedStore, before: sharedStoreBefore, after: sharedStoreAfter },
     idleSessionsCreated, mockPromptsSent, realModelPromptsSent: 0,
     mockRequests: mock?.requests.map(({ path, behavior, outcome }) => ({ path, behavior, outcome })) ?? [],
+    sandboxMockRequests: sandboxMocks.map(({ name, mock: scenario }) => ({ name,
+      requests: scenario.requests.map(({ path, behavior, outcome }) => ({ path, behavior, outcome })),
+    })),
     ...(failure ? { failure } : {}),
   });
   console.log(`T05 ${failure ? 'FAIL' : 'PASS'}: ${runDir}`);

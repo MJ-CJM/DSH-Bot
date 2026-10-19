@@ -12,13 +12,14 @@ export interface BotEditorProps {
   duplicate?: boolean;
   busy?: boolean;
   onEnsureHome?: (id: string) => Promise<string>;
+  onEnsureBotsWorkspace?: () => Promise<string>;
   onPickDirectory?: () => Promise<string | null>;
   onSave: (input: BotCreateInput | BotPatch) => void | Promise<void>;
   onCancel: () => void;
   t: PropsLocale<'dsh-bot'>['t'];
 }
 
-export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, busy = false, onSave, onCancel, onEnsureHome, onPickDirectory, t }: BotEditorProps) {
+export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, busy = false, onSave, onCancel, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotEditorProps) {
   const [tab, setTab] = useState<'settings' | 'memory'>('settings');
   const editing = Boolean(bot && !duplicate);
   const uid = useId();
@@ -30,6 +31,8 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
   const [defaultCwd, setDefaultCwd] = useState(bot?.defaultCwd ?? '');
   const [home, setHome] = useState<string>();
   const [homeFailed, setHomeFailed] = useState(false);
+  const [botsPath, setBotsPath] = useState<string>();
+  const [workspaceFailed, setWorkspaceFailed] = useState(false);
   const [homeAttempt, setHomeAttempt] = useState(0);
   const [picking, setPicking] = useState(false);
   const [pickFailed, setPickFailed] = useState(false);
@@ -50,17 +53,23 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
   }, []);
 
   // A new Bot has no Host record yet; its home is allocated after saving.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: homeAttempt explicitly retries the current Bot's home lookup.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: homeAttempt explicitly retries the current directory lookups.
   useEffect(() => {
     let current = true;
     setHome(undefined);
     setHomeFailed(false);
+    setBotsPath(undefined);
+    setWorkspaceFailed(false);
     if (editing && bot && onEnsureHome) void onEnsureHome(bot.id).then(
       (path) => { if (current) setHome(path); },
       () => { if (current) setHomeFailed(true); },
     );
+    if (onEnsureBotsWorkspace) void onEnsureBotsWorkspace().then(
+      (path) => { if (current) setBotsPath(path); },
+      () => { if (current) setWorkspaceFailed(true); },
+    );
     return () => { current = false; };
-  }, [editing, bot?.id, onEnsureHome, homeAttempt]);
+  }, [editing, bot?.id, onEnsureHome, onEnsureBotsWorkspace, homeAttempt]);
 
   const chooseDirectory = async () => {
     if (!onPickDirectory || disabled) return;
@@ -147,12 +156,16 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
             </label>
             <section data-bot-default-cwd="" className={styles.cwdSection} aria-label={t('editor.defaultCwd')}>
               <label className={styles.field}>{t('editor.defaultCwd')}
-                <input value={defaultCwd} disabled={disabled} placeholder={home ?? t('editor.cwdPlaceholder')}
+                <input value={defaultCwd} disabled={disabled} placeholder={botsPath ?? t('editor.cwdPlaceholder')}
                   onChange={(event) => setDefaultCwd(event.target.value)}
                   aria-invalid={Boolean(errors.defaultCwd)} aria-describedby={`${uid}-cwd-hint${errors.defaultCwd ? ` ${uid}-defaultCwd-error` : ''}`} />
               </label>
-              <p className={styles.hint} data-effective-cwd="">{t('editor.cwdEffective', {
-                path: defaultCwd.trim() || home || t(editing ? homeFailed ? 'editor.cwdUnavailable' : 'editor.cwdLoading' : 'editor.cwdAfterSave'),
+              <p className={styles.hint} data-bots-workspace="" data-effective-cwd={defaultCwd.trim() ? undefined : ''}>{t('editor.cwdDefault', {
+                path: botsPath ?? t(workspaceFailed ? 'editor.cwdWorkspaceUnavailable' : 'editor.cwdWorkspaceLoading'),
+              })}</p>
+              {defaultCwd.trim() && <p className={styles.hint} data-effective-cwd="">{t('editor.cwdEffective', { path: defaultCwd.trim() })}</p>}
+              <p className={styles.hint} data-bot-home="">{t('editor.cwdHome', {
+                path: home ?? t(editing ? homeFailed ? 'editor.cwdUnavailable' : 'editor.cwdLoading' : 'editor.cwdAfterSave'),
               })}</p>
               <div className={styles.actions}>
                 {onPickDirectory && <button type="button" className={styles.button} disabled={disabled}
@@ -161,6 +174,9 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
                   onClick={() => { setDefaultCwd(''); setPickFailed(false); }}>{t('editor.cwdReset')}</button>
               </div>
               {homeFailed && <p className={styles.error} role="alert">{t('editor.cwdHomeError')}{' '}
+                <button type="button" className={styles.button} disabled={disabled} onClick={() => setHomeAttempt((value) => value + 1)}>{t('actions.retry')}</button>
+              </p>}
+              {workspaceFailed && <p className={styles.error} role="alert">{t('editor.cwdWorkspaceError')}{' '}
                 <button type="button" className={styles.button} disabled={disabled} onClick={() => setHomeAttempt((value) => value + 1)}>{t('actions.retry')}</button>
               </p>}
               {pickFailed && <p className={styles.error} role="alert">{t('editor.cwdPickError')}</p>}

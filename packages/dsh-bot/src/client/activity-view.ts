@@ -54,7 +54,8 @@ export function sessionTitle(session: Pick<SessionSummary, 'title'>, activity?: 
 interface WorkspaceLabel { path: string; title: string }
 
 /** The public Host catalog owns membership/preset identity and live running
- * state. Activity only enriches those rows; a retained projection is not a row. */
+ * state. Blank sessions stay out of history even after their preset resolves.
+ * Activity only enriches those rows; a retained projection is not a row. */
 export function botSessionRows(botId: string, entries: readonly BotCatalogEntry[], sessions: SessionListState,
   activities: readonly ActivitySession[], archived: readonly SessionId[] = [], workspaces: readonly WorkspaceLabel[] = []): SessionRow[] {
   const presetId = entries.find((entry) => entry.bot.id === botId)?.status?.presetId;
@@ -66,7 +67,7 @@ export function botSessionRows(botId: string, entries: readonly BotCatalogEntry[
   const knownContext = workspaces.some((workspace) => workspace.path === currentPath);
   return sessions.ids.flatMap((id): SessionRow[] => {
     const session = sessions.byId[id];
-    if (!session || session.origin === 'subagent' || hidden.has(id) || session.projectionValues?.agentPreset !== presetId) return [];
+    if (!session || session.blank || session.origin === 'subagent' || hidden.has(id) || session.projectionValues?.agentPreset !== presetId) return [];
     const activity = summaries.get(id);
     const workspaceTitle = knownContext && session.cwd !== currentPath
       ? workspaces.find((workspace) => workspace.path === session.cwd)?.title.trim() : undefined;

@@ -13,6 +13,20 @@ async function facility(run: (root: string, homes: BotHomes) => Promise<void>) {
 }
 
 describe('owned Bot private homes', () => {
+  it('keeps the shared root and sibling Bots after deleting the last file in one private home', async () => facility(async (root, homes) => {
+    const shared = await homes.ensureRoot();
+    expect(shared.path).toBe(join(root, 'dsh-bot', 'bots'));
+    const alpha = (await homes.ensure('alpha')).path;
+    const beta = (await homes.ensure('beta')).path;
+    await writeFile(join(beta, 'keep.txt'), 'Other Bot');
+    await (await homes.prepareRemoval('alpha'))();
+    await expect(stat(join(alpha, '..'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await stat(shared.path)).isDirectory()).toBe(true);
+    expect(await readFile(join(beta, 'keep.txt'), 'utf8')).toBe('Other Bot');
+    await (await homes.prepareRemoval('beta'))();
+    expect((await stat(shared.path)).isDirectory()).toBe(true);
+    expect((await stat(shared.path)).mode & 0o777).toBe(0o700);
+  }));
   it('creates only on demand, uses 0700, is idempotent and verifies persisted ownership after restart', async () => facility(async (root, homes) => {
     const path = join(root, 'dsh-bot', 'bots', 'alpha', 'home');
     await expect(stat(path)).rejects.toMatchObject({ code: 'ENOENT' });

@@ -2,11 +2,12 @@ import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { type Context, Service } from '@deepseek-ai/cordis';
 import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry';
+import type {} from '@deepseek-ai/dsh-workspace';
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import Schema from '@deepseek-ai/schemastery';
 import { botIdSchema } from '../shared/ids.js';
-import { botChangeSchema, type CatalogInfo, type BotStatus, type BotChange, type BotHome, type DshBotMethods } from '../shared/remote-contract.js';
+import { botChangeSchema, botsWorkspaceSchema, type CatalogInfo, type BotStatus, type BotChange, type BotHome, type BotsWorkspace, type DshBotMethods } from '../shared/remote-contract.js';
 import {
   type BotCreateInput, type BotPatch, type BotRecord, type BotRemoveOptions, MEMORY_LIST_MAX_LIMIT,
   botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, normalizeBotPatch,
@@ -180,6 +181,10 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
             await this.tail;
           },
         });
+        // Workspace storage may be temporarily unavailable. Bot management and
+        // preset registration still work, while the launch Remote can retry.
+        try { await this.ensureWorkspace(); }
+        catch (error) { this.ctx.logger.warn(`[dsh-bot] Bots workspace startup failed: ${messageOf(error)}`); }
         for (const id of this.stores.bots.avatarWarnings()) this.ctx.logger.warn(`[dsh-bot] avatar/invalid bot=${id}: unsupported saved avatar hidden; replace or clear explicitly`);
         if (this.config.seedExamples) await this.stores.bots.seedExamples(examples);
         for (const bot of this.stores.bots.list()) {
@@ -455,6 +460,31 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       return this.homes.ensure(bot.id);
     });
   }
+
+  /** Runs only during initialization or in a registry queue slot. Do not call
+   * the queued Remote from initialization: readiness and the writer would wait
+   * on each other. The native registry independently serializes path creation.
+   */
+  private async ensureWorkspace(): Promise<BotsWorkspace> {
+    try {
+      const registry = this.ctx.get('workspaceRegistry');
+      if (!registry) throw new DshBotError('bot/unavailable', 'Workspace registry is unavailable');
+      const { path } = await this.homes.ensureRoot();
+      // Resolve the authoritative path on every request: a saved id can have
+      // been deleted, and an existing user-named workspace must retain its name.
+      const workspace = await registry.resolveByPath(path) ?? await registry.create(path, 'Bots');
+      if (this.stores.bots.botsWorkspaceId() !== workspace.id) await this.stores.bots.saveBotsWorkspaceId(workspace.id);
+      // Never attach historical activity here. Native deletion deliberately
+      // removed its membership; archive state and old private-home cwd survive.
+      return botsWorkspaceSchema.parse({ workspaceId: workspace.id, path: workspace.path });
+    } catch (error) {
+      if (error instanceof DshBotError) throw error;
+      throw new DshBotError('bot/unavailable', `Cannot ensure the shared Bots workspace: ${messageOf(error)}`, { cause: error });
+    }
+  }
+
+  @Remote
+  async ensureBotsWorkspace(): Promise<BotsWorkspace> { return this.enqueue(() => this.ensureWorkspace()); }
 
   private async createRecord(input: BotCreateInput, action: 'create' | 'duplicate'): Promise<BotRecord> {
     const fields = parseInput(botCreateSchema, input);

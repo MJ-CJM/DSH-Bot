@@ -6,7 +6,7 @@ import { agentEvents } from '@deepseek-ai/dsh-agent';
 import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { getBotBinding } from 'dsh-bot/bot-context';
 
-export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel', 'systemPrompt', 'skills', 'tools', 'llm', 'workspaceRegistry'];
+export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel', 'systemPrompt', 'skills', 'tools', 'llm', 'workspaceRegistry', 'sandboxPolicy', 'sessionProjections'];
 
 async function saveResult(path, value) {
   await writeFile(`${path}.tmp`, JSON.stringify(value, null, 2));
@@ -32,6 +32,13 @@ export function apply(ctx, config) {
     },
   }));
   ctx.provide('t05LogReady', true);
+  if (config.sandboxRequestPath) ctx.effect(() => {
+    const controller = new AbortController();
+    const operation = observeSandbox(ctx, config, controller.signal).catch(async (error) => {
+      if (!controller.signal.aborted) await saveResult(config.sandboxResponsePath, { ok: false, error: String(error.stack ?? error) });
+    });
+    return async () => { controller.abort(); await operation; };
+  });
   ctx.effect(() => {
     const controller = new AbortController();
     const operation = inspect(ctx, config, controller.signal, calls).catch(async (error) => {
@@ -44,6 +51,58 @@ export function apply(ctx, config) {
       await operation;
     };
   });
+}
+
+// Observe actual model -> tool dispatch and the native ApprovalService. The
+// test answerer rejects its armed Agent's requests; it changes no policy and
+// never calls tools itself. All listeners belong to the Agent's public scope.
+async function observeSandbox(ctx, config, signal) {
+  await ctx.loader.await();
+  let lastId;
+  let agent;
+  let releases = [];
+  let events = [];
+  let approvals = [];
+  try {
+    while (!signal.aborted) {
+      let request;
+      try { request = JSON.parse(await readFile(config.sandboxRequestPath, 'utf8')); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (request && request.id !== lastId) {
+        lastId = request.id;
+        if (request.action === 'arm') {
+          for (const release of releases) release();
+          releases = [];
+          events = [];
+          approvals = [];
+          const resolved = await ctx.sessionController.resolveAgent(request.sessionId);
+          if ('error' in resolved) throw resolved.error;
+          agent = resolved.agent;
+          releases.push(agent.ctx.effect(() => agent.ctx.on('session/event', (session, event) => {
+            if (session !== agent.session || !['tool/call', 'tool/result', 'approval/asked', 'approval/decided',
+              'sandbox/mode', 'approval/policy', 'permission/preset', 'turn/end'].includes(event.type)) return;
+            events.push({ type: event.type, data: event.data });
+          })));
+          releases.push(agent.ctx.effect(() => agent.ctx.on('approval/request', (req, next) => {
+            if (req.agent !== agent) return next();
+            approvals.push({ toolName: req.toolName, callId: req.callId, reason: req.reason });
+            return 'rejected';
+          }, { prepend: true })));
+        }
+        if (!agent) throw new Error('Sandbox observer must be armed first');
+        const workspaces = ctx.workspaceRegistry.list().filter((workspace) => workspace.sessionIds.includes(agent.id));
+        await saveResult(config.sandboxResponsePath, {
+          id: request.id, ok: true, sessionId: agent.id, cwd: agent.session.header.cwd,
+          policy: ctx.sandboxPolicy.resolve({ session: agent.session }),
+          permissions: ctx.sessionProjections.snapshot(agent.session).values.permissions,
+          workspaceIds: workspaces.map((workspace) => workspace.id),
+          writeTool: ctx.tools.schemas(agent).find((tool) => tool.name === 'write') ?? null,
+          events, approvals,
+        });
+      }
+      await setTimeout(100, undefined, { signal });
+    }
+  } finally { for (const release of releases) release(); }
 }
 
 async function inspect(ctx, config, signal, calls) {
@@ -187,10 +246,12 @@ async function inspect(ctx, config, signal, calls) {
       const agent = ctx.agents.get(homeRequest.sessionId);
       if (!agent) throw new Error('Remote-created Bot home Agent is not live');
       const workspaces = ctx.workspaceRegistry.list().map((workspace) => ({
-        id: workspace.id, path: workspace.path, sessionIds: [...workspace.sessionIds],
+        id: workspace.id, path: workspace.path, title: workspace.title, sessionIds: [...workspace.sessionIds],
       }));
+      const assembly = await ctx.systemPrompt.assemble({ scope: agent, agent });
       await saveResult(config.homeResponsePath, {
         ok: true, sessionId: agent.id, cwd: agent.session.header.cwd, binding: getBotBinding(agent) ?? null,
+        botPrompt: assembly.sections.filter((section) => section.name.startsWith('dsh-bot:')),
         workspaces, workspaceIds: workspaces.filter((workspace) => workspace.sessionIds.includes(agent.id))
           .map((workspace) => workspace.id),
       });
