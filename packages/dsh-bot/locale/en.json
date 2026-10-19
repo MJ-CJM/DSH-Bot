@@ -188,6 +188,24 @@
     "rightTab.title": "Bots",
     "rightTab.open": "Open Bots sidebar",
     "rightTab.description": "Switch to a Bot’s latest conversation or start a new one.",
-    "rightTab.openError": "Could not open Bots sidebar. Please try again."
+    "rightTab.openError": "Could not open Bots sidebar. Please try again.",
+    "chat.inWorkspace": "New in a workspace…",
+    "sidebar.moreActions": "More actions for {name}",
+    "editor.defaultCwd": "Default working directory",
+    "editor.cwdPlaceholder": "Leave empty to use the Bot’s private directory",
+    "editor.cwdEffective": "Effective directory: {path}",
+    "editor.cwdChoose": "Choose directory…",
+    "editor.cwdReset": "Restore default",
+    "editor.cwdLoading": "Loading private directory…",
+    "editor.cwdUnavailable": "Private directory unavailable",
+    "editor.cwdAfterSave": "Private directory will be created after saving",
+    "editor.cwdHomeError": "Could not prepare the private directory. Retry or choose a working directory.",
+    "editor.cwdPickError": "Could not open the directory picker. Enter an absolute directory path or try again.",
+    "editor.cwdPermissions": "By default, work stays in the Bot’s private directory; access to other paths follows DSH permissions and approvals.",
+    "validation.defaultCwd": "Enter an existing absolute directory path, or leave empty for the private directory.",
+    "delete.home": "Also delete the Bot’s private directory",
+    "delete.homeWarning": "This permanently deletes the private home created for this Bot. A custom working directory is never deleted.",
+    "delete.keepHome": "The Bot’s private directory and any custom working directory will be kept.",
+    "delete.homeCleanupFailed": "The Bot was deleted, but its private directory could not be fully removed. Some files may remain; the custom working directory was not deleted."
   }
 }

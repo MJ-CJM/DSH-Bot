@@ -5,7 +5,7 @@ import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-sess
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import { useState } from 'react';
-import { FishLogo } from '@deepseek-ai/dsh-client-ui-primitives';
+import { FishLogo, Button, Menu, IconEllipsisOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { BotCatalog, BotCatalogEntry } from '../state.js';
 import type { ActivityCatalog } from '../activity-state.js';
 import { botSessionRows, previewText, relativeTime, sortBotEntries } from '../activity-view.js';
@@ -47,7 +47,7 @@ export function groupBotSessions(entries: readonly BotCatalogEntry[], sessions: 
 }
 
 /** rc.2 exposes footer actions, but no additive workspace section slot. */
-export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity, useWorkspaceCatalog, sessionLimit, onStart, getPreferredWorkspace, onOpenSession, onManage, onRefresh, t }: BotSessionsSidebarProps) {
+export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity, useWorkspaceCatalog, sessionLimit, onStart, onStartInWorkspace, getPreferredWorkspace, onOpenSession, onManage, onRefresh, t }: BotSessionsSidebarProps) {
   const snapshot = useCatalog((value) => value);
   const sessions = useSessions((value) => value);
   const activity = useActivity((value) => value);
@@ -55,10 +55,14 @@ export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity,
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [limits, setLimits] = useState<Record<string, number>>({});
+  const [moreBot, setMoreBot] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const chat = useChatLauncher({ workspaces, getPreferredWorkspace, t, onStart: async (...args) => {
     await onStart(...args);
+    if (!args[1]?.aborted) setOpen(false);
+  }, onStartInWorkspace: async (...args) => {
+    await onStartInWorkspace(...args);
     if (!args[2]?.aborted) setOpen(false);
   } });
   const locale = t('activity.locale');
@@ -75,11 +79,11 @@ export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity,
     }).finally(() => setBusy(false));
   };
   const manage = () => { onManage(); setOpen(false); };
-  const start = (id: string) => {
+  const start = (id: string, inWorkspace = false) => {
     if (busy) return;
     setBusy(true);
     setError(undefined);
-    void chat.start(id).catch((reason: unknown) => {
+    void (inWorkspace ? chat.startInWorkspace(id) : chat.start(id)).catch((reason: unknown) => {
       setError(`${t('errors.start')} ${reason instanceof Error ? reason.message : ''}`.trim());
     }).finally(() => setBusy(false));
   };
@@ -135,6 +139,11 @@ export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity,
               <button type="button" className={styles.newSession} aria-label={t('sidebar.newSession', { name: bot.name })}
                 title={t('sidebar.newSession', { name: bot.name })} disabled={busy || snapshot.loading || Boolean(snapshot.error) || status?.preset.state !== 'ok'}
                 onClick={() => start(bot.id)}>+</button>
+              <Menu open={moreBot === bot.id} onClose={() => setMoreBot(undefined)} align="end"
+                anchor={<Button variant="ghost" size="sm" disabled={busy} aria-label={t('sidebar.moreActions', { name: bot.name })}
+                  aria-haspopup="menu" aria-expanded={moreBot === bot.id} onClick={() => setMoreBot(moreBot === bot.id ? undefined : bot.id)}><IconEllipsisOutlineRegular size={14} /></Button>}
+                items={[{ id: 'workspace', label: t('chat.inWorkspace'), disabled: busy || snapshot.loading || Boolean(snapshot.error) || status?.preset.state !== 'ok' }]}
+                onSelect={() => { setMoreBot(undefined); start(bot.id, true); }} />
             </div>
             {expanded && <div className={styles.sessions}>
               {sessions.phase !== 'ready' ? <p role="status" className={styles.empty}>{t('sidebar.loading')}</p>

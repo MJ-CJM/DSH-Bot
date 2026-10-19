@@ -5,7 +5,8 @@ import { Modal } from './components/Modal.js';
 import styles from './styles/bots.module.css';
 
 export interface ChatLauncherActions {
-  onStart(id: string, workspaceId: string, signal?: AbortSignal): Promise<void>;
+  onStart(id: string, signal?: AbortSignal): Promise<void>;
+  onStartInWorkspace(id: string, workspaceId: string, signal?: AbortSignal): Promise<void>;
   getPreferredWorkspace(): string;
 }
 
@@ -13,7 +14,7 @@ type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']
 interface PendingChoice { id: string; resolve(): void; reject(error: unknown): void }
 
 /** Each surface owns its pending dialog; the Client apply closure owns the last successful choice. */
-export function useChatLauncher({ workspaces, onStart, getPreferredWorkspace, t }: ChatLauncherActions & {
+export function useChatLauncher({ workspaces, onStart, onStartInWorkspace, getPreferredWorkspace, t }: ChatLauncherActions & {
   workspaces: WorkspaceSnapshot; t: PropsLocale<'dsh-bot'>['t'];
 }) {
   const [choice, setChoice] = useState<PendingChoice>();
@@ -37,9 +38,13 @@ export function useChatLauncher({ workspaces, onStart, getPreferredWorkspace, t 
     else request?.reject(error);
   };
   const start = (id: string): Promise<void> => {
+    if (lifetime.current?.signal.aborted) return Promise.resolve();
+    return onStart(id, lifetime.current?.signal);
+  };
+  const startInWorkspace = (id: string): Promise<void> => {
     if (lifetime.current?.signal.aborted || pending.current) return Promise.resolve();
     if (workspaces.phase !== 'ready' || workspaces.state === 'error' || workspaces.items.length <= 1) {
-      return onStart(id, workspaces.items[0]?.workspaceId ?? '', lifetime.current?.signal);
+      return onStartInWorkspace(id, workspaces.items[0]?.workspaceId ?? '', lifetime.current?.signal);
     }
     const preferred = getPreferredWorkspace();
     setWorkspaceId(workspaces.items.some((item) => item.workspaceId === preferred) ? preferred : '');
@@ -54,7 +59,7 @@ export function useChatLauncher({ workspaces, onStart, getPreferredWorkspace, t 
       event.preventDefault();
       if (launching || !workspaceId) return;
       setLaunching(true);
-      void onStart(choice.id, workspaceId, lifetime.current?.signal).then(() => finish(), finish);
+      void onStartInWorkspace(choice.id, workspaceId, lifetime.current?.signal).then(() => finish(), finish);
     }}>
       <div className={styles.editorBody}>
         <label className={styles.field}>{t('chat.workspace')}
@@ -70,5 +75,5 @@ export function useChatLauncher({ workspaces, onStart, getPreferredWorkspace, t 
       </footer>
     </form>
   </Modal>;
-  return { start, dialog };
+  return { start, startInWorkspace, dialog };
 }

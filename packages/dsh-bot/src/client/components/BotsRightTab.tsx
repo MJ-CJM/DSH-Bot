@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import { Button, IconRefreshOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconRefreshOutlineRegular, IconEllipsisOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import { useEffect, useRef, useState } from 'react';
 import type { ActivityCatalog } from '../activity-state.js';
 import { botSessionRows, sortBotEntries } from '../activity-view.js';
@@ -26,15 +26,16 @@ export interface BotsRightTabInjected extends ChatLauncherActions {
 }
 
 export function BotsRightTab({ useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog,
-  onOpenSession, onRefresh, onManage, onStart, getPreferredWorkspace, t,
+  onOpenSession, onRefresh, onManage, onStart, onStartInWorkspace, getPreferredWorkspace, t,
 }: InjectFace<BotsRightTabInjected> & PropsLocale<'dsh-bot'>) {
   const catalog = useCatalog((value) => value);
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
   const workspaces = useWorkspaceCatalog((value) => value);
-  const chat = useChatLauncher({ workspaces, onStart, getPreferredWorkspace, t });
+  const chat = useChatLauncher({ workspaces, onStart, onStartInWorkspace, getPreferredWorkspace, t });
   const entries = sortBotEntries(catalog.entries, activity.bots, t('activity.locale'));
   const [selectedId, setSelectedId] = useState<string>();
+  const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const pending = useRef(false);
@@ -50,7 +51,7 @@ export function BotsRightTab({ useCatalog, useActivity, useSessionCatalog, useWo
     if (!catalog.loaded || (!activity.loaded && !activity.error)) return;
     if (!entries.some(({ bot }) => bot.id === selectedId)) setSelectedId(entries[0]?.bot.id);
   }, [catalog.loaded, activity.loaded, activity.error, entries, selectedId]);
-  const activate = async (id: string) => {
+  const activate = async (id: string, inWorkspace = false) => {
     // An incomplete Host catalog must never be interpreted as "no sessions".
     if (pending.current || sessions.phase !== 'ready' || !catalog.loaded || catalog.loading || catalog.error) return;
     pending.current = true;
@@ -58,11 +59,11 @@ export function BotsRightTab({ useCatalog, useActivity, useSessionCatalog, useWo
     setError(undefined);
     try {
       const latest = botSessionRows(id, catalog.entries, sessions, activity.sessions, workspaces.archivedSessionIds)[0];
-      if (latest) await onOpenSession(latest.id, lifetime.current?.signal);
+      if (latest && !inWorkspace) await onOpenSession(latest.id, lifetime.current?.signal);
       else {
         const entry = catalog.entries.find(({ bot }) => bot.id === id);
         if (entry?.status?.preset.state !== 'ok') throw new Error(t('card.statusUnknown'));
-        await chat.start(id);
+        if (inWorkspace) await chat.startInWorkspace(id); else await chat.start(id);
       }
     } catch {
       if (!lifetime.current?.signal.aborted) setError(t('activity.openError'));
@@ -90,7 +91,14 @@ export function BotsRightTab({ useCatalog, useActivity, useSessionCatalog, useWo
         onActivate={(id) => { void activate(id); }} compact t={t}
         disabled={busy || !catalog.loaded || catalog.loading || Boolean(catalog.error) || sessions.phase !== 'ready'} />
     </div>
-    <footer className={styles.footer}><Button variant="ghost" size="sm" disabled={busy} onClick={onManage}>{t('sidebar.manage')}</Button></footer>
+    <footer className={styles.footer}>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={onManage}>{t('sidebar.manage')}</Button>
+      <Menu open={more} onClose={() => setMore(false)} align="end"
+        anchor={<Button variant="ghost" size="sm" disabled={busy || !selected} aria-label={t('card.more')}
+          aria-haspopup="menu" aria-expanded={more} onClick={() => setMore(!more)}><IconEllipsisOutlineRegular size={16} /></Button>}
+        items={[{ id: 'workspace', label: t('chat.inWorkspace'), disabled: busy || !selected }]}
+        onSelect={() => { setMore(false); if (selected) void activate(selected, true); }} />
+    </footer>
     {chat.dialog}
   </section>;
 }

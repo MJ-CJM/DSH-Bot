@@ -82,7 +82,9 @@ const argumentsSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('get'), id: botIdSchema }),
   z.strictObject({ action: z.literal('create'), input: botCreateSchema }),
   z.strictObject({ action: z.literal('update'), id: botIdSchema, input: botPatchSchema }),
-  z.strictObject({ action: z.literal('delete'), id: botIdSchema, input: botRemoveOptionsSchema.optional() }),
+  // Private-home deletion is an explicit UI choice, outside the existing
+  // management tool's approved memory-only deletion scope.
+  z.strictObject({ action: z.literal('delete'), id: botIdSchema, input: botRemoveOptionsSchema.omit({ deleteHome: true }).optional() }),
 ]);
 
 function toolError(error: unknown): never {

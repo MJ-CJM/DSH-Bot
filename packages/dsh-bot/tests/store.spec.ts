@@ -125,7 +125,7 @@ describe('BotStore with the published JSON storage backend', () => {
     expect(bots.get('alpha')).toStrictEqual(original);
   }));
 
-  it('creates defaults, lists, reads, updates and removes records', async () => withStores(async ({ bots }) => {
+  it('creates defaults, lists, reads, updates and removes records', async () => withStores(async ({ bots, root }) => {
     expect(bots.list()).toEqual([]);
     const created = await bots.create({ id: 'alpha', name: 'Alpha' });
     expect(botSchema.safeParse(created).success).toBe(true);
@@ -142,7 +142,7 @@ describe('BotStore with the published JSON storage backend', () => {
       persona: { prefix: 'Be precise', suffix: 'Use citations', complete: true },
       model: { provider: 'test', model: 'local', reasoningEffort: 'off' },
       tools: { deny: ['shell'] }, skills: { extraDirs: ['./skills'] },
-      memory: { enabled: false, injectLimit: 3 }, defaultCwd: './workspace', order: 2,
+      memory: { enabled: false, injectLimit: 3 }, defaultCwd: root, order: 2,
       mcpServers: [{ serverName: 'docs', transport: 'stdio', command: 'docs-server', args: [] }],
       channels: [{ kind: 'desktop', target: 'self', policy: { dailyLimit: 5, cooldownSec: 10 } }],
     }, created.updatedAt);
@@ -441,8 +441,8 @@ describe('MemoryStore', () => {
 });
 
 describe('durability and ownership', () => {
-  it.each([undefined, null])('clears all optional Bot fields with %s while required fields reject null', async (clear) => withStores(async ({ ctx, bots, close }) => {
-    const original = await bots.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: './workspace', order: 8,
+  it.each([undefined, null])('clears all optional Bot fields with %s while required fields reject null', async (clear) => withStores(async ({ ctx, bots, close, root }) => {
+    const original = await bots.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: root, order: 8,
       model: { provider: 'local', model: 'test', reasoningEffort: 'off' } });
     await bots.update('alpha', { description: 'Keep omitted optional fields' });
     for (const field of ['avatar', 'model', 'defaultCwd', 'order'] as const) {
@@ -461,10 +461,10 @@ describe('durability and ownership', () => {
   }));
 
   it('clears optional fields explicitly and preserves the exact record shape after reopen', async () => withStores(async ({ ctx, root, bots, memories, close }) => {
-    await bots.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: './workspace',
+    await bots.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: root,
       model: { provider: 'local', model: 'test', reasoningEffort: 'off' } });
     await bots.update('alpha', { description: 'Unrelated update' });
-    expect(bots.get('alpha')).toMatchObject({ avatar: '🤖', defaultCwd: './workspace' });
+    expect(bots.get('alpha')).toMatchObject({ avatar: '🤖', defaultCwd: root });
     const cleared = await bots.update('alpha', { avatar: undefined, defaultCwd: undefined,
       model: { provider: 'local', model: 'test', reasoningEffort: undefined } });
     expect(cleared).not.toHaveProperty('avatar');

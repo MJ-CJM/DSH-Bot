@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { SlotCore, type StoredEntry, resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
-import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SidebarRightTabDefinition, SidebarRightTabInjected } from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import { type ComponentType, Profiler, act, useSyncExternalStore } from 'react';
@@ -70,6 +70,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
         id: record.id, presetId: `host-selected/${record.id}`, preset: { state: 'ok' as const },
       })),
     })),
+    ensureHome: vi.fn<DshBotRemoteMethods['ensureHome']>(async (id) => ({ ok: true, value: { path: `/test/dsh-bot/bots/${id}/home` } })),
     get: vi.fn<DshBotRemoteMethods['get']>(async (id) => {
       const record = data.records.find((item) => item.id === id);
       if (!record) throw new Error(`Missing test Bot ${id}`);
@@ -233,9 +234,11 @@ export async function mountClient(
     register: core.register.bind(core),
   } as unknown as Context['slots']);
   ctx.provide('remote', { $mount: mountRemote, dshBot: remote.methods } as unknown as Context['remote']);
-  ctx.provide('uiWorkspace', { openWorkspace, openSession } as unknown as Context['uiWorkspace']);
+  const createSession = vi.fn<ISessions['create']>(async () => 'test-created-session' as SessionId);
+  const pickDirectory = vi.fn<Context['uiWorkspace']['pickDirectory']>(async () => null);
+  ctx.provide('uiWorkspace', { openWorkspace, openSession, pickDirectory } as unknown as Context['uiWorkspace']);
   ctx.provide('workspaces', { list: workspaceSource } as unknown as Context['workspaces']);
-  ctx.provide('sessions', { list: sessionSource } as unknown as Context['sessions']);
+  ctx.provide('sessions', { list: sessionSource, create: createSession } as unknown as Context['sessions']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();
   const container = document.createElement('div');
@@ -326,7 +329,7 @@ export async function mountClient(
     core.subscribe('conversation.hero.options', () => renderRightSurface('opener')),
   ] : [];
   return {
-    ctx, core, remote, openWorkspace, openSession, selectPanel, mountRemote, container, main, dictionaries,
+    ctx, core, remote, openWorkspace, openSession, createSession, pickDirectory, selectPanel, mountRemote, container, main, dictionaries,
     renderCount: (entry: StoredEntry = main) => renderCounts.get(entry) ?? 0,
     sessionListeners,
     rightDefinitions, registerRightTab, openRightTab, rightSessionListeners,

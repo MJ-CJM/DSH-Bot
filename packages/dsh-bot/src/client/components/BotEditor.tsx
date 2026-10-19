@@ -11,12 +11,14 @@ export interface BotEditorProps {
   avatarWarning?: boolean;
   duplicate?: boolean;
   busy?: boolean;
+  onEnsureHome?: (id: string) => Promise<string>;
+  onPickDirectory?: () => Promise<string | null>;
   onSave: (input: BotCreateInput | BotPatch) => void | Promise<void>;
   onCancel: () => void;
   t: PropsLocale<'dsh-bot'>['t'];
 }
 
-export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, busy = false, onSave, onCancel, t }: BotEditorProps) {
+export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, busy = false, onSave, onCancel, onEnsureHome, onPickDirectory, t }: BotEditorProps) {
   const [tab, setTab] = useState<'settings' | 'memory'>('settings');
   const editing = Boolean(bot && !duplicate);
   const uid = useId();
@@ -25,6 +27,12 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
   const [name, setName] = useState(duplicate && bot ? t('editor.copyName', { name: bot.name }) : bot?.name ?? '');
   const [avatar, setAvatar] = useState(bot?.avatar);
   const [avatarColor, setAvatarColor] = useState(bot?.avatarColor);
+  const [defaultCwd, setDefaultCwd] = useState(bot?.defaultCwd ?? '');
+  const [home, setHome] = useState<string>();
+  const [homeFailed, setHomeFailed] = useState(false);
+  const [homeAttempt, setHomeAttempt] = useState(0);
+  const [picking, setPicking] = useState(false);
+  const [pickFailed, setPickFailed] = useState(false);
   const [description, setDescription] = useState(bot?.description ?? '');
   const [persona, setPersona] = useState(bot?.persona.prefix ?? '');
   const [template, setTemplate] = useState<'standard' | 'minimal'>(bot?.template ?? 'standard');
@@ -34,12 +42,36 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState(false);
   const [saving, setSaving] = useState(false);
-  const disabled = busy || saving;
+  const disabled = busy || saving || picking;
 
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
+
+  // A new Bot has no Host record yet; its home is allocated after saving.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: homeAttempt explicitly retries the current Bot's home lookup.
+  useEffect(() => {
+    let current = true;
+    setHome(undefined);
+    setHomeFailed(false);
+    if (editing && bot && onEnsureHome) void onEnsureHome(bot.id).then(
+      (path) => { if (current) setHome(path); },
+      () => { if (current) setHomeFailed(true); },
+    );
+    return () => { current = false; };
+  }, [editing, bot?.id, onEnsureHome, homeAttempt]);
+
+  const chooseDirectory = async () => {
+    if (!onPickDirectory || disabled) return;
+    setPicking(true);
+    setPickFailed(false);
+    try {
+      const path = await onPickDirectory();
+      if (mounted.current && path !== null) setDefaultCwd(path);
+    } catch { if (mounted.current) setPickFailed(true); }
+    finally { if (mounted.current) setPicking(false); }
+  };
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,15 +79,16 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
     setFailure(false);
     const fields: BotPatch = {
       name, avatar: avatar ?? null, avatarColor: avatarColor ?? null, description,
+      defaultCwd: defaultCwd.trim() || null,
       // Patches replace a whole top-level field, so retain advanced persona flags.
       persona: { ...bot?.persona, prefix: persona }, template,
       memory: { enabled: memory, injectLimit: injectLimit.trim() === '' ? Number.NaN : Number(injectLimit) },
       tools: { deny: [...new Set(deny.split(/[\n,]/u).map((item) => item.trim()).filter(Boolean))] },
     };
     const input = editing ? fields : {
-      ...fields, id, avatar, avatarColor,
+      ...fields, id, avatar, avatarColor, defaultCwd: defaultCwd.trim() || undefined,
       ...(bot ? {
-        model: bot.model, skills: bot.skills, defaultCwd: bot.defaultCwd,
+        model: bot.model, skills: bot.skills,
         mcpServers: bot.mcpServers, channels: bot.channels, order: bot.order,
       } : {}),
     };
@@ -66,7 +99,7 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
         const field = String(issue.path[0] ?? 'form');
         next[field] = field === 'id' ? t('validation.id') : field === 'name' ? t('validation.name')
           : field === 'persona' ? t('validation.persona') : field === 'memory' ? t('validation.memory')
-          : field === 'avatar' ? t('validation.avatar') : t('validation.form');
+          : field === 'avatar' ? t('validation.avatar') : field === 'defaultCwd' ? t('validation.defaultCwd') : t('validation.form');
       }
       setErrors(next);
       return;
@@ -112,6 +145,27 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
                 <option value="minimal">{t('editor.templateMinimal')}</option>
               </select>
             </label>
+            <section data-bot-default-cwd="" className={styles.cwdSection} aria-label={t('editor.defaultCwd')}>
+              <label className={styles.field}>{t('editor.defaultCwd')}
+                <input value={defaultCwd} disabled={disabled} placeholder={home ?? t('editor.cwdPlaceholder')}
+                  onChange={(event) => setDefaultCwd(event.target.value)}
+                  aria-invalid={Boolean(errors.defaultCwd)} aria-describedby={`${uid}-cwd-hint${errors.defaultCwd ? ` ${uid}-defaultCwd-error` : ''}`} />
+              </label>
+              <p className={styles.hint} data-effective-cwd="">{t('editor.cwdEffective', {
+                path: defaultCwd.trim() || home || t(editing ? homeFailed ? 'editor.cwdUnavailable' : 'editor.cwdLoading' : 'editor.cwdAfterSave'),
+              })}</p>
+              <div className={styles.actions}>
+                {onPickDirectory && <button type="button" className={styles.button} disabled={disabled}
+                  onClick={() => { void chooseDirectory(); }}>{t('editor.cwdChoose')}</button>}
+                <button type="button" className={styles.button} disabled={disabled || !defaultCwd}
+                  onClick={() => { setDefaultCwd(''); setPickFailed(false); }}>{t('editor.cwdReset')}</button>
+              </div>
+              {homeFailed && <p className={styles.error} role="alert">{t('editor.cwdHomeError')}{' '}
+                <button type="button" className={styles.button} disabled={disabled} onClick={() => setHomeAttempt((value) => value + 1)}>{t('actions.retry')}</button>
+              </p>}
+              {pickFailed && <p className={styles.error} role="alert">{t('editor.cwdPickError')}</p>}
+              <p className={styles.hint} id={`${uid}-cwd-hint`}>{t('editor.cwdPermissions')}</p>
+            </section>
             <div className={styles.formRow}>
               <label className={styles.checkboxField}>
                 <input type="checkbox" checked={memory} onChange={(event) => setMemory(event.target.checked)} disabled={disabled} />

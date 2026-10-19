@@ -188,6 +188,24 @@
     "rightTab.title": "Bots",
     "rightTab.open": "打开 Bots 侧栏",
     "rightTab.description": "打开 Bot 最近的会话，或开始新会话。",
-    "rightTab.openError": "无法打开 Bots 侧栏，请重试。"
+    "rightTab.openError": "无法打开 Bots 侧栏，请重试。",
+    "chat.inWorkspace": "在工作区中新建…",
+    "sidebar.moreActions": "{name} 的更多操作",
+    "editor.defaultCwd": "默认工作目录",
+    "editor.cwdPlaceholder": "留空使用 Bot 私有目录",
+    "editor.cwdEffective": "当前生效目录：{path}",
+    "editor.cwdChoose": "选择目录…",
+    "editor.cwdReset": "恢复默认",
+    "editor.cwdLoading": "正在读取私有目录…",
+    "editor.cwdUnavailable": "私有目录暂不可用",
+    "editor.cwdAfterSave": "保存后将创建私有目录",
+    "editor.cwdHomeError": "无法准备私有目录，请重试或选择工作目录。",
+    "editor.cwdPickError": "无法打开目录选择器，请输入绝对目录路径或重试。",
+    "editor.cwdPermissions": "默认在 Bot 私有目录中工作；访问其他路径时由 DSH 权限设置和审批决定",
+    "validation.defaultCwd": "请输入已存在目录的绝对路径，或留空使用私有目录。",
+    "delete.home": "同时删除 Bot 的私有目录",
+    "delete.homeWarning": "这会永久删除为此 Bot 创建的私有 home。自定义工作目录不会被删除。",
+    "delete.keepHome": "Bot 私有目录和自定义工作目录都会保留。",
+    "delete.homeCleanupFailed": "Bot 已删除，但私有目录未能完全清理，可能仍有文件保留；自定义工作目录未删除。"
   }
 }

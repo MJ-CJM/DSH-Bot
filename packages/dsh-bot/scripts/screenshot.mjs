@@ -6,6 +6,7 @@
  * Chinese native workspace lists. --workspace-only captures the latter two.
  * --right-tab-only captures two Chinese conversation/Bots right-tab surfaces.
  * --extras-only keeps the Chinese editor/dialog regression surfaces.
+ * --home-only captures T08h Bots/menu, default directory, and Ungrouped conversation in zh light/dark.
  * --seed-only verifies committed mock assistant activity without Chromium.
  * --manual-browser prepares that same Host for an external browser until stopped.
  * No browser download, global install, Desktop mutation or real model calls.
@@ -27,21 +28,22 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
 import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
-import { captureFailureEvidence, captureRefreshStability, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
+import { captureFailureEvidence, captureRefreshStability, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
 import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const seedOnly = process.argv.includes('--seed-only');
 const extrasOnly = process.argv.includes('--extras-only');
+const homeOnly = process.argv.includes('--home-only');
 const workspaceOnly = process.argv.includes('--workspace-only');
 const rightTabOnly = process.argv.includes('--right-tab-only');
 const manualBrowser = process.argv.includes('--manual-browser');
 const mockReply = 'Mock assistant reply / 本地模拟回复：已经整理好资料、关键结论和下一步建议。打开会话即可继续讨论具体细节。';
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --home-only: 6 zh light/dark T08h Bots/menu, default working directory and native Ungrouped conversation screenshots. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
-  assert.ok([seedOnly, extrasOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
+  assert.ok([seedOnly, extrasOnly, homeOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
   const home = resolve(root, '.dsh-dev');
   assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-dev home is allowed');
@@ -176,6 +178,9 @@ if (process.argv.includes('--help')) {
         '- id: session-log-deepseek', '  disabled: true',
       ] : []),
       '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(run, 'storages'))}`,
+      // A fresh workspace domain bootstraps historical cwd groups. Isolate
+      // session logs as well so every run starts without another run's history.
+      '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(run, 'sessions'))}`,
       '- id: workspace-controller', '  config:', `    documentsDirectory: ${JSON.stringify(run)}`,
       '- id: dsh-bot', '  config:', '    seedExamples: false', `    dataDir: ${JSON.stringify(resolve(run, 'data'))}`, '',
     ].join('\n'));
@@ -308,7 +313,7 @@ if (process.argv.includes('--help')) {
       assert.equal(mock.requests.length, 3, 'Unexpected model request during manual browser verification');
     }
     stage = manualBrowser ? 'manual-host-only' : seedOnly ? 'seed-validation' : 'screenshots';
-    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly)) {
+    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly || homeOnly)) {
       const copy = language === 'zh' ? zh.ui : en.ui;
       const filename = `${language}-${theme}-${viewport}`;
       step = `${filename}-new-page`;
@@ -361,7 +366,8 @@ if (process.argv.includes('--help')) {
       if (viewport === 'wide') {
         assert.equal(layout.selectedBotId, bot.id);
         assert.equal(layout.detailBotId, bot.id);
-        assert.deepEqual(layout.sessionIds, [...sessionFixtures].reverse().filter((fixture) => fixture.botId === bot.id).map((fixture) => fixture.sessionId), 'Selected Bot history sorted newest first');
+        const previousHomeSessions = homeOnly ? conversationChecks.filter((check) => check.group === 'ungrouped').map((check) => check.sessionId).reverse() : [];
+        assert.deepEqual(layout.sessionIds, [...previousHomeSessions, ...[...sessionFixtures].reverse().filter((fixture) => fixture.botId === bot.id).map((fixture) => fixture.sessionId)], 'Selected Bot history includes prior home sessions and stays newest first');
       }
       const mainWidth = await bots.evaluate((element) => element.getBoundingClientRect().width);
       const bodyTheme = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim());
@@ -378,8 +384,13 @@ if (process.argv.includes('--help')) {
         shots.push({ file: `${filename}-${surface}.png`, language, theme, viewport, width, height, surface, bodyTheme, mainWidth, avatars,
           ...(surface === 'bots' ? { layout } : {}) });
       };
-      if (!extrasOnly) await capture('bots', create, [bot.id, researcher.id]);
-      if (!extrasOnly && language === 'zh' && theme === 'light' && viewport === 'wide') {
+      if (homeOnly) {
+        step = `${filename}-home-menu`;
+        await detail.getByRole('button', { name: copy['card.more'], exact: true }).click();
+        await capture('home-bots-menu', page.getByRole('menuitem', { name: copy['chat.inWorkspace'], exact: true }), [bot.id, researcher.id]);
+        await page.keyboard.press('Escape');
+      } else if (!extrasOnly) await capture('bots', create, [bot.id, researcher.id]);
+      if (!extrasOnly && !homeOnly && language === 'zh' && theme === 'light' && viewport === 'wide') {
         step = `${filename}-refresh-stability`;
         const evidence = await captureRefreshStability(page, output, filename);
         refreshStabilityChecks.push(evidence);
@@ -401,17 +412,23 @@ if (process.argv.includes('--help')) {
         conversationChecks.push({ language, theme, viewport, kind: 'narrow-navigation', selectedBotId: bot.id, detail: narrowDetail, back: narrowList });
         await option.click();
       }
-      if (extrasOnly) {
+      if (extrasOnly || homeOnly) {
         step = `${filename}-editor-open`;
         await detail.getByRole('button', { name: copy['card.edit'], exact: true }).click();
         const editor = page.getByRole('dialog', { name: copy['editor.edit'], exact: true });
         await editor.getByRole('img', { name: copy['avatar.current'], exact: true }).scrollIntoViewIfNeeded();
         await editor.getByRole('group', { name: copy['avatar.color'], exact: true }).waitFor();
-        await capture('editor', editor.getByRole('button', { name: copy['actions.close'], exact: true }), [bot.id]);
+        if (homeOnly) {
+          const home = unwrap(await api.remote.dshBot.ensureHome(bot.id));
+          const section = editor.locator('[data-bot-default-cwd]');
+          await section.locator('[data-effective-cwd]').filter({ hasText: home.path }).waitFor();
+          await section.scrollIntoViewIfNeeded();
+          await capture('home-editor', section.getByRole('button', { name: copy['editor.cwdChoose'], exact: true }), []);
+        } else await capture('editor', editor.getByRole('button', { name: copy['actions.close'], exact: true }), [bot.id]);
         await editor.getByRole('button', { name: copy['actions.close'], exact: true }).click();
         await editor.waitFor({ state: 'hidden' });
       }
-      if (language === 'zh' && viewport === 'wide') {
+      if (!homeOnly && language === 'zh' && viewport === 'wide') {
         step = `${filename}-bot-chats-open`;
         await page.getByRole('button', { name: copy['sidebar.sessions'], exact: true }).click();
         const chats = page.getByRole('dialog', { name: copy['sidebar.sessions'], exact: true });
@@ -426,30 +443,38 @@ if (process.argv.includes('--help')) {
       }
       // Exercise new-conversation after the final matrix capture so earlier
       // screenshots keep exactly the seeded history and its unread state.
-      if (!extrasOnly && viewport === 'narrow') {
+      if (homeOnly || !extrasOnly && viewport === 'narrow') {
         step = `${filename}-start-chat`;
         await detail.getByRole('button', { name: copy['bots.newSession'], exact: true }).click();
         const conversation = page.locator('[data-conversation-content][data-conversation-session][data-content-phase="hero"]');
         const editor = conversation.getByRole('textbox');
         await dismissFirstRunOverlays(page, recordOverlay, 'after-start-chat');
-        const choice = await completeChatWorkspaceChoice(page, editor, workspace.workspaceId, copy);
-        workspaceChoices.push({ language, theme, viewport, workspaceId: workspace.workspaceId, outcome: choice });
         await editor.waitFor();
+        assert.equal(await page.getByRole('dialog', { name: copy['chat.workspaceChoose'], exact: true }).count(), 0, 'Primary new session never opens a workspace chooser');
+        workspaceChoices.push({ language, theme, viewport, outcome: 'private-home', workspaceId: null });
         await bots.waitFor({ state: 'hidden' });
         const sessionId = await conversation.getAttribute('data-conversation-session');
         assert.ok(sessionId, 'Blank session has an actual Host session id');
         const projection = await raw('session/projections', { request: { sessionId } });
         assert.equal(projection?.kind, 'sequenced');
         assert.equal(projection.values.agentPreset, status.presetId, 'New conversation uses selected Bot preset');
-        conversationChecks.push({ language, theme, viewport, sessionId, workspaceId: workspace.workspaceId,
+        const home = unwrap(await api.remote.dshBot.ensureHome(bot.id));
+        const listing = await raw('session/list', { _request: {} });
+        assert.equal(listing.items.find((row) => row.sessionId === sessionId)?.cwd, home.path, 'New session uses the Bot private home');
+        const ungrouped = page.locator('[role="treeitem"][data-row-key="workspace:"]');
+        await ungrouped.waitFor();
+        if (await ungrouped.getAttribute('aria-expanded') !== 'true') await ungrouped.click();
+        await page.locator(`[role="treeitem"][data-row-key="session:${sessionId}"]`).waitFor();
+        conversationChecks.push({ language, theme, viewport, sessionId, cwd: home.path, workspaceId: null, group: 'ungrouped',
           agentPreset: projection.values.agentPreset, phase: 'hero', headerBadgeExpected: false, promptsSent: 0 });
+        if (homeOnly) await capture('home-native-session', editor, []);
       }
       console.log(`PASS: ${language}/${theme}/${viewport} ${extrasOnly ? 'editor/Bot-chat dialogs' : viewport === 'narrow' ? 'responsive Bots page and new conversation' : 'two-pane Bots page'} with committed mock previews/unread`);
     }
     // Opening each native conversation clears the Host's new-message state,
     // which otherwise replaces its leading slot with a status dot. Run this
     // after the existing matrix so its read/unread fixtures remain unchanged.
-    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || extrasOnly || rightTabOnly ? [] : screenshotCases(true)) {
+    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || extrasOnly || homeOnly || rightTabOnly ? [] : screenshotCases(true)) {
       const filename = `${language}-${theme}-${viewport}-workspace`;
       step = `${filename}-new-page`;
       await activeContext.close();
@@ -566,22 +591,26 @@ if (process.argv.includes('--help')) {
         await rightTab.locator(`[role="option"][data-bot-id="${fresh.id}"]`).click();
         const conversation = page.locator('[data-conversation-content][data-conversation-session][data-content-phase="hero"]');
         const editor = conversation.getByRole('textbox');
-        const choice = await completeChatWorkspaceChoice(page, editor, workspace.workspaceId, zh.ui);
         await editor.waitFor();
+        assert.equal(await page.getByRole('dialog', { name: zh.ui['chat.workspaceChoose'], exact: true }).count(), 0, 'Right-tab new session never opens a workspace chooser');
+        const choice = 'private-home';
         const sessionId = await conversation.getAttribute('data-conversation-session');
         assert.ok(sessionId && !sessionFixtures.some((value) => value.sessionId === sessionId), 'Bot without history creates a new Host session');
         const projection = await raw('session/projections', { request: { sessionId } });
         assert.equal(projection?.values.agentPreset, freshStatus.presetId, 'New conversation uses the clicked Bot preset');
+        const home = unwrap(await api.remote.dshBot.ensureHome(fresh.id));
+        const listing = await raw('session/list', { _request: {} });
+        assert.equal(listing.items.find((row) => row.sessionId === sessionId)?.cwd, home.path, 'Right-tab new session uses private home');
         await page.locator(`[data-sidebar-right-panel][data-sidebar-right-session="${sessionId}"] [data-bots-right-tab]`).waitFor();
-        rightTabChecks.push({ language, theme, kind: 'new-session', botId: fresh.id, sessionId, agentPreset: projection.values.agentPreset, phase: 'hero', workspaceChoice: choice, rightTabVisible: true, promptsSent: 0 });
+        rightTabChecks.push({ language, theme, kind: 'new-session', botId: fresh.id, sessionId, agentPreset: projection.values.agentPreset, phase: 'hero', cwd: home.path, workspaceId: null, workspaceChoice: choice, rightTabVisible: true, promptsSent: 0 });
         save('progress.json', { overlays, workspaceChoices, conversationChecks, rightTabChecks, contrastChecks, screenshots: shots });
       }
     }
     step = manualBrowser ? 'manual-host-validation' : 'matrix-validation';
     if (!manualBrowser) assert.equal(prompts, 0, 'No browser model prompt attempted');
     assert.equal(browserErrors.length, 0, 'Browser page errors; inspect summary');
-    assert.equal(shots.length, seedOnly || manualBrowser ? 0 : extrasOnly ? 4 : workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
-    if (!seedOnly && !manualBrowser && !extrasOnly && !workspaceOnly && !rightTabOnly) assert.equal(refreshStabilityChecks.length, 1, 'Complete the additional refresh stability pair');
+    assert.equal(shots.length, seedOnly || manualBrowser ? 0 : homeOnly ? 6 : extrasOnly ? 4 : workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
+    if (!seedOnly && !manualBrowser && !extrasOnly && !homeOnly && !workspaceOnly && !rightTabOnly) assert.equal(refreshStabilityChecks.length, 1, 'Complete the additional refresh stability pair');
     if (!seedOnly && !manualBrowser) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
   } catch (error) {
     failure = redact(error instanceof Error ? error.message : error);
@@ -602,7 +631,7 @@ if (process.argv.includes('--help')) {
       catch (error) { failure ??= redact(error); process.exitCode = 1; }
     }
     process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal);
-    save('summary.json', { status: failure ? 'FAIL' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
+    save('summary.json', { status: failure ? 'FAIL' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : homeOnly ? 'home-only' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
       mockPromptsSent, sessionFixtures, mockRequests: mock?.requests.map(({ path, outcome }) => ({ path, outcome })),
       stage, step, failure, failureEvidence, profile, run, prompts: manualBrowser ? null : prompts, browserErrors,
       ...(manualBrowser ? { manualHostOnly: true, visualValidation: 'NOT_RUN', browserPromptInterception: false,

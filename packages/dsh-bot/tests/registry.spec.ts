@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Context, Service } from '@deepseek-ai/cordis';
@@ -81,10 +81,16 @@ async function facility() {
       return unit;
     });
     const start = async (options: Partial<Config> = {}) => {
+      const previousHome = process.env.DSH_HOME;
+      process.env.DSH_HOME = root;
       const fork = ctx.plugin(DshBotRegistry, {
         seedExamples: false, presetIdPrefix: 'bot-', presetOrder: 50, dataDir: join(root, 'data'), ...options,
       });
-      await fork.await();
+      try { await fork.await(); }
+      finally {
+        if (previousHome === undefined) delete process.env.DSH_HOME;
+        else process.env.DSH_HOME = previousHome;
+      }
       const registry = ctx.dshBots;
       await registry.list();
       return { registry, stop: () => fork.dispose() };
@@ -119,6 +125,100 @@ async function withFacility(run: (fixture: Fixture) => Promise<void>) {
 }
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('ensures a private home under the public DSH home, separately from configured skill data', async () => withFacility(async ({ start, root }) => {
+    const { registry, stop } = await start();
+    await registry.create({ id: 'alpha', name: 'Alpha', defaultCwd: root });
+    const expected = join(root, 'dsh-bot', 'bots', 'alpha', 'home');
+    await expect(stat(expected)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await registry.ensureHome('alpha')).toEqual({ path: expected });
+    expect(await registry.ensureHome('alpha')).toEqual({ path: expected });
+    expect((await stat(expected)).mode & 0o777).toBe(0o700);
+    await expect(registry.ensureHome('missing')).rejects.toMatchObject({ code: 'bot/not-found' });
+    await expect(registry.ensureHome('../escape')).rejects.toMatchObject({ code: 'bot/invalid' });
+    await stop();
+    const restarted = await start();
+    expect(await restarted.registry.ensureHome('alpha')).toEqual({ path: expected });
+  }));
+
+  it('validates supplied default directories before changing storage or presets', async () => withFacility(async ({ start, root, presets }) => {
+    const { registry } = await start();
+    const file = join(root, 'plain-file');
+    await writeFile(file, 'Not a directory');
+    const original = await registry.create({ id: 'alpha', name: 'Alpha', defaultCwd: root });
+    const calls = [...presets.calls];
+    for (const defaultCwd of ['./relative', '', join(root, 'missing'), file]) {
+      await expect(registry.create({ id: 'beta', name: 'Beta', defaultCwd })).rejects.toMatchObject({ code: 'bot/invalid' });
+      await expect(registry.update('alpha', { defaultCwd })).rejects.toMatchObject({ code: 'bot/invalid' });
+    }
+    expect(presets.calls).toEqual(calls);
+    expect(await registry.get('alpha')).toEqual(original);
+    expect(await registry.update('alpha', { defaultCwd: null })).not.toHaveProperty('defaultCwd');
+  }));
+
+  it('preserves homes by default and deletes only explicitly requested owned homes, never defaultCwd', async () => withFacility(async ({ start, root }) => {
+    const { registry } = await start();
+    const user = join(root, 'chosen-directory');
+    await mkdir(user); await writeFile(join(user, 'keep.txt'), 'User data');
+    await registry.create({ id: 'alpha', name: 'Alpha', defaultCwd: user });
+    const home = (await registry.ensureHome('alpha')).path;
+    await writeFile(join(home, 'keep.txt'), 'Private data');
+    await registry.remove('alpha');
+    expect(await readFile(join(home, 'keep.txt'), 'utf8')).toBe('Private data');
+    await registry.create({ id: 'alpha', name: 'Recreated', defaultCwd: user });
+    expect(await registry.ensureHome('alpha')).toEqual({ path: home });
+    await registry.remove('alpha', { deleteHome: true, deleteMemories: false });
+    await expect(stat(home)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(join(user, 'keep.txt'), 'utf8')).toBe('User data');
+  }));
+
+  it('rejects unsafe home cleanup before Bot deletion, while default deletion never touches an unowned home', async () => withFacility(async ({ start, root }) => {
+    const { registry } = await start();
+    await registry.create({ id: 'alpha', name: 'Alpha' });
+    const home = join(root, 'dsh-bot', 'bots', 'alpha', 'home');
+    await mkdir(join(home, '..'), { recursive: true });
+    const outside = join(root, 'user-directory');
+    await mkdir(outside); await writeFile(join(outside, 'keep.txt'), 'User data');
+    await symlink(outside, home, 'dir');
+    await expect(registry.remove('alpha', { deleteHome: true })).rejects.toMatchObject({ code: 'bot/invalid' });
+    expect((await registry.get('alpha')).name).toBe('Alpha');
+    await registry.remove('alpha');
+    expect(await readFile(join(outside, 'keep.txt'), 'utf8')).toBe('User data');
+    expect((await stat(home)).isDirectory()).toBe(true);
+  }));
+
+  it('keeps home data and restores the preset if record deletion fails', async () => withFacility(async ({ start, unit }) => {
+    const { registry } = await start();
+    const original = await registry.create({ id: 'alpha', name: 'Alpha' });
+    const home = (await registry.ensureHome('alpha')).path;
+    await writeFile(join(home, 'keep.txt'), 'Preserved');
+    const deletion = vi.spyOn(unit(), 'deleteRecord').mockRejectedValueOnce(new Error('Injected deletion failure'));
+    try { await expect(registry.remove('alpha', { deleteHome: true })).rejects.toMatchObject({ code: 'store/unavailable' }); }
+    finally { deletion.mockRestore(); }
+    expect(await registry.get('alpha')).toEqual(original);
+    expect(await readFile(join(home, 'keep.txt'), 'utf8')).toBe('Preserved');
+  }));
+
+  it('reports committed deletion separately if home ownership changes before cleanup', async () => withFacility(async ({ start, unit }) => {
+    const { registry } = await start();
+    await registry.create({ id: 'alpha', name: 'Alpha' });
+    const home = (await registry.ensureHome('alpha')).path;
+    const originalDelete = unit().deleteRecord.bind(unit());
+    const deletion = vi.spyOn(unit(), 'deleteRecord').mockImplementationOnce(async (...args) => {
+      const result = await originalDelete(...args);
+      await rename(home, `${home}-saved`);
+      await mkdir(home);
+      await writeFile(join(home, 'user.txt'), 'Not our inode');
+      return result;
+    });
+    try {
+      await expect(registry.remove('alpha', { deleteHome: true })).rejects.toMatchObject({
+        code: 'bot/home-cleanup-failed', message: expect.stringContaining('Bot was deleted'),
+      });
+    } finally { deletion.mockRestore(); }
+    await expect(registry.get('alpha')).rejects.toMatchObject({ code: 'bot/not-found' });
+    expect(await readFile(join(home, 'user.txt'), 'utf8')).toBe('Not our inode');
+  }));
+
   it('streams opening and coalesced catalog/activity invalidations, and drains cancelled/Host-disposed watchers', async () => withFacility(async ({ start }) => {
     const { registry, stop } = await start();
     const abort = new AbortController();
@@ -690,9 +790,9 @@ describe('DshBotRegistry with JSON storage and a preset service double', () => {
     await expect(registry.duplicate('alpha', 'beta')).rejects.toMatchObject({ code: 'bot/conflict' });
   }));
 
-  it('clears optional fields with JSON null and registers the configured order fallback', async () => withFacility(async ({ start, presets }) => {
+  it('clears optional fields with JSON null and registers the configured order fallback', async () => withFacility(async ({ start, presets, root }) => {
     const { registry, stop } = await start({ presetOrder: 67 });
-    await registry.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: './workspace', order: 8,
+    await registry.create({ id: 'alpha', name: 'Alpha', avatar: '🤖', defaultCwd: root, order: 8,
       model: { provider: 'local', model: 'test', reasoningEffort: 'off' } });
     expect(presets.current.get('bot-alpha')?.order).toBe(8);
     const cleared = await registry.update('alpha', { avatar: null, model: null, defaultCwd: null, order: null });

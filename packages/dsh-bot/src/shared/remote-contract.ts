@@ -5,7 +5,7 @@ import { botIdSchema, memoryIdSchema } from './ids.js';
 import { activityListResultSchema, activitySessionIdSchema, activitySessionSchema } from './activity.js';
 export type { ActivityRecord, ActivitySession, ActivityListResult } from './activity.js';
 import {
-  botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema,
+  absoluteDirectorySchema, botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema,
   memoryAddSchema, memoryListOptionsSchema, memoryPatchSchema, memorySchema,
 } from './schema.js';
 
@@ -18,6 +18,8 @@ export const botStatusSchema = z.strictObject({
 export const catalogInfoSchema = z.strictObject({ presetIdPrefix: z.string().regex(/^[a-z][a-z0-9-]*$/) });
 export type CatalogInfo = z.output<typeof catalogInfoSchema>;
 export type BotStatus = z.output<typeof botStatusSchema>;
+export const botHomeSchema = z.strictObject({ path: absoluteDirectorySchema });
+export type BotHome = z.output<typeof botHomeSchema>;
 // Process-local invalidation only: consumers always re-read authoritative data.
 // No persisted revision, user text, paths or credential-shaped payloads travel here.
 export const botChangeSchema = z.strictObject({ revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) });
@@ -98,6 +100,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'bot/preset-failed': Record<string, never>;
     'bot/rollback-failed': Record<string, never>;
     'bot/unavailable': Record<string, never>;
+    'bot/home-cleanup-failed': Record<string, never>;
     'memory/not-found': Record<string, never>;
     'memory/too-large': Record<string, never>;
     'memory/rejected': Record<string, never>;
@@ -148,6 +151,7 @@ export const dshBotRemoteSpec = {
     'dshBot/catalogInfo': { ...owner, parameters: [], result: codec('CatalogInfo', catalogInfoSchema) },
     'dshBot/status': { ...owner, parameters: [], result: codec('BotStatus[]', z.array(botStatusSchema)) },
     'dshBot/get': { ...owner, parameters: [id], result: bot },
+    'dshBot/ensureHome': { ...owner, parameters: [botId], result: activityResultCodec('BotHome', botHomeSchema) },
     'dshBot/create': { ...owner, parameters: [parameter('input', 'BotCreateInput', botCreateSchema)], result: bot },
     'dshBot/update': { ...owner, parameters: [id, parameter('patch', 'BotPatch', botPatchSchema)], result: bot },
     'dshBot/duplicate': { ...owner, parameters: [id, parameter('newId', 'BotId', botIdSchema)], result: bot },

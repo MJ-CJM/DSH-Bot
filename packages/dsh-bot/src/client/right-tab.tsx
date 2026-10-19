@@ -46,7 +46,8 @@ function BotsRightTitle({ t }: PropsLocale<'dsh-bot'>) { return <>{t('rightTab.t
 export function registerBotsRightTab(ctx: Context, actions: BotsRightTabInjected,
   navigate: {
     open(id: string, beforeOpen: (id: SessionId) => void, signal?: AbortSignal): Promise<void>;
-    start(id: string, workspaceId: string, signal: AbortSignal | undefined, beforeOpen: (id: SessionId) => void): Promise<void>;
+    start(id: string, signal: AbortSignal | undefined, beforeOpen: (id: SessionId) => void): Promise<void>;
+    startInWorkspace(id: string, workspaceId: string, signal: AbortSignal | undefined, beforeOpen: (id: SessionId) => void): Promise<void>;
   }): void {
   ctx.inject(['sidebarRight', 'sidebarRightTabs'], (scope) => {
     const t = scope.locale.bind('dsh-bot');
@@ -98,7 +99,8 @@ export function registerBotsRightTab(ctx: Context, actions: BotsRightTabInjected
       inject: (): BotsRightTabInjected => ({
         ...actions,
         onOpenSession: (id, signal) => following((follow) => navigate.open(id, follow, signal)),
-        onStart: (id, workspaceId, signal) => following((follow) => navigate.start(id, workspaceId, signal, follow)),
+        onStart: (id, signal) => following((follow) => navigate.start(id, signal, follow)),
+        onStartInWorkspace: (id, workspaceId, signal) => following((follow) => navigate.startInWorkspace(id, workspaceId, signal, follow)),
       }),
     }, BotsRightTab)), 'dsh-bot: right tab body');
     scope.effect(() => scope.slots.inject('sidebar.right.pane.tab.title', () => scope.slots.register({

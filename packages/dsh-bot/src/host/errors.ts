@@ -4,7 +4,7 @@ import type {} from '../shared/remote-contract.js';
 
 export type DshBotErrorCode = 'bot/not-found' | 'bot/conflict' | 'bot/invalid'
   | 'memory/not-found' | 'memory/too-large' | 'memory/rejected' | 'store/unavailable' | 'activity/not-found'
-  | 'bot/preset-failed' | 'bot/rollback-failed' | 'bot/unavailable';
+  | 'bot/preset-failed' | 'bot/rollback-failed' | 'bot/unavailable' | 'bot/home-cleanup-failed';
 
 /** Preserve the Store's error vocabulary while using DSH's actual wire error. */
 export class DshBotError extends RemoteError<DshBotErrorCode> {

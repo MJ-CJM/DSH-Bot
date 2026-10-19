@@ -1,5 +1,29 @@
 # DSH API 核实记录
 
+## T08h：每 Bot 私有 home 与免工作区聊天
+
+本节覆盖 T08/T08b/T08d 中“新会话必须选择工作区”的历史行为；工作区流程保留为次要操作。源码只读复核基线为 `deepseek-harness@dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`，下表路径相对该仓库。运行结果与截图边界见 [T08h 验收](acceptance/P1-T08h.md)。
+
+| 公开 API / 行为 | 源码出处 | 本轮用法 |
+| --- | --- | --- |
+| `resolveDshHome()` 根出口；显式配置 → DSH_HOME → 平台默认目录 | `packages/util/home-paths/package.json:16-22`；`src/index.ts:101-109,124-136` | Host 使用公开无状态 helper，不再自行拼接用户 home。新增精确普通 dependency `@deepseek-ai/dsh-home-paths@0.2.1-rc.2`，无需共享 service 实例，不加 peer |
+| Host `session.create` 接受 workspaceId 或 cwd，不能同时传；都不传才回退 defaultCwd | `packages/api/session-controller/src/commands.ts:111-150` | 主入口只传 cwd + Host status 返回的稳定 presetId；只有指定 workspaceId 才执行 attachSession |
+| Client `ctx.sessions.create({cwd,agentPreset}) → Promise<SessionId>` | `packages/api/session-controller/src/client/contract/sessions.ts:81-93`；`sessions/manager.ts:508-535` | 成功返回后才 `ctx.uiWorkspace.openSession(id)`；不自行创建 workspace，不传权限选项 |
+| `openSession`、`openWorkspace`、`pickDirectory` | `packages/client/ui-workspace/src/client/navigation.ts:38-64,117,276-305,390-394` | 主入口直接导航；更多菜单保留工作区选择与原 openWorkspace 流程；编辑器用公开目录选择器，取消返回 null、错误内联显示 |
+| 未归属 workspace 的会话合入一个 Ungrouped 桶 | `packages/client/ui-workspace/src/client/tree.ts:18-31,328-372`；`src/client/rows/Rows.tsx:245` | 不为每个 home 注册 workspace。复核公开 UiWorkspace/slots 后未发现逐 Bot 隐藏原生会话的过滤扩展，保持“未分组”，不覆盖原生树或通过 DOM 隐藏 |
+| displayTitle 的 cwd basename 回退 | `packages/api/session-controller/src/client/sessions/service.ts:116-125` | 原生空白会话可能显示 home；Bot 自己的列表沿用 T08g：live title → activity title → 首条用户摘要 → 本地化新会话，绝不使用 displayTitle |
+| 默认权限预设 workspace-write + ask，用户默认选择固定到新会话 | `packages/interaction/permission-presets/README.zh.md:34-50,62-64` | 原样继承用户 DSH 设置，包括 danger-full-access；本插件不覆写权限、审批或 sandbox policy |
+| fs-sandbox 读取不受 cwd 限制；workspace-write 写入限会话 cwd 和平台临时目录 | `packages/fs/fs-sandbox/src/index.ts:1-24,122-143`；`packages/sandbox/sandbox-policy/src/index.ts:155-170` | 这里的 home 是默认工作目录，不是读隔离区。文件读仍受操作系统/部署权限影响；本插件不增加模型路径闸门 |
+| 越界写入 `FS_SANDBOX_DENIED`，sandbox_permissions + justification 经原生 ctx.approval 处理 | `packages/fs/tool-fs/src/sandbox.ts:74-107`；`packages/shell/bash-sandbox/README.zh.md:25-60,125` | 文件与 bash 提权重试沿用 DSH。源码确认，不把本轮 mock 文本对话当作真实审批弹窗或沙箱越界实测 |
+
+**原生首次迁移边界：** `packages/workspace/workspace/src/index.ts:198-215,650-690` 在 workspace 域尚未 initialized 时扫描已有 session headers，按 cwd 为历史日志建立 workspace。正常已初始化 registry 下的 `create({cwd})` 不 attach，正常冷恢复继续未分组；若人为清空 workspace 域而保留历史日志，原生迁移可能重建目录组。集成与截图 profile 同时隔离 JSON storage 与 session-persistence-jsonl root，避免旧轮次日志污染；不修改或绕开宿主迁移。
+
+本轮真实隔离 profile 的空白会话 title projection 为 null；禁用 `session-title-llm` 后，原生 `session-title` 仍会从首条用户文本生成五词持久标题。正式活动应跟随该公开投影，不能断言发送首条消息后 title 仍为空。真实运行 176 checks 与完整产品 505 tests 通过，截图由编排方执行，详见验收。
+
+Host `ensureHome(botId) → {path}` 是新增严格 Remote；总返回固定 `<resolved DSH home>/dsh-bot/bots/<botId>/home`，独立于可配置的技能 `dataDir` 和用户 `defaultCwd`。已有 defaultCwd 可选字段复用，保存时校验绝对路径且目录已存在；恢复默认通过现有 `defaultCwd:null` wire 语义。home 按需创建，POSIX mode 0700，botId schema 之外再检查路径包含关系与 realpath；拒绝受管路径组件 symlink，已有无归属标记的目录不自动接管。私有目录同级归属标记记录路径与文件身份；这是本插件防误删策略，不替代 DSH 沙箱或抵御同 OS 用户恶意并发替换目录的内核安全边界。
+
+删除选项新增 `deleteHome`，默认 false；只在显式勾选时验证归属后清理精确 home，绝不将 defaultCwd 当删除目标，也保留 skills。Bot/记忆持久存储与文件系统没有跨资源原子事务；目录清理失败不会声称回滚成功，详见验收中的失败边界。目录保留时同 id 的 Bot 可以再次使用原 home。Client 所有主入口不读取工作区选择条件，重新读取 Bot/status 后按 defaultCwd 或 ensureHome 的路径创建；失败留在当前界面，卸载/取消后的迟到结果不得触发导航。
+
 ## T08g：公开变更流与轮询兜底
 
 刷新状态统一由同一 Client Context 的共享调度器管理（Bot catalog、activity 及打开的 memory catalog 共用 timer/浏览器监听）。默认 `pollIntervalMs=5000`、新增 `maxPollIntervalMs=30000`，无变化逐次加基础间隔至上限；为兼容原配置，最大间隔不低于基础间隔。只在 visible + focused 且存在主动订阅时周期读取/开流，focus/visibility 恢复立即读取；pointer/keyboard 交互重置基础间隔。本插件成功 CRUD、markRead、新会话立即读回，显式修改后的读回即使窗口已失焦也完成；普通周期停止。相同结构保持快照引用，不 publish；后台不进入 loading；相同错误不重复通知，恢复清错误。最后订阅/插件卸载释放资源，epoch 拒绝迟到响应。

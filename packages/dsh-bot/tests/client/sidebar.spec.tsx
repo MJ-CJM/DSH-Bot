@@ -217,7 +217,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('opens in the only workspace with the Host preset and offers a keyboard-accessible collapsed action', async () => {
+  it('creates directly with the Host preset and offers a keyboard-accessible collapsed action', async () => {
     const app = await setup();
     await app.mountSidebar(false);
     expect(button(app.sidebar, en.ui['sidebar.sessions']).textContent).toBe('');
@@ -225,7 +225,9 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     const focused = document.activeElement;
     expect(focused?.closest('dialog')).not.toBeNull();
     await click(button(app.sidebar, en.ui['sidebar.newSession'].replace('{name}', 'Alpha Bot')));
-    expect(app.openWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-one', expect.any(Function), { agentPreset: 'host-selected/alpha-bot' });
+    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ cwd: '/test/dsh-bot/bots/alpha-bot/home', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
+    expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.sidebar.querySelector('dialog')).toBeNull();
   });
 
@@ -233,20 +235,23 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     const app = await setup();
     await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second workspace')] });
     await app.show();
-    await click(button(app.sidebar, en.ui['sidebar.newSession'].replace('{name}', 'Alpha Bot')));
+    await click(button(app.sidebar, en.ui['sidebar.moreActions'].replace('{name}', 'Alpha Bot')));
+    await click(button(app.sidebar, en.ui['chat.inWorkspace']));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(field(app.sidebar, en.ui['chat.workspace']).value).toBe('');
     await fill(field(app.sidebar, en.ui['chat.workspace']), 'workspace-two');
     await submit(app.sidebar);
     expect(app.openWorkspace).toHaveBeenCalledWith('workspace-two', expect.any(Function), { agentPreset: 'host-selected/alpha-bot' });
     await app.remountPage();
-    await click(button(app.container, en.ui['bots.newSession']));
+    await click(button(app.container, en.ui['card.more']));
+    await click(button(app.container, en.ui['chat.inWorkspace']));
     expect(field(app.container, en.ui['chat.workspace']).value).toBe('workspace-two');
     await click(button(app.container, en.ui['actions.cancel']));
     expect(app.openWorkspace).toHaveBeenCalledTimes(1);
     await app.unmountPage();
     await app.show();
-    await click(button(app.sidebar, en.ui['sidebar.newSession'].replace('{name}', 'Beta Bot')));
+    await click(button(app.sidebar, en.ui['sidebar.moreActions'].replace('{name}', 'Beta Bot')));
+    await click(button(app.sidebar, en.ui['chat.inWorkspace']));
     expect(field(app.sidebar, en.ui['chat.workspace']).value).toBe('workspace-two');
     await click(button(app.sidebar, en.ui['actions.cancel']));
     expect(app.openWorkspace).toHaveBeenCalledTimes(1);
@@ -271,7 +276,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second workspace')] });
     const actions = app.core.entries('sidebar.footer.action')[0]?.inject?.() as unknown as BotSessionsSidebarInjected;
     app.openWorkspace.mockImplementationOnce(async () => {});
-    await actions.onStart('alpha-bot', 'workspace-two');
+    await actions.onStartInWorkspace('alpha-bot', 'workspace-two');
     expect(actions.getPreferredWorkspace()).toBe('');
     const lifetime = new AbortController();
     app.openWorkspace.mockImplementationOnce(async (_id, beforeOpen) => {
@@ -279,7 +284,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
       // A real selectPanel switches the page immediately after beforeOpen.
       lifetime.abort();
     });
-    await actions.onStart('alpha-bot', 'workspace-two', lifetime.signal);
+    await actions.onStartInWorkspace('alpha-bot', 'workspace-two', lifetime.signal);
     expect(actions.getPreferredWorkspace()).toBe('workspace-two');
   });
 
@@ -287,7 +292,8 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     const app = await setup();
     await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second workspace')] });
     await app.show();
-    await click(button(app.sidebar, en.ui['sidebar.newSession'].replace('{name}', 'Alpha Bot')));
+    await click(button(app.sidebar, en.ui['sidebar.moreActions'].replace('{name}', 'Alpha Bot')));
+    await click(button(app.sidebar, en.ui['chat.inWorkspace']));
     expect(app.sidebar.querySelector('select')).not.toBeNull();
     await app.unloadPlugin();
     expect(app.sidebar.textContent).toBe('');
