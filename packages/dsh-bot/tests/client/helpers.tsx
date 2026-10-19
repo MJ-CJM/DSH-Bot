@@ -143,6 +143,8 @@ export async function mountClient(
       'sidebar.panellist': { kind: 'list', scope: 'root' },
       'sidebar.footer.action': { kind: 'list', scope: 'root' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
+      'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+      'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
     },
   }, (() => null) as never);
   const remote = remoteDouble(initial);

@@ -1,5 +1,23 @@
 # DSH API 核实记录
 
+## T08e：原生工作区会话行 Bot 头像
+
+通过公开 `sidebar.session.row.leading` / `sidebar.session.row.hover`（均 root/list）追加贡献，id 分别为 `dsh-bot-avatar` / `dsh-bot-identity`，`order:0`，所有注册归 `ctx.effect`。owner 只有 `sessionId`；用已有 activity 的 `sessionId → botId` 再查现有 Bot catalog，不绑定或激活 Session、不猜 preset 前缀。两个 catalog 首次读取成功前返回 null；没有 activity、Bot 已删除或摘要已淘汰同样返回 null，不增加占位。刷新期间沿用最近成功快照；跨 Client 删除在下一次成功轮询后反映，不声称即时一致性。
+
+源码基线只读核实为 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`：
+
+| 公开合同 / 布局事实 | 来源（相对参考仓库） | 取舍 |
+| --- | --- | --- |
+| `SessionRowScheduleOwnerProps`、root/list 两 slot；公开 `/client` 导出 | `packages/client/ui-workspace/src/client/contract/slots.ts:106-136`、`index.ts:61-67` | 复用现有精确 devDependency，无新依赖或 Host/Remote API |
+| 行高 32px、leading cell 固定 16×20、标题左距 4px | `ui-workspace/src/client/rows/Rows.module.css:109-128` | 复用 `BotAvatar size={16}`，默认着色鲸鱼；保留既有自选 emoji/图片约定，无额外未读点 |
+| schedule-mark / schedule-tasks 均 `order:10`，mark 占 16×20 | `ui-schedule/src/client/index.ts:231-244`、`SessionScheduleMark.module.css:3-11` | 两个 16px 图标不能安全并排。Bot 排前但在有后序 DOM 元素时用自身 `.leading:has(~ :not(style))` 隐藏；保留原生时钟，hover 仍显示 Bot 名称。只设置自身 CSS，不改父格、标题或其它插件 |
+| `data-slot` 是公开样式 anchor；list 渲染 Fragment，没有每项布局 wrapper | `ui-renderer/src/client/scoped-slots.tsx:1062-1100,1239-1251` | 后序贡献返回 null 时不触发退让；对其它后序元素（即使它自身隐藏）也保守退让，不依赖 schedule 私有类、marker 或独立查询 |
+| leading 仅非 blank/非 archived/primary idle 行挂载，搜索结果无该 slot；hover 与状态独立 | `ui-workspace/src/client/rows/Rows.tsx:430-444,627-635` | 运行中、待交互和原生新消息状态继续显示宿主状态点；不承诺所有 Bot 行始终可见鲸鱼 |
+
+所有行复用现有两个 catalog 的主动订阅，各最多一个共享 timer，沿用 Config.pollIntervalMs、visibility/reset、epoch 与最后订阅卸载语义，不为每行新增查询。比原有被动徽标多持有 Bot catalog 的轮询 lease，以更新原生列表中其他 Client 的修改/删除。无身份时连 style 标签也不输出；有身份时样式属于该 React 树，卸载即移除。hover 文字从 `row.bot` 双语 locale 读取，同时设置 alias 背景与前景（宿主 hover 卡背景固定暗色）。
+
+截图脚本新增 `--workspace-only` 的 zh light/dark 原生列表，默认矩阵增加同样两张；检查真实 treeitem、头像 16px、垂直对齐与不覆盖标题。完整运行结果、Chromium 沙箱阻塞及未验证边界见 [T08e 验收](acceptance/P1-T08e.md)。组件/jsdom 与 mock Host 通过不代表亮暗截图通过。
+
 ## T08d r1：宿主截图活动读取失败的根因与修复
 
 宿主截图 `dist/screenshots/2026-10-19T04-41-47.579Z-63798/` 的活动错误已用**正式浏览器 factory + 独立 Cordis Client 插件作用域 + 真实 Gateway/Connection/Host + mock 持久活动**复现。修复前 `.dsh-dev/t05/run-2026-10-19T04-47-02.994Z-67384/client-activity-completed-mock.json` 报 `cannot get property "remote.dshBot.activity" without inject`。请求在 Client 子服务访问时就失败，并非 `lastEventSeq` 解码失败。

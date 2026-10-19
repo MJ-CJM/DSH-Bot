@@ -18,6 +18,7 @@ import type { DshBotRemoteMethods } from '../shared/remote-contract.js';
 import { Config } from './config.js';
 import { BotsPage, type BotsPageInjected } from './pages/BotsPage.js';
 import { SessionBotBadge } from './components/SessionBotBadge.js';
+import { SessionBotLeading, SessionBotHover, type SessionBotRowInjected } from './components/SessionBotLeading.js';
 import { BotSessionsSidebar, type BotSessionsSidebarInjected } from './components/BotSessionsSidebar.js';
 import { createMemoryCatalog, type MemoryCatalog } from './memory-state.js';
 import { createBotDetailSource } from './detail-state.js';
@@ -169,6 +170,17 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ctx.layout.selectPanel('dsh-bot' as MainPanelId);
     } }),
   }, SessionBotBadge)), 'dsh-bot: session badge');
+  const row = (): SessionBotRowInjected => ({
+    hooks: { catalog, activity },
+  });
+  // All visible rows share these catalogs and at most one timer per catalog.
+  // Active leases keep externally edited/deleted Bot identities up to date.
+  ctx.effect(() => ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({
+    name: 'sidebar.session.row.leading', id: 'dsh-bot-avatar', order: 0, locale: namespace, inject: row,
+  }, SessionBotLeading)), 'dsh-bot: session row avatar');
+  ctx.effect(() => ctx.slots.inject('sidebar.session.row.hover', () => ctx.slots.register({
+    name: 'sidebar.session.row.hover', id: 'dsh-bot-identity', order: 0, locale: namespace, inject: row,
+  }, SessionBotHover)), 'dsh-bot: session row identity');
   ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: 'dsh-bot', locale: namespace, inject: () => page,
   }, BotsPage)), 'dsh-bot: main page');

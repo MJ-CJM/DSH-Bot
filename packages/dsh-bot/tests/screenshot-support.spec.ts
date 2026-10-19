@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Page } from 'playwright-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readFailureState, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity, type OverlayEvent } from '../scripts/screenshot-support.js';
+import { captureFailureEvidence, completeChatWorkspaceChoice, composite, contrastRatio, dismissFirstRunOverlays, hostOnboardingAction, installOverlayHandler, measureAvatars, readFailureState, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity, verifyWorkspaceSessionRows, type OverlayEvent } from '../scripts/screenshot-support.js';
 import type { ActivityListResult } from '../src/shared/activity.js';
 import en from '../locale/en.json';
 import zh from '../locale/zh.json';
@@ -93,6 +93,30 @@ describe('T08d screenshot preparation', () => {
     ]);
     expect(screenshotCases().filter((entry) => entry.language === 'zh' && entry.viewport === 'wide')).toHaveLength(2);
     expect(screenshotCases(true).map(({ language, theme, viewport }) => `${language}-${theme}-${viewport}`)).toEqual(['zh-light-wide', 'zh-dark-wide']);
+  });
+});
+
+describe('native workspace screenshot evidence', () => {
+  const fixture = { botId: 'atlas', sessionId: 'native-bot', title: 'Bot session', unread: false };
+  it('requires a native row and rejects Bot-page lookalikes, missing avatars and misalignment', () => {
+    document.body.innerHTML = `<section data-bots-page><button data-session-id="native-bot"><span data-bot-session-leading data-session-id="native-bot"><span data-bot-avatar="whale" data-bot-id="atlas"></span></span></button></section>`;
+    expect(readWorkspaceSessionRows()).toEqual([]);
+    expect(() => verifyWorkspaceSessionRows(readWorkspaceSessionRows(), [fixture])).toThrow('missing');
+    document.body.innerHTML = `<div role="treeitem" data-row-key="session:native-bot"><span><span data-bot-session-leading data-session-id="native-bot"><span data-bot-avatar="whale" data-bot-id="atlas"></span></span></span><span>Bot session</span></div>`;
+    const bounds = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.hasAttribute('data-bot-avatar')) return new DOMRect(8, 8, 16, 16);
+      if (this.getAttribute('role') === 'treeitem') return new DOMRect(0, 0, 240, 32);
+      if (this === this.parentElement?.firstElementChild) return new DOMRect(8, 6, 16, 20);
+      return new DOMRect(28, 6, 180, 20);
+    });
+    try {
+      const rows = readWorkspaceSessionRows();
+      expect(() => verifyWorkspaceSessionRows(rows, [fixture])).not.toThrow();
+      expect(() => verifyWorkspaceSessionRows(rows.map((row) => ({ ...row, botId: 'other' })), [fixture])).toThrow('missing');
+      expect(() => verifyWorkspaceSessionRows(rows.map((row) => ({ ...row, inLeadingCell: false })), [fixture])).toThrow('missing');
+      expect(() => verifyWorkspaceSessionRows(rows.map((row) => ({ ...row, avatar: { x: 8, y: 2, width: 16, height: 16 } })), [fixture])).toThrow('alignment');
+      expect(() => verifyWorkspaceSessionRows(rows.map((row) => ({ ...row, avatar: { x: 8, y: 8, width: 24, height: 24 } })), [fixture])).toThrow('alignment');
+    } finally { bounds.mockRestore(); }
   });
 });
 

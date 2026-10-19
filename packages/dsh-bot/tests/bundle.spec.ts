@@ -212,7 +212,9 @@ describe('built bundle contract', () => {
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      expect([...active].sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.footer.action', 'sidebar.panellist']);
+      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot',
+        'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'];
+      expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([
         'dshBot.activity/list', 'dshBot.activity/markRead',
         'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
@@ -221,7 +223,7 @@ describe('built bundle contract', () => {
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);
-      expect(releases.sort()).toEqual(['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot', 'sidebar.footer.action', 'sidebar.panellist']);
+      expect(releases.sort()).toEqual(resources);
     } finally {
       await ctx.fiber.dispose();
     }

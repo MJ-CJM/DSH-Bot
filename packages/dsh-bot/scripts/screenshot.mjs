@@ -2,7 +2,8 @@
  * Real rc.2 Web screenshots, with the installed Desktop CLI and cached Chromium.
  * Run from the repository root after scripts/pnpm check:
  *   DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs
- * Default: five responsive Bots pages plus two Chinese Bot-chat dialogs.
+ * Default: five responsive Bots pages, two Chinese Bot-chat dialogs and two
+ * Chinese native workspace lists. --workspace-only captures the latter two.
  * --extras-only keeps the Chinese editor/dialog regression surfaces.
  * --seed-only verifies committed mock assistant activity without Chromium.
  * No browser download, global install, Desktop mutation or real model calls.
@@ -24,17 +25,19 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
 import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
-import { captureFailureEvidence, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity } from './screenshot-support.ts';
+import { captureFailureEvidence, completeChatWorkspaceChoice, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyScreenshotActivity, verifyWorkspaceSessionRows } from './screenshot-support.ts';
 import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const seedOnly = process.argv.includes('--seed-only');
 const extrasOnly = process.argv.includes('--extras-only');
+const workspaceOnly = process.argv.includes('--workspace-only');
 const mockReply = 'Mock assistant reply / 本地模拟回复：已经整理好资料、关键结论和下一步建议。打开会话即可继续讨论具体细节。';
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow) and 2 zh light/dark Bot-chat dialogs. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists. --workspace-only: 2 zh light/dark native workspace lists. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
+  assert.ok([seedOnly, extrasOnly, workspaceOnly].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
   const home = resolve(root, '.dsh-dev');
   assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-dev home is allowed');
@@ -61,6 +64,7 @@ if (process.argv.includes('--help')) {
   const contrastChecks = [];
   const workspaceChoices = [];
   const conversationChecks = [];
+  const workspaceRowChecks = [];
   const failureEvidence = [];
   const sessionFixtures = [];
   let mock;
@@ -267,7 +271,7 @@ if (process.argv.includes('--help')) {
         mockPromptsSent, requests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) });
     }
     stage = seedOnly ? 'seed-validation' : 'screenshots';
-    for (const { language, theme, viewport, width, height } of seedOnly ? [] : screenshotCases(extrasOnly)) {
+    for (const { language, theme, viewport, width, height } of seedOnly || workspaceOnly ? [] : screenshotCases(extrasOnly)) {
       const copy = language === 'zh' ? zh.ui : en.ui;
       const filename = `${language}-${theme}-${viewport}`;
       step = `${filename}-new-page`;
@@ -389,10 +393,62 @@ if (process.argv.includes('--help')) {
       }
       console.log(`PASS: ${language}/${theme}/${viewport} ${extrasOnly ? 'editor/Bot-chat dialogs' : viewport === 'narrow' ? 'responsive Bots page and new conversation' : 'two-pane Bots page'} with committed mock previews/unread`);
     }
+    // Opening each native conversation clears the Host's new-message state,
+    // which otherwise replaces its leading slot with a status dot. Run this
+    // after the existing matrix so its read/unread fixtures remain unchanged.
+    for (const { language, theme, viewport, width, height } of seedOnly || extrasOnly ? [] : screenshotCases(true)) {
+      const filename = `${language}-${theme}-${viewport}-workspace`;
+      step = `${filename}-new-page`;
+      await activeContext.close();
+      const context = await browser.newContext({ viewport: { width, height }, locale: 'zh-CN', colorScheme: theme, reducedMotion: 'reduce' });
+      activeContext = context;
+      await context.addCookies(cookies);
+      await context.route('**/api/session/prompt', (route) => { prompts++; return route.abort('blockedbyclient'); });
+      const page = await context.newPage();
+      activePage = page;
+      page.setDefaultTimeout(30_000);
+      page.on('pageerror', (error) => browserErrors.push(redact(error.message)));
+      const recordOverlay = (event) => overlays.push({ language, theme, viewport, surface: 'workspace', ...event });
+      await installOverlayHandler(page, recordOverlay);
+      await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      await dismissFirstRunOverlays(page, recordOverlay, 'workspace-new-page');
+      step = `${filename}-expand-workspace`;
+      // Enter through the native tree in a fresh Client, without warming the
+      // Bot metadata catalog by mounting the Bots page first.
+      const group = page.locator(`[role="treeitem"][data-row-key="workspace:${workspace.workspaceId}"]`);
+      await group.waitFor();
+      if (await group.getAttribute('aria-expanded') !== 'true') await group.click();
+      await page.waitForFunction(() => document.documentElement.lang.startsWith('zh'));
+      for (const fixture of sessionFixtures) {
+        step = `${filename}-view-${fixture.botId}`;
+        const row = page.locator(`[role="treeitem"][data-row-key="session:${fixture.sessionId}"]`);
+        await row.click();
+        await page.locator(`[data-conversation-content][data-conversation-session="${fixture.sessionId}"]`).waitFor();
+        await row.locator(`[data-bot-session-leading][data-session-id="${fixture.sessionId}"] [data-bot-avatar]`).waitFor();
+      }
+      step = `${filename}-capture`;
+      await page.mouse.move(width - 1, height - 1);
+      await page.evaluate(() => document.fonts.ready);
+      await dismissFirstRunOverlays(page, recordOverlay, 'before-workspace-capture');
+      const rows = await page.evaluate(readWorkspaceSessionRows);
+      const evidence = { language, theme, viewport, surface: 'workspace', rows, viewedSessionIds: sessionFixtures.map((fixture) => fixture.sessionId) };
+      workspaceRowChecks.push(evidence);
+      save('progress.json', { overlays, workspaceChoices, conversationChecks, workspaceRowChecks, contrastChecks, screenshots: shots });
+      verifyWorkspaceSessionRows(rows, sessionFixtures);
+      const avatars = await measureAvatars(page);
+      const expectedIds = [bot.id, researcher.id];
+      verifyAvatarContrast(avatars, expectedIds);
+      const bodyTheme = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim());
+      contrastChecks.push({ language, theme, viewport, surface: 'workspace', avatars, expectedIds });
+      await page.screenshot({ path: resolve(output, `${filename}.png`), fullPage: true, animations: 'disabled' });
+      shots.push({ file: `${filename}.png`, language, theme, viewport, width, height, surface: 'workspace', bodyTheme, avatars, rows });
+      save('progress.json', { overlays, workspaceChoices, conversationChecks, workspaceRowChecks, contrastChecks, screenshots: shots });
+      console.log(`PASS: ${language}/${theme}/${viewport} native workspace Bot session rows (16px, centered)`);
+    }
     step = 'matrix-validation';
     assert.equal(prompts, 0, 'No browser model prompt attempted');
     assert.equal(browserErrors.length, 0, 'Browser page errors; inspect summary');
-    assert.equal(shots.length, seedOnly ? 0 : extrasOnly ? 4 : 7, 'Complete the requested screenshot set');
+    assert.equal(shots.length, seedOnly ? 0 : extrasOnly ? 4 : workspaceOnly ? 2 : 9, 'Complete the requested screenshot set');
     if (!seedOnly) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
   } catch (error) {
     failure = redact(error instanceof Error ? error.message : error);
@@ -409,10 +465,10 @@ if (process.argv.includes('--help')) {
     await until(() => children.size === 0, 'Host shutdown', 10_000).catch(() => { for (const child of children) child.kill('SIGKILL'); });
     await mock?.close();
     process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal);
-    save('summary.json', { status: failure ? 'FAIL' : 'PASS', mode: seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : 'matrix',
+    save('summary.json', { status: failure ? 'FAIL' : 'PASS', mode: seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : workspaceOnly ? 'workspace-only' : 'matrix',
       mockPromptsSent, sessionFixtures, mockRequests: mock?.requests.map(({ path, outcome }) => ({ path, outcome })),
       stage, step, failure, failureEvidence, profile, run, prompts, browserErrors,
-      overlays, workspaceChoices, conversationChecks, contrastChecks, screenshots: shots });
+      overlays, workspaceChoices, conversationChecks, workspaceRowChecks, contrastChecks, screenshots: shots });
     console.log(`Evidence: ${output}`);
   }
 }

@@ -45,6 +45,42 @@ export function screenshotCases(extrasOnly = false): ScreenshotCase[] {
   return cases;
 }
 
+/** Inspect only native workspace tree rows, never the Bot page or its dialog.
+ * The row-key marker belongs to the rc.2 rendered DOM; no Client state is read. */
+export function readWorkspaceSessionRows() {
+  const box = (element: Element | null) => {
+    const rect = element?.getBoundingClientRect();
+    return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  };
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="treeitem"][data-row-key^="session:"]')).map((row) => {
+    const leading = row.querySelector('[data-bot-session-leading]');
+    const avatar = leading?.querySelector<HTMLElement>('[data-bot-avatar]') ?? null;
+    return {
+      sessionId: row.dataset.rowKey?.slice('session:'.length) ?? '',
+      botId: avatar?.dataset.botId ?? null,
+      kind: avatar?.dataset.botAvatar ?? null,
+      row: box(row), cell: box(row.firstElementChild), title: box(row.children.item(1)), avatar: box(avatar),
+      leadingSessionId: leading?.getAttribute('data-session-id') ?? null,
+      inLeadingCell: !!leading && row.firstElementChild?.contains(leading) === true,
+    };
+  });
+}
+
+export function verifyWorkspaceSessionRows(rows: ReturnType<typeof readWorkspaceSessionRows>, fixtures: readonly ScreenshotSessionFixture[]): void {
+  for (const fixture of fixtures) {
+    const row = rows.find((value) => value.sessionId === fixture.sessionId);
+    if (!row || row.botId !== fixture.botId || row.kind !== 'whale' || !row.inLeadingCell
+      || row.leadingSessionId !== fixture.sessionId || !row.row || row.row.width <= 0 || row.row.height <= 0
+      || !row.avatar || !row.cell || !row.title) throw new Error(`Native workspace Bot avatar missing: ${fixture.sessionId}`);
+    const avatar = row.avatar;
+    if (Math.abs(avatar.width - 16) > 0.5 || Math.abs(avatar.height - 16) > 0.5
+      || Math.abs(avatar.y + avatar.height / 2 - row.row.y - row.row.height / 2) > 1
+      || avatar.x < row.cell.x - 0.5 || avatar.x + avatar.width > row.title.x + 0.5) {
+      throw new Error(`Native workspace Bot avatar size/alignment mismatch: ${fixture.sessionId}`);
+    }
+  }
+}
+
 /** DOM-only layout evidence. This measures actual displayed boxes and CSS;
  * responsive classes or jsdom render results are not screenshot evidence. */
 export function readBotsLayout() {

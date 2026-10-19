@@ -97,6 +97,7 @@
     "chat.workspaceUnavailable": "工作区加载失败，请重新连接后重试。",
     "chat.cancelled": "已取消打开会话。",
     "badge.open": "打开 {name} 详情",
+    "row.bot": "Bot：{name}",
     "editor.details": "Bot 详情",
     "editor.settings": "设置",
     "errors.detailMissing": "此 Bot 已不存在，请刷新列表。",

@@ -97,6 +97,7 @@
     "chat.workspaceUnavailable": "Workspaces could not be loaded. Reconnect and try again.",
     "chat.cancelled": "Opening the conversation was cancelled.",
     "badge.open": "Open {name} details",
+    "row.bot": "Bot: {name}",
     "editor.details": "Bot details",
     "editor.settings": "Settings",
     "errors.detailMissing": "This Bot no longer exists. Refresh the catalog.",
