@@ -17,3 +17,8 @@
 **验收**：以上全部通过；报告列出已知限制。
 
 **我做**：提交并推送 `phase/p1`；请你在桌面版按 `docs/acceptance/P1.md` 验收（或授权我在 huihui 上协助操作）；通过后开 PR → main。
+
+## 补充（编排方，0.1.6 之后）
+- 当前版本 0.1.6（已打包，不要再改版本号/重新打包）。安装说明以“插件 → 添加插件 → 安装第三方插件（选 tgz）”为主，含升级步骤（卸载旧版 → 安装 → Cmd+Q 重开，数据保留）。
+- architecture.md 需覆盖：host/client 分层、preset 注册 bot-<id>、dsh_bot 存储、remote 契约、共享 Bots 工作区模型（T08i，cwd=Bots 根，DSH 硬约束 cwd===workspace.path）、刷新策略（T08g）、记忆。
+- P1.md 验收清单需反映实际交付（含 Bots 工作区、鲸鱼图标、右侧 tab），并列已知限制。

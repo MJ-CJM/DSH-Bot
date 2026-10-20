@@ -2,13 +2,16 @@
  * Reproducible T04 integration probe against the built, public package.
  * Run from the repository root after `scripts/pnpm -F dsh-bot build`:
  * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/registry-profile.mjs
+ * Or verify an existing tarball without rebuilding or linking source:
+ * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/registry-profile.mjs --package dist/dsh-bot-0.1.6.tgz
  * No model sessions or prompts are created. Credentials stay in memory.
  */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { Context } from '@deepseek-ai/cordis';
@@ -16,15 +19,20 @@ import * as Gateway from '@deepseek-ai/dsh-api-gateway/client';
 import { installConnection } from '@deepseek-ai/dsh-client-connection/client';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import WebSocket from 'ws';
-import remoteContribution from 'dsh-bot/remote';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 assert.equal(process.cwd(), root, 'Run this probe from the repository root');
 const home = resolve(root, '.dsh-dev');
 assert.equal(process.env.DSH_HOME, home, 'Set DSH_HOME="$PWD/.dsh-dev"');
+const args = process.argv.slice(2);
+assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--package'),
+  'Usage: registry-profile.mjs [--package path/to/dsh-bot.tgz]');
+const packagePath = args.length ? resolve(root, args[1]) : undefined;
+const sourcePackage = resolve(root, 'packages/dsh-bot');
+const task = packagePath ? 't10' : 't04';
 const stamp = `${new Date().toISOString().replaceAll(':', '-')}-${process.pid}`;
-const runDir = resolve(home, 't04', `run-${stamp}`);
-const profile = `t04-${Date.now()}-${process.pid}`;
+const runDir = resolve(home, task, `run-${stamp}`);
+const profile = `${task}-${Date.now()}-${process.pid}`;
 const profileDir = resolve(home, 'profiles', profile);
 const patchPath = resolve(runDir, 'profile.patch.yml');
 const observerPath = resolve(runDir, 'log-observer.mjs');
@@ -36,10 +44,13 @@ const secrets = new Set();
 const children = new Set();
 const checks = [];
 const phases = [];
+let remoteContribution;
+let packageEvidence;
+let packageHashBefore;
 let interrupted = false;
 mkdirSync(runDir, { recursive: true });
 mkdirSync(resolve(home, 'tmp'), { recursive: true });
-writeFileSync(resolve(home, 't04/latest-run.txt'), `${runDir}\n`);
+writeFileSync(resolve(home, `${task}/latest-run.txt`), `${runDir}\n`);
 const env = {
   ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1',
   XDG_STATE_HOME: resolve(home, 'state'), NODE_COMPILE_CACHE: resolve(home, 'node-compile-cache'),
@@ -73,6 +84,45 @@ function failureDetail(result) {
   return result.ok ? { ok: true, value: result.value } : {
     ok: false, error: { code: result.error.code, message: result.error.message, details: result.error.details },
   };
+}
+function verifyInstalledTarball() {
+  const files = execFileSync('tar', ['-tzf', packagePath], { encoding: 'utf8' }).trim().split('\n');
+  check('tarball contains only safe package file paths', files.every((file) =>
+    file.startsWith('package/') && !file.endsWith('/') && !file.split('/').includes('..')));
+  const installedRoot = realpathSync(resolve(profileDir, 'node_modules/dsh-bot'));
+  const installedRelative = relative(realpathSync(profileDir), installedRoot);
+  check('installed package resolves within the isolated profile',
+    installedRelative.length > 0 && !installedRelative.startsWith(`..${sep}`) && installedRelative !== '..');
+  check('installed package is not linked to the source package', installedRoot === realpathSync(sourcePackage), false);
+  const hashes = files.map((file) => {
+    const archiveBytes = execFileSync('tar', ['-xOf', packagePath, file], { maxBuffer: 8 * 1024 * 1024 });
+    const name = file.slice('package/'.length);
+    const expected = createHash('sha256').update(archiveBytes).digest('hex');
+    const actual = hashFile(resolve(installedRoot, name));
+    check(`installed tarball bytes: ${name}`, actual, expected);
+    return { file: name, sha256: actual };
+  });
+  const manifest = JSON.parse(readFileSync(resolve(installedRoot, 'package.json'), 'utf8'));
+  check('installed package name', manifest.name, 'dsh-bot');
+  const installedRequire = createRequire(resolve(profileDir, 'package.json'));
+  const hostEntry = installedRequire.resolve('dsh-bot');
+  const remoteEntry = installedRequire.resolve('dsh-bot/remote');
+  check('Host public entry resolves into installed package', hostEntry.startsWith(`${installedRoot}${sep}`));
+  check('Remote public entry resolves into installed package', remoteEntry.startsWith(`${installedRoot}${sep}`));
+  // The CLI resolves shared peers from its installation. This standalone Node
+  // client uses the workspace's peer instances and a byte-identical public
+  // Remote contribution; it does not load or link the workspace Host package.
+  const driverFiles = hashes.filter(({ file }) => file === 'lib/typert.remote-client.js'
+    || (file.startsWith('lib/shared/') && file.endsWith('.js')));
+  for (const { file, sha256 } of driverFiles) {
+    check(`workspace Remote driver matches tarball: ${file}`, hashFile(resolve(sourcePackage, file)), sha256);
+  }
+  packageEvidence = {
+    archive: packagePath, archiveSha256: packageHashBefore,
+    name: manifest.name, version: manifest.version, installedRoot, hostEntry, remoteEntry, files: hashes,
+    remoteDriver: { entry: import.meta.resolve('dsh-bot/remote'), verifiedFiles: driverFiles },
+  };
+  save('installed-package.json', packageEvidence);
 }
 function attachLines(child, filename, observe = () => {}) {
   for (const stream of [child.stdout, child.stderr]) {
@@ -178,7 +228,7 @@ async function probe(startupUrl, phase, operation) {
 }
 
 async function runPhase(phase, operation) {
-  console.log(`T04 ${phase}: starting isolated profile ${profile}`);
+  console.log(`${task.toUpperCase()} ${phase}: starting isolated profile ${profile}`);
   const { child, completion } = launch([
     '--profile', profile, '--patch', patchPath,
     '--no-open', '--host', '127.0.0.1', '--port', '0',
@@ -228,8 +278,15 @@ async function runPhase(phase, operation) {
 
 let failure;
 try {
-  check('built Host and Client artifacts exist', existsSync(resolve(root, 'packages/dsh-bot/lib/index.js'))
-    && existsSync(resolve(root, 'packages/dsh-bot/lib/client.js')));
+  if (packagePath) {
+    const packageRelative = relative(root, packagePath);
+    check('tarball input is an existing repository file', packagePath.endsWith('.tgz')
+      && packageRelative.length > 0 && !packageRelative.startsWith(`..${sep}`) && existsSync(packagePath));
+    packageHashBefore = hashFile(packagePath);
+  } else {
+    check('built Host and Client artifacts exist', existsSync(resolve(sourcePackage, 'lib/index.js'))
+      && existsSync(resolve(sourcePackage, 'lib/client.js')));
+  }
   check('new profile does not overwrite an existing profile', existsSync(profileDir), false);
   check('locked CLI version', (await command(['--version'], 'version')).trim(), '0.2.1-rc.2');
   // storage-json is profile-global by default. Override it before any Host starts
@@ -252,17 +309,27 @@ try {
   writeFileSync(patchPath, [
     '- insert:', '    - id: t04-log-observer', `      name: ${JSON.stringify(observerPath)}`,
     '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'storages'))}`,
+    ...(packagePath ? [
+      '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'sessions'))}`,
+    ] : []),
     '- id: dsh-bot', '  inject: [t04LogReady]', '  config:', '    seedExamples: true', '    presetIdPrefix: review-',
     '    presetOrder: 50', `    dataDir: ${JSON.stringify(resolve(runDir, 'data'))}`, '',
   ].join('\n'));
   await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-  await command(['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'plugin-add');
+  await command(['plugin', '--profile', profile, 'add', packagePath ?? sourcePackage], 'plugin-add');
   const dump = await command(['--profile', profile, '--patch', patchPath, '--dump-config'], 'dump');
   writeFileSync(resolve(runDir, 'dump.yml'), dump);
   check('dump contains formal package bundle layer', /^# == dsh-bot(?:,|\s*$)/m.test(dump));
   check('dump points storage-json at isolated run directory', dump.includes(resolve(runDir, 'storages')));
   const manifest = JSON.parse(readFileSync(resolve(profileDir, 'package.json'), 'utf8'));
-  check('profile links formal package', manifest.dependencies['dsh-bot'], `link:${resolve(root, 'packages/dsh-bot')}`);
+  if (packagePath) {
+    check('profile installs a tarball file dependency', /^file:.*\.tgz$/.test(manifest.dependencies['dsh-bot']));
+    check('dump points session logs at isolated run directory', dump.includes(resolve(runDir, 'sessions')));
+    verifyInstalledTarball();
+  } else {
+    check('profile links formal package', manifest.dependencies['dsh-bot'], `link:${sourcePackage}`);
+  }
+  remoteContribution = (await import('dsh-bot/remote')).default;
 
   const initial = await runPhase('initial', async (remote, raw, roster) => {
     check('Host publishes configured ownership prefix', ok(await remote.catalogInfo(), 'catalog info'), { presetIdPrefix: 'review-' });
@@ -412,11 +479,16 @@ try {
   const sharedStoreAfter = hashFile(sharedStore);
   try { check('pre-existing shared T02 storage unchanged', sharedStoreAfter, sharedStoreBefore); }
   catch (error) { failure ??= redact(error.stack ?? error); process.exitCode = 1; }
+  if (packageHashBefore) {
+    try { check('input tarball unchanged after integration run', hashFile(packagePath), packageHashBefore); }
+    catch (error) { failure ??= redact(error.stack ?? error); process.exitCode = 1; }
+  }
   save('summary.json', {
     runDir, profile, dshHome: home, phases, checks,
+    ...(packageEvidence ? { package: packageEvidence } : {}),
     sharedStore: { path: sharedStore, before: sharedStoreBefore, after: sharedStoreAfter },
     modelSessionsCreated: 0, promptsSent: 0, ...(failure ? { failure } : {}),
   });
-  console.log(`T04 ${failure ? 'FAIL' : 'PASS'}: ${runDir}`);
+  console.log(`${task.toUpperCase()} ${failure ? 'FAIL' : 'PASS'}: ${runDir}`);
   if (failure) console.error(failure);
 }

@@ -1,5 +1,22 @@
 # DSH API 核实记录
 
+## T10：0.1.6 集成收口与当前接口索引
+
+本轮不新增生产 API、不改版本或依赖，也不重新打包；使用既有 `dist/dsh-bot-0.1.6.tgz`。参考仓库 HEAD/tag 仍为 `687f282e8625c6b8d11ff58211a90524be2e4317`，CLI 实测 `0.2.1-rc.2`。完整执行结果、包哈希及证据层级见 [T10 报告](acceptance/P1-T10.md)；当前行为汇总见 [架构](architecture.md)，桌面步骤见 [P1 清单](acceptance/P1.md)。下面的历史章节保留各轮结论，发生冲突时以较新的 T08g/T08i/T08j 和本节为准。
+
+| 当前公开契约 | 0.1.6 实现与边界 |
+| --- | --- |
+| Host / Agent | Host `dshBots` 管注册表、持久化及 Remote；`dsh-bot/bot-context` 在 preset 代际内持有 Bot 快照，为每个 Agent 安装工具/提示/活动监听。所有资源由所属 effect 清理；稳定 preset 默认 `bot-<id>`，Client 使用 `status.presetId`，不拼接前缀 |
+| 模板与存储 | 组合时读取宿主公开 `agentPresets.readDocument`，不使用计划中的 vendored 生产模板。领域名为 **`dsh_bot`**，version 1，四表 `bots/memories/registry_state/activities`；默认 JSON backend 位于 `$DSH_HOME/storages`，`dataDir` 只控制技能目录 |
+| Remote | `src/shared/remote-contract.ts` 单一手写 spec 共 **19** 个端点：`dshBot` 的 watch/list/catalogInfo/status/get/ensureHome/ensureBotsWorkspace/create/update/duplicate/delete，memory 的 list/search/save/update/delete/count，以及 activity 的 list/markRead。Host 手动注册 `host-contract`，Client await `$mount`；不使用已移除的 `./typert` 自动发现出口 |
+| 严格性与作用域 | 点号 namespace 分别通过 `ctx.get('remote.dshBot.memory')` / `ctx.get('remote.dshBot.activity')` 获取。`mode:'strict'` 和 schema factory 本身不保证 rc.2 对所有结果自动 encode/decode；activity/home/workspace 有显式 result codec，watch 两端另做帧 parse。不能泛称全部响应都由 Gateway 自动校验 |
+| 工作区 | 默认以 `ensureBotsWorkspace()` 返回的 workspaceId 创建原生会话；真实 cwd 为共享 Bots 根，必须满足 `cwd===workspace.path`。`ensureHome()` 的 Bot 子目录用于文件组织/提示，不是会话 cwd 或 Bot 间安全隔离。defaultCwd 通过公开 `workspaces.create({path})` 取得其工作区 |
+| 刷新 | 一个 Client 调度器共享 watch、timer 和浏览器监听；前台有主动订阅时默认从 5 秒逐步退避至 30 秒，失焦/隐藏停止周期读取与流；写后读回、聚焦、可见性恢复与 reset 刷新。watch 只发进程内 revision 提示，Bot CRUD/activity/已读提交会通知；**记忆写入未单独 invalidate watch**，本 Client 写后直接读回，其他 Client/模型记忆写依靠轮询或重新聚焦 |
+| UI | 公开 main/导航、会话 utilities、原生会话行、footer 入口与 `sidebarRightTabs`/`sidebar.right.pane.tab`；主页面和右侧 tab 都导航到宿主会话。导航、默认头像和入口角标共用 `WhaleGlyph`，不导入宿主内部组件。空白会话不挂头部 utilities，原生行鲸鱼也受 blank/archived/状态与其它 slot 条件限制 |
+| 记忆与恢复 | 每 Bot 工具闭包绑定身份；新建/冷恢复 Agent 读取记忆快照，存活 Agent 保持不变。`persona.complete=true` 遵循宿主抑制其它 section 的语义。删除 Bot 保留会话日志但会使缺失 preset 的冷恢复失败，不能沿用早期计划“旧会话仍可查看”作无条件恢复承诺 |
+
+安装验证分层：`scripts/dev-profile.sh` 只证明目录安装和 dump 层，不启动 Host；独立 Registry/Composer profile 的 loaded、真实 Remote、preset 健康及进程退出才是运行证据。T10 的 `registry-profile.mjs --package` 对既有 tgz 安装进行逐文件校验，Host 解析已安装的包；Node 测试驱动在校验 Remote/shared 字节相同后复用 workspace 契约，以保持它自身的公开 peer 解析。直接从 profile 导入供宿主解析的 peer 包并不是独立 Node 消费者的受支持安装方式。首轮驱动导入失败与修正后的实际 Host 结果均保留于 T10 报告。
+
 ## T08j：导航共享鲸鱼图标（0.1.6）
 
 本轮没有新增 Host、Remote、slot 或依赖 API。`sidebar.panellist` 仍使用原 `dsh-bot` 注册、order 20 和所属 `ctx.effect`；只替换渲染组件。锁定参考源码 `deepseek-harness@dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317` 的 `packages/client/ui-sidebar/src/client/SidebarRoot.tsx:71` 给宽/折叠导航分别传 16/18px；相邻插件、自动化任务入口的 order 为 0/10。
