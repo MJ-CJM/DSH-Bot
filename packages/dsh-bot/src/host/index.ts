@@ -68,7 +68,7 @@ export function apply(ctx: Context, config: Config): void {
       const runtime = automation;
       status = { ...status, state: 'ready' };
       ctx.logger.info('[dsh-bot] loaded');
-      return () => runtime.executor.close();
+      return () => runtime.close();
     }, 'dsh-bot: automation runtime');
   }).catch(error => {
     if (status.state !== 'read_only') {
@@ -80,7 +80,7 @@ export function apply(ctx: Context, config: Config): void {
   shutdown = () => closing ??= (async () => {
     stopping = true; status = { ...status, state: 'stopping' };
     if (started) await ready;
-    await automation?.executor.close();
+    await automation?.close();
     await automation?.stores.close();
     await registry.close();
   })();

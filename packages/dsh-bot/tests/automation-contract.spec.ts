@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Context } from '@deepseek-ai/cordis';
@@ -19,9 +20,9 @@ import P1_REMOTE from '../src/typert.remote-client.js';
 
 const createInput = { botId: 'alpha', title: 'Routine', prompt: 'Task', rule: { kind: 'every' as const, everySeconds: 60 }, timeZone: 'UTC' };
 describe('automation Remote contract', () => {
-  it('keeps eight strict endpoints separate from P1 and denies client-supplied identities/reservations', () => {
+  it('keeps nine strict endpoints separate from P1 and denies client-supplied identities/reservations', () => {
     expect(AUTOMATION_HOST.invocations).toBe(AUTOMATION_REMOTE.descriptors);
-    expect(AUTOMATION_REMOTE.descriptors).toHaveLength(8);
+    expect(AUTOMATION_REMOTE.descriptors).toHaveLength(9);
     expect(P1_REMOTE.descriptors).toHaveLength(19);
     const parse = (endpoint: string, input: unknown) => AUTOMATION_REMOTE.methods[endpoint]?.input({ strict: true }).create().parse(input);
     expect(parse('dshBot.routine/create', { input: createInput })).toMatchObject({ input: { enabled: true, misfirePolicy: 'latest' } });
@@ -32,6 +33,8 @@ describe('automation Remote contract', () => {
     expect(() => parse('dshBot.run/list', { options: { limit: 201 } })).toThrow();
     expect(() => parse('dshBot.routine/get', { id: '../escape' })).toThrow();
     expect(() => parse('dshBot.routine/delete', { id: 'f5db4554-9c3c-4da6-a42a-2c9ffd220ed3' })).toThrow();
+    expect(() => parse('dshBot.routine/runNow', { id: randomUUID(), operationId: randomUUID(), skipQuota: true })).toThrow();
+    expect(() => parse('dshBot.routine/runNow', { id: randomUUID() })).toThrow();
     expect(Object.keys(automationRemoteSpec.methods).some((k) => /reserve|transition|enqueue|report/.test(k))).toBe(false);
     expect(remoteErrorOf(new AutomationError('automation/conflict', 'Conflict'))).toMatchObject({ code: 'automation/conflict', details: {} });
     expectTypeOf<RoutineRemote['create']>().toEqualTypeOf<AutomationHostMethods<'dshBot.routine'>['create']>();
@@ -50,7 +53,9 @@ describe('automation Remote contract', () => {
       const stores = await openAutomationStores(host, { assertOwner() {}, ownerId: 'contract-test', config: { quotaTimeZone: 'UTC' },
         now: () => 1792497600000, resolveBot: () => ({ bot, presetId: 'actual-preset' }) });
       const scope = host.plugin({ inject: ['typert'], apply(ctx: Context) {
-        registerAutomationRemote(ctx, stores);
+        registerAutomationRemote(ctx, stores, {
+          runNow: (routineId, operationId) => stores.runs.enqueue({ trigger: 'manual', routineId, operationId }),
+        });
         new AutomationStatusRemote(ctx, () => ({ state: 'read_only', reason: 'active-owner',
           owner: { pid: 123, hostname: 'local', startedAt: 'verified-start' } }));
       } });
@@ -90,11 +95,17 @@ describe('automation Remote contract', () => {
       if (!changed.ok) throw new Error('Update failed');
       expect(await routine.list({})).toMatchObject({ ok: true, value: [changed.value] });
       expect(await runs.list({})).toEqual({ ok: true, value: [] });
+      const operationId = randomUUID();
+      const manual = await routine.runNow(row.id, operationId);
+      expect(manual).toMatchObject({ ok: true, value: { trigger: 'manual', status: 'queued' } });
+      expect(await routine.runNow(row.id, operationId)).toEqual(manual);
+      expect(stores.routines.get(row.id)).toEqual(changed.value);
       for (const descriptor of AUTOMATION_REMOTE.descriptors.filter((d) => d.namespace === 'dshBot.routine')) {
         const result = descriptor.result;
         if (result.mode !== 'strict' || !result.encode || !result.decode) throw new Error('Missing strict codec');
-        const valid = descriptor.method === 'list' ? [row] : row;
-        const invalid = descriptor.method === 'list' ? [{ ...row, unknown: true }] : { ...row, unknown: true };
+        const single = descriptor.method === 'runNow' && manual.ok ? manual.value : row;
+        const valid = descriptor.method === 'list' ? [row] : single;
+        const invalid = descriptor.method === 'list' ? [{ ...row, unknown: true }] : { ...single, unknown: true };
         expect(result.decode(result.encode(valid, () => null))).toEqual(valid);
         expect(() => result.encode?.(invalid, () => null)).toThrow();
         expect(() => result.decode?.(invalid)).toThrow();

@@ -30,6 +30,7 @@ export const automationRemoteSpec = { package: 'dsh-bot/automation', methods: {
   'dshBot.routine/create': { ...routineOwner, parameters: [param('input', routineCreateSchema)], result: codec('Routine', routineRecordSchema) },
   'dshBot.routine/update': { ...routineOwner, parameters: [param('id', automationIdSchema), param('patch', routinePatchSchema), param('expectedRevision', revisionSchema)], result: codec('Routine', routineRecordSchema) },
   'dshBot.routine/delete': { ...routineOwner, implementation: 'remove', parameters: [param('id', automationIdSchema), param('expectedRevision', revisionSchema)], result: codec('Routine', routineRecordSchema) },
+  'dshBot.routine/runNow': { ...routineOwner, parameters: [param('id', automationIdSchema), param('operationId', automationIdSchema)], result: codec('Run', runRecordSchema) },
   'dshBot.run/list': { ...runOwner, parameters: [param('options', runListSchema)], result: codec('Run[]', z.array(runRecordSchema)) },
   'dshBot.run/get': { ...runOwner, parameters: [param('id', automationIdSchema)], result: codec('Run', runRecordSchema) },
 } } as const satisfies TypertRemoteSpec;

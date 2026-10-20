@@ -1,5 +1,22 @@
 # DSH API 核实记录
 
+## T14：Host Dispatcher、规则游标与统一准入（2026-10-20）
+
+在 T13 的单 Host lease、automation 域恢复和 RunExecutor 之后启动 Dispatcher。只由 Host 定时：最早 `nextRunAt` timer + 默认 60000ms 周期检查，存储成功写入触发失效通知，执行完成再唤醒队列。卸载先停 Dispatcher 的 timer/订阅及扫描，再关闭执行器、存储并释放 lease。验收、命令和证据见 [T14 报告](acceptance/P2-T14.md)。
+
+| 公开入口 | 用法 / 证据边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-schedule` 根入口 `resolveRecurringOccurrence` | 对已到期的 every/daily/weekly/cron，以持久 `nextRunAt` 作为 `scheduledAt` 构造公开 record；读取 `occurrenceAt` / `nextScheduledAt`，不枚举历史积压。一次性 at 消费持久绝对时间后耗尽。参考锁定源码 `packages/schedule/schedule/src/index.ts:25-61`、`src/domain.ts:129-135,791-819,909-917,945-955,1104-1141`。虚拟时钟覆盖五类、DST 缺失/重复、cron DOM/DOW OR、跨年及正反跳变 |
+| Cordis `ctx.effect` / `ctx.provide` | 新增内部 `dshBotDispatcher`；所有 timer/本地订阅由 effect 清理，沿用所有权及 stores.beforeClose 的显式关闭链。没有新增 Loader export、依赖或原生 schedule 服务写入 |
+| Typert `@Remote` / strict contribution | 独立 automation 增至 **9 个端点**，新增 `dshBot.routine/runNow(id, operationId)`，UUID operationId 去重；返回持久受理 Run，不保证已经开始或成功。无 dispatcher 时拒绝。原有 P1 19 端点不变；Client Gateway codec/幂等往返测试及真实 Host 服务调用验证 |
+| 既有公开 SessionController / WorkspaceRegistry / session events | Dispatcher 只调用同一 RunExecutor；每次新建 Bots 工作区会话、prompt、完成屏障、flush 均沿用 T13。T14 profile 驱动实等 every60、暂停后 run_now、正常关闭/冷启动补跑及 SIGSTOP/SIGCONT 恢复；不是桌面 UI 或实际 macOS 休眠验收 |
+
+补跑每个 Routine 最多最近一次；默认 24h（含边界），更旧记 `skipped/catch_up_expired`。暂停恢复由 RoutineService 重建未来游标，过期 at 不平移；run_now 不改锚点/游标。`misfirePolicy=skip` 将跨过多个 occurrence 或迟到至少一个 sweep 周期视作漏跑，容忍一个周期内的普通 timer 延迟。时间规则仍由公开 schedule 函数决定。
+
+全局默认并发 2、每 Bot 每日 20、队列 64，沿用既有 Config。所有 trigger 都走同一 `RunService.reserve`；失败不返额度，quotaTimeZone 首次默认系统时区并持久固定，日桶回退仍拒绝。自动消费将额度耗尽的未收费 Run 记 `skipped/quota`，不阻塞其它 Bot；时钟/所有权/存储失败记 Host 日志，保留权威记录并等待兜底扫描，不自动重放 recovery_needed。
+
+同 Routine 活动时到期立即记 `skipped/overlap`。全局满载时保留持久有界队列；同 Routine 的旧 scheduled queued 项记 `superseded`，只留下最新一次；scheduled 满队列记 `queue_full`，manual/delegate 满队列报 busy。先落旧项终态再写替代项，故障时宁可暂缺工作，不保留两个可执行替代项。内部 pending 视图不使用历史分页上限，以免超过 200 条历史后遗漏活动 slot。无外部依赖或版本变化。
+
 ## T13：RunExecutor、Host 所有权与完成屏障（2026-10-20）
 
 产品 Host 现在在取得 `$DSH_HOME/dsh-bot/automation/lock` 所有权后启动 P1 注册表及独立 automation 域，提供内部 `dshBotExecutor` / `dshBotAutomationStores` 服务。没有 Dispatcher、自动排队消费、委派工具或回报投递；这些仍属 T14/T15。完整命令、证据、失败修正及验收见 [T13 报告](acceptance/P2-T13.md)。

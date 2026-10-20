@@ -1,8 +1,9 @@
 import {
   createAtScheduleRecord, createEveryScheduleRecord, createDailyScheduleRecord,
   createWeeklyScheduleRecord, createCronScheduleRecord,
+  resolveRecurringOccurrence,
 } from '@deepseek-ai/dsh-schedule';
-import type { RoutineRule } from '../../shared/automation.js';
+import type { RoutineRule, RoutineRecord } from '../../shared/automation.js';
 import { AutomationError } from './errors.js';
 
 /** Only public schedule factories decide calendar validity and normalization. */
@@ -34,4 +35,22 @@ export function prepareRule(id: string, rule: RoutineRule, timeZone: string, now
       }
     }
   } catch (cause) { throw new AutomationError('automation/invalid', 'Invalid routine schedule', { cause }); }
+}
+
+/** The persisted UTC cursor is authoritative, including across tzdata changes. */
+export function dueOccurrence(routine: RoutineRecord, now: number): {
+  scheduledAt: number; nextRunAt: number | null;
+} | undefined {
+  if (!routine.enabled || routine.deletedAt !== undefined || routine.nextRunAt === undefined || routine.nextRunAt > now) return;
+  if (routine.rule.kind === 'at') return { scheduledAt: routine.nextRunAt, nextRunAt: null };
+  const common = {
+    id: routine.id as Parameters<typeof createAtScheduleRecord>[0],
+    title: routine.title, prompt: routine.prompt,
+    scheduledAt: new Date(routine.nextRunAt).toISOString(),
+  };
+  const record = routine.rule.kind === 'every' ? { ...common, ...routine.rule }
+    : { ...common, ...routine.rule, timeZone: routine.timeZone };
+  const occurrence = resolveRecurringOccurrence(record, now);
+  return { scheduledAt: Date.parse(occurrence.occurrenceAt),
+    nextRunAt: occurrence.nextScheduledAt === undefined ? null : Date.parse(occurrence.nextScheduledAt) };
 }

@@ -33,6 +33,7 @@ export interface AutomationOptions {
 interface State {
   domain: AutomationDomain; config: Config; options: AutomationOptions; now: () => number;
   tail: Promise<unknown>; closing: boolean;
+  listeners: Set<() => void>;
 }
 const copy = <T>(value: T): T => structuredClone(value);
 const cmp = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
@@ -44,7 +45,10 @@ function write<T>(s: State, operation: () => Promise<T>): Promise<T> {
   if (s.closing) return Promise.reject(new AutomationError('automation/unavailable', 'Automation stores are closing'));
   const pending = s.tail.then(async () => { s.options.assertOwner(); return operation(); });
   s.tail = pending.catch(() => {});
-  return pending.then(copy).catch((error: unknown) => { throw unavailable(error); });
+  return pending.then(value => {
+    for (const listener of s.listeners) listener();
+    return copy(value);
+  }).catch((error: unknown) => { throw unavailable(error); });
 }
 async function putRoutine(s: State, record: RoutineRecord) {
   s.options.assertOwner();
@@ -205,6 +209,11 @@ export const runProgressSchema = z.strictObject({
 }).refine((v) => Object.values(v).every((x) => x !== undefined), 'Undefined progress field');
 export class RunService {
   constructor(private readonly s: State) {}
+  /** Internal scheduler view: never truncate active slots behind a history page. */
+  pending(): RunRecord[] {
+    return read(() => allRuns(this.s).filter(r => r.status === 'queued' || r.slotHeld)
+      .sort((a, b) => a.requestedAt - b.requestedAt || cmp(a.id, b.id)));
+  }
   get(id: string): RunRecord { const key = parse(automationIdSchema, id); return read(() => run(this.s, key)); }
   list(options: z.input<typeof runListSchema> = {}): RunRecord[] {
     const filter = parse(runListSchema, options);
@@ -236,7 +245,18 @@ export class RunService {
       }
       if (fields.trigger === 'delegate') await bot(this.s, fields.originBotId, fields.originBotCreatedAt);
       const { bot: target, presetId } = await bot(this.s, r?.botId ?? (fields as Extract<RunRequest, { trigger: 'delegate' }>).botId);
-      const skipReason = fields.trigger === 'scheduled' ? fields.skipReason : undefined;
+      let skipReason = fields.trigger === 'scheduled' ? fields.skipReason : undefined;
+      if (fields.trigger === 'scheduled' && r) {
+        if (allRuns(this.s).some(v => v.routineId === r.id && v.slotHeld)) skipReason = 'overlap';
+        // Keep at most the latest unadmitted scheduled occurrence per Routine.
+        // Settle the predecessor before committing its replacement: a crash may
+        // miss work, but cannot leave two replayable queue entries.
+        for (const prior of allRuns(this.s).filter(v => v.routineId === r.id && v.trigger === 'scheduled' && v.status === 'queued')) {
+          await putRun(this.s, { ...prior, status: 'skipped', decision: 'skip', skipReason: 'superseded',
+            step: 'settled', endedAt: Math.max(now, prior.requestedAt), updatedAt: Math.max(now, prior.updatedAt), revision: prior.revision + 1 });
+        }
+        if (!skipReason && allRuns(this.s).filter(v => v.status === 'queued').length >= this.s.config.maxQueuedRuns) skipReason = 'queue_full';
+      }
       if (!skipReason && allRuns(this.s).filter((v) => v.status === 'queued').length >= this.s.config.maxQueuedRuns) {
         throw new AutomationError('automation/busy', 'Automation queue is full');
       }
@@ -333,7 +353,7 @@ export class RunService {
 }
 
 export async function openAutomationStores(ctx: Context, options: AutomationOptions): Promise<{
-  routines: RoutineService; runs: RunService; close: () => Promise<void>;
+  routines: RoutineService; runs: RunService; subscribe: (listener: () => void) => () => void; close: () => Promise<void>;
 }> {
   let state!: State; let closing: Promise<void> | undefined;
   try {
@@ -345,7 +365,7 @@ export async function openAutomationStores(ctx: Context, options: AutomationOpti
       const domain = await ctx.storageDomain.open(automationDomain);
       if (options.config?.quotaTimeZone === undefined) config.quotaTimeZone = domain.table('control').get('quota')?.quotaTimeZone
         ?? [...domain.table('runs').entries()].find(([, r]) => r.quotaCharged)?.[1].quotaTimeZone ?? config.quotaTimeZone;
-      state = { domain, config, options, now: options.now ?? Date.now, tail: Promise.resolve(), closing: false };
+      state = { domain, config, options, now: options.now ?? Date.now, tail: Promise.resolve(), closing: false, listeners: new Set() };
       try {
         // Validate every row and key before any recovery mutation; bad input remains untouched.
         for (const [key, r] of domain.table('routines').entries()) {
@@ -377,11 +397,12 @@ export async function openAutomationStores(ctx: Context, options: AutomationOpti
       }
       return () => closing ??= (async () => {
         await options.beforeClose?.();
-        state.closing = true; await state.tail; await domain.close();
+        state.closing = true; state.listeners.clear(); await state.tail; await domain.close();
       })();
     });
     await release;
     return { routines: new RoutineService(state), runs: new RunService(state),
+      subscribe: listener => { state.listeners.add(listener); return () => { state.listeners.delete(listener); }; },
       close: async () => { await release(); await closing; } };
   } catch (error) { throw unavailable(error); }
 }
