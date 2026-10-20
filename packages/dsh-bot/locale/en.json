@@ -11,7 +11,9 @@
     "bot_manage.approval.keepMemories": "deleteMemories=false — keep all memories.",
     "bot_manage.approval.selfUpdate": "\nWARNING: this modifies the CURRENT BOT ITSELF. Changes to tools.deny can remove tool restrictions for future sessions. This live Agent keeps its existing restrictions.",
     "bot_manage.approval.selfDelete": "\nWARNING: this deletes the CURRENT BOT ITSELF. This live Agent keeps its existing restrictions; new sessions and cold restoration will be unavailable without this Bot preset.",
-    "bot_manage.approval.combined": "{operation}\nAdditional approval policy: {upstream}"
+    "bot_manage.approval.combined": "{operation}\nAdditional approval policy: {upstream}",
+    "bot_delegate.description": "Delegate a task to a Bot in a new background session after approval. Returns queue acceptance immediately with runId and a reserved sessionId; inspect the Run for its final sessionId and outcome. Only task is sent. One summary is queued to this session after completion. Background sessions and report turns cannot delegate.",
+    "bot_delegate.approval": "Delegate to {target} in the shared Bots workspace. Only the following task is sent: {task}\nThis uses the target Bot permissions and queues a summary here, causing an additional model turn."
   },
   "ui": {
     "bots.title": "Bots",

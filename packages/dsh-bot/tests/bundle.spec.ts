@@ -154,6 +154,7 @@ describe('built bundle contract', () => {
     expect(Object.keys(en.tools).sort()).toEqual(Object.keys(zh.tools).sort());
     for (const dictionary of [en.tools, zh.tools]) {
       expect(Object.keys(dictionary).sort()).toEqual([
+        'bot_delegate.approval', 'bot_delegate.description',
         'bot_manage.approval.combined', 'bot_manage.approval.create', 'bot_manage.approval.delete',
         'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories',
         'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',

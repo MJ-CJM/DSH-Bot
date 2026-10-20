@@ -7,12 +7,16 @@ import type { HostLease } from './lock.js';
 import { openAutomationStores } from './store.js';
 import { RoutineRemote, RunRemote } from './remote.js';
 import { Dispatcher } from './dispatcher.js';
+import { DelegateReporter } from '../delegate/reporter.js';
+import { dshReportRuntime } from '../delegate/runtime.js';
+import { registerAutomationGuard } from '../delegate/guard.js';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     dshBotExecutor: RunExecutor;
     dshBotAutomationStores: Awaited<ReturnType<typeof openAutomationStores>>;
     dshBotDispatcher: Dispatcher;
+    dshBotReporter: DelegateReporter;
   }
 }
 
@@ -21,7 +25,8 @@ export async function startAutomation(ctx: Context, bots: DshBotRegistry, lease:
   const runtime = dshExecutorRuntime(ctx, bots);
   let executor: RunExecutor | undefined;
   let dispatcher: Dispatcher | undefined;
-  const close = async () => { await dispatcher?.close(); await executor?.close(); };
+  let reporter: DelegateReporter | undefined;
+  const close = async () => { await dispatcher?.close(); await reporter?.close(); await executor?.close(); };
   if (!lease.identity) throw new Error('Missing Host identity');
   const stores = await openAutomationStores(ctx, { ownerId: lease.identity.token,
     assertOwner: () => lease.assertOwner(), resolveBot: runtime.resolveBot, config,
@@ -33,8 +38,11 @@ export async function startAutomation(ctx: Context, bots: DshBotRegistry, lease:
     ctx.provide('dshBotExecutor', executor);
     ctx.provide('dshBotAutomationStores', stores);
     ctx.provide('dshBotDispatcher', dispatcher);
+    registerAutomationGuard(ctx, stores.runs);
+    reporter = new DelegateReporter(ctx, stores, dshReportRuntime(ctx, bots), () => lease.assertOwner(), config);
+    ctx.provide('dshBotReporter', reporter);
     new RoutineRemote(ctx, stores.routines, dispatcher);
     new RunRemote(ctx, stores.runs);
-    return { executor, stores, dispatcher, close };
+    return { executor, stores, dispatcher, reporter, close };
   } catch (error) { await close(); await stores.close(); throw error; }
 }

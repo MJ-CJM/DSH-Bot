@@ -1,5 +1,23 @@
 # DSH API 核实记录
 
+## T15：委派工具、身份门禁与持久回报（2026-10-20）
+
+正式 `bot_delegate` 接入既有 Dispatcher/RunExecutor；独立 reporter 在终态后向原会话 followup 一次。详见 [T15 验收](acceptance/P2-T15.md)，包含静态/单元/真实 Web Host 分层、失败记录和决策。未新增依赖或 Loader/package exports，P1 与 automation 领域仍各为 v1。
+
+| 公开入口 | 用法 / 已验证边界 |
+| --- | --- |
+| `defineTool`、`tools/pre-execute`、`ToolExecution.callId/rootCallId/agent` | Agent scope 工具，原生 ask 审批双语展示目标/完整 task；身份来自本包 binding（botId + createdAt），禁止模型传来源。操作 UUID 按 session + 持久 step seq + rootCallId/callId 派生，避免 provider 跨 step 复用 callId 被误去重。锁定源码 `core/tools/src/index.ts:327-398`；真实 Host 模型发起工具及审批单测 |
+| Cordis `ctx.get`、`ctx.effect` | Agent 回调不能直接访问未 inject 的 Host service；用公开 get 查 automation/registry。注册、门禁、订阅、关闭均有 disposer；显式 dispatcher → reporter → executor → stores 的 join。真实 scope 错误在 e2e 暴露并修正 |
+| Session `header.parentSession/origin/delegationDepth`、`snapshotEvents()` | Run 历史身份禁止后台再委派/改 Routine；子会话/fork 保守禁止；report user/message 后至下一普通 user 输入禁止启动新链。源码 `core/session/src/types.ts:95-123`。后台与 report 轮次真实模型拒绝；Routine 写工具为运行时单测 |
+| `createUserMessage`、MessageId、自有 `dsh-bot-delegate` source | 固定完整 message 持久保存；摘要取执行器最终回复，先沿用 credential 筛查后限长。新增 Config `automation.delegateReportMaxChars=4000`（1–8000），消息仍受 8192 schema 上限。真实目标合成秘密被整段筛成 `[redacted]` |
+| `agent.followup`、Inbox `nextTurn/nextStep`、`agent/inbox/spliced`、`sessions.flush` | `followup` 排 next-turn+wake，需核对本次新增 splice 的完整消息及 flush=true 后才写 sent。立即 claim 与 user/message 提交之间有短暂空窗，不能只按当前 Inbox 是否为空判定投递失败。源码 `core/agent/src/runtime-types.ts:204-241`、`src/types.ts:96-101`、`core/agent-loop/src/agent.ts:154-165`、`src/inbox.ts:109-118,227-240`。sent 是持久投递收据，不保证模型处理；真实 e2e 另等 completed |
+| `sessionController.inspect/resolveAgent`、`workspaceRegistry.archivedSessionIds` | 不创建替代原会话，不取消归档；检查原 Bot createdAt/Agent binding，冷恢复原 ID 后再核查。源码 `api/session-controller/src/index.ts:243-267`、`api/session-controller/src/agent.ts:200-242`、`workspace/workspace/src/index.ts:339-365`。三进程 profile 验证冷恢复只投一次、归档/不存在/同 ID 新 Bot blocked |
+
+回报投递前先写 attempts=1；重启发现完整 user/message 则补 sent，只有 pending Inbox 或无确定证据则 blocked，不补发/强制唤醒。未尝试 pending 可以正常恢复投递。blocked 没有自动重试，T15 不提供手动重试 Remote。单元覆盖崩溃窗口持久状态与 flush=false；未进行逐窗口 SIGKILL。
+
+工具立即返回的是排队受理与预分配 sessionId，实际 create ID 以 Run 为准。排队后参与 Bot 身份失效取消且不扣额度。归档/冷恢复、每 Run 固定 messageId 和主模型闭环已在真实隔离 Host + loopback mock 验证；真实请求 0，没有桌面 UI 或亮暗截图。本轮不是桌面版本升级或 T17 打包验收。
+
+
 ## T14：Host Dispatcher、规则游标与统一准入（2026-10-20）
 
 在 T13 的单 Host lease、automation 域恢复和 RunExecutor 之后启动 Dispatcher。只由 Host 定时：最早 `nextRunAt` timer + 默认 60000ms 周期检查，存储成功写入触发失效通知，执行完成再唤醒队列。卸载先停 Dispatcher 的 timer/订阅及扫描，再关闭执行器、存储并释放 lease。验收、命令和证据见 [T14 报告](acceptance/P2-T14.md)。

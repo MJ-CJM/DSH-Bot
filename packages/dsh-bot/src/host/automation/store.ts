@@ -209,6 +209,14 @@ export const runProgressSchema = z.strictObject({
 }).refine((v) => Object.values(v).every((x) => x !== undefined), 'Undefined progress field');
 export class RunService {
   constructor(private readonly s: State) {}
+  /** Internal provenance/outbox views must include history beyond UI pagination. */
+  forSession(sessionId: string): RunRecord | undefined {
+    return read(() => allRuns(this.s).find(r => r.sessionId === sessionId));
+  }
+  reportable(): RunRecord[] {
+    return read(() => allRuns(this.s).filter(r => r.trigger === 'delegate' && isTerminalRun(r.status)
+      && (!r.report || r.report.state === 'pending')));
+  }
   /** Internal scheduler view: never truncate active slots behind a history page. */
   pending(): RunRecord[] {
     return read(() => allRuns(this.s).filter(r => r.status === 'queued' || r.slotHeld)
@@ -287,8 +295,17 @@ export class RunService {
       const control = await rebuild(this.s);
       const current = run(this.s, key);
       if (current.status !== 'queued') return current;
-      await bot(this.s, current.botId, current.botCreatedAt);
       const now = stamp(this.s, current.updatedAt);
+      try {
+        await bot(this.s, current.botId, current.botCreatedAt);
+        if (current.trigger === 'delegate' && current.originBotId) await bot(this.s, current.originBotId, current.originBotCreatedAt);
+      } catch (error) {
+        if (current.trigger !== 'delegate') throw error;
+        // No session/input side effect has occurred. A queued delegate whose
+        // participant disappeared must not wait forever or bind a replacement.
+        return putRun(this.s, { ...current, status: 'cancelled', step: 'settled', endedAt: now, updatedAt: now,
+          revision: current.revision + 1, errorCode: 'delegate/identity-unavailable' });
+      }
       if (current.routineId) {
         const r = routine(this.s, current.routineId, true);
         if (r.deletedAt !== undefined || (current.trigger === 'scheduled' && (!r.enabled || r.ruleRevision !== current.ruleRevision))) {

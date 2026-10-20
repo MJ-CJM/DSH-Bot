@@ -6,6 +6,7 @@ export interface Config {
   maxConcurrentRuns: number; maxRunsPerBotPerDay: number; maxQueuedRuns: number;
   runTimeoutMs: number; catchUpMaxAgeMs: number; sweepIntervalMs: number; delegateMaxDepth: 1; quotaTimeZone: string;
   executorPollMs: number; stopGraceMs: number;
+  delegateReportMaxChars: number;
 }
 const systemTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 export const Config: Schema<Config> = Schema.object({
@@ -19,6 +20,7 @@ export const Config: Schema<Config> = Schema.object({
   quotaTimeZone: Schema.string().default(systemTimeZone()),
   executorPollMs: Schema.number().min(10).max(60000).step(1).default(250),
   stopGraceMs: Schema.number().min(100).max(60000).step(1).default(5000),
+  delegateReportMaxChars: Schema.number().min(1).max(8000).step(1).default(4000),
 });
 export const configSchema = z.strictObject({
   maxConcurrentRuns: z.number().int().min(1).max(64).default(2),
@@ -30,4 +32,5 @@ export const configSchema = z.strictObject({
   delegateMaxDepth: z.literal(1).default(1), quotaTimeZone: timeZoneSchema.default(systemTimeZone),
   executorPollMs: z.number().int().min(10).max(60000).default(250),
   stopGraceMs: z.number().int().min(100).max(60000).default(5000),
+  delegateReportMaxChars: z.number().int().min(1).max(8000).default(4000),
 });
