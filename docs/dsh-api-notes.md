@@ -1,5 +1,24 @@
 # DSH API 核实记录
 
+## T12：Automation v1 存储与 Remote 契约（2026-10-20）
+
+新增独立 `dsh_bot_automation` version 1：`routines/runs/control`。P1 `dsh_bot` 的声明、四表、Host 启动及 19 个 Remote 端点保持原样。本轮结果见 [T12 验收](acceptance/P2-T12.md)；未安装插件或运行调度/模型会话。
+
+| 公开 API / 入口 | T12 用法与实际证据 |
+| --- | --- |
+| `defineDomain/domainTable/storageDomain.open`、`Domain.table/close`、`KvTable.get/entries/put/delete` | 沿用既有公开 storage-domain 根入口；严格 schema 开域，写前再次校验；单 owner 服务队列串行。真实 Cordis + JSON 后端测试并发去重、跨表失败修复、独立 Node 进程重开；源码 `packages/storage/storage-domain/src/spec.ts:34-71`、`src/domain.ts:307-344` |
+| schedule 根入口的五个 `create*ScheduleRecord` | 新增正式 dev `0.2.1-rc.2` + peer `>=0.2.1-rc.2 <0.3.0`；Host-only `rules.ts` 负责接受/编辑规则的校验和规范化，不在 Client 导入 schedule。源码 `packages/schedule/schedule/src/index.ts:25-61`、`src/domain.ts:1294-1507`；本轮测试五类正常输入及 every59/非法 cron/时区/时间/重复 weekday；dispatcher、DST 到期扫描仍属 T14 |
+| `createTypertRemoteInfo`（公开 `/remote-info`）、`TypertRemoteService/Remote`、`ctx.typert.register`、Client `$mount` | 单独 `dsh-bot/automation-remote` contribution，7 个端点：routine list/get/create/update/delete，run list/get；Host 由 `registerAutomationRemote(ctx, stores)` 在 effect 中挂载。每个参数及结果均显式 encode/decode；真实 Gateway 结果解码失败返回 `ok:false, gateway/internal`，不保证抛异常。测试实际 Cordis services/Client Gateway，HTTP carrier 使用进程内适配器；未声称真实 Web profile HTTP e2e |
+| `@deepseek-ai/dsh-llm` 的 `MessageSourceMap`、`createUserMessage` | 新增 type-only 自有来源 `dsh-bot-delegate`（notice），持久 report 的 message 限定为单 text block 的完整 user 消息；必须与 Run/session/messageId 一致。测试使用公开工厂生成消息并写入终态、重开读回；未调用 followup。源码 `packages/llm/llm/src/message.ts:109,138-163,241-253` |
+| `ctx.effect` | 开域、Remote 注册/服务生命周期归所属 Host；拒绝关闭后的新写、等待已排队写入、共享一次关闭 Promise。测试 owner 门禁、duplicate open、重复 close、插件卸载与 Client unmount |
+
+权威记录是 Run：`enqueue` 只持久排队，不收费；`reserve` 在同一 Run 行写入 quota receipt + ownerId + slotHeld，再重建 control。control/cursor 任一步失败均不删除已提交 Run；相同操作重试复用 id/sessionId/requestId。重开时所有未确认终止的已收费运行转为 `recovery_needed`、继续占位，不自动重放；未收费 queued 保留并在 reserve 时重验身份/暂停/删除状态。历史全部保留，当前没有清理或压缩接口。
+
+`quotaTimeZone` 首次默认系统时区，之后读取持久值（control 丢失时从收费 Run 恢复）；显式更改拒绝，日期倒退拒绝新的 reservation。配额按 botId 计数，同 ID 重建不返还当天额度；Bot 身份另以 botCreatedAt 防串用。Config 默认并发 2、每日 20、队列 64、超时 15min、补跑窗口 24h、兜底 60s、委派深度固定 1；本轮只实现存储相关准入，计时/补跑/实际递归限制由后续执行器和工具负责。
+
+决策：T12 以 `dsh-bot/automation` 导出工厂，不提前改生产 patch 激活；调用方必须先取得单 Host 锁，再提供同步 `assertOwner()`，每次持久写前重验。该回调不是锁实现，也不把单元测试的空回调当作互斥验证。锁接管政策采用已批准设计 §10（同机可证实 stale 时自动接管），在后续 Host coordinator 落地，不沿用 T11 的人工清理建议。
+
+
 ## T11：P2 公开 API 探针（2026-10-20）
 
 本轮只增加独立 `spikes/p2`，不改产品代码或主 workspace 依赖。锁定参考 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`；真实 CLI `0.2.1-rc.2`。完整七项 PASS/FAIL、命令、失败历史和决策见 [T11 报告](../spikes/p2/README.md)。最终证据 `.dsh-dev/p2/t11/1792504206833-48874`：tgz 安装后真实 Web Host 激活，两次进程正常退出；4 次 loopback mock 请求、真实模型请求 0。没有桌面/浏览器可视验收。
