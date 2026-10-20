@@ -152,7 +152,7 @@ describe('Bot preset context using the published scope and tool services', () =>
       .find((section) => section.name === 'dsh-bot:home')?.text;
     expect(text).toBe('Private directory unavailable; use the current workspace under native permissions and approval.');
     expect(text).not.toContain('/fixture');
-    expect(botContext.getBotBinding(first.subject)).toEqual({ botId: 'alpha' });
+    expect(botContext.getBotBinding(first.subject)).toEqual({ botId: 'alpha', botCreatedAt: 1 });
   }));
   it('validates a required Bot id', () => {
     expect(botContext.Config({ botId: 'alpha' })).toEqual({ botId: 'alpha' });
@@ -175,9 +175,9 @@ describe('Bot preset context using the published scope and tool services', () =>
     expect(ctx.tools.get('inherited_tool', second.subject)).toBeUndefined();
     expect(ctx.tools.get('inherited_tool', other.subject)).toBeDefined();
     expect(ctx.tools.schemas()).toEqual([]);
-    expect(botContext.getBotBinding(first.subject)).toEqual({ botId: 'alpha' });
-    expect(botContext.getBotBinding(second.subject)).toEqual({ botId: 'alpha' });
-    expect(botContext.getBotBinding(other.subject)).toEqual({ botId: 'beta' });
+    expect(botContext.getBotBinding(first.subject)).toEqual({ botId: 'alpha', botCreatedAt: 1 });
+    expect(botContext.getBotBinding(second.subject)).toEqual({ botId: 'alpha', botCreatedAt: 1 });
+    expect(botContext.getBotBinding(other.subject)).toEqual({ botId: 'beta', botCreatedAt: 1 });
     expect(botContext.getBotBinding(plain.subject)).toBeUndefined();
     expect(Object.isFrozen(botContext.getBotBinding(first.subject))).toBe(true);
   }));
@@ -224,7 +224,7 @@ describe('Bot preset context using the published scope and tool services', () =>
     await retained.announce();
     await fresh.announce();
     for (const session of [before, retained]) {
-      expect(botContext.getBotBinding(session.subject)).toEqual({ botId: 'alpha' });
+      expect(botContext.getBotBinding(session.subject)).toEqual({ botId: 'alpha', botCreatedAt: 1 });
       expect(ctx.tools.get('bot_manage', session.subject)).toBeUndefined();
       expect(ctx.tools.get('inherited_tool', session.subject)).toBeUndefined();
       expect(ctx.tools.schemas(session.subject).map((tool) => tool.name)).not.toContain('bot_manage');
@@ -376,7 +376,7 @@ describe('Bot preset context using the published scope and tool services', () =>
     await first.scope.dispose();
     expect(botContext.getBotBinding(first.subject)).toBeUndefined();
     expect(ctx.tools.get('inherited_tool', first.subject)).toBeDefined();
-    expect(botContext.getBotBinding(second.subject)).toEqual({ botId: 'alpha' });
+    expect(botContext.getBotBinding(second.subject)).toEqual({ botId: 'alpha', botCreatedAt: 1 });
     expect(ctx.tools.get('inherited_tool', second.subject)).toBeUndefined();
 
     await alpha.plugin.dispose();

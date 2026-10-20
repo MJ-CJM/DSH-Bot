@@ -1,5 +1,129 @@
 # DSH API 核实记录
 
+## T17：0.2.0 集成、timer 边界与 tarball 验证（2026-10-20）
+
+完整命令、证据和决策汇总见 [P2 验收](acceptance/P2.md)。新增 `scripts/p2-e2e` 串行安装本次 tarball 到新 profile，复跑 T14 Dispatcher、T15 delegate，并增加真实 Host 的默认并发 2、每日 20、24h 时间夹具、卸载重装/独立后端恢复。DSH_HOME 仍严格为仓库 `.dsh-dev`；不清空旧 profile 或证据。只启用 loopback mock provider，没有新公开 DSH API、依赖或领域版本变更。
+
+集成首轮实等 every60 时 80 秒无 Run、无 mock 请求；确定性测试复现 timer 扫描快照尚未到期、重设 timer 时已经到期的竞态。Dispatcher 记录最后扫描时刻：仅对该快照之后刚跨过的到期点安排零延迟唤醒；已经扫描且写入失败的旧到期点继续等周期兜底，避免热循环。旧实现对应回归测试 FAIL，修复后通过；真实每 60 秒场景另由 e2e 验证，不能用回归测试代替。
+
+运行历史继承面板 13px 正文，标题 15px，与 Routine 卡片层级一致；every 展示优先完整天/小时/分钟，其余精确秒（90 秒不四舍五入），中英同键并区分英文单复数。不改变时间规则、表单输入或 Host 语义。本轮截图按 T17 要求由编排方复跑，未宣称亮暗视觉通过。
+
+## T16：Routine 工具、Bots 页内 UI 与正式 Client 接入（2026-10-20）
+
+**r2 返工（2026-10-20）**：编排方证据 `dist/screenshots/2026-10-20T15-42-56.332Z-2202/summary.json` 显示 `New routine → getByLabel('Schedule rule', exact)` 超时。RoutineEditor 使用原生 select，但原嵌套 label 把 option 文本并入标签；现改为独立 label + React useId / htmlFor / id。Modal 原有 aria-labelledby 标题命名有效，未改为宽松选择器。新增精确锁定的测试依赖 `@testing-library/dom@10.4.2`，通过实际 accessible-name 算法及精确标签查询覆盖中英新建/编辑、所有控件和五类规则。
+
+r2 的 `--v020` 改为公开 Remote 创建暂停的 every3600 示例→两次 runNow 实际完成→启用以显示未来 nextRunAt，再打开 UI 拍摄详情/总览与导航历史；不再用表单作为截图种子入口，**不再声称截图命令验证了 UI CRUD 或 every60 调度**。`--v020-seed-only` 使用完全相同种子函数，隔离 Host 实测 2 个 mock completed、真实请求 0；没有截图。原 `--v020-host-only` 保留独立 every60 验证。截图失败时在 context 关闭前取证，并记录具体 routine 步骤。最终 r2 `scripts/pnpm check` 为 638/638；浏览器画面交由编排方复跑，详见验收报告第 8 节。以下 T16 表格与初轮运行证据仍适用，但旧截图流程由本段取代。
+
+新增 `routine_create/list/update/delete/run_now`；复用 T12–T15 服务与独立 automation 契约，不新增 Host Remote 端点、依赖、package export 或领域版本。完整证据、失败与复跑命令见 [T16 验收](acceptance/P2-T16.md)。
+
+| 公开入口 | 本次用法与验证边界 |
+| --- | --- |
+| `defineTool` / `tools.register` / `tools/pre-execute` | 五个工具在 Bot Agent scope 注册，四个写操作强制 ask，保留上游 deny/cancel；审批双语展示完整目标、规则、task 与 patch。`routine_list` 无额外审批。使用真实 ToolRuntime + ApprovalService + JSON 后端验证拒绝无写入/无 Run、CAS 冲突、deny 与卸载。参考锁定源码 `packages/core/tools/src/index.ts:154,1071,1514`；没有通过私有 API 绕过审批 |
+| Cordis `ctx.get` / `ctx.effect` | Agent 回调取本包 Host stores/registry/dispatcher；验证当前 Bot createdAt 与绑定身份。复用 `assertInteractiveOrigin`，后台和回报轮次禁止写 Routine。定义/门禁/Client mount/catalog 都随 owner 清理 |
+| Client `remote.$mount(AUTOMATION_REMOTE)` | 与 P1 contribution 分别 await 挂载并 effect 注销。正式 Client factory 经 Gateway 调用既有 `dshBot.routine/*`、`dshBot.run/*`、`dshBot.automation/status`；实测 create→every60→pause→同 operationId 并发 runNow 仅一个 Run→edit/conflict→delete/history |
+| 公开 `main` slot + `useSyncExternalStore` | 保留现有 Bots 页面，在顶部加定时任务页签、Bot 详情加定时任务区；不增加侧栏入口，不导入原生 schedule 内部组件。沿用既有共享 polling scheduler 的可见性、reset、失效与 epoch 丢弃旧读逻辑，Client 不执行调度 |
+| 既有 `uiWorkspace.openSession` | 历史走已有页面 onOpenSession（包含 activity markRead best effort），只对有 workspace 且已进入创建步骤的 Run 提供链接；未创建或丢失会话仍可能由宿主拒绝，界面显示导航失败。正式 factory 回调及组件交互实测；浏览器原生会话展示未测 |
+
+规则表单提交本包 schema，由 Host `prepareRule` 调公开 schedule 工厂最终校验。单次时间要求显式 ISO 偏移或 Z；daily/weekly 将 `HH:mm` 补为 `HH:mm:ss`；every ≥ 60、weekly ISO 1–7、cron 五字段。更新携带原 revision，失败保留草稿；runNow 在同一确认框内重试沿用 operationId，返回受理提示，不宣称已成功。
+
+上次状态按每 Routine 最新 Run 查询，**不使用仅代表 scheduled cursor 的 lastRunId 作为手动运行状态**。历史按 `{requestedAt,id}` 分页；新增 Client Config `routineHistoryPageSize=50`（1–200），仍使用现有轮询参数。中英 locale 同键，样式仅使用锁定主题 token。
+
+`--v020` 目标为中英×亮暗×总览/详情共 8 张图，中文发布 `.codex/screens/v020-{light,dark}.png` 及 detail 变体，截图前必须有真实已完成 Routine 和历史。当前 Chromium 在沙箱启动阶段被 MachPort 权限拒绝；**亮暗可读性、真实浏览器操作、PNG 输出均 FAIL**。独立 `--v020-host-only` 的正式 Client/Gateway/Host + loopback mock 通过，不产生截图，也不替代浏览器验收。未修改桌面应用、全局 profile 或版本；0.2.0 打包留 T17。
+
+
+## T15：委派工具、身份门禁与持久回报（2026-10-20）
+
+正式 `bot_delegate` 接入既有 Dispatcher/RunExecutor；独立 reporter 在终态后向原会话 followup 一次。详见 [T15 验收](acceptance/P2-T15.md)，包含静态/单元/真实 Web Host 分层、失败记录和决策。未新增依赖或 Loader/package exports，P1 与 automation 领域仍各为 v1。
+
+| 公开入口 | 用法 / 已验证边界 |
+| --- | --- |
+| `defineTool`、`tools/pre-execute`、`ToolExecution.callId/rootCallId/agent` | Agent scope 工具，原生 ask 审批双语展示目标/完整 task；身份来自本包 binding（botId + createdAt），禁止模型传来源。操作 UUID 按 session + 持久 step seq + rootCallId/callId 派生，避免 provider 跨 step 复用 callId 被误去重。锁定源码 `core/tools/src/index.ts:327-398`；真实 Host 模型发起工具及审批单测 |
+| Cordis `ctx.get`、`ctx.effect` | Agent 回调不能直接访问未 inject 的 Host service；用公开 get 查 automation/registry。注册、门禁、订阅、关闭均有 disposer；显式 dispatcher → reporter → executor → stores 的 join。真实 scope 错误在 e2e 暴露并修正 |
+| Session `header.parentSession/origin/delegationDepth`、`snapshotEvents()` | Run 历史身份禁止后台再委派/改 Routine；子会话/fork 保守禁止；report user/message 后至下一普通 user 输入禁止启动新链。源码 `core/session/src/types.ts:95-123`。后台与 report 轮次真实模型拒绝；Routine 写工具为运行时单测 |
+| `createUserMessage`、MessageId、自有 `dsh-bot-delegate` source | 固定完整 message 持久保存；摘要取执行器最终回复，先沿用 credential 筛查后限长。新增 Config `automation.delegateReportMaxChars=4000`（1–8000），消息仍受 8192 schema 上限。真实目标合成秘密被整段筛成 `[redacted]` |
+| `agent.followup`、Inbox `nextTurn/nextStep`、`agent/inbox/spliced`、`sessions.flush` | `followup` 排 next-turn+wake，需核对本次新增 splice 的完整消息及 flush=true 后才写 sent。立即 claim 与 user/message 提交之间有短暂空窗，不能只按当前 Inbox 是否为空判定投递失败。源码 `core/agent/src/runtime-types.ts:204-241`、`src/types.ts:96-101`、`core/agent-loop/src/agent.ts:154-165`、`src/inbox.ts:109-118,227-240`。sent 是持久投递收据，不保证模型处理；真实 e2e 另等 completed |
+| `sessionController.inspect/resolveAgent`、`workspaceRegistry.archivedSessionIds` | 不创建替代原会话，不取消归档；检查原 Bot createdAt/Agent binding，冷恢复原 ID 后再核查。源码 `api/session-controller/src/index.ts:243-267`、`api/session-controller/src/agent.ts:200-242`、`workspace/workspace/src/index.ts:339-365`。三进程 profile 验证冷恢复只投一次、归档/不存在/同 ID 新 Bot blocked |
+
+回报投递前先写 attempts=1；重启发现完整 user/message 则补 sent，只有 pending Inbox 或无确定证据则 blocked，不补发/强制唤醒。未尝试 pending 可以正常恢复投递。blocked 没有自动重试，T15 不提供手动重试 Remote。单元覆盖崩溃窗口持久状态与 flush=false；未进行逐窗口 SIGKILL。
+
+工具立即返回的是排队受理与预分配 sessionId，实际 create ID 以 Run 为准。排队后参与 Bot 身份失效取消且不扣额度。归档/冷恢复、每 Run 固定 messageId 和主模型闭环已在真实隔离 Host + loopback mock 验证；真实请求 0，没有桌面 UI 或亮暗截图。本轮不是桌面版本升级或 T17 打包验收。
+
+
+## T14：Host Dispatcher、规则游标与统一准入（2026-10-20）
+
+在 T13 的单 Host lease、automation 域恢复和 RunExecutor 之后启动 Dispatcher。只由 Host 定时：最早 `nextRunAt` timer + 默认 60000ms 周期检查，存储成功写入触发失效通知，执行完成再唤醒队列。卸载先停 Dispatcher 的 timer/订阅及扫描，再关闭执行器、存储并释放 lease。验收、命令和证据见 [T14 报告](acceptance/P2-T14.md)。
+
+| 公开入口 | 用法 / 证据边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-schedule` 根入口 `resolveRecurringOccurrence` | 对已到期的 every/daily/weekly/cron，以持久 `nextRunAt` 作为 `scheduledAt` 构造公开 record；读取 `occurrenceAt` / `nextScheduledAt`，不枚举历史积压。一次性 at 消费持久绝对时间后耗尽。参考锁定源码 `packages/schedule/schedule/src/index.ts:25-61`、`src/domain.ts:129-135,791-819,909-917,945-955,1104-1141`。虚拟时钟覆盖五类、DST 缺失/重复、cron DOM/DOW OR、跨年及正反跳变 |
+| Cordis `ctx.effect` / `ctx.provide` | 新增内部 `dshBotDispatcher`；所有 timer/本地订阅由 effect 清理，沿用所有权及 stores.beforeClose 的显式关闭链。没有新增 Loader export、依赖或原生 schedule 服务写入 |
+| Typert `@Remote` / strict contribution | 独立 automation 增至 **9 个端点**，新增 `dshBot.routine/runNow(id, operationId)`，UUID operationId 去重；返回持久受理 Run，不保证已经开始或成功。无 dispatcher 时拒绝。原有 P1 19 端点不变；Client Gateway codec/幂等往返测试及真实 Host 服务调用验证 |
+| 既有公开 SessionController / WorkspaceRegistry / session events | Dispatcher 只调用同一 RunExecutor；每次新建 Bots 工作区会话、prompt、完成屏障、flush 均沿用 T13。T14 profile 驱动实等 every60、暂停后 run_now、正常关闭/冷启动补跑及 SIGSTOP/SIGCONT 恢复；不是桌面 UI 或实际 macOS 休眠验收 |
+
+补跑每个 Routine 最多最近一次；默认 24h（含边界），更旧记 `skipped/catch_up_expired`。暂停恢复由 RoutineService 重建未来游标，过期 at 不平移；run_now 不改锚点/游标。`misfirePolicy=skip` 将跨过多个 occurrence 或迟到至少一个 sweep 周期视作漏跑，容忍一个周期内的普通 timer 延迟。时间规则仍由公开 schedule 函数决定。
+
+全局默认并发 2、每 Bot 每日 20、队列 64，沿用既有 Config。所有 trigger 都走同一 `RunService.reserve`；失败不返额度，quotaTimeZone 首次默认系统时区并持久固定，日桶回退仍拒绝。自动消费将额度耗尽的未收费 Run 记 `skipped/quota`，不阻塞其它 Bot；时钟/所有权/存储失败记 Host 日志，保留权威记录并等待兜底扫描，不自动重放 recovery_needed。
+
+同 Routine 活动时到期立即记 `skipped/overlap`。全局满载时保留持久有界队列；同 Routine 的旧 scheduled queued 项记 `superseded`，只留下最新一次；scheduled 满队列记 `queue_full`，manual/delegate 满队列报 busy。先落旧项终态再写替代项，故障时宁可暂缺工作，不保留两个可执行替代项。内部 pending 视图不使用历史分页上限，以免超过 200 条历史后遗漏活动 slot。无外部依赖或版本变化。
+
+## T13：RunExecutor、Host 所有权与完成屏障（2026-10-20）
+
+产品 Host 现在在取得 `$DSH_HOME/dsh-bot/automation/lock` 所有权后启动 P1 注册表及独立 automation 域，提供内部 `dshBotExecutor` / `dshBotAutomationStores` 服务。没有 Dispatcher、自动排队消费、委派工具或回报投递；这些仍属 T14/T15。完整命令、证据、失败修正及验收见 [T13 报告](acceptance/P2-T13.md)。
+
+| 公开入口 | 本轮用法 / 已验证边界 |
+| --- | --- |
+| `sessionController.create/inspect/rename/prompt`；`sessionController` 根类型 | 先 reservation，再 `ensureBotsWorkspace()`；按 P1 `status()` 返回的健康 preset 创建普通会话，保存 **实际返回** sessionId，核对 cwd/preset/WorkspaceRegistry 成员后改标题。create 的 sessionId 不是强幂等保证，未知恢复不再次 create/prompt。源码 `packages/api/session-controller/src/index.ts:243-267,301,431,462`；`src/agent.ts:458-505` |
+| `Agent.session.snapshotEvents/status/inbox/cancel/whenIdle`、`sessions.flush` | 用 user/message.source.rpcId 关联 requestId，向前寻找 turn/start（step/start 可以更早），至少进入一步、关联 turn/end completed、无未闭合 turn、无待决审批、Agent idle、Inbox 两队列空、无自有后台工作，flush=true 后复查再提交 succeeded。error/max-tokens/blocked 不成功；未知 interrupted/forked 保留 recovery。源码 `core/session/src/types.ts:202-233,283-310`，`core/agent/src/runtime-types.ts:165-197` |
+| `jobs.list/kill/attachController`、`subagents.listDescendants/drainDescendants` | 根会话及可识别后代分别按 **精确 owner** 过滤 jobs（list 还包含 unowned）；子目录条目保留不等于运行。未知诊断和 external 不足以证实停止，保守阻断成功。取消先 cancel + kill + drain，再确认 idle/Inbox/jobs/后代和 flush；超出停止宽限保留 slot、recovery_needed。源码 `jobs/jobs/src/index.ts:101-125,155-190`；`subagent/subagent/src/index.ts:364-379,405-426`、`src/list-children.ts:95-119` |
+| `approval/asked` / `approval/decided` Session 审计事件 | 按公开事件 id 配对，运行中置 waiting_approval；不读取审批内部状态。源码 `interaction/user-approval/src/types.ts:31-59`。本轮为合成事件单测，未实测交互审批 UI |
+| Cordis `ctx.provide`、`ctx.effect` | 自有服务用 provide 注册；set 不能替代首次 provide。effect 兄弟清理可能并发，显式 join executor→stores/registry→lease；store beforeClose 等待 executor，不依赖嵌套函数调用自动收集 effect。源码 `vendor/cordis/src/reflect.ts:254-305`、`src/fiber.ts:405-456,676`。真实 Host 激活和关闭、活动执行器卸载测试通过 |
+| Node `open('wx')` / `rename` / `process.kill(pid,0)`，OS `/bin/ps -p PID -o lstart=` | 锁记录 hostname/PID/启动时间/token；仅同机 PID 不存在或可验证启动时间不符可接管。使用不可变前代 + token 指定的唯一后继文件，避免多竞争者 unlink 新 owner 的竞态；正常 release 原子写 released 收据。进程竞争/SIGKILL 死 PID 接管实测；启动时间不符分支为注入单测 |
+| `dshBot.automation/status` Typert endpoint | 独立契约由 7 增至 8 个端点，公开 starting/ready/read_only/failed/stopping、原因及脱敏 owner 字段（不含 token）；严格 encode/decode，真实 Client Gateway 测试及只读 Host 验证。现有 P1 19 端点不变 |
+
+新增 dev-only 类型包 `@deepseek-ai/dsh-jobs`、`@deepseek-ai/dsh-subagent` 均精确 `0.2.1-rc.2`，没有新增 runtime imports/peer。按 T12 返工移除 package exports 的 `./automation`、`./automation-remote`；测试从相对路径引用内部构建模块。Typert 的 `package: dsh-bot/automation` 是契约标识，不是 Loader 模块入口，Host 根入口直接注册，保留它不需要 npm 子路径导出。
+
+默认超时仍为 900000ms（15min）；新增 `automation.executorPollMs=250`、`automation.stopGraceMs=5000`，都有 Schemastery/Zod 范围校验。真实超时测试显式设 3000ms，不宣称等待了 15 分钟。未确认停止不释放并发 slot；卸载时若外部操作仍不明，不释放同进程的 Host lease，直到进程结束，避免关闭插件再启用导致重放。
+
+环境限制：本次沙箱禁止 `/bin/ps`。此时仅记录标为 `unverified:` 的本进程近似开始时间，不用它与 OS 时间比较来判定 PID 复用；活 PID/无法查询均只读，死 PID 仍可接管。真实 OS 启动时间核验未通过环境验收，不能把注入测试当成系统实测。锁只支持同机、同一 DSH_HOME 的单 Host；不同 DSH_HOME 共享自定义后端、网络文件系统或旧版不遵守锁的 Host 不在保证范围。前代锁收据保留，不在线压缩。
+
+只读 follower 仅开放诊断状态，P1 业务方法拒绝、automation CRUD 服务不启动，以免缓存领域句柄或启动修复写共享 JSON；不是可实时浏览全部业务历史的副本。没有本轮桌面/浏览器视觉验证，Bots 分组结论来自真实原生 WorkspaceRegistry 成员记录。
+
+
+## T12：Automation v1 存储与 Remote 契约（2026-10-20）
+
+新增独立 `dsh_bot_automation` version 1：`routines/runs/control`。P1 `dsh_bot` 的声明、四表、Host 启动及 19 个 Remote 端点保持原样。本轮结果见 [T12 验收](acceptance/P2-T12.md)；未安装插件或运行调度/模型会话。
+
+| 公开 API / 入口 | T12 用法与实际证据 |
+| --- | --- |
+| `defineDomain/domainTable/storageDomain.open`、`Domain.table/close`、`KvTable.get/entries/put/delete` | 沿用既有公开 storage-domain 根入口；严格 schema 开域，写前再次校验；单 owner 服务队列串行。真实 Cordis + JSON 后端测试并发去重、跨表失败修复、独立 Node 进程重开；源码 `packages/storage/storage-domain/src/spec.ts:34-71`、`src/domain.ts:307-344` |
+| schedule 根入口的五个 `create*ScheduleRecord` | 新增正式 dev `0.2.1-rc.2` + peer `>=0.2.1-rc.2 <0.3.0`；Host-only `rules.ts` 负责接受/编辑规则的校验和规范化，不在 Client 导入 schedule。源码 `packages/schedule/schedule/src/index.ts:25-61`、`src/domain.ts:1294-1507`；本轮测试五类正常输入及 every59/非法 cron/时区/时间/重复 weekday；dispatcher、DST 到期扫描仍属 T14 |
+| `createTypertRemoteInfo`（公开 `/remote-info`）、`TypertRemoteService/Remote`、`ctx.typert.register`、Client `$mount` | 单独 `dsh-bot/automation-remote` contribution，7 个端点：routine list/get/create/update/delete，run list/get；Host 由 `registerAutomationRemote(ctx, stores)` 在 effect 中挂载。每个参数及结果均显式 encode/decode；真实 Gateway 结果解码失败返回 `ok:false, gateway/internal`，不保证抛异常。测试实际 Cordis services/Client Gateway，HTTP carrier 使用进程内适配器；未声称真实 Web profile HTTP e2e |
+| `@deepseek-ai/dsh-llm` 的 `MessageSourceMap`、`createUserMessage` | 新增 type-only 自有来源 `dsh-bot-delegate`（notice），持久 report 的 message 限定为单 text block 的完整 user 消息；必须与 Run/session/messageId 一致。测试使用公开工厂生成消息并写入终态、重开读回；未调用 followup。源码 `packages/llm/llm/src/message.ts:109,138-163,241-253` |
+| `ctx.effect` | 开域、Remote 注册/服务生命周期归所属 Host；拒绝关闭后的新写、等待已排队写入、共享一次关闭 Promise。测试 owner 门禁、duplicate open、重复 close、插件卸载与 Client unmount |
+
+权威记录是 Run：`enqueue` 只持久排队，不收费；`reserve` 在同一 Run 行写入 quota receipt + ownerId + slotHeld，再重建 control。control/cursor 任一步失败均不删除已提交 Run；相同操作重试复用 id/sessionId/requestId。重开时所有未确认终止的已收费运行转为 `recovery_needed`、继续占位，不自动重放；未收费 queued 保留并在 reserve 时重验身份/暂停/删除状态。历史全部保留，当前没有清理或压缩接口。
+
+`quotaTimeZone` 首次默认系统时区，之后读取持久值（control 丢失时从收费 Run 恢复）；显式更改拒绝，日期倒退拒绝新的 reservation。配额按 botId 计数，同 ID 重建不返还当天额度；Bot 身份另以 botCreatedAt 防串用。Config 默认并发 2、每日 20、队列 64、超时 15min、补跑窗口 24h、兜底 60s、委派深度固定 1；本轮只实现存储相关准入，计时/补跑/实际递归限制由后续执行器和工具负责。
+
+决策：T12 以 `dsh-bot/automation` 导出工厂，不提前改生产 patch 激活；调用方必须先取得单 Host 锁，再提供同步 `assertOwner()`，每次持久写前重验。该回调不是锁实现，也不把单元测试的空回调当作互斥验证。锁接管政策采用已批准设计 §10（同机可证实 stale 时自动接管），在后续 Host coordinator 落地，不沿用 T11 的人工清理建议。
+
+
+## T11：P2 公开 API 探针（2026-10-20）
+
+本轮只增加独立 `spikes/p2`，不改产品代码或主 workspace 依赖。锁定参考 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`；真实 CLI `0.2.1-rc.2`。完整七项 PASS/FAIL、命令、失败历史和决策见 [T11 报告](../spikes/p2/README.md)。最终证据 `.dsh-dev/p2/t11/1792504206833-48874`：tgz 安装后真实 Web Host 激活，两次进程正常退出；4 次 loopback mock 请求、真实模型请求 0。没有桌面/浏览器可视验收。
+
+| 公开入口 / 契约 | 本轮实际证据与后续使用边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-schedule` 根入口 `createAt/Every/Daily/Weekly/CronScheduleRecord`、`resolveRecurringOccurrence` 及各规则 resolver 导出 | **PASS**：已安装 tgz 的 Host 调用五类创建与 recurring 分派；every59/六字段 cron/DST gap 拒绝，daily 跳过缺失日、overlap 取较早值。根含共享服务定义：dev 精确 `0.2.1-rc.2` + peer `>=0.2.1-rc.2 <0.3.0`，保留外部 import，不深导入或内联；`packages/schedule/schedule/src/index.ts:25-61` |
+| P1 `ctx.dshBots.status()` + `ensureBotsWorkspace()`；`sessionController.create/rename/inspect` | **PASS**：status 是无参异步列表，按 Bot id 查实际 presetId；create 传 workspaceId 后 cwd 等于 Bots 根、原生 WorkspaceRegistry 的 Bots.sessionIds 包含会话，标题跨进程持久保留。源码 `api/session-controller/src/index.ts:243,253,301,431`。主 UI 是否实际展开分组本轮未测 |
+| `sessionController.prompt`、Session snapshot、`agent.whenIdle/status`、`sessions.flush` | **PASS**：requestId → committed user/message.source.rpcId → 对应 turn/end completed，真实 step 与 idle/flush；相同 requestId 重入不增加 turn。step/start 可能在 user/message **之前**，应从所属 turn/start 开始核查；accepted 和单独 whenIdle 都不是请求完成证明。契约 `core/session/src/types.ts:283-310`、Controller `src/index.ts:462-485` |
+| `@deepseek-ai/dsh-jobs` 的 `start/list/get/wait/attachController` | **PASS**：真实 jobs-local 中自有 running→completed，其他 owner 看不到；`list(sessionId)` 还含 unowned，必须精确过滤 owner。测试使用受控 producer，并先 wait 后 settle，未验证原生工具的迟到通知链。`jobs/jobs/src/index.ts:101-129,165-190`；type-only 包留 dev，controller disposer 纳入 effect |
+| `@deepseek-ai/dsh-subagent` 的 `startActivation/listChildren/listDescendants/waitForChildren` | **PASS**：真实 spawn/caller 子会话在父目录可查询，另一父为空；后代 activity running→inactive、result completed，父 idle/Inbox 空。listChildren 是持久目录，条目留下不等于仍运行；使用 listDescendants activity/诊断，未知状态保守阻断成功。`subagent/subagent/src/index.ts:261-293,405-426`。parked Inbox、外部/多层后代尚未实测 |
+| `@deepseek-ai/dsh-llm` 根 `createUserMessage`、公开 `MessageSourceMap` 扩展、`agent.followup`、`resolveAgent` | **PASS**：自定义 `kind:'t11-report', form:'notice', summary, sourceSessionId` 能落日志；在线与重启后 absent Agent 经 resolveAgent 恢复，各回报一次且各完成一轮。`llm/llm/src/message.ts:95-115,241-253`、`core/agent/src/runtime-types.ts:214-222`。工厂生成 messageId；**未证明重复 followup 自动去重、pending Inbox 自动续跑或跨崩溃 exactly-once** |
+| Node `fs.open('wx')` 本机锁 + Host `ctx.effect` timer | **PASS**：两独立进程竞争恰一 owner，正常释放可接管，SIGKILL 残留锁拒绝接管；实际 Host effect 取得/释放。timer 双代卸载后无 tick、迟到异步提交被 active 门禁挡住。锁记录 pid/启动时间/token；存在即只读不调度，崩溃后的自动 stale 接管不提供。生产必须先获锁再打开可写 automation 域/调度 |
+
+**决策：**继续批准的方案 A；完成屏障按 request/turn + idle + 精确 owner jobs + descendants activity + Inbox + flush 实施，未知恢复状态走 recovery_needed；回报由持久 report 和串行协调负责去重；锁采用保守人工清理 stale 策略。七项核心公开 API 范围无剩余 BLOCKER；完整自动化、busy/归档回报、故障矩阵和桌面视觉留给后续任务，不能沿用本轮四条 mock 文本回复视为产品 e2e。
+
 ## T10：0.1.6 集成收口与当前接口索引
 
 本轮不新增生产 API、不改版本或依赖，也不重新打包；使用既有 `dist/dsh-bot-0.1.6.tgz`。参考仓库 HEAD/tag 仍为 `687f282e8625c6b8d11ff58211a90524be2e4317`，CLI 实测 `0.2.1-rc.2`。完整执行结果、包哈希及证据层级见 [T10 报告](acceptance/P1-T10.md)；当前行为汇总见 [架构](architecture.md)，桌面步骤见 [P1 清单](acceptance/P1.md)。下面的历史章节保留各轮结论，发生冲突时以较新的 T08g/T08i/T08j 和本节为准。

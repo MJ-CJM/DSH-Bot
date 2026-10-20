@@ -1,6 +1,6 @@
-# DSH-Bot P1 架构（0.1.6）
+# DSH-Bot 架构（0.2.0）
 
-本页描述当前正式包的实现。DSH 参考源码锁定 `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`），只使用已发布包的公开入口、service、Remote 和 slot。具体 API 出处见 [DSH API 核实记录](dsh-api-notes.md)，本轮运行证据与桌面验收见 [P1 验收清单](acceptance/P1.md)；架构说明本身不代表运行验收通过。
+本页描述当前正式包的实现。DSH 参考源码锁定 `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`），只使用已发布包的公开入口、service、Remote 和 slot。具体 API 出处见 [DSH API 核实记录](dsh-api-notes.md)，P1 操作清单见 [P1 验收清单](acceptance/P1.md)，P2 运行证据与验收边界见 [P2 报告](acceptance/P2.md)；架构说明本身不代表运行验收通过。
 
 ## Host、Client 与共享契约
 
@@ -129,4 +129,37 @@ Host 合约、preset disposer、领域句柄、stream 订阅、Agent 事件/工�
 
 Host 配置集中在导出的 Schemastery `Config`；Client 刷新、分页及侧栏条数使用独立 Client `Config`，rc.2 不自动透传 Host 行的配置。记忆条数、工具 deny、人设、默认目录等属于 Bot 记录。
 
-P1 已实现 Bot、记忆、活动和原生 UI 扩展。routine、跨 Bot 委派/消息、MCP 绑定与通知渠道属于后续阶段，schema 的预留字段不安装这些能力。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
+0.2.0 在 P1 Bot、记忆、活动和原生 UI 扩展上加入 Routine 与一次委派回报。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
+
+
+## P2 Automation：Host 调度、执行与回报
+
+```mermaid
+flowchart LR
+  UI["Bots Routine UI / routine_* / bot_delegate"] --> Remote["Routine 服务 / 严格 automation 契约"]
+  Remote --> Dispatcher["Host Dispatcher"]
+  Rules["公开 dsh-schedule 时间规则"] --> Dispatcher
+  Dispatcher --> Runs["Run reservation / 配额 / 持久队列"]
+  Runs --> Executor["RunExecutor"]
+  Executor --> Session["Bots 工作区普通新会话"]
+  Session --> Barrier["关联 turn/end + idle + Inbox + jobs/后代 + flush"]
+  Barrier --> Terminal["持久终态"]
+  Terminal --> Reporter["DelegateReporter"]
+  Reporter --> Origin["原会话 followup / pending-sent-blocked"]
+```
+
+`src/host/automation/coordinator.ts` 先取得 `$DSH_HOME/dsh-bot/automation/lock` 的单 Host 所有权，再打开服务。锁记录 hostname、PID、启动时间和 token；同机可证实进程已死或启动时间不符才接管，使用唯一后继文件避免 stale unlink 竞态。第二 Host 仅提供所有权诊断，不打开可写业务域，也不提供 P1 的实时只读镜像。
+
+新增独立 **`dsh_bot_automation` v1**，含 `routines/runs/control`；P1 `dsh_bot` v1 不改版本。Routine 保存规则、时区、启停、revision/ruleRevision、锚点与游标。Run 保存 snapshot、来源 Bot 创建时间、会话/request 身份、quota receipt、slotHeld、内部 step、终态和 report。Run 是去重/扣额权威，control 和 Routine 游标可从 Run 修复；没有跨表事务。已经收费的非终态重启后保留 `recovery_needed` 和槽位，不重新 create/prompt。
+
+Dispatcher 只在 Host 内运行最早到期 timer 与默认 60 秒兜底扫描，复用 `@deepseek-ai/dsh-schedule` 根入口的五类规则工厂及 recurring resolver。每 Routine 只补最近一次，默认追溯 24 小时（含边界）；暂停恢复重建未来游标，过期 at 不平移；run_now 不改锚点。同 Routine 不重叠，满全局并发进入持久有界队列；积压 scheduled 只保留同 Routine 最新一次，其余标为 superseded。满队列 scheduled 记 queue_full，manual/delegate 报 busy；额度耗尽记 skipped/quota。
+
+默认 `automation` Config：并发 2、每 Bot 每日 20、队列 64、超时 900000ms、补跑上限 86400000ms、sweep 60000ms、委派深度 1、摘要上限 4000。quotaTimeZone 首次取系统时区并持久固定，额度日期倒退拒绝，失败不退款。配额是执行次数，不是 token 或费用预算。
+
+执行器先 reservation，再准备 Bots workspace、读取当前健康 preset、create/rename/prompt，保存真实 create 回执。`accepted` 只是入箱；成功必须关联 request 与已提交 user/message 的 turn，确认真实 step、completed、idle、无 pending Inbox、自有后台 jobs/后代已结束并 flush。取消/超时停止无法证实时保留 recovery_needed；不以取消请求代替停止证据。
+
+Agent 的 `bot_delegate` 从绑定获取原 Bot 身份和会话，审批展示目标与完整 task；只传 task，不复制父历史。原会话忙时通过 followup 排下一轮。Reporter 保存固定 message 与 attempts 后才投递，确认新增 Inbox splice 并 flush 后记 sent；冷恢复已有尝试且证据不明时 blocked，不重发。摘要先筛查再限长，不含中间工具输出。后台会话、fork/子会话及回报轮次禁止继续委派或修改 Routine；下一普通用户输入可恢复交互权限。
+
+automation Remote 单独注册和 mount，保留 P1 的 19 个端点：`dshBot.routine` 的 list/get/create/update/delete/runNow、`dshBot.run` 的 list/get、`dshBot.automation/status`，共 9 个。runNow 需 operationId UUID，返回持久受理记录。没有公开取消、Run 删除或回报重试端点。UI 位于 Bots 顶部总览和 Bot 详情，使用现有共享轮询，Client 不计时调度；历史最新状态按最新 Run 查询。
+
+卸载按 Dispatcher → Reporter → Executor → stores/registry → lease 显式 join，停止新任务并等在途操作；所有注册、timer、监听、Remote 和 Agent 工具由所属 effect 管理。未知外部工作不释放可能仍被占用的 lease。降级 0.1.x 保留独立 automation 文件，旧版不会调度它；实际升级前停止旧 Host 并备份数据，不能并发让旧版绕开 P2 锁写同一后端。

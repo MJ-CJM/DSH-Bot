@@ -23,3 +23,8 @@
 - UI 通过公开 slot 扩展，样式只使用 `--dsw-alias-*` 主题 token，不导入 DSH 内部 client 组件，不硬编码主题颜色。检查亮色与暗色主题。
 - UI 文案通过 locale 读取，`locale/en.json` 与 `locale/zh.json` 保持同一组键；插件标题、描述和新增 UI 文案均提供中英双份。
 - 运行任务所需检查及 `scripts/pnpm check`；需要复现依赖时运行 `scripts/pnpm install --frozen-lockfile`。保留 lockfile，报告安装和检查的实际结果。
+
+## Codex 推理强度（用户规则，2026-10-20 起）
+- 设计/提案类 run：`codex exec -c model_reasoning_effort=ultra ...`
+- 实现、返工、文档、打包类 run：`-c model_reasoning_effort=high`
+- 每次 run 通过 -c 传入，不修改 ~/.codex/config.toml；派发时 stdin 用 </dev/null（否则会卡在读 stdin）。

@@ -14,6 +14,9 @@ import { buildMemoryPrompt } from './memory/prompt.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './memory/tools.js';
 import { BOT_MANAGE_TOOL_NAME, registerBotPresetManage } from './tools/bot-manage.js';
 import { registerBotPresetActivity } from './activity/tracker.js';
+import { BOT_DELEGATE_TOOL_NAME, registerDelegateTool } from './delegate/tool.js';
+
+import { registerRoutineTools, ROUTINE_TOOL_NAMES } from './automation/tools.js';
 
 export const name = 'dsh-bot-context';
 export const inject = ['dshBots', 'tools', 'llm', 'systemPrompt', 'agents'];
@@ -29,6 +32,7 @@ export const Config: Schema<Config> = Schema.object({
 /** Identity belongs to one live agent, without mutating DSH's Agent object. */
 export interface BotBinding {
   readonly botId: string;
+  readonly botCreatedAt: number;
 }
 
 const bindings = new WeakMap<Agent, BotBinding>();
@@ -50,14 +54,14 @@ export function apply(ctx: Context, config: Config): void {
   const deniedMemory = new Set(bot.tools.deny.filter((name) => MEMORY_TOOL_NAMES.includes(name)));
   const denyBotManage = bot.tools.deny.includes(BOT_MANAGE_TOOL_NAME);
   if (!denyBotManage) registerBotPresetManage(ctx, botId);
-  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME);
+  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME && name !== BOT_DELEGATE_TOOL_NAME && !(ROUTINE_TOOL_NAMES as readonly string[]).includes(name));
   const model = bot.model ? {
     provider: bot.model.provider,
     model: bot.model.model,
     ...(bot.model.reasoningEffort === undefined
       ? {} : { reasoningEffort: ReasoningEffortId(bot.model.reasoningEffort) }),
   } : undefined;
-  const binding = Object.freeze({ botId });
+  const binding = Object.freeze({ botId, botCreatedAt: bot.createdAt });
 
   const shouldUseBotModel = (agent: Agent) => {
     const pending = ctx.get('sessionProjections')?.stateOf(agent.session, 'modelSelection')?.pending;
@@ -138,6 +142,8 @@ export function apply(ctx: Context, config: Config): void {
             }));
           }
           bindings.set(agent, binding);
+          releases.push(registerRoutineTools(agent, bot.tools.deny));
+          if (!bot.tools.deny.includes(BOT_DELEGATE_TOOL_NAME)) releases.push(registerDelegateTool(agent));
           if (model) {
             // Only alter route variables, never text/tools or other assembly
             // fields. Session history and explicit selection remain authoritative.

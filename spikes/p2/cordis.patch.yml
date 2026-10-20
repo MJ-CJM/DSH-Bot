@@ -1,0 +1,4 @@
+- insert:
+    - id: t11-probes
+      name: dsh-bot-p2-probes
+      disabled: true

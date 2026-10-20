@@ -87,7 +87,7 @@ export async function createClientActivityProbe(connection) {
     const page = registrations.get('main')?.inject();
     assert.ok(page?.hooks.activity, 'Production page activity source is registered');
     const changeStream = await verifyChangeStream(ctx);
-    return { activity: page.hooks.activity, openSession: page.onOpenSession, openedSessions,
+    return { routines: page.routines, activity: page.hooks.activity, openSession: page.onOpenSession, openedSessions,
       changeStream,
       dispose: () => ctx.fiber.dispose() };
   } catch (error) { await ctx.fiber.dispose(); throw error; }

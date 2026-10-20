@@ -549,3 +549,6 @@ nohup codex exec \
 2. 同意 Codex 以 `workspace-write + 开网络` 模式在 `~/ai-workspace/DSH-Bot` 里工作；不全局装 pnpm（用桌面版自带的）。
 3. 包名暂用 `dsh-bot`；分支 `phase/p1`；每期结束我开 PR 给你合并。
 4. 开发期间桌面版先不升级。
+
+### 推理强度
+设计/提案 run 用 `-c model_reasoning_effort=ultra`；实现/返工/文档/打包 run 用 `-c model_reasoning_effort=high`；不改 ~/.codex/config.toml。

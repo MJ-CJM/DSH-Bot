@@ -1,3 +1,5 @@
+import type { AutomationRemoteMethods } from '../../src/shared/automation-contract.js';
+import type { RoutineRecord, RunRecord } from '../../src/shared/automation.js';
 import { Context } from '@deepseek-ai/cordis';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -23,7 +25,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { routines: [] as RoutineRecord[], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -101,7 +103,26 @@ export function remoteDouble(initial: BotRecord[] = []) {
       return { ok: true, value: undefined };
     }),
   };
-  return { methods, data };
+  const routine = {
+    list: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['list']>(async () => ({ ok: true, value: data.routines })),
+    get: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['get']>(),
+    create: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['create']>(),
+    update: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['update']>(async (id, patch, revision) => {
+      const record = data.routines.find(row => row.id === id);
+      if (!record || record.revision !== revision) return { ok: false, error: new RemoteError('automation/conflict', '', {}) };
+      const value = { ...record, ...patch, revision: record.revision + 1 };
+      data.routines = data.routines.map(row => row.id === id ? value : row);
+      return { ok: true, value };
+    }),
+    delete: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['delete']>(),
+    runNow: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['runNow']>(),
+  };
+  const run = {
+    get: vi.fn<AutomationRemoteMethods<'dshBot.run'>['get']>(),
+    list: vi.fn<AutomationRemoteMethods<'dshBot.run'>['list']>(async options => ({ ok: true, value: data.runs.filter(row => !options.routineId || row.routineId === options.routineId).slice(0, options.limit ?? 50) })),
+  };
+  const automation = { status: vi.fn<AutomationRemoteMethods<'dshBot.automation'>['status']>(async () => ({ ok: true, value: { state: 'ready' } })) };
+  return { methods, data, routine, run, automation };
 }
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
@@ -169,7 +190,11 @@ export async function mountClient(
     if (template === undefined) throw new Error(`Missing ${language} locale ${namespace}:${key}`);
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
-  const mountRemote = vi.fn(async () => {
+  const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === 'dsh-bot/automation') {
+      const releases = [ctx.provide('remote.dshBot.routine', remote.routine), ctx.provide('remote.dshBot.run', remote.run), ctx.provide('remote.dshBot.automation', remote.automation)];
+      return async () => { for (const release of releases) await release(); };
+    }
     remoteMounted = true;
     const release = ctx.provide('remote.dshBot', remote.methods);
     const releaseActivity = ctx.provide('remote.dshBot.activity', remote.methods.activity);

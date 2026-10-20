@@ -21,7 +21,8 @@ import { openBotStores } from '../lib/host/store.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
 const memoryToolNames = ['memory_forget', 'memory_list', 'memory_save', 'memory_search'];
-const botToolNames = ['bot_manage', ...memoryToolNames];
+const routineToolNames = ['routine_create', 'routine_delete', 'routine_list', 'routine_run_now', 'routine_update'];
+const botToolNames = ['bot_delegate', 'bot_manage', ...memoryToolNames, ...routineToolNames].sort();
 const botIds = ['alpha', 'beta', 'disabled', 'readonly'];
 
 /** Real JSON storage, production AgentLoop/Tools/SystemPrompt and public scope APIs. */
@@ -182,10 +183,10 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     const plain = await harness.create(SessionId('t06-plain'));
     for (const agent of [first.agent, second.agent, beta.agent]) {
       expect(ctx.tools.schemas(agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
-      for (const tool of ctx.tools.schemas(agent)) expect(JSON.stringify(tool.parameters)).not.toContain('botId');
+      for (const tool of ctx.tools.schemas(agent).filter(tool => tool.name.startsWith('memory_'))) expect(JSON.stringify(tool.parameters)).not.toContain('botId');
     }
     expect(ctx.tools.schemas()).toEqual([]);
-    expect(ctx.tools.schemas(disabled.agent).map((tool) => tool.name)).toEqual(['bot_manage']);
+    expect(ctx.tools.schemas(disabled.agent).map((tool) => tool.name).sort()).toEqual(['bot_delegate', 'bot_manage', ...routineToolNames].sort());
     expect(ctx.tools.schemas(plain)).toEqual([]);
     for (const agent of [disabled.agent, plain]) expect(await memoryText(agent)).toBeUndefined();
     expect(memoryFor.mock.calls.map(([id]) => id)).not.toContain('disabled');

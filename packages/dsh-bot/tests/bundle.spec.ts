@@ -38,6 +38,8 @@ describe('built bundle contract', () => {
     const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
     await mkdir(isolatedHome, { recursive: true });
     const root = await mkdtemp(join(isolatedHome, 't04-bundle-'));
+    const previousHome = process.env.DSH_HOME;
+    process.env.DSH_HOME = root;
     const ctx = new Context();
     const messages: unknown[] = [];
     ctx.logger.exporter({ export: (message) => messages.push(message.args.length === 1 ? message.args[0] : message.args) });
@@ -53,6 +55,13 @@ describe('built bundle contract', () => {
       } as unknown as Context['agentPresets']);
       ctx.provide('loader', { await: async () => {} } as unknown as Context['loader']);
       ctx.provide('agents', { get: () => undefined } as unknown as Context['agents']);
+      // This bundle test verifies activation/cleanup only; the real execution
+      // services are exercised separately by automation-profile.mts.
+      ctx.provide('sessionController', {} as Context['sessionController']);
+      ctx.provide('sessions', {} as Context['sessions']);
+      ctx.provide('workspaceRegistry', {} as Context['workspaceRegistry']);
+      ctx.provide('subagents', {} as Context['subagents']);
+      ctx.provide('jobs', { attachController: () => () => {} } as unknown as Context['jobs']);
       const registrations: string[] = [];
       ctx.provide('typert', {
         register(contribution: { package: string }) {
@@ -68,13 +77,16 @@ describe('built bundle contract', () => {
         if (typeof failure === 'string') throw new Error(failure);
         expect(messages).toContain('[dsh-bot] loaded');
       });
-      expect(registrations).toEqual(['dsh-bot']);
+      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot']);
       await fork.dispose();
       await fork.dispose();
       expect(registrations).toEqual([]);
       expect(messages.filter((message) => message === '[dsh-bot] unloaded')).toHaveLength(1);
     } finally {
-      try { await ctx.fiber.dispose(); } finally { await rm(root, { recursive: true, force: true }); }
+      try { await ctx.fiber.dispose(); } finally {
+        if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
+        await rm(root, { recursive: true, force: true });
+      }
     }
   });
 
@@ -142,9 +154,11 @@ describe('built bundle contract', () => {
     expect(Object.keys(en.tools).sort()).toEqual(Object.keys(zh.tools).sort());
     for (const dictionary of [en.tools, zh.tools]) {
       expect(Object.keys(dictionary).sort()).toEqual([
+        'bot_delegate.approval', 'bot_delegate.description',
         'bot_manage.approval.combined', 'bot_manage.approval.create', 'bot_manage.approval.delete',
         'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories',
         'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',
+        'routine.approval', 'routine_create.description', 'routine_delete.description', 'routine_list.description', 'routine_run_now.description', 'routine_update.description',
       ]);
       for (const value of Object.values(dictionary)) expect(value.trim()).not.toBe('');
     }
@@ -193,10 +207,10 @@ describe('built bundle contract', () => {
     const mountedEndpoints: string[] = [];
     ctx.provide('remote', {
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
-        expect(contribution.package).toBe('dsh-bot');
+        expect(['dsh-bot', 'dsh-bot/automation']).toContain(contribution.package);
         await Promise.resolve();
         mountedEndpoints.push(...contribution.descriptors.map((entry) => `${entry.namespace}/${entry.method}`));
-        const dispose = register('remote.dshBot');
+        const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' : 'remote.automation');
         return async () => { dispose(); };
       },
     } as unknown as Context['remote']);
@@ -212,12 +226,13 @@ describe('built bundle contract', () => {
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.dshBot',
+      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.dshBot',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'];
       expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([
-        'dshBot.activity/list', 'dshBot.activity/markRead',
+        'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',
         'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
+        'dshBot.routine/create', 'dshBot.routine/delete', 'dshBot.routine/get', 'dshBot.routine/list', 'dshBot.routine/runNow', 'dshBot.routine/update', 'dshBot.run/get', 'dshBot.run/list',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
       ]);
       await fork.dispose();
