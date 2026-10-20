@@ -21,6 +21,18 @@ const panel = (app: Awaited<ReturnType<typeof mountClient>>) => app.container.qu
 const dialog = (app: Awaited<ReturnType<typeof mountClient>>) => app.container.querySelector('dialog') as HTMLDialogElement;
 async function mount(...args: Parameters<typeof mountClient>) { const app = await mountClient(...args); apps.push(app); return app; }
 describe('Routine UI through the shipped Client factory and public slots', () => {
+  it.each(['en', 'zh'] as const)('shows exact whole interval units without rounding in %s', async language => {
+    const intervals = [60, 90, 3600, 7200, 86400];
+    const labels = language === 'en'
+      ? ['Every 1 minute', 'Every 90 seconds', 'Every 1 hour', 'Every 2 hours', 'Every 1 day']
+      : ['每 1 分钟', '每 90 秒', '每 1 小时', '每 2 小时', '每 1 天'];
+    const app = await mount([bot()], language, remote => {
+      remote.data.routines = intervals.map(everySeconds => ({
+        ...routine(), rule: { kind: 'every', everySeconds },
+      }));
+    }, {}, loadBuiltClient());
+    for (const label of labels) expect(panel(app).textContent).toContain(label);
+  });
   it.each(['en', 'zh'] as const)('exposes exact dialog and control names for all rule variants in %s', async language => {
     const t = language === 'en' ? en.ui : zh.ui;
     const app = await mount([bot()], language, remote => { remote.data.routines = [routine()]; }, {}, loadBuiltClient());

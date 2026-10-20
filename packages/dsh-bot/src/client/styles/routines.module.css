@@ -1,4 +1,4 @@
-.panel { color: var(--dsw-alias-label-primary); margin: 20px 0; min-width: 0; }
+.panel { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary); margin: 20px 0; min-width: 0; }
 .header { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px; }
 .header h3 { margin: 0; font-size: 17px; }
 .header p, .meta { color: var(--dsw-alias-label-secondary); font-size: 12px; }
@@ -13,6 +13,9 @@
 .card .actions { margin-top: 12px; }
 .history { margin-top: 18px; display: grid; gap: 10px; }
 .history h4, .history p { margin: 4px 0; }
+.history h4 { font-size: 15px; font-weight: 600; }
+.history .card strong { font-size: 13px; font-weight: 600; }
+.history p, .history details { font-size: 13px; }
 .prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .form { padding: 20px; display: grid; gap: 14px; overflow-y: auto; }
 .form fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; min-width: 0; }

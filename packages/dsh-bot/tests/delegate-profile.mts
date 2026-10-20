@@ -10,8 +10,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 
 const root = process.cwd(); const home = resolve(root, '.dsh-dev'); assert.equal(process.env.DSH_HOME, home);
-const runDir = resolve(home, 'p2/t15', `${Date.now()}-${process.pid}`);
-await mkdir(runDir, { recursive: true }); await writeFile(resolve(home, 'p2/t15/latest-run.txt'), `${runDir}\n`);
+const runDir = process.env.DSH_BOT_E2E_DIR ?? resolve(home, 'p2/t15', `${Date.now()}-${process.pid}`);
+await mkdir(runDir, { recursive: true }); if (!process.env.DSH_BOT_E2E_DIR) await writeFile(resolve(home, 'p2/t15/latest-run.txt'), `${runDir}\n`);
 const profile = `t15-${Date.now()}-${process.pid}`;
 const delegateArgs = JSON.stringify({ targetBotId: 'researcher', task: 'T15_TARGET_TASK', title: 'T15 research' });
 const originMock = await startMockLlmServer({ host: '127.0.0.1', port: 0,
@@ -67,7 +67,7 @@ async function hashes(dir: string): Promise<Record<string, string>> {
 try {
   await command(['--version'], 'version');
   await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-  await command(['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'install');
+  await command(['plugin', '--profile', profile, 'add', process.env.DSH_BOT_E2E_PACKAGE ?? resolve(root, 'packages/dsh-bot')], 'install');
   for (const phase of ['first', 'cold', 'again']) {
     const patch = [
       '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'storages'))}`,

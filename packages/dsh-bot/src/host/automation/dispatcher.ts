@@ -26,6 +26,7 @@ export class Dispatcher {
   private scan?: Promise<void>;
   private requested = false;
   private closed = false;
+  private scannedAt = -Infinity;
 
   constructor(ctx: Context, private readonly stores: Stores, private readonly executor: Pick<RunExecutor, 'execute'>,
     private readonly assertOwner: () => void, config: Partial<Config> = {},
@@ -56,6 +57,8 @@ export class Dispatcher {
     this.scan ??= Promise.resolve().then(async () => {
       while (this.requested && !this.closed) {
         this.requested = false;
+        // Ownership failures also count as an attempted scan for retry backoff.
+        this.scannedAt = this.clock.now();
         this.assertOwner();
         await this.sweep();
       }
@@ -85,15 +88,18 @@ export class Dispatcher {
     const next = this.stores.routines.list().filter(r => r.enabled && r.nextRunAt !== undefined)
       .reduce((minimum, r) => Math.min(minimum, r.nextRunAt ?? Infinity), Infinity);
     if (!Number.isFinite(next)) return;
-    // An overdue failed write is retried by the periodic sweep, never a hot loop.
-    if (next <= this.clock.now()) return;
-    this.dueTimer = this.clock.setTimer(() => this.wake(), Math.min(next - this.clock.now(), 2147483647));
+    // Retry a due point that crossed AFTER the scan snapshot immediately.
+    // Already-scanned overdue failures still wait for the periodic sweep.
+    const now = this.clock.now();
+    if (next <= now && next <= this.scannedAt) return;
+    this.dueTimer = this.clock.setTimer(() => this.wake(), Math.max(0, Math.min(next - now, 2147483647)));
   }
   private async skip(run: RunRecord, reason: string) {
     return this.stores.runs.transition(run.id, 'skipped', run.revision, { skipReason: reason }, true);
   }
   private async sweep() {
     const now = this.clock.now();
+    this.scannedAt = now;
     const due = this.stores.routines.list().filter(r => r.nextRunAt !== undefined && r.nextRunAt <= now)
       .sort((a, b) => (a.nextRunAt ?? 0) - (b.nextRunAt ?? 0) || a.id.localeCompare(b.id));
     for (const routine of due) {

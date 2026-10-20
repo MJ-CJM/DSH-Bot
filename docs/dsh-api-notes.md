@@ -1,5 +1,13 @@
 # DSH API 核实记录
 
+## T17：0.2.0 集成、timer 边界与 tarball 验证（2026-10-20）
+
+完整命令、证据和决策汇总见 [P2 验收](acceptance/P2.md)。新增 `scripts/p2-e2e` 串行安装本次 tarball 到新 profile，复跑 T14 Dispatcher、T15 delegate，并增加真实 Host 的默认并发 2、每日 20、24h 时间夹具、卸载重装/独立后端恢复。DSH_HOME 仍严格为仓库 `.dsh-dev`；不清空旧 profile 或证据。只启用 loopback mock provider，没有新公开 DSH API、依赖或领域版本变更。
+
+集成首轮实等 every60 时 80 秒无 Run、无 mock 请求；确定性测试复现 timer 扫描快照尚未到期、重设 timer 时已经到期的竞态。Dispatcher 记录最后扫描时刻：仅对该快照之后刚跨过的到期点安排零延迟唤醒；已经扫描且写入失败的旧到期点继续等周期兜底，避免热循环。旧实现对应回归测试 FAIL，修复后通过；真实每 60 秒场景另由 e2e 验证，不能用回归测试代替。
+
+运行历史继承面板 13px 正文，标题 15px，与 Routine 卡片层级一致；every 展示优先完整天/小时/分钟，其余精确秒（90 秒不四舍五入），中英同键并区分英文单复数。不改变时间规则、表单输入或 Host 语义。本轮截图按 T17 要求由编排方复跑，未宣称亮暗视觉通过。
+
 ## T16：Routine 工具、Bots 页内 UI 与正式 Client 接入（2026-10-20）
 
 **r2 返工（2026-10-20）**：编排方证据 `dist/screenshots/2026-10-20T15-42-56.332Z-2202/summary.json` 显示 `New routine → getByLabel('Schedule rule', exact)` 超时。RoutineEditor 使用原生 select，但原嵌套 label 把 option 文本并入标签；现改为独立 label + React useId / htmlFor / id。Modal 原有 aria-labelledby 标题命名有效，未改为宽松选择器。新增精确锁定的测试依赖 `@testing-library/dom@10.4.2`，通过实际 accessible-name 算法及精确标签查询覆盖中英新建/编辑、所有控件和五类规则。

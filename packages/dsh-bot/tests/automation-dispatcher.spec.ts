@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis';
 import Storage from '@deepseek-ai/dsh-storage';
 import * as storageJson from '@deepseek-ai/dsh-storage-json';
 import * as storageDomain from '@deepseek-ai/dsh-storage-domain';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Dispatcher, type DispatcherClock } from '../src/host/automation/dispatcher.js';
 import { openAutomationStores } from '../src/host/automation/store.js';
 import { dueOccurrence } from '../src/host/automation/rules.js';
@@ -38,6 +38,7 @@ async function until(check: () => boolean) {
 async function fixture(action: (f: {
   stores: Awaited<ReturnType<typeof openAutomationStores>>; clock: Clock; dispatcher: Dispatcher;
   started: RunRecord[]; errors: unknown[]; finish: (id: string) => Promise<void>;
+  revokeOwner: () => void;
   reopen: () => Promise<Awaited<ReturnType<typeof openAutomationStores>>>;
 }) => Promise<void>, config: Partial<Config> = {}) {
   const home = fileURLToPath(new URL('../../../.dsh-dev/p2/t14/', import.meta.url));
@@ -45,9 +46,10 @@ async function fixture(action: (f: {
   const ctx = new Context(); const clock = new Clock(); const errors: unknown[] = []; const started: RunRecord[] = [];
   const held = new Map<string, (run: RunRecord) => void>();
   let dispatcher: Dispatcher | undefined;
+  let ownerRevoked = false;
   try {
     await ctx.plugin(Storage).await(); await ctx.plugin(storageJson, { root }).await(); await ctx.plugin(storageDomain, { backend: 'json' }).await();
-    const options = { ownerId: 'test-owner', assertOwner() {}, now: clock.now, config: { quotaTimeZone: 'UTC', ...config },
+    const options = { ownerId: 'test-owner', assertOwner() { if (ownerRevoked) throw new Error('Owner revoked'); }, now: clock.now, config: { quotaTimeZone: 'UTC', ...config },
       resolveBot: (id: string) => ({ bot: botSchema.parse({ ...botCreateSchema.parse({ id, name: id }), createdAt: 1, updatedAt: 1, schemaVersion: 1 }), presetId: `bot-${id}` }) };
     const stores = await openAutomationStores(ctx, options);
     const executor = { async execute(id: string) {
@@ -59,6 +61,7 @@ async function fixture(action: (f: {
     dispatcher = new Dispatcher(ctx, stores, executor, options.assertOwner, options.config, clock, error => errors.push(error));
     const current = dispatcher;
     await action({ stores, dispatcher, clock, errors, started,
+      revokeOwner: () => { ownerRevoked = true; },
       finish: async id => {
         const run = stores.runs.get(id);
         const terminal = await stores.runs.transition(id, 'failed', run.revision, { errorCode: 'test/done' }, true);
@@ -70,6 +73,49 @@ async function fixture(action: (f: {
 }
 
 describe('Host Dispatcher with virtual wall clock and real JSON stores', () => {
+  it('backs off instead of scheduling a zero-delay loop after ownership is revoked at a due point', async () => fixture(async f => {
+    await f.stores.routines.create(input); await f.dispatcher.tick();
+    f.clock.time = epoch + 60000; f.revokeOwner();
+    await expect(f.dispatcher.tick()).rejects.toThrow('Owner revoked');
+    expect(f.clock.timers.size).toBe(1);
+    expect(f.started).toHaveLength(0);
+  }));
+  it('wakes immediately when a due point crosses between the scan snapshot and timer rearming', async () => fixture(async f => {
+    await f.stores.routines.create(input);
+    await f.dispatcher.tick();
+    f.clock.time = epoch + 59999;
+    const list = f.stores.routines.list.bind(f.stores.routines);
+    let reads = 0;
+    const spy = vi.spyOn(f.stores.routines, 'list').mockImplementation(options => {
+      const rows = list(options);
+      // The scan sees a future occurrence, but timer rearming occurs at its due point.
+      if (++reads === 2) f.clock.time = epoch + 60000;
+      return rows;
+    });
+    try {
+      await f.dispatcher.tick();
+      expect([...f.clock.timers.values()]).toContain(epoch + 60000);
+      // Both the fallback and the newly armed due timer must exist.
+      expect([...f.clock.timers.values()].filter(at => at === epoch + 60000)).toHaveLength(2);
+      f.clock.fire();
+      await until(() => f.started.length === 1);
+      expect(f.started[0]?.scheduledAt).toBe(epoch + 60000);
+    } finally { spy.mockRestore(); }
+  }));
+
+  it('leaves an already-scanned failed occurrence to the fallback without a zero-delay retry loop', async () => fixture(async f => {
+    await f.stores.routines.create(input); await f.dispatcher.tick();
+    f.clock.time = epoch + 60000;
+    const failure = new Error('Injected storage write failure');
+    const spy = vi.spyOn(f.stores.runs, 'enqueue').mockRejectedValue(failure);
+    try {
+      await f.dispatcher.tick();
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(f.errors).toEqual([failure]);
+      expect(f.clock.timers.size).toBe(1); // periodic sweep only
+      expect(f.started).toHaveLength(0);
+    } finally { spy.mockRestore(); }
+  }));
   it('uses the earliest timer, consumes once under reentry, and removes every timer/subscription on close', async () => fixture(async f => {
     const routine = await f.stores.routines.create(input);
     await f.dispatcher.tick();

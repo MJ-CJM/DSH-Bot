@@ -11,9 +11,9 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 const root = process.cwd();
 const home = resolve(root, '.dsh-dev');
 assert.equal(process.env.DSH_HOME, home);
-const runDir = resolve(home, 'p2/t14', `${Date.now()}-${process.pid}`);
+const runDir = process.env.DSH_BOT_E2E_DIR ?? resolve(home, 'p2/t14', `${Date.now()}-${process.pid}`);
 await mkdir(runDir, { recursive: true });
-await writeFile(resolve(home, 'p2/t14/latest-run.txt'), `${runDir}\n`);
+if (!process.env.DSH_BOT_E2E_DIR) await writeFile(resolve(home, 'p2/t14/latest-run.txt'), `${runDir}\n`);
 const profile = `t14-${Date.now()}-${process.pid}`;
 const mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success', 'success', 'success', 'success'], chunkDelayMs: 30,
   successText: 'T14_LOOPBACK_COMPLETED', randomSeed: 11 });
@@ -74,7 +74,7 @@ async function hashes(dir: string): Promise<Record<string, string>> {
 try {
   await command('dsh', ['--version'], 'version');
   await command('dsh', ['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-  await command('dsh', ['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'install-p1');
+  await command('dsh', ['plugin', '--profile', profile, 'add', process.env.DSH_BOT_E2E_PACKAGE ?? resolve(root, 'packages/dsh-bot')], 'install-p1');
   for (const phase of ['first', 'cold']) {
     if (phase === 'cold') {
       console.log('T14_OFFLINE_WAIT_125S');

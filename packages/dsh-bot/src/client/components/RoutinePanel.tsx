@@ -13,7 +13,12 @@ export function runStatus(status: RunStatus | undefined, t: T) { return t(status
 export function routineRuleLabel(rule: RoutineRule, timeZone: string, t: T): string {
   switch (rule.kind) {
     case 'at': return `${t('routine.kind.at')} · ${formatTime(rule.at, timeZone, t)}`;
-    case 'every': return t('routine.everySummary', { seconds: rule.everySeconds });
+    case 'every': {
+      const seconds = rule.everySeconds;
+      const unit = seconds % 86400 === 0 ? 'day' : seconds % 3600 === 0 ? 'hour' : seconds % 60 === 0 ? 'minute' : 'second';
+      const count = seconds / ({ day: 86400, hour: 3600, minute: 60, second: 1 }[unit]);
+      return t(`routine.every.${unit}.${count === 1 ? 'one' : 'other'}`, { count });
+    }
     case 'daily': return `${t('routine.kind.daily')} · ${rule.time}`;
     case 'weekly': return `${t('routine.kind.weekly')} · ${rule.weekdays.map(day => t(`routine.day.${day}` as 'routine.day.1')).join(', ')} · ${rule.time}`;
     case 'cron': return `${t('routine.kind.cron')} · ${rule.expression}`;
