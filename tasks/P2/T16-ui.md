@@ -1,0 +1,3 @@
+T16：routine_create/list/update/delete/run_now 工具（写操作审批，拒绝不落库）；Bots 页内 UI：Bot 详情“定时任务”区 + 顶部“定时任务”总览页签（Bot、规则+时区、启停、下次运行、上次状态；详情历史含跳过原因与会话链接；立即运行、编辑、删除二次确认），中英、亮暗，--dsw-alias-* 样式；不加侧栏入口。截图脚本新增 --v020，输出 .codex/screens/v020-light.png、v020-dark.png（需有示例 routine 与历史）。
+
+公共规则：读 AGENTS.md、docs/P2-design.md（用户已批准，§9 七项默认值全部采纳）、docs/P2-codex-proposal.md。只用 scripts/pnpm、scripts/dsh、DSH_HOME=$PWD/.dsh-dev；只用 mock 模型（loopback），真实模型请求 0；不碰 ~/.dsh；不 commit。结束输出：改动文件、命令结果、验收逐条 PASS/FAIL、遗留问题。中文。
