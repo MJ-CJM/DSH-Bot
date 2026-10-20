@@ -1,3 +1,4 @@
 T11 公开 API spike（不写产品代码，可写 spikes/p2/ 与 docs/dsh-api-notes.md）：逐项实测并给 PASS/FAIL+证据：①打包后 @deepseek-ai/dsh-schedule 根导出的 create*/resolve*Occurrence 可在插件 Host 中导入，依赖声明方式②sessionController.create({workspaceId:Bots,agentPreset:bot-<id>}) cwd=Bots 根、出现在 Bots 分组③rename 标题④prompt→request 与 turn/end 关联、首轮完成判定、会话 idle、本会话 owner 的 jobs/子代理是否可查询⑤agent.followup 向另一会话（在线/已释放可恢复）回报一次⑥锁文件单 Host 所有权⑦Host 定时器在插件生命周期内的创建/清理。任一项阻断请明确写 BLOCKER 与备选方案。
 
 公共规则：读 AGENTS.md、docs/P2-design.md（用户已批准，§9 七项默认值全部采纳）、docs/P2-codex-proposal.md。只用 scripts/pnpm、scripts/dsh、DSH_HOME=$PWD/.dsh-dev；只用 mock 模型（loopback），真实模型请求 0；不碰 ~/.dsh；不 commit。结束输出：改动文件、命令结果、验收逐条 PASS/FAIL、遗留问题。中文。
+遇阻断或决策点：不要停下，选推荐方案（仅公开 API、通用实现）继续，并在报告中以“决策：…理由：…”列出。

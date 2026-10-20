@@ -1,5 +1,21 @@
 # DSH API 核实记录
 
+## T11：P2 公开 API 探针（2026-10-20）
+
+本轮只增加独立 `spikes/p2`，不改产品代码或主 workspace 依赖。锁定参考 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`；真实 CLI `0.2.1-rc.2`。完整七项 PASS/FAIL、命令、失败历史和决策见 [T11 报告](../spikes/p2/README.md)。最终证据 `.dsh-dev/p2/t11/1792504206833-48874`：tgz 安装后真实 Web Host 激活，两次进程正常退出；4 次 loopback mock 请求、真实模型请求 0。没有桌面/浏览器可视验收。
+
+| 公开入口 / 契约 | 本轮实际证据与后续使用边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-schedule` 根入口 `createAt/Every/Daily/Weekly/CronScheduleRecord`、`resolveRecurringOccurrence` 及各规则 resolver 导出 | **PASS**：已安装 tgz 的 Host 调用五类创建与 recurring 分派；every59/六字段 cron/DST gap 拒绝，daily 跳过缺失日、overlap 取较早值。根含共享服务定义：dev 精确 `0.2.1-rc.2` + peer `>=0.2.1-rc.2 <0.3.0`，保留外部 import，不深导入或内联；`packages/schedule/schedule/src/index.ts:25-61` |
+| P1 `ctx.dshBots.status()` + `ensureBotsWorkspace()`；`sessionController.create/rename/inspect` | **PASS**：status 是无参异步列表，按 Bot id 查实际 presetId；create 传 workspaceId 后 cwd 等于 Bots 根、原生 WorkspaceRegistry 的 Bots.sessionIds 包含会话，标题跨进程持久保留。源码 `api/session-controller/src/index.ts:243,253,301,431`。主 UI 是否实际展开分组本轮未测 |
+| `sessionController.prompt`、Session snapshot、`agent.whenIdle/status`、`sessions.flush` | **PASS**：requestId → committed user/message.source.rpcId → 对应 turn/end completed，真实 step 与 idle/flush；相同 requestId 重入不增加 turn。step/start 可能在 user/message **之前**，应从所属 turn/start 开始核查；accepted 和单独 whenIdle 都不是请求完成证明。契约 `core/session/src/types.ts:283-310`、Controller `src/index.ts:462-485` |
+| `@deepseek-ai/dsh-jobs` 的 `start/list/get/wait/attachController` | **PASS**：真实 jobs-local 中自有 running→completed，其他 owner 看不到；`list(sessionId)` 还含 unowned，必须精确过滤 owner。测试使用受控 producer，并先 wait 后 settle，未验证原生工具的迟到通知链。`jobs/jobs/src/index.ts:101-129,165-190`；type-only 包留 dev，controller disposer 纳入 effect |
+| `@deepseek-ai/dsh-subagent` 的 `startActivation/listChildren/listDescendants/waitForChildren` | **PASS**：真实 spawn/caller 子会话在父目录可查询，另一父为空；后代 activity running→inactive、result completed，父 idle/Inbox 空。listChildren 是持久目录，条目留下不等于仍运行；使用 listDescendants activity/诊断，未知状态保守阻断成功。`subagent/subagent/src/index.ts:261-293,405-426`。parked Inbox、外部/多层后代尚未实测 |
+| `@deepseek-ai/dsh-llm` 根 `createUserMessage`、公开 `MessageSourceMap` 扩展、`agent.followup`、`resolveAgent` | **PASS**：自定义 `kind:'t11-report', form:'notice', summary, sourceSessionId` 能落日志；在线与重启后 absent Agent 经 resolveAgent 恢复，各回报一次且各完成一轮。`llm/llm/src/message.ts:95-115,241-253`、`core/agent/src/runtime-types.ts:214-222`。工厂生成 messageId；**未证明重复 followup 自动去重、pending Inbox 自动续跑或跨崩溃 exactly-once** |
+| Node `fs.open('wx')` 本机锁 + Host `ctx.effect` timer | **PASS**：两独立进程竞争恰一 owner，正常释放可接管，SIGKILL 残留锁拒绝接管；实际 Host effect 取得/释放。timer 双代卸载后无 tick、迟到异步提交被 active 门禁挡住。锁记录 pid/启动时间/token；存在即只读不调度，崩溃后的自动 stale 接管不提供。生产必须先获锁再打开可写 automation 域/调度 |
+
+**决策：**继续批准的方案 A；完成屏障按 request/turn + idle + 精确 owner jobs + descendants activity + Inbox + flush 实施，未知恢复状态走 recovery_needed；回报由持久 report 和串行协调负责去重；锁采用保守人工清理 stale 策略。七项核心公开 API 范围无剩余 BLOCKER；完整自动化、busy/归档回报、故障矩阵和桌面视觉留给后续任务，不能沿用本轮四条 mock 文本回复视为产品 e2e。
+
 ## T10：0.1.6 集成收口与当前接口索引
 
 本轮不新增生产 API、不改版本或依赖，也不重新打包；使用既有 `dist/dsh-bot-0.1.6.tgz`。参考仓库 HEAD/tag 仍为 `687f282e8625c6b8d11ff58211a90524be2e4317`，CLI 实测 `0.2.1-rc.2`。完整执行结果、包哈希及证据层级见 [T10 报告](acceptance/P1-T10.md)；当前行为汇总见 [架构](architecture.md)，桌面步骤见 [P1 清单](acceptance/P1.md)。下面的历史章节保留各轮结论，发生冲突时以较新的 T08g/T08i/T08j 和本节为准。
