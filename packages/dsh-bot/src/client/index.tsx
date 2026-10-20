@@ -1,3 +1,5 @@
+import { AUTOMATION_REMOTE } from '../shared/automation-contract.js';
+import { createRoutineActions } from './automation-state.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-api-gateway/client';
 import type {} from '@deepseek-ai/dsh-client-locale/client';
@@ -55,6 +57,7 @@ function unwrap<T>(result: RemoteResult<T>): T {
 export async function apply(ctx: Context, options: Partial<Config> = {}): Promise<void> {
   const config = Config(options);
   await ctx.effect(async () => await ctx.remote.$mount(TYPERT_REMOTE), 'dsh-bot: Remote contribution');
+  await ctx.effect(async () => await ctx.remote.$mount(AUTOMATION_REMOTE), 'dsh-bot: automation Remote');
   ctx.effect(() => ctx.locale.register(namespace, {
     en: en.ui,
     zh: zh.ui,
@@ -62,6 +65,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const t = ctx.locale.bind(namespace);
   const catalog = createBotCatalog(ctx, config);
   const activity = createActivityCatalog(ctx, config);
+  const routines = createRoutineActions(ctx, config);
   // Host and Client ambient Context declarations share a TS program here;
   // this entry runs only on the Client and uses its public service contract.
   const sessions = ctx.sessions as unknown as ISessions;
@@ -175,6 +179,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     if (active) await refresh();
   };
   const page: BotsPageInjected = {
+    routines,
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },
     onOpenSession: openSession,
     onDetailConsumed: detail.consume,
@@ -201,6 +206,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       const interval = Config({ pollIntervalMs: value }).pollIntervalMs;
       catalog.setPollIntervalMs(interval);
       activity.setPollIntervalMs(interval);
+      routines.catalog.setPollIntervalMs(interval);
       for (const memory of memories) memory.setPollIntervalMs(interval);
     },
     onCreate: (input) => mutate(() => remote().create(input)),

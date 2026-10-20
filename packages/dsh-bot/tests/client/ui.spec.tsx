@@ -176,7 +176,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
   });
 
   it('defaults to 5 seconds and validates the inclusive 1000–60000 ms Client configuration range', () => {
-    expect(Config({})).toEqual({ pollIntervalMs: 5000, maxPollIntervalMs: 30000, memoryPageSize: 50, sidebarSessionLimit: 5 });
+    expect(Config({})).toEqual({ pollIntervalMs: 5000, maxPollIntervalMs: 30000, memoryPageSize: 50, routineHistoryPageSize: 50, sidebarSessionLimit: 5 });
     for (const value of [1000, 2000, 60000]) expect(Config({ pollIntervalMs: value }).pollIntervalMs).toBe(value);
     for (const value of [999, 60001, 0, -1, 1000.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => Config({ pollIntervalMs: value })).toThrow();

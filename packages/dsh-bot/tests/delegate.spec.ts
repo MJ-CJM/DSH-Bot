@@ -111,10 +111,10 @@ describe('bot_delegate with published tools, approval, Bot binding and JSON stor
     f.ctx.on('approval/request', async () => 'allowed-once'); const run = await f.terminal();
     const target = await f.create('beta', run.sessionId);
     const mutate = vi.fn(async () => 'changed');
-    target.agent.ctx.effect(() => target.agent.ctx.tools.register(defineTool({ name: 'routine_update', description: 'test', parameters: {},
+    target.agent.ctx.effect(() => target.agent.ctx.tools.register(defineTool({ name: 'routine_future_write', description: 'test', parameters: {},
       output: { schema: { type: 'string' }, render: (_args, text) => [{ type: 'text', text }] }, execute: mutate })));
     expect((await f.execute(target.agent, args)).isError).toBe(true);
-    expect((await f.execute(target.agent, {}, randomUUID(), 'routine_update')).isError).toBe(true); expect(mutate).not.toHaveBeenCalled();
+    expect((await f.execute(target.agent, {}, randomUUID(), 'routine_future_write')).isError).toBe(true); expect(mutate).not.toHaveBeenCalled();
     const origin = await f.create();
     const notice = reportMessage(run, 4000);
     origin.session.append('user/message', { ...notice, id: MessageId(notice.id) }, { surfaceOp: 'append' });

@@ -1,5 +1,28 @@
 # DSH API 核实记录
 
+## T16：Routine 工具、Bots 页内 UI 与正式 Client 接入（2026-10-20）
+
+**r2 返工（2026-10-20）**：编排方证据 `dist/screenshots/2026-10-20T15-42-56.332Z-2202/summary.json` 显示 `New routine → getByLabel('Schedule rule', exact)` 超时。RoutineEditor 使用原生 select，但原嵌套 label 把 option 文本并入标签；现改为独立 label + React useId / htmlFor / id。Modal 原有 aria-labelledby 标题命名有效，未改为宽松选择器。新增精确锁定的测试依赖 `@testing-library/dom@10.4.2`，通过实际 accessible-name 算法及精确标签查询覆盖中英新建/编辑、所有控件和五类规则。
+
+r2 的 `--v020` 改为公开 Remote 创建暂停的 every3600 示例→两次 runNow 实际完成→启用以显示未来 nextRunAt，再打开 UI 拍摄详情/总览与导航历史；不再用表单作为截图种子入口，**不再声称截图命令验证了 UI CRUD 或 every60 调度**。`--v020-seed-only` 使用完全相同种子函数，隔离 Host 实测 2 个 mock completed、真实请求 0；没有截图。原 `--v020-host-only` 保留独立 every60 验证。截图失败时在 context 关闭前取证，并记录具体 routine 步骤。最终 r2 `scripts/pnpm check` 为 638/638；浏览器画面交由编排方复跑，详见验收报告第 8 节。以下 T16 表格与初轮运行证据仍适用，但旧截图流程由本段取代。
+
+新增 `routine_create/list/update/delete/run_now`；复用 T12–T15 服务与独立 automation 契约，不新增 Host Remote 端点、依赖、package export 或领域版本。完整证据、失败与复跑命令见 [T16 验收](acceptance/P2-T16.md)。
+
+| 公开入口 | 本次用法与验证边界 |
+| --- | --- |
+| `defineTool` / `tools.register` / `tools/pre-execute` | 五个工具在 Bot Agent scope 注册，四个写操作强制 ask，保留上游 deny/cancel；审批双语展示完整目标、规则、task 与 patch。`routine_list` 无额外审批。使用真实 ToolRuntime + ApprovalService + JSON 后端验证拒绝无写入/无 Run、CAS 冲突、deny 与卸载。参考锁定源码 `packages/core/tools/src/index.ts:154,1071,1514`；没有通过私有 API 绕过审批 |
+| Cordis `ctx.get` / `ctx.effect` | Agent 回调取本包 Host stores/registry/dispatcher；验证当前 Bot createdAt 与绑定身份。复用 `assertInteractiveOrigin`，后台和回报轮次禁止写 Routine。定义/门禁/Client mount/catalog 都随 owner 清理 |
+| Client `remote.$mount(AUTOMATION_REMOTE)` | 与 P1 contribution 分别 await 挂载并 effect 注销。正式 Client factory 经 Gateway 调用既有 `dshBot.routine/*`、`dshBot.run/*`、`dshBot.automation/status`；实测 create→every60→pause→同 operationId 并发 runNow 仅一个 Run→edit/conflict→delete/history |
+| 公开 `main` slot + `useSyncExternalStore` | 保留现有 Bots 页面，在顶部加定时任务页签、Bot 详情加定时任务区；不增加侧栏入口，不导入原生 schedule 内部组件。沿用既有共享 polling scheduler 的可见性、reset、失效与 epoch 丢弃旧读逻辑，Client 不执行调度 |
+| 既有 `uiWorkspace.openSession` | 历史走已有页面 onOpenSession（包含 activity markRead best effort），只对有 workspace 且已进入创建步骤的 Run 提供链接；未创建或丢失会话仍可能由宿主拒绝，界面显示导航失败。正式 factory 回调及组件交互实测；浏览器原生会话展示未测 |
+
+规则表单提交本包 schema，由 Host `prepareRule` 调公开 schedule 工厂最终校验。单次时间要求显式 ISO 偏移或 Z；daily/weekly 将 `HH:mm` 补为 `HH:mm:ss`；every ≥ 60、weekly ISO 1–7、cron 五字段。更新携带原 revision，失败保留草稿；runNow 在同一确认框内重试沿用 operationId，返回受理提示，不宣称已成功。
+
+上次状态按每 Routine 最新 Run 查询，**不使用仅代表 scheduled cursor 的 lastRunId 作为手动运行状态**。历史按 `{requestedAt,id}` 分页；新增 Client Config `routineHistoryPageSize=50`（1–200），仍使用现有轮询参数。中英 locale 同键，样式仅使用锁定主题 token。
+
+`--v020` 目标为中英×亮暗×总览/详情共 8 张图，中文发布 `.codex/screens/v020-{light,dark}.png` 及 detail 变体，截图前必须有真实已完成 Routine 和历史。当前 Chromium 在沙箱启动阶段被 MachPort 权限拒绝；**亮暗可读性、真实浏览器操作、PNG 输出均 FAIL**。独立 `--v020-host-only` 的正式 Client/Gateway/Host + loopback mock 通过，不产生截图，也不替代浏览器验收。未修改桌面应用、全局 profile 或版本；0.2.0 打包留 T17。
+
+
 ## T15：委派工具、身份门禁与持久回报（2026-10-20）
 
 正式 `bot_delegate` 接入既有 Dispatcher/RunExecutor；独立 reporter 在终态后向原会话 followup 一次。详见 [T15 验收](acceptance/P2-T15.md)，包含静态/单元/真实 Web Host 分层、失败记录和决策。未新增依赖或 Loader/package exports，P1 与 automation 领域仍各为 v1。

@@ -1,3 +1,5 @@
+import type { RoutineActions } from '../automation-state.js';
+import { RoutinePanel } from '../components/RoutinePanel.js';
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
@@ -20,6 +22,7 @@ import styles from '../styles/bots.module.css';
 import css from '../styles/bots.module.css?inline';
 
 export interface BotsPageInjected extends ChatLauncherActions {
+  routines?: RoutineActions;
   hooks: {
     catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>;
     activity: Pick<ActivityCatalog, 'getSnapshot' | 'subscribe'>;
@@ -49,7 +52,7 @@ function detail(error: unknown): string {
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onStartInWorkspace, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, getPreferredWorkspace, t }: BotsPageProps) {
+export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onStartInWorkspace, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, getPreferredWorkspace, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
@@ -58,6 +61,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
   const chat = useChatLauncher({ workspaces, onStart, onStartInWorkspace, getPreferredWorkspace, t });
   const pageElement = useRef<HTMLElement>(null);
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
+  const [tab, setTab] = useState<'bots' | 'routines'>('bots');
   const [selectedId, setSelectedId] = useState<string>();
   const [showDetail, setShowDetail] = useState(false);
   const [more, setMore] = useState(false);
@@ -114,7 +118,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
   useEffect(() => {
     if (!requestedDetail || !snapshot.loaded || snapshot.loading || snapshot.error) return;
     const found = snapshot.entries.find(({ bot }) => bot.id === requestedDetail.botId);
-    if (found) { setSelectedId(found.bot.id); setShowDetail(true); setDialog({ kind: 'edit', bot: found.bot }); setToast(undefined); }
+    if (found) { setTab('bots'); setSelectedId(found.bot.id); setShowDetail(true); setDialog({ kind: 'edit', bot: found.bot }); setToast(undefined); }
     else setToast({ text: t('errors.detailMissing'), error: true });
     onDetailConsumed(requestedDetail.requestId);
   }, [requestedDetail, snapshot, onDetailConsumed, t]);
@@ -182,6 +186,11 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
                 disabled={busy || !snapshot.loaded || Boolean(snapshot.error)} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
             </div>
           </header>
+          {routines && <div role="tablist" aria-label={t('bots.title')} className={styles.actions}>
+            <button type="button" role="tab" aria-selected={tab === 'bots'} className={styles.button} onClick={() => setTab('bots')}>{t('bots.title')}</button>
+            <button type="button" role="tab" aria-selected={tab === 'routines'} className={styles.button} onClick={() => setTab('routines')}>{t('routine.title')}</button>
+          </div>}
+          {tab === 'routines' && routines && <RoutinePanel key="overview" actions={routines} bots={entries.map(entry => entry.bot)} onOpenSession={onOpenSession} t={t} />}
           {snapshot.error && <div role="alert" className={styles.error}>
             <p>{t(unavailable ? 'errors.unavailable' : 'errors.load')}</p>
             {snapshot.error.code && <p>{snapshot.error.code}</p>}
@@ -193,7 +202,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
             <h2>{t('bots.empty')}</h2><p>{t('bots.emptyHint')}</p>
             <Button variant="primary" size="sm" className={styles.emptyAction} disabled={busy} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
           </div>}
-          {entries.length > 0 && <div className={styles.twoPane}>
+          {tab === 'bots' && entries.length > 0 && <div className={styles.twoPane}>
             {(!compact || !showDetail) && <BotList entries={entries} activities={activity.bots} t={t}
               selectedId={selected?.bot.id} listRef={listElement} idPrefix={listId}
               onSelect={(id) => { setSelectedId(id); setMore(false); setToast(undefined); }} onActivate={() => setShowDetail(true)} />}
@@ -233,6 +242,7 @@ export function BotsPage({ useCatalog, useActivity, useSessionCatalog, useWorksp
                 </div>
                 {toast?.inline && <p className={styles.error} role="alert" data-chat-error="">{toast.text}</p>}
               </header>
+              {routines && <RoutinePanel key={selected.bot.id} actions={routines} bots={entries.map(entry => entry.bot)} botId={selected.bot.id} onOpenSession={onOpenSession} t={t} />}
               <section className={styles.sessionHistory} aria-label={t('bots.history')}>
                 <h3 className={styles.historyTitle}>{t('bots.history')}</h3>
                 {activity.error && <p role="alert" className={styles.error}>{t('activity.loadError')}</p>}
