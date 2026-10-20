@@ -16,7 +16,15 @@ const param = <S extends z.ZodType>(name: string, schema: S) => {
 };
 const routineOwner = { service: 'dshBotRoutines', invocation: { kind: 'direct' as const } };
 const runOwner = { service: 'dshBotRuns', invocation: { kind: 'direct' as const } };
+export const automationStatusSchema = z.strictObject({
+  state: z.enum(['starting', 'ready', 'read_only', 'failed', 'stopping']),
+  reason: z.string().optional(),
+  owner: z.strictObject({ pid: z.number().int().positive(), startedAt: z.string(), hostname: z.string() }).optional(),
+});
+export type AutomationStatus = z.output<typeof automationStatusSchema>;
 export const automationRemoteSpec = { package: 'dsh-bot/automation', methods: {
+  'dshBot.automation/status': { service: 'dshBotAutomation', invocation: { kind: 'direct' as const },
+    parameters: [], result: codec('AutomationStatus', automationStatusSchema) },
   'dshBot.routine/list': { ...routineOwner, parameters: [param('options', routineListSchema)], result: codec('Routine[]', z.array(routineRecordSchema)) },
   'dshBot.routine/get': { ...routineOwner, parameters: [param('id', automationIdSchema)], result: codec('Routine', routineRecordSchema) },
   'dshBot.routine/create': { ...routineOwner, parameters: [param('input', routineCreateSchema)], result: codec('Routine', routineRecordSchema) },
@@ -42,6 +50,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespaceMap {
     'dshBot.routine': AutomationRemoteMethods<'dshBot.routine'>;
     'dshBot.run': AutomationRemoteMethods<'dshBot.run'>;
+    'dshBot.automation': AutomationRemoteMethods<'dshBot.automation'>;
   }
 }
 export const AUTOMATION_REMOTE = createTypertRemoteInfo(automationRemoteSpec, z);

@@ -21,6 +21,7 @@ import { BotMemoryService } from './memory/service.js';
 import type { ActivityListResult, ActivitySession } from '../shared/activity.js';
 import { activitySessionIdSchema } from '../shared/activity.js';
 import type { ActivityStore } from './store.js';
+import { Config as AutomationConfig } from './automation/config.js';
 
 export interface Config {
   seedExamples: boolean;
@@ -35,12 +36,18 @@ export interface Config {
   botManagePersonaPreviewChars: number;
   activityMaxSessionsPerBot: number;
   activityMaxSessionsTotal: number;
+  automation?: Partial<AutomationConfig>;
 }
 const activityLimit = (name: string, fallback: number) => Schema.transform(Schema.number(), (value) => {
   if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${name} must be a positive safe integer`);
   return value;
 }).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
+  automation: Schema.object({
+    ...AutomationConfig.dict,
+    // Omission preserves the persisted quota timezone instead of overwriting it with a new machine default.
+    quotaTimeZone: Schema.string(),
+  }).default({}),
   activityMaxSessionsPerBot: activityLimit('activityMaxSessionsPerBot', 50),
   activityMaxSessionsTotal: activityLimit('activityMaxSessionsTotal', 1000),
   seedExamples: Schema.boolean().default(true),
@@ -118,8 +125,11 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   private readonly changeListeners = new Set<() => void>();
   private readonly watchOwner: Context;
   private readonly homes: BotHomes;
+  private releaseResources?: () => Promise<void>;
+  private closeTask?: Promise<void>;
 
-  constructor(ctx: Context, config: Config, start: () => Promise<void> = async () => {}) {
+  constructor(ctx: Context, config: Config, start: () => Promise<void> = async () => {},
+    private readonly assertOwner: () => void = () => {}) {
     super(ctx, 'dshBots', { namespace: 'dshBot' });
     this.watchOwner = ctx;
     const parsed = Config(config);
@@ -151,6 +161,16 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     this.assertReady();
   }
 
+  /** Host coordinator joins this before releasing shared-storage ownership. */
+  close(): Promise<void> {
+    this.closeTask ??= (async () => {
+      this.stopping = true;
+      if (this.started) await this.ready;
+      await this.releaseResources?.();
+    })();
+    return this.closeTask;
+  }
+
   private assertReady(): void {
     if (!this.initialized || this.stopping) {
       throw new DshBotError('bot/unavailable', this.startupError
@@ -162,7 +182,8 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     // A single owning effect drains API operations before releasing its collected
     // preset leases and domain. Updating a lease never moves it to an agent scope.
     await this.ctx.effect(async () => {
-      const shutdown = async () => {
+      let shutdownTask: Promise<void> | undefined;
+      const shutdown = () => shutdownTask ??= (async () => {
         this.stopping = true;
         await this.tail;
         const errors: unknown[] = [];
@@ -171,9 +192,11 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
         }
         try { await this.stores?.close(); } catch (error) { errors.push(error); }
         if (errors.length) throw new AggregateError(errors, 'DSH Bot registry cleanup failed');
-      };
+      })();
+      this.releaseResources = shutdown;
       try {
         this.stores = await openBotStores(this.ctx, {
+          assertOwner: this.assertOwner,
           activityMaxSessionsPerBot: this.config.activityMaxSessionsPerBot,
           activityMaxSessionsTotal: this.config.activityMaxSessionsTotal,
           beforeClose: async () => {

@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { TypertContribution } from '@deepseek-ai/dsh-typert-registry';
-import { AUTOMATION_REMOTE, type AutomationHostMethods } from '../../shared/automation-contract.js';
+import { AUTOMATION_REMOTE, type AutomationHostMethods, type AutomationStatus } from '../../shared/automation-contract.js';
 import type { RoutineService, RunService } from './store.js';
 import type { RoutineCreate, RoutinePatch } from '../../shared/automation.js';
 
@@ -9,7 +9,14 @@ export const AUTOMATION_HOST = { package: 'dsh-bot/automation', face: 'host', sc
   get invocations() { return AUTOMATION_REMOTE.descriptors; }, model: { services: [], events: [], objects: [] },
 } satisfies TypertContribution;
 declare module '@deepseek-ai/cordis' {
-  interface Context { dshBotRoutines: RoutineRemote; dshBotRuns: RunRemote }
+  interface Context { dshBotRoutines: RoutineRemote; dshBotRuns: RunRemote; dshBotAutomation: AutomationStatusRemote }
+}
+export class AutomationStatusRemote extends TypertRemoteService implements AutomationHostMethods<'dshBot.automation'> {
+  constructor(ctx: Context, private readonly readStatus: () => AutomationStatus) {
+    super(ctx, 'dshBotAutomation', { namespace: 'dshBot.automation' });
+  }
+  @Remote
+  async status() { return this.readStatus(); }
 }
 export class RoutineRemote extends TypertRemoteService implements AutomationHostMethods<'dshBot.routine'> {
   constructor(ctx: Context, private readonly routines: RoutineService) { super(ctx, 'dshBotRoutines', { namespace: 'dshBot.routine' }); }

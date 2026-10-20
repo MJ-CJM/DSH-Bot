@@ -38,6 +38,8 @@ describe('built bundle contract', () => {
     const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
     await mkdir(isolatedHome, { recursive: true });
     const root = await mkdtemp(join(isolatedHome, 't04-bundle-'));
+    const previousHome = process.env.DSH_HOME;
+    process.env.DSH_HOME = root;
     const ctx = new Context();
     const messages: unknown[] = [];
     ctx.logger.exporter({ export: (message) => messages.push(message.args.length === 1 ? message.args[0] : message.args) });
@@ -53,6 +55,13 @@ describe('built bundle contract', () => {
       } as unknown as Context['agentPresets']);
       ctx.provide('loader', { await: async () => {} } as unknown as Context['loader']);
       ctx.provide('agents', { get: () => undefined } as unknown as Context['agents']);
+      // This bundle test verifies activation/cleanup only; the real execution
+      // services are exercised separately by automation-profile.mts.
+      ctx.provide('sessionController', {} as Context['sessionController']);
+      ctx.provide('sessions', {} as Context['sessions']);
+      ctx.provide('workspaceRegistry', {} as Context['workspaceRegistry']);
+      ctx.provide('subagents', {} as Context['subagents']);
+      ctx.provide('jobs', { attachController: () => () => {} } as unknown as Context['jobs']);
       const registrations: string[] = [];
       ctx.provide('typert', {
         register(contribution: { package: string }) {
@@ -68,13 +77,16 @@ describe('built bundle contract', () => {
         if (typeof failure === 'string') throw new Error(failure);
         expect(messages).toContain('[dsh-bot] loaded');
       });
-      expect(registrations).toEqual(['dsh-bot']);
+      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot']);
       await fork.dispose();
       await fork.dispose();
       expect(registrations).toEqual([]);
       expect(messages.filter((message) => message === '[dsh-bot] unloaded')).toHaveLength(1);
     } finally {
-      try { await ctx.fiber.dispose(); } finally { await rm(root, { recursive: true, force: true }); }
+      try { await ctx.fiber.dispose(); } finally {
+        if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
+        await rm(root, { recursive: true, force: true });
+      }
     }
   });
 

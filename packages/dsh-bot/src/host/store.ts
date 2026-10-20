@@ -42,7 +42,7 @@ type BotDomain = Domain<typeof botDomain>;
 
 // The domain API has no insert-if-absent. All writers sharing a handle also
 // share this queue, including independently constructed Store wrappers.
-const writers = new WeakMap<BotDomain, { tail: Promise<unknown>; closing: boolean }>();
+const writers = new WeakMap<BotDomain, { tail: Promise<unknown>; closing: boolean; assertOwner?: () => void }>();
 function writer(domain: BotDomain) {
   let state = writers.get(domain);
   if (!state) {
@@ -63,7 +63,7 @@ function read<T>(operation: () => T): T {
 async function write<T>(domain: BotDomain, operation: () => Promise<T>, missing?: DshBotErrorCode): Promise<T> {
   const state = writer(domain);
   if (state.closing) throw failure(new DomainError('closed', 'Bot stores are closing'));
-  const pending = state.tail.then(operation);
+  const pending = state.tail.then(() => { state.assertOwner?.(); return operation(); });
   state.tail = pending.catch(() => {});
   try { return await pending; } catch (error) { throw failure(error, missing); }
 }
@@ -473,14 +473,16 @@ export class MemoryStore {
 }
 
 /** Call once in the owning Host context (inject storageDomain); share the stores. */
-export async function openBotStores(ctx: Context, options: ActivityStoreOptions & { beforeClose?: () => Promise<void> } = {}): Promise<{
+export async function openBotStores(ctx: Context, options: ActivityStoreOptions & { beforeClose?: () => Promise<void>; assertOwner?: () => void } = {}): Promise<{
   bots: BotStore; memories: MemoryStore; activities: ActivityStore; close: () => Promise<void>;
 }> {
   let stores!: { bots: BotStore; memories: MemoryStore; activities: ActivityStore };
   let closing: Promise<void> | undefined;
   try {
     const release = ctx.effect(async () => {
+      options.assertOwner?.();
       const domain = await ctx.storageDomain.open(botDomain);
+      writer(domain).assertOwner = options.assertOwner;
       try {
         const activities = new ActivityStore(domain, options);
         await activities.prune();

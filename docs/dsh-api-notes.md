@@ -1,5 +1,28 @@
 # DSH API 核实记录
 
+## T13：RunExecutor、Host 所有权与完成屏障（2026-10-20）
+
+产品 Host 现在在取得 `$DSH_HOME/dsh-bot/automation/lock` 所有权后启动 P1 注册表及独立 automation 域，提供内部 `dshBotExecutor` / `dshBotAutomationStores` 服务。没有 Dispatcher、自动排队消费、委派工具或回报投递；这些仍属 T14/T15。完整命令、证据、失败修正及验收见 [T13 报告](acceptance/P2-T13.md)。
+
+| 公开入口 | 本轮用法 / 已验证边界 |
+| --- | --- |
+| `sessionController.create/inspect/rename/prompt`；`sessionController` 根类型 | 先 reservation，再 `ensureBotsWorkspace()`；按 P1 `status()` 返回的健康 preset 创建普通会话，保存 **实际返回** sessionId，核对 cwd/preset/WorkspaceRegistry 成员后改标题。create 的 sessionId 不是强幂等保证，未知恢复不再次 create/prompt。源码 `packages/api/session-controller/src/index.ts:243-267,301,431,462`；`src/agent.ts:458-505` |
+| `Agent.session.snapshotEvents/status/inbox/cancel/whenIdle`、`sessions.flush` | 用 user/message.source.rpcId 关联 requestId，向前寻找 turn/start（step/start 可以更早），至少进入一步、关联 turn/end completed、无未闭合 turn、无待决审批、Agent idle、Inbox 两队列空、无自有后台工作，flush=true 后复查再提交 succeeded。error/max-tokens/blocked 不成功；未知 interrupted/forked 保留 recovery。源码 `core/session/src/types.ts:202-233,283-310`，`core/agent/src/runtime-types.ts:165-197` |
+| `jobs.list/kill/attachController`、`subagents.listDescendants/drainDescendants` | 根会话及可识别后代分别按 **精确 owner** 过滤 jobs（list 还包含 unowned）；子目录条目保留不等于运行。未知诊断和 external 不足以证实停止，保守阻断成功。取消先 cancel + kill + drain，再确认 idle/Inbox/jobs/后代和 flush；超出停止宽限保留 slot、recovery_needed。源码 `jobs/jobs/src/index.ts:101-125,155-190`；`subagent/subagent/src/index.ts:364-379,405-426`、`src/list-children.ts:95-119` |
+| `approval/asked` / `approval/decided` Session 审计事件 | 按公开事件 id 配对，运行中置 waiting_approval；不读取审批内部状态。源码 `interaction/user-approval/src/types.ts:31-59`。本轮为合成事件单测，未实测交互审批 UI |
+| Cordis `ctx.provide`、`ctx.effect` | 自有服务用 provide 注册；set 不能替代首次 provide。effect 兄弟清理可能并发，显式 join executor→stores/registry→lease；store beforeClose 等待 executor，不依赖嵌套函数调用自动收集 effect。源码 `vendor/cordis/src/reflect.ts:254-305`、`src/fiber.ts:405-456,676`。真实 Host 激活和关闭、活动执行器卸载测试通过 |
+| Node `open('wx')` / `rename` / `process.kill(pid,0)`，OS `/bin/ps -p PID -o lstart=` | 锁记录 hostname/PID/启动时间/token；仅同机 PID 不存在或可验证启动时间不符可接管。使用不可变前代 + token 指定的唯一后继文件，避免多竞争者 unlink 新 owner 的竞态；正常 release 原子写 released 收据。进程竞争/SIGKILL 死 PID 接管实测；启动时间不符分支为注入单测 |
+| `dshBot.automation/status` Typert endpoint | 独立契约由 7 增至 8 个端点，公开 starting/ready/read_only/failed/stopping、原因及脱敏 owner 字段（不含 token）；严格 encode/decode，真实 Client Gateway 测试及只读 Host 验证。现有 P1 19 端点不变 |
+
+新增 dev-only 类型包 `@deepseek-ai/dsh-jobs`、`@deepseek-ai/dsh-subagent` 均精确 `0.2.1-rc.2`，没有新增 runtime imports/peer。按 T12 返工移除 package exports 的 `./automation`、`./automation-remote`；测试从相对路径引用内部构建模块。Typert 的 `package: dsh-bot/automation` 是契约标识，不是 Loader 模块入口，Host 根入口直接注册，保留它不需要 npm 子路径导出。
+
+默认超时仍为 900000ms（15min）；新增 `automation.executorPollMs=250`、`automation.stopGraceMs=5000`，都有 Schemastery/Zod 范围校验。真实超时测试显式设 3000ms，不宣称等待了 15 分钟。未确认停止不释放并发 slot；卸载时若外部操作仍不明，不释放同进程的 Host lease，直到进程结束，避免关闭插件再启用导致重放。
+
+环境限制：本次沙箱禁止 `/bin/ps`。此时仅记录标为 `unverified:` 的本进程近似开始时间，不用它与 OS 时间比较来判定 PID 复用；活 PID/无法查询均只读，死 PID 仍可接管。真实 OS 启动时间核验未通过环境验收，不能把注入测试当成系统实测。锁只支持同机、同一 DSH_HOME 的单 Host；不同 DSH_HOME 共享自定义后端、网络文件系统或旧版不遵守锁的 Host 不在保证范围。前代锁收据保留，不在线压缩。
+
+只读 follower 仅开放诊断状态，P1 业务方法拒绝、automation CRUD 服务不启动，以免缓存领域句柄或启动修复写共享 JSON；不是可实时浏览全部业务历史的副本。没有本轮桌面/浏览器视觉验证，Bots 分组结论来自真实原生 WorkspaceRegistry 成员记录。
+
+
 ## T12：Automation v1 存储与 Remote 契约（2026-10-20）
 
 新增独立 `dsh_bot_automation` version 1：`routines/runs/control`。P1 `dsh_bot` 的声明、四表、Host 启动及 19 个 Remote 端点保持原样。本轮结果见 [T12 验收](acceptance/P2-T12.md)；未安装插件或运行调度/模型会话。

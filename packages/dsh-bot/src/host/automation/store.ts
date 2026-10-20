@@ -28,6 +28,7 @@ export interface AutomationOptions {
   ownerId: string;
   resolveBot: (botId: string) => { bot: BotRecord; presetId: string } | Promise<{ bot: BotRecord; presetId: string }>;
   now?: () => number;
+  beforeClose?: () => Promise<void>;
 }
 interface State {
   domain: AutomationDomain; config: Config; options: AutomationOptions; now: () => number;
@@ -196,6 +197,7 @@ const transitions: Record<RunStatus, readonly RunStatus[]> = {
 };
 export const runProgressSchema = z.strictObject({
   step: runRecordSchema.shape.step.optional(), startedAt: automationTimeSchema.optional(),
+  sessionId: runRecordSchema.shape.sessionId.optional(), snapshot: runRecordSchema.shape.snapshot.optional(),
   workspaceId: runRecordSchema.shape.workspaceId, cwd: runRecordSchema.shape.cwd,
   inputMessageId: runRecordSchema.shape.inputMessageId, inputTurn: runRecordSchema.shape.inputTurn,
   lastEventSeq: runRecordSchema.shape.lastEventSeq, execution: runRecordSchema.shape.execution, summary: runRecordSchema.shape.summary,
@@ -301,6 +303,9 @@ export class RunService {
     return write(this.s, async () => {
       const current = run(this.s, key);
       if (current.revision !== expected) throw conflict();
+      // Only the create receipt may replace the preallocated session identity.
+      if ((fields.sessionId !== undefined && current.step !== 'creating')
+        || (fields.snapshot !== undefined && current.step !== 'reserved')) throw conflict();
       if ((current.status === target && isTerminalRun(target))
         || (current.status !== target && !transitions[current.status].includes(target))) throw conflict();
       if (isTerminalRun(target) && current.slotHeld && !confirmedStopped) {
@@ -370,7 +375,10 @@ export async function openAutomationStores(ctx: Context, options: AutomationOpti
         if (error instanceof AutomationError && ['automation/clock', 'automation/read-only', 'automation/unavailable'].includes(error.code)) throw error;
         throw new AutomationError('automation/unavailable', 'Invalid persisted automation state', { cause: error });
       }
-      return () => closing ??= (async () => { state.closing = true; await state.tail; await domain.close(); })();
+      return () => closing ??= (async () => {
+        await options.beforeClose?.();
+        state.closing = true; await state.tail; await domain.close();
+      })();
     });
     await release;
     return { routines: new RoutineService(state), runs: new RunService(state),

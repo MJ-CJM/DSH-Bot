@@ -11,7 +11,7 @@ import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { AUTOMATION_REMOTE, automationRemoteSpec, type AutomationHostMethods, type AutomationRemoteMethods } from '../lib/shared/automation-contract.js';
-import { registerAutomationRemote, AUTOMATION_HOST, type RoutineRemote, type RunRemote } from '../lib/host/automation/remote.js';
+import { registerAutomationRemote, AutomationStatusRemote, AUTOMATION_HOST, type RoutineRemote, type RunRemote } from '../lib/host/automation/remote.js';
 import { openAutomationStores } from '../lib/host/automation/store.js';
 import { AutomationError } from '../lib/host/automation/errors.js';
 import { botCreateSchema, botSchema } from '../src/shared/schema.js';
@@ -19,9 +19,9 @@ import P1_REMOTE from '../src/typert.remote-client.js';
 
 const createInput = { botId: 'alpha', title: 'Routine', prompt: 'Task', rule: { kind: 'every' as const, everySeconds: 60 }, timeZone: 'UTC' };
 describe('automation Remote contract', () => {
-  it('keeps seven strict endpoints separate from P1 and denies client-supplied identities/reservations', () => {
+  it('keeps eight strict endpoints separate from P1 and denies client-supplied identities/reservations', () => {
     expect(AUTOMATION_HOST.invocations).toBe(AUTOMATION_REMOTE.descriptors);
-    expect(AUTOMATION_REMOTE.descriptors).toHaveLength(7);
+    expect(AUTOMATION_REMOTE.descriptors).toHaveLength(8);
     expect(P1_REMOTE.descriptors).toHaveLength(19);
     const parse = (endpoint: string, input: unknown) => AUTOMATION_REMOTE.methods[endpoint]?.input({ strict: true }).create().parse(input);
     expect(parse('dshBot.routine/create', { input: createInput })).toMatchObject({ input: { enabled: true, misfirePolicy: 'latest' } });
@@ -49,7 +49,11 @@ describe('automation Remote contract', () => {
       const bot = botSchema.parse({ ...botCreateSchema.parse({ id: 'alpha', name: 'Alpha' }), createdAt: 1, updatedAt: 1, schemaVersion: 1 });
       const stores = await openAutomationStores(host, { assertOwner() {}, ownerId: 'contract-test', config: { quotaTimeZone: 'UTC' },
         now: () => 1792497600000, resolveBot: () => ({ bot, presetId: 'actual-preset' }) });
-      const scope = host.plugin({ inject: ['typert'], apply(ctx: Context) { registerAutomationRemote(ctx, stores); } });
+      const scope = host.plugin({ inject: ['typert'], apply(ctx: Context) {
+        registerAutomationRemote(ctx, stores);
+        new AutomationStatusRemote(ctx, () => ({ state: 'read_only', reason: 'active-owner',
+          owner: { pid: 123, hostname: 'local', startedAt: 'verified-start' } }));
+      } });
       await scope.await();
       new TypertRegistry(client);
       // Only HTTP carrier/dispatch is in-process; published namespace mounting,
@@ -75,6 +79,8 @@ describe('automation Remote contract', () => {
       const unmount = await client.effect(() => client.remote.$mount(AUTOMATION_REMOTE));
       const routine = client.get('remote.dshBot.routine') as unknown as AutomationRemoteMethods<'dshBot.routine'>;
       const runs = client.get('remote.dshBot.run') as unknown as AutomationRemoteMethods<'dshBot.run'>;
+      const automation = client.get('remote.dshBot.automation') as unknown as AutomationRemoteMethods<'dshBot.automation'>;
+      expect(await automation.status()).toMatchObject({ ok: true, value: { state: 'read_only', reason: 'active-owner' } });
       expect(routine).toBeDefined();
       const created = await routine.create(createInput);
       if (!created.ok) throw new Error('Create failed');

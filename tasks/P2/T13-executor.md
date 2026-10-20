@@ -3,3 +3,4 @@ T13：RunExecutor：reservation→ensureBotsWorkspace→create(workspaceId,prese
 公共规则：读 AGENTS.md、docs/P2-design.md（用户已批准，§9 七项默认值全部采纳）、docs/P2-codex-proposal.md。只用 scripts/pnpm、scripts/dsh、DSH_HOME=$PWD/.dsh-dev；只用 mock 模型（loopback），真实模型请求 0；不碰 ~/.dsh；不 commit。结束输出：改动文件、命令结果、验收逐条 PASS/FAIL、遗留问题。中文。
 遇阻断或决策点：不要停下，选推荐方案（仅公开 API、通用实现）继续，并在报告中以“决策：…理由：…”列出。
 补充（编排决策1）：单 Host 锁记录 pid+进程启动时间+hostname；同机 pid 不存在或启动时间不符→自动接管陈旧锁；否则只读不调度并通过 Remote 暴露状态。需单测。
+评审返工（T12）：package.json 新增的 "./automation"、"./automation-remote" 公开导出若非 DSH 加载所需请移除（内部模块不应成为插件公共 API），测试改用相对路径。
