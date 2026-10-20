@@ -1,0 +1,14 @@
+.leading {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+}
+
+/* rc.2 gives this list a fixed 16px cell. Bot order 0 precedes schedule
+   order 10. Yield to any later rendered occupant instead of overflowing into
+   the title. Only our own element is styled; no schedule class/data marker or
+   private component is used. A null occupant creates no element to match. */
+.leading:has(~ :not(style)) { display: none; }

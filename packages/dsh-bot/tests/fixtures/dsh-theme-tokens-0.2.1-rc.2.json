@@ -1,0 +1,412 @@
+{
+  "tag": "dsh-v0.2.1-rc.2",
+  "commit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+  "source": "packages/client/ui-theme/src/styles/design-platform.css",
+  "sha256": "809b20ae477324fdf5181a2d338655a19919cabbf1b0e60adc149908462c5a66",
+  "tokens": {
+    "--dsw-alias-bg-base": {
+      "lightLine": 167,
+      "darkLine": 285
+    },
+    "--dsw-alias-bg-document-preview": {
+      "lightLine": 168,
+      "darkLine": 286
+    },
+    "--dsw-alias-bg-document-selection": {
+      "lightLine": 169,
+      "darkLine": 287
+    },
+    "--dsw-alias-bg-layer-1": {
+      "lightLine": 171,
+      "darkLine": 289
+    },
+    "--dsw-alias-bg-layer-2": {
+      "lightLine": 172,
+      "darkLine": 290
+    },
+    "--dsw-alias-bg-layer-3": {
+      "lightLine": 173,
+      "darkLine": 291
+    },
+    "--dsw-alias-bg-mask-1": {
+      "lightLine": 174,
+      "darkLine": 292
+    },
+    "--dsw-alias-bg-mask-2": {
+      "lightLine": 175,
+      "darkLine": 293
+    },
+    "--dsw-alias-bg-mask-3": {
+      "lightLine": 176,
+      "darkLine": 294
+    },
+    "--dsw-alias-bg-mask-drop": {
+      "lightLine": 178,
+      "darkLine": 296
+    },
+    "--dsw-alias-bg-mask-photo": {
+      "lightLine": 177,
+      "darkLine": 295
+    },
+    "--dsw-alias-bg-module-platform": {
+      "lightLine": 179,
+      "darkLine": 297
+    },
+    "--dsw-alias-bg-multi-select": {
+      "lightLine": 180,
+      "darkLine": 298
+    },
+    "--dsw-alias-bg-overlay": {
+      "lightLine": 181,
+      "darkLine": 299
+    },
+    "--dsw-alias-bg-skeleton": {
+      "lightLine": 182,
+      "darkLine": 300
+    },
+    "--dsw-alias-border-inverted": {
+      "lightLine": 184,
+      "darkLine": 302
+    },
+    "--dsw-alias-border-inverted2": {
+      "lightLine": 183,
+      "darkLine": 301
+    },
+    "--dsw-alias-border-l1": {
+      "lightLine": 185,
+      "darkLine": 303
+    },
+    "--dsw-alias-border-l2": {
+      "lightLine": 187,
+      "darkLine": 305
+    },
+    "--dsw-alias-border-l2-darkmode-thin": {
+      "lightLine": 186,
+      "darkLine": 304
+    },
+    "--dsw-alias-border-l3": {
+      "lightLine": 188,
+      "darkLine": 306
+    },
+    "--dsw-alias-border-l4": {
+      "lightLine": 189,
+      "darkLine": 307
+    },
+    "--dsw-alias-brand-primary": {
+      "lightLine": 192,
+      "darkLine": 310
+    },
+    "--dsw-alias-brand-primary-invert": {
+      "lightLine": 190,
+      "darkLine": 308
+    },
+    "--dsw-alias-brand-primary-new-colorprimary-new-color": {
+      "lightLine": 191,
+      "darkLine": 309
+    },
+    "--dsw-alias-brand-text": {
+      "lightLine": 193,
+      "darkLine": 311
+    },
+    "--dsw-alias-button-contrast-fill": {
+      "lightLine": 194,
+      "darkLine": 312
+    },
+    "--dsw-alias-button-elevated-fill": {
+      "lightLine": 195,
+      "darkLine": 313
+    },
+    "--dsw-alias-button-floating-fill": {
+      "lightLine": 196,
+      "darkLine": 314
+    },
+    "--dsw-alias-button-floating-hover": {
+      "lightLine": 197,
+      "darkLine": 315
+    },
+    "--dsw-alias-button-ghost-active-border": {
+      "lightLine": 198,
+      "darkLine": 316
+    },
+    "--dsw-alias-button-ghost-active-fill": {
+      "lightLine": 199,
+      "darkLine": 317
+    },
+    "--dsw-alias-button-ghost-active-hover": {
+      "lightLine": 200,
+      "darkLine": 318
+    },
+    "--dsw-alias-button-info-fill": {
+      "lightLine": 201,
+      "darkLine": 319
+    },
+    "--dsw-alias-button-info-hover": {
+      "lightLine": 202,
+      "darkLine": 320
+    },
+    "--dsw-alias-button-primary-dimmed": {
+      "lightLine": 203,
+      "darkLine": 321
+    },
+    "--dsw-alias-button-primary-fill": {
+      "lightLine": 204,
+      "darkLine": 322
+    },
+    "--dsw-alias-button-primary-hover": {
+      "lightLine": 205,
+      "darkLine": 323
+    },
+    "--dsw-alias-button-tool-bar-fill": {
+      "lightLine": 207,
+      "darkLine": 325
+    },
+    "--dsw-alias-button-tool-bar-fill-invisible": {
+      "lightLine": 206,
+      "darkLine": 324
+    },
+    "--dsw-alias-button-tool-bar-hover": {
+      "lightLine": 208,
+      "darkLine": 326
+    },
+    "--dsw-alias-code-diff-added": {
+      "lightLine": 242,
+      "darkLine": 360
+    },
+    "--dsw-alias-code-diff-deleted": {
+      "lightLine": 243,
+      "darkLine": 361
+    },
+    "--dsw-alias-file-diff-added-bg": {
+      "lightLine": 244,
+      "darkLine": 362
+    },
+    "--dsw-alias-file-diff-added-gutter": {
+      "lightLine": 245,
+      "darkLine": 363
+    },
+    "--dsw-alias-file-diff-added-marker": {
+      "lightLine": 246,
+      "darkLine": 364
+    },
+    "--dsw-alias-file-diff-deleted-bg": {
+      "lightLine": 247,
+      "darkLine": 365
+    },
+    "--dsw-alias-file-diff-deleted-gutter": {
+      "lightLine": 248,
+      "darkLine": 366
+    },
+    "--dsw-alias-file-diff-deleted-marker": {
+      "lightLine": 249,
+      "darkLine": 367
+    },
+    "--dsw-alias-interactive-bg-active": {
+      "lightLine": 209,
+      "darkLine": 327
+    },
+    "--dsw-alias-interactive-bg-hover": {
+      "lightLine": 213,
+      "darkLine": 331
+    },
+    "--dsw-alias-interactive-bg-hover-accent": {
+      "lightLine": 210,
+      "darkLine": 328
+    },
+    "--dsw-alias-interactive-bg-hover-danger": {
+      "lightLine": 211,
+      "darkLine": 329
+    },
+    "--dsw-alias-interactive-bg-hover-solid": {
+      "lightLine": 212,
+      "darkLine": 330
+    },
+    "--dsw-alias-label-caption": {
+      "lightLine": 214,
+      "darkLine": 332
+    },
+    "--dsw-alias-label-deep-diving": {
+      "lightLine": 215,
+      "darkLine": 333
+    },
+    "--dsw-alias-label-deep-diving-shimmer": {
+      "lightLine": 216,
+      "darkLine": 334
+    },
+    "--dsw-alias-label-dimmed": {
+      "lightLine": 217,
+      "darkLine": 335
+    },
+    "--dsw-alias-label-document-preview": {
+      "lightLine": 170,
+      "darkLine": 288
+    },
+    "--dsw-alias-label-primary": {
+      "lightLine": 222,
+      "darkLine": 340
+    },
+    "--dsw-alias-label-primary-bluish": {
+      "lightLine": 218,
+      "darkLine": 336
+    },
+    "--dsw-alias-label-primary-dimmed": {
+      "lightLine": 219,
+      "darkLine": 337
+    },
+    "--dsw-alias-label-primary-foreground": {
+      "lightLine": 220,
+      "darkLine": 338
+    },
+    "--dsw-alias-label-primary-inverted": {
+      "lightLine": 221,
+      "darkLine": 339
+    },
+    "--dsw-alias-label-secondary": {
+      "lightLine": 223,
+      "darkLine": 341
+    },
+    "--dsw-alias-label-shimmer": {
+      "lightLine": 224,
+      "darkLine": 342
+    },
+    "--dsw-alias-label-tertiary": {
+      "lightLine": 225,
+      "darkLine": 343
+    },
+    "--dsw-alias-link": {
+      "lightLine": 227,
+      "darkLine": 345
+    },
+    "--dsw-alias-markdown-citation": {
+      "lightLine": 228,
+      "darkLine": 346
+    },
+    "--dsw-alias-markdown-code-block": {
+      "lightLine": 230,
+      "darkLine": 348
+    },
+    "--dsw-alias-markdown-code-block-banner": {
+      "lightLine": 229,
+      "darkLine": 347
+    },
+    "--dsw-alias-markdown-code-segment-selected": {
+      "lightLine": 231,
+      "darkLine": 349
+    },
+    "--dsw-alias-markdown-code-segment-unselected": {
+      "lightLine": 232,
+      "darkLine": 350
+    },
+    "--dsw-alias-markdown-inline-code": {
+      "lightLine": 233,
+      "darkLine": 351
+    },
+    "--dsw-alias-markdown-placeholder": {
+      "lightLine": 234,
+      "darkLine": 352
+    },
+    "--dsw-alias-markdown-tag": {
+      "lightLine": 235,
+      "darkLine": 353
+    },
+    "--dsw-alias-menu-group-header-fill": {
+      "lightLine": 272,
+      "darkLine": 390
+    },
+    "--dsw-alias-menu-icon": {
+      "lightLine": 226,
+      "darkLine": 344
+    },
+    "--dsw-alias-scrollbar-bg-l1": {
+      "lightLine": 236,
+      "darkLine": 354
+    },
+    "--dsw-alias-scrollbar-bg-l2": {
+      "lightLine": 237,
+      "darkLine": 355
+    },
+    "--dsw-alias-scrollbar-hover-l1": {
+      "lightLine": 238,
+      "darkLine": 356
+    },
+    "--dsw-alias-scrollbar-hover-l2": {
+      "lightLine": 239,
+      "darkLine": 357
+    },
+    "--dsw-alias-state-business-primary": {
+      "lightLine": 240,
+      "darkLine": 358
+    },
+    "--dsw-alias-state-business-tertiary": {
+      "lightLine": 241,
+      "darkLine": 359
+    },
+    "--dsw-alias-state-error-primary": {
+      "lightLine": 250,
+      "darkLine": 368
+    },
+    "--dsw-alias-state-error-secondary": {
+      "lightLine": 251,
+      "darkLine": 369
+    },
+    "--dsw-alias-state-idle-primary": {
+      "lightLine": 252,
+      "darkLine": 370
+    },
+    "--dsw-alias-state-success-primary": {
+      "lightLine": 253,
+      "darkLine": 371
+    },
+    "--dsw-alias-state-success-secondary": {
+      "lightLine": 254,
+      "darkLine": 372
+    },
+    "--dsw-alias-state-success-tertiary": {
+      "lightLine": 255,
+      "darkLine": 373
+    },
+    "--dsw-alias-state-warn-label": {
+      "lightLine": 256,
+      "darkLine": 374
+    },
+    "--dsw-alias-state-warn-primary": {
+      "lightLine": 257,
+      "darkLine": 375
+    },
+    "--dsw-alias-state-warn-secondary": {
+      "lightLine": 258,
+      "darkLine": 376
+    },
+    "--dsw-alias-state-warn-tertiary": {
+      "lightLine": 259,
+      "darkLine": 377
+    },
+    "--dsw-alias-switch-thumb": {
+      "lightLine": 260,
+      "darkLine": 378
+    },
+    "--dsw-alias-toast-bg": {
+      "lightLine": 261,
+      "darkLine": 379
+    },
+    "--dsw-alias-toast-label": {
+      "lightLine": 262,
+      "darkLine": 380
+    },
+    "--dsw-alias-tooltip-bg": {
+      "lightLine": 263,
+      "darkLine": 383
+    },
+    "--dsw-alias-tooltip-key-bg": {
+      "lightLine": 264,
+      "darkLine": 384
+    },
+    "--dsw-alias-turn-trigger-bg": {
+      "lightLine": 265,
+      "darkLine": 381
+    },
+    "--dsw-alias-turn-trigger-bg-hover": {
+      "lightLine": 266,
+      "darkLine": 382
+    }
+  }
+}
