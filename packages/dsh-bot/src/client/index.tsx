@@ -20,6 +20,7 @@ import { Config } from './config.js';
 import { registerBotsRightTab } from './right-tab.js';
 import { BotsPage, type BotsPageInjected } from './pages/BotsPage.js';
 import { SessionBotBadge } from './components/SessionBotBadge.js';
+import { WhaleGlyph } from './components/WhaleGlyph.js';
 import { SessionBotLeading, SessionBotHover, type SessionBotRowInjected } from './components/SessionBotLeading.js';
 import { BotSessionsSidebar, type BotSessionsSidebarInjected } from './components/BotSessionsSidebar.js';
 import { createMemoryCatalog, type MemoryCatalog } from './memory-state.js';
@@ -43,10 +44,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const inject = ['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces', 'sessions', 'layout'];
 
 function BotsIcon({ size }: PropsRuntime<'sidebar.panellist'>) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M8 8 12 4l4 4M6 11h12v9H6zM10 15h.01M14 15h.01" fill="none"
-      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>;
+  return <WhaleGlyph size={size} />;
 }
 
 function unwrap<T>(result: RemoteResult<T>): T {

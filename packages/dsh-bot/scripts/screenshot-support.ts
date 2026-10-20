@@ -46,6 +46,75 @@ export function screenshotCases(extrasOnly = false): ScreenshotCase[] {
   return cases;
 }
 
+/** Observe the native sidebar rows through their accessible names and rendered
+ * SVGs. No Host or Client implementation state is used to arrange the rows. */
+export function readNavigationWhale() {
+  const box = (element: Element | null) => {
+    const rect = element?.getBoundingClientRect();
+    return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  };
+  const bots = Array.from(document.querySelectorAll<HTMLButtonElement>('nav button'))
+    .find((button) => button.getAttribute('aria-label') === 'Bots');
+  const nav = bots?.closest('nav');
+  return {
+    language: document.documentElement.lang,
+    darkPreferred: matchMedia('(prefers-color-scheme: dark)').matches,
+    bodyTheme: getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim(),
+    rows: Array.from(nav?.querySelectorAll<HTMLButtonElement>('button') ?? []).map((row) => {
+      const svg = row.querySelector('svg');
+      const paths = Array.from(svg?.querySelectorAll('path') ?? []);
+      const style = svg ? getComputedStyle(svg) : null;
+      return {
+        label: row.getAttribute('aria-label'), text: row.textContent?.trim(),
+        row: box(row), icon: box(svg), visible: row.checkVisibility(),
+        svg: svg?.outerHTML ?? '', viewBox: svg?.getAttribute('viewBox'),
+        fill: svg?.getAttribute('fill'), color: style?.color, computedFill: style?.fill,
+        rectCount: svg?.querySelectorAll('rect').length ?? 0,
+        paths: paths.map((path) => ({ d: path.getAttribute('d'), fill: path.getAttribute('fill'),
+          computedFill: getComputedStyle(path).fill, stroke: getComputedStyle(path).stroke, bounds: box(path) })),
+      };
+    }),
+  };
+}
+
+export function verifyNavigationWhale(evidence: ReturnType<typeof readNavigationWhale>, theme: 'light' | 'dark', expectedPath: string): void {
+  if (!evidence.language.startsWith('zh') || !evidence.bodyTheme || evidence.darkPreferred !== (theme === 'dark')) {
+    throw new Error('Navigation screenshot requires an active Chinese locale and the requested browser theme');
+  }
+  const labels = ['插件', '自动化任务', 'Bots'];
+  const start = evidence.rows.findIndex((row) => row.label === labels[0]);
+  const rows = evidence.rows.slice(start, start + labels.length);
+  if (start < 0 || rows.length !== labels.length || rows.some((row, index) => row.label !== labels[index] || row.text !== labels[index] || !row.visible)) {
+    throw new Error('Plugins, automation tasks and Bots must be adjacent visible native navigation rows');
+  }
+  const reference = rows[0];
+  const bots = rows[2];
+  if (!reference?.icon || !reference.row || !bots?.icon || !bots.row) throw new Error('Navigation SVG bounds missing');
+  const centerOffset = (row: NonNullable<typeof bots>) => {
+    if (!row.icon || !row.row) throw new Error('Navigation row/icon bounds missing');
+    return row.icon.y + row.icon.height / 2 - row.row.y - row.row.height / 2;
+  };
+  for (const row of rows) {
+    if (!row.icon || !row.row || row.icon.width <= 0 || row.icon.height <= 0
+      || Math.abs(row.icon.width - reference.icon.width) > 0.5 || Math.abs(row.icon.height - reference.icon.height) > 0.5
+      || Math.abs(row.icon.x - reference.icon.x) > 0.5 || Math.abs(centerOffset(row) - centerOffset(reference)) > 0.5) {
+      throw new Error('Navigation icon size or row alignment differs from its native neighbors');
+    }
+  }
+  const path = bots.paths[0];
+  if (bots.fill !== 'currentColor' || bots.rectCount !== 0 || bots.paths.length !== 1 || path?.d !== expectedPath
+    || path.fill !== 'currentColor' || path.computedFill !== bots.color || path.stroke !== 'none'
+    || /#[\da-f]{3,8}\b|\brgba?\s*\(/iu.test(bots.svg)) {
+    throw new Error('Bots navigation must render the shared whale as one currentColor path without a background or fixed colors');
+  }
+  if (!path.bounds || path.bounds.width < bots.icon.width * 0.65 || path.bounds.width > bots.icon.width + 0.5
+    || path.bounds.height < bots.icon.height * 0.5 || path.bounds.height > bots.icon.height + 0.5
+    || Math.abs(path.bounds.x + path.bounds.width / 2 - bots.icon.x - bots.icon.width / 2) > 1
+    || Math.abs(path.bounds.y + path.bounds.height / 2 - bots.icon.y - bots.icon.height / 2) > 1) {
+    throw new Error('Whale silhouette is too small, clipped or off-center in the native navigation icon box');
+  }
+}
+
 interface RefreshProbe {
   root: HTMLElement;
   nodes: Element[];

@@ -1,5 +1,13 @@
 # DSH API 核实记录
 
+## T08j：导航共享鲸鱼图标（0.1.6）
+
+本轮没有新增 Host、Remote、slot 或依赖 API。`sidebar.panellist` 仍使用原 `dsh-bot` 注册、order 20 和所属 `ctx.effect`；只替换渲染组件。锁定参考源码 `deepseek-harness@dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317` 的 `packages/client/ui-sidebar/src/client/SidebarRoot.tsx:71` 给宽/折叠导航分别传 16/18px；相邻插件、自动化任务入口的 order 为 0/10。
+
+`components/WhaleGlyph.tsx` 从本包既有 `icon.svg` 提取唯一 Client `WHALE_PATH`，导航、默认 `BotAvatar` 和会话入口角标共用；不再依赖 `FishLogo` 渲染这三处。该路径原生范围 23.16×17.04（参考 `packages/client/ui-primitives/src/FishLogo.tsx:4`），在 `viewBox="-0.42 -3.48 24 24"` 中居中，保留长宽比。SVG/path 均 `fill="currentColor"`，没有底色矩形或固定颜色；头像沿用其既有主题 token 调色。此节更新 T08b 对头像使用平台 `FishLogo` 的历史记录，不改变静态插件 tile。
+
+组件及 slot 单测验证 16/18px、currentColor、无 hex/rgb/hsl 颜色、无底色和路径与 package icon 一致。真实亮暗主题及截图结果另见 [T08j 验收](acceptance/P1-T08j.md)，不以单测代替视觉验证。
+
 ## T08i：共享 Bots 工作区
 
 本节替代 T08h 主入口使用私有 home 作为 cwd 的方案。以下为实现前对只读 `deepseek-harness@dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317` 的公开面核实；实际运行结果另记 [T08i 验收](acceptance/P1-T08i.md)。源码路径相对该参考仓库。

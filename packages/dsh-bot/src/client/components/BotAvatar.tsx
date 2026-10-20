@@ -1,9 +1,7 @@
-import { FishLogo } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { CSSProperties } from 'react';
 import { AVATAR_COLOR_TOKENS, type AvatarColor, type BotRecord } from '../../shared/schema.js';
+import { WhaleGlyph } from './WhaleGlyph.js';
 
-// FishLogo is a public, shell-seeded primitive (DSH dsh-v0.2.1-rc.2).
-// Its currentColor graphic is used only as a Bot avatar, not a plugin brand.
 // Blend the palette toward the theme's foreground so green/amber glyphs retain
 // sufficient contrast on the base surface in both of the locked DSH themes.
 export const avatarColors: Record<AvatarColor, { color: string; label: 'avatar.blue' | 'avatar.green' | 'avatar.amber' | 'avatar.red' }> = {
@@ -42,6 +40,6 @@ export function BotAvatar({ bot, size = 48, className, label }: BotAvatarProps) 
     aria-label={label} aria-hidden={label ? undefined : true} data-bot-avatar={image ? 'image' : bot.avatar ? 'emoji' : 'whale'}
     data-avatar-color={color} data-bot-id={bot.id}>
     {image ? <img src={bot.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      : bot.avatar ?? <FishLogo size={size * 0.76} />}
+      : bot.avatar ?? <WhaleGlyph size={size * 0.76} />}
   </span>;
 }

@@ -5,12 +5,13 @@ import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-sess
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import { useState } from 'react';
-import { FishLogo, Button, Menu, IconEllipsisOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, Menu, IconEllipsisOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { BotCatalog, BotCatalogEntry } from '../state.js';
 import type { ActivityCatalog } from '../activity-state.js';
 import { botSessionRows, previewText, relativeTime, sortBotEntries } from '../activity-view.js';
 import { type ChatLauncherActions, useChatLauncher } from '../chat-launcher.js';
 import { BotAvatar } from './BotAvatar.js';
+import { WhaleGlyph } from './WhaleGlyph.js';
 import { Modal } from './Modal.js';
 import styles from '../styles/sidebar.module.css';
 import css from '../styles/sidebar.module.css?inline';
@@ -95,7 +96,7 @@ export function BotSessionsSidebar({ wide, useSessions, useCatalog, useActivity,
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
           <path d="M5 5h14v11H9l-4 4V5Z" /><path d="M9 9h6M9 12h4" />
         </svg>
-        <span className={styles.whaleBadge}><FishLogo size={11} /></span>
+        <span className={styles.whaleBadge}><WhaleGlyph size={11} /></span>
       </span>
       {wide && <span>{t('sidebar.sessions')}</span>}
       {unreadCount > 0 && <span className={styles.unreadDot} role="status"

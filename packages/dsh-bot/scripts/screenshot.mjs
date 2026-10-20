@@ -9,6 +9,8 @@
  * --v015 captures T08i Bots/menu, directory settings, and the usable native
  * conversation with its Bots workspace/whale row in zh light/dark.
  * --home-only remains an alias for --v015.
+ * --v016 captures Chinese light/dark native navigation with the shared whale,
+ * verifies its geometry/paint, and publishes .codex/screens/v016-{theme}.png.
  * --seed-only verifies committed mock assistant activity without Chromium.
  * --manual-browser prepares that same Host for an external browser until stopped.
  * No browser download, global install, Desktop mutation or real model calls.
@@ -16,7 +18,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +32,7 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
 import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
-import { captureFailureEvidence, captureRefreshStability, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
+import { captureFailureEvidence, captureRefreshStability, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readNavigationWhale, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyNavigationWhale, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
 import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
@@ -38,6 +40,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const seedOnly = process.argv.includes('--seed-only');
 const extrasOnly = process.argv.includes('--extras-only');
 const homeOnly = process.argv.includes('--v015') || process.argv.includes('--home-only');
+const navOnly = process.argv.includes('--v016');
 const workspaceOnly = process.argv.includes('--workspace-only');
 const rightTabOnly = process.argv.includes('--right-tab-only');
 const manualBrowser = process.argv.includes('--manual-browser');
@@ -79,9 +82,9 @@ async function verifyNativeBotsConversation(page, conversation, editor, workspac
 }
 
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --v016: 2 zh light/dark native navigation screenshots, verifies adjacent Plugins/automation/Bots rows and whale paint/geometry, then publishes .codex/screens/v016-light.png and v016-dark.png; sends no model prompts. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
-  assert.ok([seedOnly, extrasOnly, homeOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
+  assert.ok([seedOnly, extrasOnly, homeOnly, navOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
   const home = resolve(root, '.dsh-dev');
   assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-dev home is allowed');
@@ -116,6 +119,7 @@ if (process.argv.includes('--help')) {
   const rightTabChecks = [];
   const refreshStabilityChecks = [];
   const layoutChecks = [];
+  const navigationChecks = [];
   const failureEvidence = [];
   const sessionFixtures = [];
   let mock;
@@ -284,7 +288,7 @@ if (process.argv.includes('--help')) {
     const statuses = unwrap(await api.remote.dshBot.status());
     const status = statuses.find((entry) => entry.id === bot.id);
     assert.equal(status?.preset.state, 'ok', 'Screenshot Bot preset healthy');
-    if (mock) {
+    if (mock && !navOnly) {
       for (const [index, sample] of [bot, researcher, bot].entries()) {
         step = `seed-${sample.id}`;
         const preset = statuses.find((entry) => entry.id === sample.id);
@@ -367,7 +371,41 @@ if (process.argv.includes('--help')) {
       assert.equal(mock.requests.length, 3, 'Unexpected model request during manual browser verification');
     }
     stage = manualBrowser ? 'manual-host-only' : seedOnly ? 'seed-validation' : 'screenshots';
-    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly || homeOnly)) {
+    for (const { language, theme, viewport, width, height } of navOnly ? screenshotCases(true) : []) {
+      step = `v016-${theme}-new-page`;
+      await activeContext.close();
+      const context = await browser.newContext({ viewport: { width, height }, locale: 'zh-CN', colorScheme: theme, reducedMotion: 'reduce' });
+      activeContext = context;
+      await context.addCookies(cookies);
+      await context.route('**/api/session/prompt', (route) => { prompts++; return route.abort('blockedbyclient'); });
+      const page = await context.newPage();
+      activePage = page;
+      page.setDefaultTimeout(30_000);
+      page.on('pageerror', (error) => browserErrors.push(redact(error.message)));
+      const recordOverlay = (event) => overlays.push({ language, theme, viewport, surface: 'navigation', ...event });
+      await installOverlayHandler(page, recordOverlay);
+      await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      await dismissFirstRunOverlays(page, recordOverlay, 'navigation-new-page');
+      await page.waitForFunction(() => document.documentElement.lang.startsWith('zh'));
+      await page.getByRole('button', { name: 'Bots', exact: true }).click();
+      await page.locator('[data-bots-page]').getByRole('button', { name: zh.ui['bots.create'], exact: true }).waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      await page.mouse.move(width - 1, height - 1);
+      await dismissFirstRunOverlays(page, recordOverlay, 'before-navigation-capture');
+      step = `v016-${theme}-navigation-check`;
+      const evidence = await page.evaluate(readNavigationWhale);
+      navigationChecks.push({ language, theme, viewport, ...evidence });
+      save('navigation-checks.json', navigationChecks);
+      const expectedPath = readFileSync(resolve(root, 'packages/dsh-bot/icon.svg'), 'utf8').match(/<path\b[^>]*\bd="([^"]+)"/u)?.[1];
+      assert.ok(expectedPath, 'Package icon must contain the shared whale path');
+      verifyNavigationWhale(evidence, theme, expectedPath);
+      step = `v016-${theme}-capture`;
+      const file = `v016-${theme}.png`;
+      await page.screenshot({ path: resolve(output, file), fullPage: true, animations: 'disabled' });
+      shots.push({ file, language, theme, viewport, width, height, surface: 'navigation', bodyTheme: evidence.bodyTheme, evidence });
+      console.log(`PASS: zh/${theme} adjacent native navigation rows with centered currentColor whale`);
+    }
+    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || navOnly || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly || homeOnly)) {
       const copy = language === 'zh' ? zh.ui : en.ui;
       const filename = `${language}-${theme}-${viewport}`;
       step = `${filename}-new-page`;
@@ -549,7 +587,7 @@ if (process.argv.includes('--help')) {
     // Opening each native conversation clears the Host's new-message state,
     // which otherwise replaces its leading slot with a status dot. Run this
     // after the existing matrix so its read/unread fixtures remain unchanged.
-    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || extrasOnly || homeOnly || rightTabOnly ? [] : screenshotCases(true)) {
+    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || navOnly || extrasOnly || homeOnly || rightTabOnly ? [] : screenshotCases(true)) {
       const filename = `${language}-${theme}-${viewport}-workspace`;
       step = `${filename}-new-page`;
       await activeContext.close();
@@ -685,9 +723,17 @@ if (process.argv.includes('--help')) {
     step = manualBrowser ? 'manual-host-validation' : 'matrix-validation';
     if (!manualBrowser) assert.equal(prompts, 0, 'No browser model prompt attempted');
     assert.equal(browserErrors.length, 0, 'Browser page errors; inspect summary');
-    assert.equal(shots.length, seedOnly || manualBrowser ? 0 : homeOnly ? 6 : extrasOnly ? 4 : workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
-    if (!seedOnly && !manualBrowser && !extrasOnly && !homeOnly && !workspaceOnly && !rightTabOnly) assert.equal(refreshStabilityChecks.length, 1, 'Complete the additional refresh stability pair');
+    assert.equal(shots.length, seedOnly || manualBrowser ? 0 : homeOnly ? 6 : extrasOnly ? 4 : navOnly || workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
+    if (!seedOnly && !manualBrowser && !navOnly && !extrasOnly && !homeOnly && !workspaceOnly && !rightTabOnly) assert.equal(refreshStabilityChecks.length, 1, 'Complete the additional refresh stability pair');
     if (!seedOnly && !manualBrowser) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
+    if (navOnly) {
+      assert.equal(mockPromptsSent, 0, 'Navigation screenshots need no mock conversation');
+      assert.equal(mock.requests.length, 0, 'Navigation screenshot run sent no model requests');
+      step = 'v016-publish-screenshots';
+      const destination = resolve(root, '.codex/screens');
+      mkdirSync(destination, { recursive: true });
+      for (const shot of shots) copyFileSync(resolve(output, shot.file), resolve(destination, shot.file));
+    }
   } catch (error) {
     failure = redact(error instanceof Error ? error.message : error);
     await diagnoseFailure().catch((error) => { failureEvidence.push({ step, diagnosticError: redact(error) }); });
@@ -707,12 +753,12 @@ if (process.argv.includes('--help')) {
       catch (error) { failure ??= redact(error); process.exitCode = 1; }
     }
     process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal);
-    save('summary.json', { status: failure ? 'FAIL' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : homeOnly ? 'v015' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
+    save('summary.json', { status: failure ? 'FAIL' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : homeOnly ? 'v015' : navOnly ? 'v016' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
       mockPromptsSent, sessionFixtures, mockRequests: mock?.requests.map(({ path, outcome }) => ({ path, outcome })),
       stage, step, failure, failureEvidence, profile, run, prompts: manualBrowser ? null : prompts, browserErrors,
       ...(manualBrowser ? { manualHostOnly: true, visualValidation: 'NOT_RUN', browserPromptInterception: false,
         browserAccessFile, browserAccessRemoved: manualAccessWritten && !existsSync(browserAccessFile), manualStopFile, manualStoppedBy } : {}),
-      overlays, workspaceChoices, conversationChecks, workspaceRowChecks, rightTabChecks, refreshStabilityChecks, contrastChecks, screenshots: shots });
+      overlays, workspaceChoices, conversationChecks, workspaceRowChecks, rightTabChecks, navigationChecks, refreshStabilityChecks, contrastChecks, screenshots: shots });
     console.log(`Evidence: ${output}`);
   }
 }
