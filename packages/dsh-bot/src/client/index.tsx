@@ -129,7 +129,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const page: BotsPageInjected = {
     routines,
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },
-    onOpenSession: openSession,
+    onOpenSession: (id, signal) => openSession(id, undefined, signal),
     onDetailConsumed: detail.consume,
     onCountMemories: async (id) => unwrap(await memoryRemote().count(id)),
     createMemoryPanel: (id) => {

@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import { Button, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { botIdSchema } from '../../shared/ids.js';
 import type { BotCreateInput, BotPatch, BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from '../components/BotAvatar.js';
@@ -17,7 +17,7 @@ import { MemoryPanel, type MemoryPanelProps } from '../components/MemoryPanel.js
 import type { BotDetailSource } from '../detail-state.js';
 import { Modal } from '../components/Modal.js';
 import type { BotCatalog } from '../state.js';
-import { useChatLauncher, type ChatLauncherActions } from '../chat-launcher.js';
+import type { ChatLauncherActions } from '../chat-launcher.js';
 import styles from '../styles/bots.module.css';
 import css from '../styles/bots.module.css?inline';
 
@@ -30,7 +30,7 @@ export interface BotsPageInjected extends ChatLauncherActions {
     sessionCatalog: ObservableSnapshot<SessionListState>;
     botDetail: Pick<BotDetailSource, 'getSnapshot' | 'subscribe'>;
   };
-  onOpenSession(id: string): Promise<void>;
+  onOpenSession(id: string, signal?: AbortSignal): Promise<void>;
   onDetailConsumed(requestId: number): void;
   onCountMemories(id: string): Promise<number>;
   createMemoryPanel(id: string): Omit<MemoryPanelProps, 'bot' | 't'> & { dispose(): void };
@@ -52,13 +52,12 @@ function detail(error: unknown): string {
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onStartInWorkspace, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, getPreferredWorkspace, t }: BotsPageProps) {
+export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
   const requestedDetail = useBotDetail((value) => value);
   const workspaces = useWorkspaceCatalog((value) => value);
-  const chat = useChatLauncher({ workspaces, onStart, onStartInWorkspace, getPreferredWorkspace, t });
   const pageElement = useRef<HTMLElement>(null);
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
   const [tab, setTab] = useState<'bots' | 'routines'>('bots');
@@ -81,6 +80,13 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
   const [dialog, setDialog] = useState<Dialog>();
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const navigation = useRef<AbortController>();
+  const [navigating, setNavigating] = useState(false);
+  const cancelNavigation = useCallback(() => {
+    navigation.current?.abort();
+    navigation.current = undefined;
+    setNavigating(false);
+  }, []);
   const [toast, setToast] = useState<{ text: string; error: boolean; inline?: boolean }>();
   const [copyId, setCopyId] = useState('');
   const [copyInvalid, setCopyInvalid] = useState(false);
@@ -113,15 +119,15 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    return () => controller.abort();
+    return () => { controller.abort(); navigation.current?.abort(); };
   }, []);
   useEffect(() => {
     if (!requestedDetail || !snapshot.loaded || snapshot.loading || snapshot.error) return;
     const found = snapshot.entries.find(({ bot }) => bot.id === requestedDetail.botId);
-    if (found) { setTab('bots'); setSelectedId(found.bot.id); setShowDetail(true); setDialog({ kind: 'edit', bot: found.bot }); setToast(undefined); }
+    if (found) { setTab('bots'); setSelectedId(found.bot.id); setShowDetail(true); cancelNavigation(); setDialog({ kind: 'edit', bot: found.bot }); setToast(undefined); }
     else setToast({ text: t('errors.detailMissing'), error: true });
     onDetailConsumed(requestedDetail.requestId);
-  }, [requestedDetail, snapshot, onDetailConsumed, t]);
+  }, [requestedDetail, snapshot, onDetailConsumed, t, cancelNavigation]);
   const deleteId = dialog?.kind === 'delete' ? dialog.bot.id : undefined;
   // biome-ignore lint/correctness/useExhaustiveDependencies: retry explicitly starts a fresh count request for the same Bot.
   useEffect(() => {
@@ -135,7 +141,28 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
   }, [deleteId, onCountMemories, countAttempt]);
   const alive = () => lifetime.current?.signal.aborted === false;
 
-  async function perform(action: () => Promise<void>, errorKey: 'errors.save' | 'errors.delete' | 'errors.duplicate' | 'errors.start' | 'activity.openError', successKey?: 'bots.saveSuccess' | 'delete.success' | 'delete.keptSuccess' | 'duplicate.success') {
+  async function navigate(action: (signal: AbortSignal) => Promise<void>, errorKey: 'errors.start' | 'activity.openError') {
+    if (busyRef.current || navigation.current) return;
+    const controller = new AbortController();
+    navigation.current = controller;
+    setNavigating(true);
+    setToast(undefined);
+    try {
+      await action(controller.signal);
+    } catch (error: unknown) {
+      if (alive() && !controller.signal.aborted) setToast({
+        text: errorKey === 'activity.openError' ? t(errorKey) : `${t(errorKey)} ${detail(error)}`.trim(),
+        error: true, inline: errorKey === 'errors.start',
+      });
+    } finally {
+      if (navigation.current === controller) {
+        navigation.current = undefined;
+        if (alive()) setNavigating(false);
+      }
+    }
+  }
+
+  async function perform(action: () => Promise<void>, errorKey: 'errors.save' | 'errors.delete' | 'errors.duplicate', successKey?: 'bots.saveSuccess' | 'delete.success' | 'delete.keptSuccess' | 'duplicate.success') {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -149,7 +176,7 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
     } catch (error: unknown) {
       if (alive() && errorKey === 'errors.delete' && typeof error === 'object' && error !== null
         && 'code' in error && error.code === 'bot/home-cleanup-failed') setDialog(undefined);
-      if (alive()) setToast({ text: errorKey === 'activity.openError' ? t(errorKey) : `${t(errorKey)} ${detail(error)}`.trim(), error: true, inline: errorKey === 'errors.start' });
+      if (alive()) setToast({ text: `${t(errorKey)} ${detail(error)}`.trim(), error: true });
       throw error;
     } finally {
       busyRef.current = false;
@@ -162,6 +189,8 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
       : onCreate(input as BotCreateInput), 'errors.save', 'bots.saveSuccess');
   }
   function open(next: Dialog) {
+    // Editing supersedes pending navigation, not the Host operation itself.
+    cancelNavigation();
     setDialog(next);
     setToast(undefined);
     if (next.kind === 'delete') { setDeleteMemories(true); setDeleteHome(false); }
@@ -203,9 +232,9 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
             <Button variant="primary" size="sm" className={styles.emptyAction} disabled={busy} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
           </div>}
           {tab === 'bots' && entries.length > 0 && <div className={styles.twoPane}>
-            {(!compact || !showDetail) && <BotList entries={entries} activities={activity.bots} t={t}
+            {(!compact || !showDetail) && <BotList disabled={busy || navigating} entries={entries} activities={activity.bots} t={t}
               selectedId={selected?.bot.id} listRef={listElement} idPrefix={listId}
-              onSelect={(id) => { setSelectedId(id); setMore(false); setToast(undefined); }} onActivate={(id) => { setShowDetail(true); void perform(() => chat.start(id), 'errors.start').catch(() => {}); }} />}
+              onSelect={(id) => { setSelectedId(id); setMore(false); setToast(undefined); }} onActivate={(id) => { setShowDetail(true); void navigate(signal => onStart(id, signal), 'errors.start'); }} />}
             {selected && (!compact || showDetail) && <article className={styles.botDetail} data-bot-detail={selected.bot.id}>
               {compact && <Button ref={backElement} variant="ghost" size="sm" className={styles.backButton} onClick={() => { focusListOnReturn.current = true; setShowDetail(false); setMore(false); }}>{t('bots.back')}</Button>}
               <header className={styles.detailHeader}>
@@ -222,7 +251,6 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
                       { id: 'delete', label: t('actions.delete'), disabled: busy, danger: true },
                     ]} onSelect={(action) => {
                       setMore(false);
-                      if (action === 'workspace') void perform(() => chat.startInWorkspace(selected.bot.id), 'errors.start').catch(() => {});
                       if (action === 'duplicate' || action === 'delete') open({ kind: action, bot: selected.bot });
                     }} />
                 </div>
@@ -235,8 +263,8 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
                   {selected.status?.preset.reason ? ` ${selected.status.preset.reason}` : ''}
                 </p>}
                 <div className={styles.detailActions}>
-                  <Button variant="primary" size="sm" disabled={busy || !ready} aria-describedby={!ready ? `${listId}-status` : undefined}
-                    onClick={() => { void perform(() => chat.start(selected.bot.id), 'errors.start').catch(() => {}); }}>{t('bots.newSession')}</Button>
+                  <Button variant="primary" size="sm" disabled={busy || navigating || !ready} aria-describedby={!ready ? `${listId}-status` : undefined}
+                    onClick={() => { void navigate(signal => onStart(selected.bot.id, signal), 'errors.start'); }}>{t('bots.newSession')}</Button>
                   <Button variant="outline" size="sm" disabled={busy} onClick={() => open({ kind: 'edit', bot: selected.bot })}>{t('card.edit')}</Button>
                   <Button variant="ghost" size="sm" disabled={busy} onClick={() => open({ kind: 'memory', bot: selected.bot })}>{t('memory.title')}</Button>
                 </div>
@@ -253,7 +281,7 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
                       const title = previewText(session.title, t) || t('sidebar.untitled');
                       const preview = previewText(session.preview, t);
                       return <button type="button" key={session.id} className={styles.historyRow} data-session-id={session.id}
-                        disabled={busy} onClick={() => { void perform(() => onOpenSession(session.id), 'activity.openError').catch(() => {}); }}>
+                        disabled={busy || navigating} onClick={() => { void navigate(signal => onOpenSession(session.id, signal), 'activity.openError'); }}>
                         <span className={styles.rowHeading}><span className={styles.rowName} title={title}>{title}</span>
                           {session.unread && <span className={styles.unreadDot} data-unread="" role="img" aria-label={t('activity.unread')} />}
                           {session.running && <span className={styles.running}>{t('activity.running')}</span>}
@@ -268,7 +296,6 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
           </div>}
         </div>
       </div>
-      {chat.dialog}
       {(dialog?.kind === 'create' || dialog?.kind === 'edit') && <BotEditor
         avatarWarning={dialog.kind === 'edit' && snapshot.entries.find(({ bot }) => bot.id === dialog.bot.id)?.status?.warnings?.includes('avatar/invalid')}
         key={dialog.kind === 'edit' ? dialog.bot.id : 'new'}

@@ -23,6 +23,7 @@ export async function captureAvatars({ browser, cookies, origin, remote, bot, re
     const width = 1920, height = 1080;
     setStep(`v022-avatar-${theme}-open`);
     const context = await browser.newContext({ viewport: { width, height }, locale: 'zh-CN', colorScheme: theme, reducedMotion: 'reduce' });
+    let completed = false;
     try {
       await context.addCookies(cookies);
       await context.route('**/api/session/prompt', () => { throw new Error('Avatar screenshots must never prompt'); });
@@ -38,9 +39,26 @@ export async function captureAvatars({ browser, cookies, origin, remote, bot, re
       for (const sample of samples) {
         await bots.locator(`[role="option"][data-bot-id="${sample.id}"] [data-avatar-variant="${sample.avatarVariant}"]`).waitFor();
       }
-      await bots.locator(`[role="option"][data-bot-id="${bot.id}"]`).click();
-      await bots.locator(`[data-bot-detail="${bot.id}"]`).getByRole('button', { name: zh.ui['card.edit'], exact: true }).click();
+      // Row click/Enter opens the main conversation. Arrow selection is the
+      // public management path: select details without starting navigation.
+      const list = bots.getByRole('listbox', { name: zh.ui['bots.list'], exact: true });
+      const ids = await list.getByRole('option').evaluateAll(options => options.map(option => option.dataset.botId));
+      const targetIndex = ids.indexOf(bot.id);
+      assert.ok(targetIndex >= 0, 'Editor Bot exists in the real list');
+      await list.press('Home');
+      for (let index = 0; index < targetIndex; index++) await list.press('ArrowDown');
+      await bots.locator(`[role="option"][data-bot-id="${bot.id}"][aria-selected="true"]`).waitFor();
+      const detail = bots.locator(`[data-bot-detail="${bot.id}"]`);
+      await detail.waitFor({ state: 'visible' });
+      const edit = detail.getByRole('button', { name: zh.ui['card.edit'], exact: true });
+      setStep(`v022-avatar-${theme}-editor-ready`);
+      // Trial retains Playwright's visible/enabled/stable/receives-events checks.
+      // No forced click, timeout extension, or fallback to another Bot/button.
+      await edit.click({ trial: true });
+      assert.equal(await edit.isEnabled(), true, 'Selected Bot editor is enabled');
+      await edit.click();
       const editor = page.getByRole('dialog', { name: zh.ui['editor.edit'], exact: true });
+      await editor.waitFor({ state: 'visible' });
       const shapes = editor.getByRole('group', { name: zh.ui['avatar.variant'], exact: true });
       const palette = editor.getByRole('group', { name: zh.ui['avatar.color'], exact: true });
       assert.equal(await shapes.getByRole('button').count(), 6);
@@ -76,7 +94,11 @@ export async function captureAvatars({ browser, cookies, origin, remote, bot, re
       await page.screenshot({ path: resolve(output, file), fullPage: true, animations: 'disabled' });
       shots.push({ file, language: 'zh', theme, width, height, surface: 'avatar-editor', bodyTheme, avatars });
       save('avatar-checks.json', shots);
-    } finally { await context.close(); }
+      completed = true;
+    } finally {
+      // Outer runner captures failure evidence before closing the browser.
+      if (completed) await context.close();
+    }
   }
   assert.equal(errors.length, 0, 'No Client page errors');
   assert.notEqual(shots[0].bodyTheme, shots[1].bodyTheme, 'Real theme changes');
