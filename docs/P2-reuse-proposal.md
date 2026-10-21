@@ -268,3 +268,11 @@ B 的阻断门槛：
 改动文件：仅 `docs/P2-reuse-proposal.md`。例行 check 重建忽略的 lib，日志在 `.dsh-dev/p2-reuse-20261020/check.log`；不更改源码、依赖、lockfile、版本、任务单、已有 tarball 或用户数据。执行 `git status/branch/rev-parse`、参考 tag 对照、`rg/nl/sed` 只读检索、`scripts/pnpm check`；Python 文档路径/行号校验退出0、无错误。`git diff --check` 退出0；新文件的 `git diff --no-index --check /dev/null docs/P2-reuse-proposal.md` 返回1且无诊断，表示存在新增内容，不是空白校验错误。未安装依赖，因为本任务不变更依赖且既有环境检查通过。
 
 遗留：先执行 R01，再用 R03 的具体证据决定 B 是否可发布；A 的语义收缩、暂停展示、每周期相位和委派契约需产品拍板。尚无本轮新桥接运行证据，不承诺迁移已经可执行。
+
+## 10. 用户批准的决策（2026-10-20）
+采用 **方案 A（完全原生 + Bots 聚合）**——此为**编排方判断**（Codex 原推荐 B 原生触发 + 中转执行器）。用户确认“每次新会话”不是硬需求；全局原则：DSH 原生能力优先复用。
+1. [编排] Bot 只暴露原生 schedule_* 工具，移除 routine_*（Codex 原建议相反：留 routine_*、拦原生）。
+2. [Codex+编排] Bots 页聚合原生任务：本包只存 Bot↔原生任务映射 sidecar；复用原生 catalog/list/update/delete/history 与 schedule/changed；能可靠归属到 Bot 会话的存量原生任务也展示（Codex §3.1-4 的归属规则）。
+3. [编排] 删除自建调度器/Dispatcher/锁/配额/补跑；保留小型“立即运行”，复用现有新会话执行器。
+4. [Codex §6.2 + 编排] bot_delegate 普通委派改用原生子代理；只在原生确实做不到处保留本包层，并逐项说明理由。
+5. 0.2.0 的 dsh_bot_automation 数据：能迁移到原生则迁移，否则只读/忽略，不得崩溃；选择写入架构文档。
