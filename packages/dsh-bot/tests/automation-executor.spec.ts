@@ -43,7 +43,7 @@ async function facility(test: (f: {
       resolveBot, async workspace() { calls.push('workspace'); return { workspaceId: 'bots', path: '/bots' }; },
       async create(r) { calls.push('create'); expect(stores.runs.get(r.id).admittedAt).toBeDefined(); return { sessionId: 'session-actual-receipt' }; },
       async verify(r) { calls.push('verify'); expect(stores.runs.get(r.id).sessionId).toBe(r.sessionId); },
-      async rename(_r, title) { calls.push('rename'); expect(title).toMatch(/^\[Run now\] Report · .* UTC$/); },
+      async rename(_r, title) { calls.push('rename'); expect(title).toMatch(/^Report · .* UTC$/); },
       async prompt(r) { calls.push('prompt'); observation.events = events(r.requestId); },
       async observe() { return structuredClone(observation); },
       async stop() { calls.push('stop'); observation.idle = true; observation.inboxEmpty = true; observation.jobs = []; observation.children = []; },
@@ -159,6 +159,6 @@ describe('RunExecutor with real durable automation stores', () => {
   it('does not mistake a foreign request or empty completed turn for execution', async () => facility(async f => {
     expect(inspectBarrier({ ...f.observation, events: events('foreign') }, f.run).outcome).toBeUndefined();
     expect(inspectBarrier({ ...f.observation, events: events(f.run.requestId).filter(e => e.type !== 'step/start') }, f.run).outcome).toBeUndefined();
-    expect(runTitle({ ...f.run, requestedAt: Date.parse('2026-10-20T12:34Z') })).toBe('[Run now] Report · 2026-10-20 12:34 UTC');
+    expect(runTitle({ ...f.run, requestedAt: Date.parse('2026-10-20T12:34Z') })).toBe('Report · 2026-10-20 12:34 UTC');
   }));
 });

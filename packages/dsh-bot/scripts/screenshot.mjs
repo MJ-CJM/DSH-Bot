@@ -93,7 +93,7 @@ if (process.argv.includes('--help')) {
   const home = resolve(root, '.dsh-dev');
   assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-dev home is allowed');
   const stamp = `${new Date().toISOString().replaceAll(':', '-')}-${process.pid}`;
-  const output = resolve(root, 'dist/screenshots', stamp);
+  const output = process.env.DSH_BOT_E2E_DIR ? resolve(process.env.DSH_BOT_E2E_DIR) : resolve(root, 'dist/screenshots', stamp);
   const run = resolve(home, 'screenshots', stamp);
   const profile = `shot-${Date.now()}-${process.pid}`;
   const patch = resolve(run, 'profile.patch.yml');
@@ -103,7 +103,7 @@ if (process.argv.includes('--help')) {
   let manualStoppedBy;
   for (const dir of [output, run, resolve(run, 'tmp'), resolve(run, 'workspace')]) mkdirSync(dir, { recursive: true });
   const env = {
-    ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1',
+    ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1', DSH_AGENTS_HOME: resolve(run, 'agents-home'),
     TMPDIR: resolve(run, 'tmp'), XDG_STATE_HOME: resolve(home, 'state'),
     NODE_COMPILE_CACHE: resolve(home, 'node-compile-cache'),
     pnpm_config_store_dir: resolve(home, 'pnpm-store'), pnpm_config_cache_dir: resolve(home, 'pnpm-cache'),
@@ -232,7 +232,22 @@ if (process.argv.includes('--help')) {
       '- id: dsh-bot', '  config:', '    seedExamples: false', `    dataDir: ${JSON.stringify(resolve(run, 'data'))}`, '',
     ].join('\n'));
     await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-    await command(['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'plugin-add');
+    await command(['plugin', '--profile', profile, 'add', process.env.DSH_BOT_E2E_PACKAGE ?? resolve(root, 'packages/dsh-bot')], 'plugin-add');
+    const installedClient = resolve(home, 'profiles', profile, 'node_modules/dsh-bot/lib/client.js');
+    const legacyPath = resolve(run, 'storages/dsh_bot_automation.json');
+    let legacyBefore;
+    if (process.env.DSH_BOT_E2E_PACKAGE && routinesHostOnly) {
+      // Explicit old-format fixture, written before Host startup; never user data.
+      const id = randomUUID();
+      const record = { id, botId: 'old-bot', botCreatedAt: 1, title: 'Legacy 0.2.0 task', prompt: 'MUST_NOT_EXECUTE',
+        rule: { kind: 'every', everySeconds: 60 }, timeZone: 'UTC', enabled: true, misfirePolicy: 'latest',
+        schemaVersion: 1, revision: 1, ruleRevision: 1, createdBy: { kind: 'user' }, workspacePolicy: 'bots',
+        anchorAt: 1, nextRunAt: 60001, createdAt: 1, updatedAt: 1 };
+      legacyBefore = JSON.stringify({ unit: { name: 'dsh_bot_automation', version: 1 }, global: null,
+        tables: { routines: { [id]: record, broken: { invalid: true } }, runs: { old: { preserved: true } }, control: { old: { preserved: true } } } }, null, 2);
+      mkdirSync(dirname(legacyPath), { recursive: true }); writeFileSync(legacyPath, legacyBefore);
+      save('legacy-before.json', JSON.parse(legacyBefore));
+    }
     let startupUrl;
     step = 'host-start';
     let ended = false;
@@ -336,7 +351,7 @@ if (process.argv.includes('--help')) {
       // Also exercise the shipped factory's plugin scope: root-context Remote
       // calls alone cannot detect missing nested Cordis service access.
       await unmountRemote();
-      const client = await createClientActivityProbe(api.connection, api);
+      const client = await createClientActivityProbe(api.connection, api, installedClient);
       let clientActivity;
       try {
         await client.activity.refresh();
@@ -379,8 +394,18 @@ if (process.argv.includes('--help')) {
     if (routinesHostOnly) {
       stage = 'routine-host-only';
       await unmountRemote();
-      const client = await createClientActivityProbe(api.connection, api);
-      try { await verifyRoutineClient({ client, bot, raw, mock, save }); mockPromptsSent = mock.requests.length; }
+      const client = await createClientActivityProbe(api.connection, api, installedClient);
+      try {
+        await verifyRoutineClient({ client, bot, raw, mock, save, setStep: value => { step = value; } }); mockPromptsSent = mock.requests.length;
+        if (legacyBefore) {
+          const aggregate = await raw('dshBot.nativeSchedule/aggregate', {});
+          assert.equal(aggregate.legacy.length, 1); assert.equal(aggregate.legacySkipped, 1);
+          assert.equal(aggregate.legacyUnavailable, false);
+          assert.equal(readFileSync(legacyPath, 'utf8'), legacyBefore);
+          assert.equal((await raw('dshBot.run/list', { options: {} })).length, 1);
+          save('legacy-compatibility.json', { status: 'PASS', aggregate, bytesUnchanged: true, oldRunsNotResumed: true });
+        }
+      }
       finally { await client.dispose(); unmountRemote = await api.effect(() => api.remote.$mount(remoteContribution)); }
     }
     if (routinesSeedOnly) {

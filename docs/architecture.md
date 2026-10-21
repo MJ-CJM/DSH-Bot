@@ -129,7 +129,7 @@ Host 合约、preset disposer、领域句柄、stream 订阅、Agent 事件/工�
 
 Host 配置集中在导出的 Schemastery `Config`；Client 刷新、分页及侧栏条数使用独立 Client `Config`，rc.2 不自动透传 Host 行的配置。记忆条数、工具 deny、人设、默认目录等属于 Bot 记录。
 
-当前 R03 源码在 P1 Bot、记忆、活动和原生 UI 扩展上提供原生定时聚合、显式立即运行与原生子代理委派。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
+当前 0.2.1 版本在 P1 Bot、记忆、活动和原生 UI 扩展上提供原生定时聚合、显式立即运行与原生子代理委派。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
 
 
 ## R02：原生定时与 Bots 聚合
@@ -165,7 +165,7 @@ Client 读取原生 catalog，以 Host sidecar 过滤；编辑/删除/历史直�
 
 “立即运行”展示完整标题、prompt，用户确认后发送 `approved=true`、已观察的 Bot 创建时间和内容、UUID operationId。Host 重查映射和当前内容，不一致拒绝；同 nativeScheduleId + operationId 只持久受理一次。直接 UI Remote 调用的显式确认是此入口的审批，不是一个供模型免审批调用的工具；后续执行中的 DSH 工具审批仍由宿主管理。
 
-保留现有 RunExecutor 的创建→核实 Bots 工作区→prompt→完成屏障→flush；每次在 Bots 工作区新开普通会话，不改变原生任务的规则或到期时间。受理回执不等于执行成功。新的 `dsh_bot_executions` v1 仅为 explicit manual 新请求保存身份、幂等记录和执行状态；历史 delegate 行和 report 字段兼容读取；没有额度/control 表、到期游标或后台排队驱动。`slotHeld` 仅表示执行链尚未确认停止，不再作为并发配额。重启时 queued 取消，未确认的进行中执行标记 recovery_needed，均不自动重放。
+保留现有 RunExecutor 的创建→核实 Bots 工作区→prompt→完成屏障→flush；每次在 Bots 工作区新开普通会话，不改变原生任务的规则或到期时间。受理回执不等于执行成功。会话标题使用“任务标题 · 时间 时区”，与原生 `session/rename` 的内容标题方式一致；不保存 `[Run now]` 等 UI 语言标签，避免中文界面出现英文操作前缀，也无须把 UI locale 写入执行协议。新的 `dsh_bot_executions` v1 仅为 explicit manual 新请求保存身份、幂等记录和执行状态；历史 delegate 行和 report 字段兼容读取；没有额度/control 表、到期游标或后台排队驱动。`slotHeld` 仅表示执行链尚未确认停止，不再作为并发配额。重启时 queued 取消，未确认的进行中执行标记 recovery_needed，均不自动重放。
 
 R03 已取消委派对 RunExecutor 的调用，见下节。立即运行仍复用普通会话执行器；它满足显式“新建一次普通 Bot 会话”的现有行为，不是第二套委派或调度服务。
 
@@ -179,7 +179,7 @@ Config 只剩 runTimeoutMs=900000、executorPollMs=250、stopGraceMs=5000。旧 
 
 没有应用层多 Host 锁；与宿主原生 schedule/storage 一样，以一个活动 Host 使用同一后端为支持范围。停止旧版本 Host 后升级；切回 0.2.0 可能重新启用保留的旧定时任务，不能把保留文件误称为跨版本永久停用。
 
-构建前清理生成的 lib，防止 tsc 留下已删 Dispatcher/锁的旧 JS 并混入包。版本仍为 0.2.0，R02 未进行发布升级或提交。截图命令 `DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v021` 使用真实原生工具、every60 投递和一次手动 mock 执行，目标 `.codex/screens/v021-light.png` / `v021-dark.png`；非视觉验证 `--v021-host-only` 不输出 PNG，不能替代亮暗浏览器验收。实际结果见 [R02 验收](acceptance/P2-R02.md)。
+构建前清理生成的 lib，防止 tsc 留下已删 Dispatcher/锁的旧 JS 并混入包。R04 集成版本为 0.2.1；统一 tarball 验证入口为 `scripts/p2-e2e`，结果见 [P2 验收](acceptance/P2.md)。截图命令 `DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v021` 使用真实原生工具、every60 投递和一次手动 mock 执行，目标 `.codex/screens/v021-light.png` / `v021-dark.png`；非视觉验证 `--v021-host-only` 不输出 PNG，不能替代亮暗浏览器验收。实际结果见 [R02 验收](acceptance/P2-R02.md)。
 
 
 ## R03：原生 Bot 委派

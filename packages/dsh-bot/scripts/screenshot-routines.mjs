@@ -46,11 +46,15 @@ export async function seedRoutineScreenshots({ raw, bot, mock, save, setStep = (
     assert.ok(['queued', 'running', 'succeeded'].includes(run.status), JSON.stringify(run));
     return run.status === 'succeeded' ? run : undefined;
   }, 'Manual execution did not succeed');
+  const projection = await raw('session/projections', { request: { sessionId: completed.sessionId } });
+  const manualTitle = projection.values.title;
+  assert.ok(manualTitle?.startsWith(`${task.title} · `), String(manualTitle));
+  assert.ok(!manualTitle.includes('[Run now]'));
   assert.notEqual(completed.sessionId, sessionId); assert.equal(completed.workspaceId, workspace.workspaceId);
   assert.equal((await raw('schedule/catalog', {})).find(r => r.id === task.id).scheduledAt, task.scheduledAt);
   assert.equal(mock.requests.length, 4); assert.ok(mock.requests.every(r => r.outcome === 'completed'));
   const receipt = { seedSource: 'native-tool-timer-and-manual-executor', visualValidation: 'NOT_RUN', realModelRequests: 0,
-    task, history, completed, idempotentRunId: a.id, mockRequests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) };
+    task, history, completed, manualTitle, idempotentRunId: a.id, mockRequests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) };
   save('native-seed.json', receipt);
   return { routine: task, completed: { sessionId }, receipt };
 }
@@ -93,8 +97,8 @@ export async function captureRoutines({ browser, cookies, origin, raw, bot, outp
   }
 }
 /** Same actual Host fixture followed by shipped Client/Gateway native reads and writes. */
-export async function verifyRoutineClient({ client, bot, raw, mock, save }) {
-  const seeded = await seedRoutineScreenshots({ raw, bot, mock, save });
+export async function verifyRoutineClient({ client, bot, raw, mock, save, setStep }) {
+  const seeded = await seedRoutineScreenshots({ raw, bot, mock, save, setStep });
   const actions = client.routines;
   await actions.catalog.refresh();
   let task = actions.catalog.getSnapshot().routines.find(r => r.id === seeded.routine.id); assert.ok(task, JSON.stringify(actions.catalog.getSnapshot()));

@@ -23,7 +23,8 @@ export function runTitle(run: RunRecord): string {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).formatToParts(run.admittedAt ?? run.requestedAt);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value;
-  return `[Run now] ${run.snapshot.title} · ${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${run.snapshot.timeZone}`;
+  // Native session titles are user content, without a persisted UI-language label.
+  return `${run.snapshot.title} · ${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${run.snapshot.timeZone}`;
 }
 type StopIntent = 'cancelled' | 'timed_out' | 'unloaded';
 interface Active { abort: AbortController; intent?: StopIntent; done: Promise<RunRecord> }

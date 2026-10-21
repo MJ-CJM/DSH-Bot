@@ -1,5 +1,11 @@
 # DSH API 核实记录
 
+## R04：0.2.1 tarball 集成（2026-10-20）
+
+统一 `scripts/p2-e2e` 改为原生定时聚合/显式立即运行/原生 spawn，按全新 profile 安装 0.2.1 包，核对安装文件与 tarball 字节一致；正式 Client factory 也读取已安装文件。旧 0.2.0 格式夹具在 Host 启动前写入，运行后检查只读保留。结果与浏览器失败边界见 [P2 验收](acceptance/P2.md)。没有新增依赖、Remote 端点或持久领域版本。
+
+继续使用公开 `sessionController.rename` / `session/rename` 设置内容标题，去掉固定英文操作标签；通过公开 `session/projections` 的 `values.title` 核对实际持久标题。`session/list` 的 SessionSummary 没有顶层 title，不可用于该断言；源码 `packages/api/session-controller/src/{index,types}.ts`（锁定 rc.2）。此修改采用原生标题惯例，不把 UI locale 引入执行协议。
+
 ## R03：原生 spawn 委派（2026-10-20）
 
 普通 `bot_delegate` 改为原生子代理，删除本包 delegate reporter/runtime、delegate RunRequest 与 outbox 写入；RunExecutor 仅服务显式 manual。设计和差异取舍见 [架构 R03](architecture.md#r03原生-bot-委派)，实测见 [R03 验收](acceptance/P2-R03.md)。
@@ -50,7 +56,7 @@
 
 ## T17：0.2.0 集成、timer 边界与 tarball 验证（2026-10-20）
 
-完整命令、证据和决策汇总见 [P2 验收](acceptance/P2.md)。新增 `scripts/p2-e2e` 串行安装本次 tarball 到新 profile，复跑 T14 Dispatcher、T15 delegate，并增加真实 Host 的默认并发 2、每日 20、24h 时间夹具、卸载重装/独立后端恢复。DSH_HOME 仍严格为仓库 `.dsh-dev`；不清空旧 profile 或证据。只启用 loopback mock provider，没有新公开 DSH API、依赖或领域版本变更。
+历史命令、证据和决策汇总见 [T17 验收](acceptance/P2-T17.md)；当前版本见 [P2](acceptance/P2.md)。当时新增 `scripts/p2-e2e` 串行安装本次 tarball 到新 profile，复跑 T14 Dispatcher、T15 delegate，并增加真实 Host 的默认并发 2、每日 20、24h 时间夹具、卸载重装/独立后端恢复。DSH_HOME 仍严格为仓库 `.dsh-dev`；不清空旧 profile 或证据。只启用 loopback mock provider，没有新公开 DSH API、依赖或领域版本变更。
 
 集成首轮实等 every60 时 80 秒无 Run、无 mock 请求；确定性测试复现 timer 扫描快照尚未到期、重设 timer 时已经到期的竞态。Dispatcher 记录最后扫描时刻：仅对该快照之后刚跨过的到期点安排零延迟唤醒；已经扫描且写入失败的旧到期点继续等周期兜底，避免热循环。旧实现对应回归测试 FAIL，修复后通过；真实每 60 秒场景另由 e2e 验证，不能用回归测试代替。
 
