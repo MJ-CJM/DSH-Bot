@@ -112,6 +112,14 @@ describe('shared Bot avatars', () => {
     const onSave = vi.fn<BotEditorProps['onSave']>();
     const app = await mount(<BotEditor bot={bot()} onSave={onSave} onCancel={() => {}} t={translate(language)} />);
     const shapes = getByRole(app.container, 'group', { name: dictionary['avatar.variant'] });
+    for (const variant of AVATAR_VARIANTS) {
+      const name = dictionary[`avatar.variant.${variant}`];
+      const choice = getByRole(shapes, 'button', { name });
+      expect(choice.getAttribute('title')).toBe(name);
+      expect(choice.getAttribute('aria-label')).toBe(name);
+      expect(choice.querySelector<HTMLElement>('[data-bot-avatar]')?.style.width).toBe('40px');
+      expect(choice.querySelector('svg')?.getAttribute('width')).toBe('36');
+    }
     const classic = getByRole(shapes, 'button', { name: dictionary['avatar.variant.classic'] });
     const key = async (element: HTMLElement, key: string) => {
       element.focus();

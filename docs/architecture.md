@@ -78,7 +78,7 @@ home 固定从公开 `resolveDshHome()` 推导，不跟随自定义技能 `dataD
 
 决策：八个新增配色由原四个主题 alias 混合，再朝 label-primary 混合以保证对比度。理由：只用原生主题 token 即可扩色，无需硬编码亮暗色值。亮暗计算阈值为非文本图形 3:1；中英名称键一致。选择器分造型、颜色两个有名称的 fieldset，使用可聚焦的原生按钮和 aria-pressed，支持 Tab、Enter、Space、左右键循环及 Home/End；窄屏自然换行。上传 FileReader 的原有卸载取消保持有效。
 
-`--v022-avatar` 安装本地构建到隔离 profile，以真实 Remote 种六个 Bot，打开编辑器并验证键盘选择、12 色对比度、两行完整可见及对话框旁的六种头像。目标为 `.codex/screens/v022-avatar-{light,dark}.png`，不发送模型请求。实际运行在 Chromium 启动阶段失败，未验证页面几何或视觉，见 [R06 验收](acceptance/P2-R06.md)。
+`--v022-avatar` 安装本地构建到隔离 profile，以真实 Remote 种六个 Bot，先打开编辑器并验证键盘选择、12 色对比度及两行完整可见，单独截头像选择器到 `.codex/screens/v022-avatar-{light,dark}.png`；关闭编辑器并等待卸载后，核对六种头像及六种颜色、视口内完整可见和中心点无遮挡，再截列表到 `v022-avatar-list-{light,dark}.png`。两种主题共四张，不要求模态框旁可见列表，不发送模型请求。r2 将造型图块增至 40px（SVG 36px），加粗装饰并将头像内 SVG 占比从 76% 增到 90%，24px 头像内绘制 21.6px。实际运行在 Chromium 启动阶段失败，未验证新版页面或 24px 视觉辨识，见 [r2 验收](acceptance/P2-R06-r2.md)。
 
 
 ## R05：持久主会话与共享 Bots 工作区

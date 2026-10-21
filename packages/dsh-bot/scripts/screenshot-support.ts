@@ -539,7 +539,7 @@ export function contrastRatio(foreground: Rgb, background: Rgb): number {
 
 /** Runs in Chromium. Canvas converts the rendered elements' computed
  * CSS color()/color-mix() to sRGB; values never come from theme fixtures. */
-export function readAvatarColors() {
+export function readAvatarColors(selector = '[data-bot-avatar]') {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 1;
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -553,7 +553,7 @@ export function readAvatarColors() {
     return [data[0] ?? 0, data[1] ?? 0, data[2] ?? 0, (data[3] ?? 0) / 255];
   };
   const over = (fg: Rgba, bg: Rgb): Rgb => [0, 1, 2].map((i) => (fg[i] ?? 0) * fg[3] + (bg[i] ?? 0) * (1 - fg[3])) as Rgb;
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-bot-avatar]')).filter((element) => {
+  return Array.from(document.querySelectorAll<HTMLElement>(selector)).filter((element) => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility === 'visible';
   }).map((element) => {
@@ -588,8 +588,8 @@ export function readAvatarColors() {
   });
 }
 
-export async function measureAvatars(page: Page) {
-  const values = await page.evaluate(readAvatarColors);
+export async function measureAvatars(page: Page, selector?: string) {
+  const values = await page.evaluate(readAvatarColors, selector);
   return values.map((value) => value.measured
     ? { ...value, contrastRatio: contrastRatio(value.foregroundRgb, value.backgroundRgb) }
     : { ...value, contrastRatio: null });

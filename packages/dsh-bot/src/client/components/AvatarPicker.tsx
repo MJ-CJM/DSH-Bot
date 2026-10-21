@@ -66,7 +66,7 @@ export function AvatarPicker({ id, value, color, variant, disabled, onChange, on
     setInvalid(false);
   }
 
-  return <fieldset className={picker.picker} disabled={disabled}>
+  return <fieldset className={picker.picker} data-avatar-picker="" disabled={disabled}>
     <style data-dsh-bot-avatar-picker-styles="">{css}</style>
     <legend>{t('editor.avatar')}</legend>
     <div className={picker.previewRow}>
@@ -80,7 +80,7 @@ export function AvatarPicker({ id, value, color, variant, disabled, onChange, on
         {AVATAR_VARIANTS.map((shape) => <button key={shape} type="button" className={picker.swatch}
           title={t(`avatar.variant.${shape}`)} aria-label={t(`avatar.variant.${shape}`)}
           aria-pressed={!value && selectedVariant === shape} onClick={() => { selectColor(color); onVariantChange(shape); }}>
-          <BotAvatar bot={{ id, avatarColor: color, avatarVariant: shape }} size={36} />
+          <BotAvatar bot={{ id, avatarColor: color, avatarVariant: shape }} size={40} />
         </button>)}
       </fieldset>
       <fieldset className={picker.swatches} onKeyDown={moveSelection} aria-label={t('avatar.color')}>

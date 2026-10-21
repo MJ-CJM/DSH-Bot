@@ -65,6 +65,6 @@ export function BotAvatar({ bot, size = 48, className, label }: BotAvatarProps) 
     aria-label={label} aria-hidden={label ? undefined : true} data-bot-avatar={image ? 'image' : bot.avatar ? 'emoji' : 'whale'}
     data-avatar-color={color} data-avatar-variant={variant} data-bot-id={bot.id}>
     {image ? <img src={bot.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      : bot.avatar ?? <WhaleGlyph size={size * 0.76} variant={variant} />}
+      : bot.avatar ?? <WhaleGlyph size={size * 0.9} variant={variant} />}
   </span>;
 }

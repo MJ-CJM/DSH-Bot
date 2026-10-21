@@ -2,6 +2,8 @@
 
 ## R06：12 色与 6 种鲸鱼头像（2026-10-21）
 
+**r2 返工**：无新增 DSH API；造型图块增大、单色特征加粗，截图按选择器与关闭模态框后的列表分开，测色限定各自 DOM 范围。见 [r2 报告](acceptance/P2-R06-r2.md)。
+
 **r1 返工**：主页面把会话导航与 Bot 写入的 busy 分开；复用现有 `startBot` / `openSession` 的 AbortSignal 门禁，编辑时取消迟到导航，Host 已受理的创建/迁移不回滚。无需新增 DSH API。原生会话列表的加载相位为 `pending`（只读 `packages/api/session-controller/src/client/sessions/manager.ts:42`）。根因、验证和边界见 [r1 报告](acceptance/P2-R06-r1.md)。
 
 无新增 DSH API、依赖、Remote 方法或存储领域版本。只读核对参考源码仍为 `dsh-v0.2.1-rc.2`；原生 `packages/client/ui-primitives/src/FishLogo.tsx:9-30` 只有单轮廓、size/className/currentColor，没有造型选择器。本包沿用现有共享 `WhaleGlyph`，保留经典路径；五种派生造型使用本次原创共用轮廓和几何装饰，不导入宿主内部实现或第三方素材。

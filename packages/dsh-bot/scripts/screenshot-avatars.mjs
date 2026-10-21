@@ -73,26 +73,51 @@ export async function captureAvatars({ browser, cookies, origin, remote, bot, re
       assert.equal(await preview.getAttribute('data-avatar-color'), 'purple');
       await preview.scrollIntoViewIfNeeded();
       await page.evaluate(() => document.fonts.ready);
-      const avatars = await measureAvatars(page);
-      verifyAvatarContrast(avatars, samples.map(sample => sample.id));
-      // Ensure both rows are entirely on screen and the Bot list remains beside
-      // the editor. This verifies geometry without changing production layout.
-      const dialogBox = await editor.boundingBox();
+      const picker = editor.locator('[data-avatar-picker]');
+      const avatars = await measureAvatars(page, '[data-avatar-picker] [data-bot-avatar]');
+      assert.equal(avatars.length, 19, 'Preview + six shapes + twelve colors are measured');
+      verifyAvatarContrast(avatars, [bot.id]);
+      // The selector itself must fit; the modal intentionally covers the list.
       for (const group of [shapes, palette]) {
         const box = await group.boundingBox();
         assert.ok(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
         const rows = await group.getByRole('button').evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().top)));
         assert.equal(new Set(rows).size, 1, 'Each selector fits one row at the screenshot viewport');
       }
-      for (const sample of samples) {
-        const box = await bots.locator(`[role="option"][data-bot-id="${sample.id}"] [data-bot-avatar]`).boundingBox();
-        assert.ok(box && dialogBox && box.x + box.width <= dialogBox.x && box.y + box.height <= height, 'Different Bot avatars stay visible beside the editor');
-      }
       const bodyTheme = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim());
       const file = `v022-avatar-${theme}.png`;
-      setStep(`v022-avatar-${theme}-capture`);
-      await page.screenshot({ path: resolve(output, file), fullPage: true, animations: 'disabled' });
-      shots.push({ file, language: 'zh', theme, width, height, surface: 'avatar-editor', bodyTheme, avatars });
+      setStep(`v022-avatar-${theme}-selector-capture`);
+      await picker.screenshot({ path: resolve(output, file), animations: 'disabled' });
+      shots.push({ file, language: 'zh', theme, width, height, surface: 'avatar-selector', bodyTheme, avatars });
+      save('avatar-checks.json', shots);
+
+      setStep(`v022-avatar-${theme}-list-ready`);
+      await editor.getByRole('button', { name: zh.ui['actions.close'], exact: true }).click();
+      await editor.waitFor({ state: 'detached' });
+      await list.scrollIntoViewIfNeeded();
+      const listAvatars = await measureAvatars(page, '[data-bots-page] [role="listbox"] [data-bot-avatar]');
+      verifyAvatarContrast(listAvatars, samples.map(sample => sample.id));
+      const visible = [];
+      for (const sample of samples) {
+        const avatar = list.locator(`[role="option"][data-bot-id="${sample.id}"] [data-bot-avatar]`);
+        await avatar.waitFor({ state: 'visible' });
+        assert.equal(await avatar.getAttribute('data-avatar-variant'), sample.avatarVariant);
+        assert.equal(await avatar.getAttribute('data-avatar-color'), sample.avatarColor);
+        const evidence = await avatar.evaluate(element => {
+          const box = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return { inViewport: box.x >= 0 && box.y >= 0 && box.right <= innerWidth && box.bottom <= innerHeight,
+            unobscured: hit !== null && element.contains(hit) };
+        });
+        assert.ok(evidence.inViewport && evidence.unobscured, `List avatar ${sample.id} is fully visible without a modal`);
+        visible.push({ botId: sample.id, variant: sample.avatarVariant, color: sample.avatarColor, ...evidence });
+      }
+      assert.equal(new Set(visible.map(sample => sample.variant)).size, 6);
+      assert.equal(new Set(visible.map(sample => sample.color)).size, 6);
+      const listFile = `v022-avatar-list-${theme}.png`;
+      setStep(`v022-avatar-${theme}-list-capture`);
+      await list.screenshot({ path: resolve(output, listFile), animations: 'disabled' });
+      shots.push({ file: listFile, language: 'zh', theme, width, height, surface: 'avatar-list', bodyTheme, avatars: listAvatars, visible });
       save('avatar-checks.json', shots);
       completed = true;
     } finally {
@@ -101,7 +126,8 @@ export async function captureAvatars({ browser, cookies, origin, remote, bot, re
     }
   }
   assert.equal(errors.length, 0, 'No Client page errors');
-  assert.notEqual(shots[0].bodyTheme, shots[1].bodyTheme, 'Real theme changes');
+  assert.equal(shots.length, 4, 'Both themes include the selector and unobscured list');
+  assert.notEqual(shots.find(shot => shot.theme === 'light').bodyTheme, shots.find(shot => shot.theme === 'dark').bodyTheme, 'Real theme changes');
   const destination = resolve(root, '.codex/screens');
   mkdirSync(destination, { recursive: true });
   for (const shot of shots) copyFileSync(resolve(output, shot.file), resolve(destination, shot.file));

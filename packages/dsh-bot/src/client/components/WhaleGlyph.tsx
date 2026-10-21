@@ -8,8 +8,9 @@ export const WHALE_PATH = 'M22.9168 1.43018C22.6713 1.31018 22.5658 1.53918 22.4
 const BODY = 'M2 12C2 8.5 4.6 6.8 8.2 6.8C12 6.8 14 9 15.5 11.2C17.5 11.5 18.8 10 19 8C20.3 9 21.7 8.7 23 7.5C23 11 21.7 13 19 13.5C17.5 18 13.8 20 9 20C4.7 20 2 16.8 2 12Z';
 const EYE = 'M5.4 11a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0Z';
 const FIN = 'M10 15Q11.8 16.5 14 15.7Q12.5 18.7 10 15Z';
-const GLASSES = 'M3.6 10.8a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0ZM8.8 10.8a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0Z';
-const CLOSED_EYE = 'M4.5 10.8Q6.3 12.3 8.1 10.8L8.1 12Q6.3 13.5 4.5 12Z';
+// Broad connected rims remain legible when the whole avatar is only 24px.
+const GLASSES = 'M3.2 9H7.7Q8.7 9 8.7 10V10.2H9.5V10Q9.5 9 10.5 9H13.6V12.5Q13.6 14.5 11.6 14.5Q9.5 14.5 9.5 12.5V11.8H8.7V12.5Q8.7 14.5 6 14.5Q3.2 14.5 3.2 12.5Z';
+const CLOSED_EYE = 'M4 10Q6.5 12.4 9 10V12Q6.5 14.4 4 12Z';
 
 export function WhaleGlyph({ size = 24, variant = 'classic' }: { size?: number; variant?: WhaleVariant }) {
   if (variant === 'classic') return <svg width={size} height={size} viewBox="-0.42 -3.48 24 24" fill="currentColor" aria-hidden="true">
@@ -18,10 +19,10 @@ export function WhaleGlyph({ size = 24, variant = 'classic' }: { size?: number; 
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" data-whale-variant={variant}>
     <g transform={variant === 'baby' ? 'translate(2.5 3) scale(.78)' : undefined}>
       <path fill="currentColor" fillRule="evenodd" d={BODY + FIN + (variant === 'sleeping' ? CLOSED_EYE : variant === 'glasses' ? GLASSES : EYE)} />
-      {variant === 'glasses' && <path fill="currentColor" d="M4.5 10.8a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0ZM9.7 10.8a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z" />}
+      {variant === 'glasses' && <path fill="currentColor" d="M4.8 10.6H7.1V12.3Q7.1 13 6 13Q4.8 13 4.8 12.3ZM11 10.6H12.2V12.3Q12.2 13 11.6 13Q11 13 11 12.3Z" />}
     </g>
-    {variant === 'spout' && <path fill="currentColor" d="M8 6C8 3 5 3 4 1.5C7 .5 9 2.5 9 4C9 1 12 .5 14 2C12 4 10 3 10 6ZM3 4a1 1 0 1 0 2 0a1 1 0 1 0-2 0Z" />}
-    {variant === 'hat' && <path fill="currentColor" d="M3 6V4.7H5L5.7 1.5H10.5L11.2 4.7H13V6ZM6.5 3.6H9.7V4.5H6.5Z" fillRule="evenodd" />}
-    {variant === 'sleeping' && <path d="M11 1.5H15L11 5.5H15M17 4H20L17 7H20" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />}
+    {variant === 'spout' && <path fill="currentColor" d="M7.2 6.5V4.8C7.2 3.2 5.4 3.2 3.8 3.8L2.2 1.8C6 .2 8.2 1.6 8.5 3.2C9 .1 12.6 .2 15.2 1.8L13.8 4.1C11.8 2.9 10 3.2 9.8 4.8V6.5ZM16.2 5a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0Z" />}
+    {variant === 'hat' && <path fill="currentColor" d="M1.5 6.4V4.2H4.5V.5H11.5V4.2H15V6.4Z" fillRule="evenodd" />}
+    {variant === 'sleeping' && <path d="M10.5 1.3H15.5L10.5 6H15.5M18.5 3.5H22L18.5 7H22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />}
   </svg>;
 }
