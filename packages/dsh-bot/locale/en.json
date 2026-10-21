@@ -14,12 +14,7 @@
     "bot_manage.approval.combined": "{operation}\nAdditional approval policy: {upstream}",
     "bot_delegate.description": "Delegate a task to a Bot in a new background session after approval. Returns queue acceptance immediately with runId and a reserved sessionId; inspect the Run for its final sessionId and outcome. Only task is sent. One summary is queued to this session after completion. Background sessions and report turns cannot delegate.",
     "bot_delegate.approval": "Delegate to {target} in the shared Bots workspace. Only the following task is sent: {task}\nThis uses the target Bot permissions and queues a summary here, causing an additional model turn.",
-    "routine.approval": "Approve {operation}? Runs use the shared Bots workspace and native permissions. Full target and request: {details}",
-    "routine_create.description": "Create a Bot routine that runs in a NEW conversation, not a reminder in this conversation. Requires approval. Supply input with botId, title, prompt, rule and timeZone.",
-    "routine_list.description": "List routines, their full task/rule and revision for subsequent edits. Optional botId filter. No approval required.",
-    "routine_update.description": "Edit or pause/resume a routine using its current expectedRevision. Requires approval. Does not stop an existing run. On conflict, list again and review.",
-    "routine_delete.description": "Delete a routine using its current expectedRevision. Requires approval. Keeps history and existing runs.",
-    "routine_run_now.description": "Queue one run now, including when paused. Requires approval; consumes quota. Does not move schedule anchors. Returns acceptance, not completion."
+    "schedule.guidance": "Use schedule_* for scheduled tasks."
   },
   "ui": {
     "bots.title": "Bots",

@@ -171,6 +171,32 @@ describe('composeBotPreset', () => {
     expect(rowConfig(first.plugins.find((row) => row.id === 'tool-web'))).not.toEqual(tool.config);
   });
 
+  it('restores the native schedule row when a Host standard template omits it', async () => {
+    const rows = templateRows('standard').filter(row => row.name !== '@deepseek-ai/dsh-tool-schedule');
+    const { ctx } = reader(documentRows(rows));
+    const definition = await composeBotPreset(bot(), ctx, config);
+    expect(definition.plugins.filter(row => row.name === '@deepseek-ai/dsh-tool-schedule')).toEqual([
+      { id: 'tool-schedule', name: '@deepseek-ai/dsh-tool-schedule' },
+    ]);
+  });
+
+  it('preserves an existing nested native schedule row without adding a second provider', async () => {
+    const rows = templateRows('standard').filter(row => row.name !== '@deepseek-ai/dsh-tool-schedule');
+    const nested = deeplyNested({ id: 'native-schedule', name: '@deepseek-ai/dsh-tool-schedule' });
+    rows.push(nested);
+    const { ctx } = reader(documentRows(rows));
+    const definition = await composeBotPreset(bot(), ctx, config);
+    expect(definition.plugins).toContainEqual(nested);
+    expect(definition.plugins.some(row => row.name === '@deepseek-ai/dsh-tool-schedule')).toBe(false);
+  });
+
+  it('rejects a conflicting schedule row id instead of overwriting an unrelated Host plugin', async () => {
+    const rows = templateRows('minimal');
+    rows.push({ id: 'tool-schedule', name: 'custom-plugin' });
+    const { ctx } = reader(documentRows(rows), 'minimal');
+    await expect(composeBotPreset(bot({ template: 'minimal' }), ctx, config)).rejects.toThrow(/tool-schedule id collision/);
+  });
+
   it('propagates a missing or unavailable Host template instead of composing a fallback', async () => {
     const unavailable = new Error('Unknown agent preset: standard');
     const { ctx, readDocument } = reader('[]');

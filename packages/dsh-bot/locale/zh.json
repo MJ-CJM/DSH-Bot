@@ -14,12 +14,7 @@
     "bot_manage.approval.combined": "{operation}\n其他审批策略：{upstream}",
     "bot_delegate.description": "经审批将任务委派给 Bot 的新后台会话。立即返回受理结果 runId 和预分配 sessionId；最终会话 ID 与结果以 Run 记录为准。仅传递 task，完成后向当前会话排入一次摘要。后台会话和回报轮次不能再委派。",
     "bot_delegate.approval": "委派给 {target}，在共享 Bots 工作区执行。仅传递以下任务：{task}\n使用目标 Bot 的权限；完成后向当前会话排入摘要，触发额外模型轮次。",
-    "routine.approval": "批准 {operation}？运行使用共享 Bots 目录及原生权限。完整目标及请求：{details}",
-    "routine_create.description": "创建每次在新 Bot 会话中执行的定时任务，需审批；不是当前会话提醒。",
-    "routine_list.description": "列出任务、规则及供编辑使用的版本号；可按 Bot 筛选，无需审批。",
-    "routine_update.description": "编辑或启停任务，须提供当前版本并审批；不停止已有运行，冲突时重新查看。",
-    "routine_delete.description": "删除定时任务，须提供当前版本并审批；保留历史与已有运行。",
-    "routine_run_now.description": "立即排队一次（暂停时也可用），需审批且占用额度；不改变调度锚点，返回受理而非完成。"
+    "schedule.guidance": "定时任务用 schedule_*。"
   },
   "ui": {
     "bots.title": "Bots",

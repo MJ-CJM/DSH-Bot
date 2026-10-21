@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-session-projection';
 import type {} from '@deepseek-ai/dsh-system-prompt';
 import type {} from '@deepseek-ai/dsh-tools';
 import Schema from '@deepseek-ai/schemastery';
+import en from '../../locale/en.json' with { type: 'json' };
 import { BOT_ID_PATTERN } from '../shared/ids.js';
 import type {} from './registry.js';
 import { DshBotError } from './errors.js';
@@ -16,7 +17,11 @@ import { BOT_MANAGE_TOOL_NAME, registerBotPresetManage } from './tools/bot-manag
 import { registerBotPresetActivity } from './activity/tracker.js';
 import { BOT_DELEGATE_TOOL_NAME, registerDelegateTool } from './delegate/tool.js';
 
-import { registerRoutineTools, ROUTINE_TOOL_NAMES } from './automation/tools.js';
+// Compatibility only: do not pass retired local tools to native restrict(),
+// which rejects unknown names. Keep unrelated unknown names strict.
+const RETIRED_ROUTINE_TOOL_NAMES: readonly string[] = [
+  'routine_create', 'routine_list', 'routine_update', 'routine_delete', 'routine_run_now',
+];
 
 export const name = 'dsh-bot-context';
 export const inject = ['dshBots', 'tools', 'llm', 'systemPrompt', 'agents'];
@@ -54,7 +59,7 @@ export function apply(ctx: Context, config: Config): void {
   const deniedMemory = new Set(bot.tools.deny.filter((name) => MEMORY_TOOL_NAMES.includes(name)));
   const denyBotManage = bot.tools.deny.includes(BOT_MANAGE_TOOL_NAME);
   if (!denyBotManage) registerBotPresetManage(ctx, botId);
-  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME && name !== BOT_DELEGATE_TOOL_NAME && !(ROUTINE_TOOL_NAMES as readonly string[]).includes(name));
+  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME && name !== BOT_DELEGATE_TOOL_NAME && !RETIRED_ROUTINE_TOOL_NAMES.includes(name));
   const model = bot.model ? {
     provider: bot.model.provider,
     model: bot.model.model,
@@ -142,7 +147,10 @@ export function apply(ctx: Context, config: Config): void {
             }));
           }
           bindings.set(agent, binding);
-          releases.push(registerRoutineTools(agent, bot.tools.deny));
+          releases.push(agent.ctx.systemPrompt.section({
+            name: 'dsh-bot:schedule', order: memorySectionOrder,
+            text: en.tools['schedule.guidance'], interpolate: false,
+          }));
           if (!bot.tools.deny.includes(BOT_DELEGATE_TOOL_NAME)) releases.push(registerDelegateTool(agent));
           if (model) {
             // Only alter route variables, never text/tools or other assembly

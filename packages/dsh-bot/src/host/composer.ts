@@ -58,6 +58,12 @@ export async function composeBotPreset(
     const personas = rows.filter((row) => row.id === 'persona');
     if (personas.length !== 1) throw new Error('Template must contain exactly one persona row');
     const allRows = flattenRows(rows);
+    // standard already ships this native plugin; minimal does not. Preserve
+    // Host-provided rows/configuration and never duplicate nested providers.
+    if (!allRows.some((row) => row.name === '@deepseek-ai/dsh-tool-schedule')) {
+      if (allRows.some((row) => row.id === 'tool-schedule')) throw new Error('Template tool-schedule id collision');
+      rows.push({ id: 'tool-schedule', name: '@deepseek-ai/dsh-tool-schedule' });
+    }
     if (allRows.some((row) => row.id === 'bot-context' || row.name === 'dsh-bot/bot-context')) {
       throw new Error('Template already contains bot-context');
     }

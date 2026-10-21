@@ -113,6 +113,10 @@ exports[`composeBotPreset > snapshots minimal, model=false, deny=false 1`] = `
         "name": "cordis:group",
       },
       {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
+      },
+      {
         "config": {
           "customSkillDirs": [
             "/isolated/data/bots/alpha/skills",
@@ -249,6 +253,10 @@ exports[`composeBotPreset > snapshots minimal, model=false, deny=true 1`] = `
           "terminals": true,
         },
         "name": "cordis:group",
+      },
+      {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
       },
       {
         "config": {
@@ -392,6 +400,10 @@ exports[`composeBotPreset > snapshots minimal, model=true, deny=false 1`] = `
         "name": "cordis:group",
       },
       {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
+      },
+      {
         "config": {
           "customSkillDirs": [
             "/isolated/data/bots/alpha/skills",
@@ -532,6 +544,10 @@ exports[`composeBotPreset > snapshots minimal, model=true, deny=true 1`] = `
           "terminals": true,
         },
         "name": "cordis:group",
+      },
+      {
+        "id": "tool-schedule",
+        "name": "@deepseek-ai/dsh-tool-schedule",
       },
       {
         "config": {

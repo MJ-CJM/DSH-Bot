@@ -158,7 +158,7 @@ describe('built bundle contract', () => {
         'bot_manage.approval.combined', 'bot_manage.approval.create', 'bot_manage.approval.delete',
         'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories',
         'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',
-        'routine.approval', 'routine_create.description', 'routine_delete.description', 'routine_list.description', 'routine_run_now.description', 'routine_update.description',
+        'schedule.guidance',
       ]);
       for (const value of Object.values(dictionary)) expect(value.trim()).not.toBe('');
     }

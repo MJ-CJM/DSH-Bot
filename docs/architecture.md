@@ -134,9 +134,14 @@ Host 配置集中在导出的 Schemastery `Config`；Client 刷新、分页及�
 
 ## P2 Automation：Host 调度、执行与回报
 
+R01 已按[批准的方案 A](P2-reuse-proposal.md#10-用户批准的决策2026-10-20)收敛模型入口：Bot 定时任务只使用原生 `schedule_create/list/update/delete`，已删除本包 `routine_*` 工具和描述。Composer 保留宿主的 `dsh-tool-schedule` 行，缺失时补入（包括 minimal）；普通宿主 preset 不变。旧 `tools.deny` 中五个已退役工具名只在创建 Agent 时过滤，不重写持久 Bot 记录，不忽略其他未知名，也不映射为原生工具禁用。原生工具仍受显式 `schedule_*` deny 与宿主 schedule 服务启用状态约束；Bot 提示简化为“定时任务用 schedule_*”，完整人设仍遵守原生 section 抑制语义。
+
+以下调度器、Remote/UI、Run 与旧数据仍是 R01 后的过渡实现；原生任务固定投递到调用者会话，不经过本包 Dispatcher/配额。原生聚合、旧数据迁移与删除自建调度属于后续任务，本轮未迁移或删除 `dsh_bot_automation` 数据。验证见 [R01 验收](acceptance/P2-R01.md)。
+
 ```mermaid
 flowchart LR
-  UI["Bots Routine UI / routine_* / bot_delegate"] --> Remote["Routine 服务 / 严格 automation 契约"]
+  Native["Bot schedule_* 工具"] --> Schedule["原生 schedule / 当前会话"]
+  UI["Bots Routine UI / bot_delegate"] --> Remote["Routine 服务 / 严格 automation 契约"]
   Remote --> Dispatcher["Host Dispatcher"]
   Rules["公开 dsh-schedule 时间规则"] --> Dispatcher
   Dispatcher --> Runs["Run reservation / 配额 / 持久队列"]

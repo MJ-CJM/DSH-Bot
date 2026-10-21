@@ -1,5 +1,18 @@
 # DSH API 核实记录
 
+## R01：原生定时工具入口（2026-10-20）
+
+按 [P2 复用决策 §10](P2-reuse-proposal.md#10-用户批准的决策2026-10-20) 的方案 A，删除正式 `automation/tools.ts` 及 `routine_*` 注册/描述，Bot 仅提示 `Use schedule_* for scheduled tasks.`（中英 locale 同键）。现有 Dispatcher、Remote/UI、旧 automation 域与委派不在本次删除范围。完整命令和验收见 [R01](acceptance/P2-R01.md)。
+
+| 公开 API / 包 | 本次用法、源码核实与边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-tool-schedule` 根入口 | 使用宿主原生 preset 插件，提供 `schedule_create/list/update/delete`；锁定源码 `packages/schedule/tool-schedule/src/index.ts:443-452`，工具只在 `schedule` 服务可用时注册。新增精确 rc.2 **devDependency 供真实测试使用**；产品只有 Loader 行，不新增 runtime import/peer |
+| `agentPresets.readDocument` / `PresetDefinition.plugins` | Composer 保留原生行；缺失时补入（minimal 默认没有），嵌套已有行不重复、冲突 id 明确拒绝。standard 来源 `packages/bundle/web-app/presets/standard.patch.yml:35-36`；生产继续读取运行宿主模板，保留已有 disabled 配置，不强制启用被用户关闭的原生服务 |
+| `tools.restrict` / `schemas` / `execute` | rc.2 对未知 deny 名拒绝（`packages/core/tools/src/index.ts:1105-1125`）。仅过滤已退役五名；未知 `routine_typo` 仍失败，`schedule_delete` 显式 deny 继续隐藏并拒绝分发，不改写存储 |
+| `systemPrompt.section` / `ctx.effect` | 新增 Agent 所属 `dsh-bot:schedule` 简短提示，沿用 Bot 双 owner 清理；完整人设覆盖其他 section 的既有语义不变 |
+
+运行证据使用公开 AgentLoop testkit、真实 Agent 创建、ToolRuntime、原生 tool-schedule/ScheduleService 与真实 JSON schedule 存储；验证两种 Bot 模板目录、旧 deny、新原生 deny、普通会话隔离、原生 CRUD 与卸载。SessionController resolver 和 sessionPersistence 是测试替身，其他模板插件不挂载；**不把这组运行测试计为完整 Loader profile、到期投递、冷恢复、桌面 UI 或模型工具选择验收**。本次新增测试无模型调用，完整 check 的既有模型测试仍使用 loopback mock。
+
 ## T17：0.2.0 集成、timer 边界与 tarball 验证（2026-10-20）
 
 完整命令、证据和决策汇总见 [P2 验收](acceptance/P2.md)。新增 `scripts/p2-e2e` 串行安装本次 tarball 到新 profile，复跑 T14 Dispatcher、T15 delegate，并增加真实 Host 的默认并发 2、每日 20、24h 时间夹具、卸载重装/独立后端恢复。DSH_HOME 仍严格为仓库 `.dsh-dev`；不清空旧 profile 或证据。只启用 loopback mock provider，没有新公开 DSH API、依赖或领域版本变更。
