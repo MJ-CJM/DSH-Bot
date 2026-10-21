@@ -73,4 +73,4 @@ DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v022
 
 设计与公开 API 依据分别见[架构文档](docs/architecture.md)、[DSH API 核实记录](docs/dsh-api-notes.md)。源码检查、隔离运行和最终桌面体验的证据分别记录，不以构建或历史截图代替当前验收。
 
-头像截图复跑（先 `scripts/pnpm check`）：`DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v022-avatar`。目标 `.codex/screens/v022-avatar-light.png`、`v022-avatar-dark.png`，真实隔离 Web Host，不发送模型请求。
+头像截图复跑（先 `scripts/pnpm check`）：`DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v022-avatar`。输出亮暗各两张：`.codex/screens/v022-avatar-{light,dark}.png`（仅头像选择器）和 `v022-avatar-list-{light,dark}.png`（关闭模态框后的 Bots 列表）。真实隔离 Web Host，不发送模型请求。
