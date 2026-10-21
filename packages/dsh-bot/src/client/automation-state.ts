@@ -1,68 +1,78 @@
+import type {} from '@deepseek-ai/dsh-api-remotes';
+import type {} from '@deepseek-ai/dsh-schedule';
 import type { Context } from '@deepseek-ai/cordis';
-import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { RoutineCreate, RoutinePatch, RoutineRecord, RunRecord } from '../shared/automation.js';
-import type { AutomationStatus, AutomationRemoteMethods } from '../shared/automation-contract.js';
+import type { TypertRemoteNamespaceMap, RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
+import type { ScheduleCatalogEntry, ScheduleDeliveryRecord, ScheduleUpdateRequest, ScheduleRecord } from '@deepseek-ai/dsh-schedule/client';
+import type {} from '@deepseek-ai/dsh-schedule/remote';
+import type { AutomationRemoteMethods } from '../shared/automation-contract.js';
+import type { ScheduleBinding, LegacyEntry } from '../shared/native-schedule.js';
 import { createPollingCatalog, type BotCatalogOptions, type PollingCatalog } from './state.js';
-
-export interface AutomationData { routines: RoutineRecord[]; lastRuns: RunRecord[]; status?: AutomationStatus }
+export type NativeTask = ScheduleCatalogEntry & ScheduleBinding;
+export interface AutomationData { routines: NativeTask[]; legacy: LegacyEntry[]; legacyUnavailable: boolean; legacySkipped: number; nativeAvailable: boolean }
 export interface RoutineActions {
   catalog: PollingCatalog<AutomationData>;
-  create(input: RoutineCreate): Promise<void>;
-  update(record: RoutineRecord, patch: RoutinePatch): Promise<void>;
-  remove(record: RoutineRecord): Promise<void>;
-  runNow(id: string, operationId: string): Promise<void>;
-  history(id: string): PollingCatalog<{ runs: RunRecord[]; more: boolean }> & { loadMore(): Promise<void> };
+  update(record: NativeTask, patch: Pick<ScheduleUpdateRequest, 'title' | 'prompt' | 'change'>): Promise<void>;
+  remove(record: NativeTask): Promise<void>;
+  deleteLegacy(id: string): Promise<void>;
+  runNow(record: NativeTask, operationId: string): Promise<void>;
+  history(record: NativeTask): PollingCatalog<{ records: ScheduleDeliveryRecord[]; more: boolean; unavailable: boolean }> & { loadMore(): Promise<void> };
 }
 const unwrap = <T>(result: RemoteResult<T>): T => { if (!result.ok) throw result.error; return result.value; };
+export function expectedRecord(task: NativeTask): ScheduleRecord {
+  const { sessionId: _s, status: _t, lastDelivery: _l, botId: _b, botCreatedAt: _c, nativeScheduleId: _n, ...record } = task;
+  return record;
+}
 export function createRoutineActions(ctx: Context, options: BotCatalogOptions & { routineHistoryPageSize?: number }): RoutineActions {
   const pageSize = options.routineHistoryPageSize ?? 50;
-  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) throw new TypeError('Invalid Routine history page size');
-  let active = true;
-  ctx.effect(() => () => { active = false; }, 'dsh-bot: routine actions');
-  const remote = <N extends 'routine' | 'run' | 'automation'>(name: N): AutomationRemoteMethods<`dshBot.${N}`> => {
-    const service = ctx.get(`remote.dshBot.${name}`);
-    if (!active || !service) throw { code: 'automation/unavailable', message: '' };
-    return service as AutomationRemoteMethods<`dshBot.${N}`>;
-  };
-  const catalog = createPollingCatalog<AutomationData>(ctx, { routines: [], lastRuns: [] }, async () => {
-    const status = unwrap(await remote('automation').status());
-    if (status.state !== 'ready') return { routines: [], lastRuns: [], status };
-    const routines = unwrap(await remote('routine').list({}));
-    // lastRunId is the scheduled cursor receipt; manual runs also count here.
-    const lastRuns = (await Promise.all(routines.map(async routine =>
-      unwrap(await remote('run').list({ routineId: routine.id, limit: 1 }))))).flat();
-    return { routines, lastRuns, status };
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new TypeError('Invalid delivery history page size');
+  const own = () => ctx.get('remote.dshBot.nativeSchedule') as AutomationRemoteMethods<'dshBot.nativeSchedule'>;
+  const native = () => ctx.get('remote.schedule') as TypertRemoteNamespaceMap['schedule'];
+  const catalog = createPollingCatalog<AutomationData>(ctx, { routines: [], legacy: [], legacyUnavailable: false, legacySkipped: 0, nativeAvailable: false }, async () => {
+    // Reconcile first so task creation and its sidecar cannot race this catalog read.
+    const aggregate = unwrap(await own().aggregate());
+    const tasks = aggregate.nativeAvailable ? unwrap(await native().catalog()) : [];
+    const routines = tasks.flatMap(task => {
+      const binding = aggregate.bindings.find(row => row.nativeScheduleId === task.id && row.sessionId === task.sessionId);
+      return binding ? [{ ...binding, ...task }] : [];
+    });
+    return { routines, legacy: aggregate.legacy, legacyUnavailable: aggregate.legacyUnavailable, legacySkipped: aggregate.legacySkipped, nativeAvailable: aggregate.nativeAvailable };
   }, options);
-  const write = async (action: () => Promise<RemoteResult<unknown>>) => {
-    const result = await action();
-    // Also refresh conflicts without overwriting the editor's draft/revision.
-    await catalog.refresh();
-    unwrap(result);
+  const histories = new Set<() => Promise<void>>();
+  ctx.effect(() => ctx.remote.$on('schedule/changed', () => {
+    void catalog.refresh(); for (const refresh of histories) void refresh();
+  }), 'dsh-bot: native catalog changes');
+  // The shared polling scheduler also refreshes on connection/reset and visibility.
+  const write = async <T,>(action: () => Promise<RemoteResult<T>>, validate?: (value: T) => void) => {
+    const result = await action(); await catalog.refresh(); const value = unwrap(result); validate?.(value);
   };
   return {
     catalog,
-    create: input => write(() => remote('routine').create(input)),
-    update: (record, patch) => write(() => remote('routine').update(record.id, patch, record.revision)),
-    remove: record => write(() => remote('routine').delete(record.id, record.revision)),
-    runNow: (id, operationId) => write(() => remote('routine').runNow(id, operationId)),
-    history(id) {
+    update: (record, patch) => write(() => native().update({ id: record.id, sessionId: record.sessionId, expected: expectedRecord(record), ...patch }), value => {
+      if (!('record' in value)) throw value;
+    }),
+    remove: record => write(() => native().delete({ id: record.id, sessionId: record.sessionId }), value => {
+      if (!value.deleted) throw value;
+    }),
+    deleteLegacy: id => write(() => own().deleteLegacy(id)),
+    runNow: (record, operationId) => write(() => own().runNow(record.id, operationId,
+      { title: record.title, prompt: record.prompt, botCreatedAt: record.botCreatedAt }, true)),
+    history(record) {
       let pages = 1;
-      const history = createPollingCatalog(ctx, { runs: [] as RunRecord[], more: false }, async () => {
-        const runs: RunRecord[] = [];
-        let before: { requestedAt: number; id: string } | undefined;
-        let more = false;
-        const requestedPages = pages;
-        for (let page = 0; page < requestedPages; page++) {
-          const result = unwrap(await remote('run').list({ routineId: id, limit: pageSize, ...(before ? { before } : {}) }));
-          runs.push(...result);
-          more = result.length === pageSize;
-          const last = result.at(-1);
-          if (!more || !last) break;
-          before = { requestedAt: last.requestedAt, id: last.id };
+      const history = createPollingCatalog(ctx, { records: [] as ScheduleDeliveryRecord[], more: false, unavailable: false }, async () => {
+        const records: ScheduleDeliveryRecord[] = []; let before: ScheduleDeliveryRecord['messageId'] | undefined;
+        let more = false; let unavailable = false;
+        for (let page = 0; page < pages; page++) {
+          const value = unwrap(await native().history({ id: record.id, sessionId: record.sessionId, limit: pageSize, ...(before ? { before } : {}) }));
+          if ('code' in value) { if (value.code === 'delivery_cursor_not_found') pages = 1; throw value; }
+          records.push(...value.records); before = value.nextBefore; more = Boolean(before);
+          unavailable ||= value.earlierRecordsUnavailable || value.earlierRecordsPruned;
+          if (!more) break;
         }
-        return { runs, more };
+        return { records, more, unavailable };
       }, options);
-      return { ...history, loadMore: async () => { pages++; await history.refresh(); } };
+      histories.add(history.refresh);
+      return { ...history, dispose() { histories.delete(history.refresh); history.dispose(); },
+        loadMore: async () => { pages++; await history.refresh(); } };
     },
   };
 }

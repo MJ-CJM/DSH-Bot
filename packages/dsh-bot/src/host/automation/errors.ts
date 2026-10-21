@@ -1,13 +1,11 @@
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type { z } from 'zod';
 export type AutomationErrorCode = 'automation/invalid' | 'automation/conflict' | 'automation/not-found'
-  | 'automation/unavailable' | 'automation/read-only' | 'automation/busy' | 'automation/quota' | 'automation/clock';
+  | 'automation/unavailable';
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     'automation/invalid': Record<string, never>; 'automation/conflict': Record<string, never>;
     'automation/not-found': Record<string, never>; 'automation/unavailable': Record<string, never>;
-    'automation/read-only': Record<string, never>; 'automation/busy': Record<string, never>;
-    'automation/quota': Record<string, never>; 'automation/clock': Record<string, never>;
   }
 }
 export class AutomationError extends RemoteError<AutomationErrorCode> {

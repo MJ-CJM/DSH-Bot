@@ -1,4 +1,4 @@
-# DSH-Bot 架构（0.2.0）
+# DSH-Bot 架构（R02 原生定时聚合）
 
 本页描述当前正式包的实现。DSH 参考源码锁定 `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`），只使用已发布包的公开入口、service、Remote 和 slot。具体 API 出处见 [DSH API 核实记录](dsh-api-notes.md)，P1 操作清单见 [P1 验收清单](acceptance/P1.md)，P2 运行证据与验收边界见 [P2 报告](acceptance/P2.md)；架构说明本身不代表运行验收通过。
 
@@ -129,42 +129,54 @@ Host 合约、preset disposer、领域句柄、stream 订阅、Agent 事件/工�
 
 Host 配置集中在导出的 Schemastery `Config`；Client 刷新、分页及侧栏条数使用独立 Client `Config`，rc.2 不自动透传 Host 行的配置。记忆条数、工具 deny、人设、默认目录等属于 Bot 记录。
 
-0.2.0 在 P1 Bot、记忆、活动和原生 UI 扩展上加入 Routine 与一次委派回报。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
+当前 R02 源码在 P1 Bot、记忆、活动和原生 UI 扩展上提供原生定时聚合、显式立即运行与既有委派回报。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
 
 
-## P2 Automation：Host 调度、执行与回报
+## R02：原生定时与 Bots 聚合
 
-R01 已按[批准的方案 A](P2-reuse-proposal.md#10-用户批准的决策2026-10-20)收敛模型入口：Bot 定时任务只使用原生 `schedule_create/list/update/delete`，已删除本包 `routine_*` 工具和描述。Composer 保留宿主的 `dsh-tool-schedule` 行，缺失时补入（包括 minimal）；普通宿主 preset 不变。旧 `tools.deny` 中五个已退役工具名只在创建 Agent 时过滤，不重写持久 Bot 记录，不忽略其他未知名，也不映射为原生工具禁用。原生工具仍受显式 `schedule_*` deny 与宿主 schedule 服务启用状态约束；Bot 提示简化为“定时任务用 schedule_*”，完整人设仍遵守原生 section 抑制语义。
-
-以下调度器、Remote/UI、Run 与旧数据仍是 R01 后的过渡实现；原生任务固定投递到调用者会话，不经过本包 Dispatcher/配额。原生聚合、旧数据迁移与删除自建调度属于后续任务，本轮未迁移或删除 `dsh_bot_automation` 数据。验证见 [R01 验收](acceptance/P2-R01.md)。
+依据 [P2 复用提案 §10](P2-reuse-proposal.md#10-用户批准的决策2026-10-20) 的方案 A，定时任务完全由 DSH `schedule` 管理。宿主禁用 schedule 时 Bot/记忆仍正常启动，聚合显示服务不可用和可读的旧版停用任务，不强制启用宿主服务。Bot 只暴露原生 `schedule_*` 工具；到期投递到创建时的原会话。本包不再计算时间、运行到期 timer、补跑、维护每日额度、并发池或单 Host 锁。原生任务是否继续投递取决于宿主原生服务与会话状态。
 
 ```mermaid
 flowchart LR
-  Native["Bot schedule_* 工具"] --> Schedule["原生 schedule / 当前会话"]
-  UI["Bots Routine UI / bot_delegate"] --> Remote["Routine 服务 / 严格 automation 契约"]
-  Remote --> Dispatcher["Host Dispatcher"]
-  Rules["公开 dsh-schedule 时间规则"] --> Dispatcher
-  Dispatcher --> Runs["Run reservation / 配额 / 持久队列"]
-  Runs --> Executor["RunExecutor"]
-  Executor --> Session["Bots 工作区普通新会话"]
-  Session --> Barrier["关联 turn/end + idle + Inbox + jobs/后代 + flush"]
-  Barrier --> Terminal["持久终态"]
-  Terminal --> Reporter["DelegateReporter"]
-  Reporter --> Origin["原会话 followup / pending-sent-blocked"]
+  Tools[Bot 原生 schedule 工具] --> Native[DSH schedule]
+  Native --> Session[原 Bot 会话]
+  Native --> Catalog[原生 catalog / history]
+  Catalog --> UI[Bots 详情与总览]
+  Native --> Changed[schedule/changed]
+  Changed --> Sidecar[Bot 身份映射 sidecar]
+  Sidecar --> UI
+  UI --> Edit[原生 update / delete Remote]
+  Edit --> Native
+  UI --> Confirm[确认完整指令 + operationId]
+  Confirm --> Executor[RunExecutor 新建 Bots 会话]
 ```
 
-`src/host/automation/coordinator.ts` 先取得 `$DSH_HOME/dsh-bot/automation/lock` 的单 Host 所有权，再打开服务。锁记录 hostname、PID、启动时间和 token；同机可证实进程已死或启动时间不符才接管，使用唯一后继文件避免 stale unlink 竞态。第二 Host 仅提供所有权诊断，不打开可写业务域，也不提供 P1 的实时只读镜像。
+### 归属与刷新
 
-新增独立 **`dsh_bot_automation` v1**，含 `routines/runs/control`；P1 `dsh_bot` v1 不改版本。Routine 保存规则、时区、启停、revision/ruleRevision、锚点与游标。Run 保存 snapshot、来源 Bot 创建时间、会话/request 身份、quota receipt、slotHeld、内部 step、终态和 report。Run 是去重/扣额权威，control 和 Routine 游标可从 Run 修复；没有跨表事务。已经收费的非终态重启后保留 `recovery_needed` 和槽位，不重新 create/prompt。
+独立 `dsh_bot_native_schedule` v1 的 `bindings` 只保存 `{botId, botCreatedAt, sessionId, nativeScheduleId}`。不镜像 prompt、规则或投递状态。启动、`schedule/changed` 及聚合读取会对账；原生成功而映射写入失败时，下次对账可按可靠会话证据找回。没有可靠证据的任务仍由原生页管理，不按标题、名字或 preset 前缀猜测。
 
-Dispatcher 只在 Host 内运行最早到期 timer 与默认 60 秒兜底扫描，复用 `@deepseek-ai/dsh-schedule` 根入口的五类规则工厂及 recurring resolver。每 Routine 只补最近一次，默认追溯 24 小时（含边界）；暂停恢复重建未来游标，过期 at 不平移；run_now 不改锚点。同 Routine 不重叠，满全局并发进入持久有界队列；积压 scheduled 只保留同 Routine 最新一次，其余标为 superseded。满队列 scheduled 记 queue_full，manual/delegate 报 busy；额度耗尽记 skipped/quota。
+优先使用当前 Agent 的本包绑定；没有 live Agent 时，使用公开 `sessionController.inspect().meta` 的准确 agentPreset，与注册表的实际 presetId 匹配，并要求会话创建时间不早于 Bot 创建时间且不是子会话/fork。活跃 Agent 没有绑定时不回退旧 header；活跃绑定同样检查会话创建时间。对切换 preset 或来源不可证明的旧会话宁可不归属。已持久绑定的 Bot 被删除/同 ID 重建后不重绑；保留旧 sidecar 防串归属。原生删除后按 catalog 权威隐藏，绝不重建任务。
 
-默认 `automation` Config：并发 2、每 Bot 每日 20、队列 64、超时 900000ms、补跑上限 86400000ms、sweep 60000ms、委派深度 1、摘要上限 4000。quotaTimeZone 首次取系统时区并持久固定，额度日期倒退拒绝，失败不退款。配额是执行次数，不是 token 或费用预算。
+Client 读取原生 catalog，以 Host sidecar 过滤；编辑/删除/历史直接走原生 `schedule.update/delete/history`。update 只传原生 ScheduleRecord 作为完整 `expected`，排除 catalog 和 sidecar 附加字段，保留原生冲突检查。未修改规则时不传 change，不改变 every 相位。原生不支持暂停，因此没有旧暂停/恢复或本包新建表单。新建请在 Bot 会话中使用原生工具。
 
-执行器先 reservation，再准备 Bots workspace、读取当前健康 preset、create/rename/prompt，保存真实 create 回执。`accepted` 只是入箱；成功必须关联 request 与已提交 user/message 的 turn，确认真实 step、completed、idle、无 pending Inbox、自有后台 jobs/后代已结束并 flush。取消/超时停止无法证实时保留 recovery_needed；不以取消请求代替停止证据。
+复用原生公开 `/remote` 的 codec：已挂载 `remote.schedule` 时直接复用；精简 Client 缺失时才挂载并纳入 effect。`schedule/changed` 和 `connection/reset` 触发重读；共享轮询仍作断连/前台恢复兜底。结构相等时不发布新快照，保留旧数据且不闪烁。历史明确标注“投递记录”，展示投递/计划时间、当时 prompt 及裁剪提示，分页使用原生 message cursor，单页 1–100。它不证明模型处理或任务成功。
 
-Agent 的 `bot_delegate` 从绑定获取原 Bot 身份和会话，审批展示目标与完整 task；只传 task，不复制父历史。原会话忙时通过 followup 排下一轮。Reporter 保存固定 message 与 attempts 后才投递，确认新增 Inbox splice 并 flush 后记 sent；冷恢复已有尝试且证据不明时 blocked，不重发。摘要先筛查再限长，不含中间工具输出。后台会话、fork/子会话及回报轮次禁止继续委派或修改 Routine；下一普通用户输入可恢复交互权限。
+### 立即运行与委派的过渡边界
 
-automation Remote 单独注册和 mount，保留 P1 的 19 个端点：`dshBot.routine` 的 list/get/create/update/delete/runNow、`dshBot.run` 的 list/get、`dshBot.automation/status`，共 9 个。runNow 需 operationId UUID，返回持久受理记录。没有公开取消、Run 删除或回报重试端点。UI 位于 Bots 顶部总览和 Bot 详情，使用现有共享轮询，Client 不计时调度；历史最新状态按最新 Run 查询。
+“立即运行”展示完整标题、prompt，用户确认后发送 `approved=true`、已观察的 Bot 创建时间和内容、UUID operationId。Host 重查映射和当前内容，不一致拒绝；同 nativeScheduleId + operationId 只持久受理一次。直接 UI Remote 调用的显式确认是此入口的审批，不是一个供模型免审批调用的工具；后续执行中的 DSH 工具审批仍由宿主管理。
 
-卸载按 Dispatcher → Reporter → Executor → stores/registry → lease 显式 join，停止新任务并等在途操作；所有注册、timer、监听、Remote 和 Agent 工具由所属 effect 管理。未知外部工作不释放可能仍被占用的 lease。降级 0.1.x 保留独立 automation 文件，旧版不会调度它；实际升级前停止旧 Host 并备份数据，不能并发让旧版绕开 P2 锁写同一后端。
+保留现有 RunExecutor 的创建→核实 Bots 工作区→prompt→完成屏障→flush；每次在 Bots 工作区新开普通会话，不改变原生任务的规则或到期时间。受理回执不等于执行成功。新的 `dsh_bot_executions` v1 仅保存 explicit manual/delegate 的身份、幂等记录、执行状态和回报；没有额度/control 表、到期游标或后台排队驱动。`slotHeld` 仅表示执行链尚未确认停止，不再作为并发配额。重启时 queued 取消，未确认的进行中执行标记 recovery_needed，均不自动重放。
+
+决策：R02 保留既有 bot_delegate 与持久 reporter，改为直接显式提交到执行器。理由：原生子代理替换在后续委派任务；本轮删除 Dispatcher 不能顺带破坏已批准的委派审批/回报契约。此保留不意味着批准两套定时调度。删除 Bot 身份检查、后台/回报来源门禁及回报防重发仍保留。
+
+Config 只剩 runTimeoutMs=900000、executorPollMs=250、stopGraceMs=5000、delegateReportMaxChars=4000。旧 Host 行里的额度/并发/补跑配置只忽略，不执行。P1 19 个 Remote 保留；本包新 contribution 提供 nativeSchedule aggregate/deleteLegacy/runNow、run list/get 和 automation status，共 6 个。旧 `dshBot.routine/*` 全部移除。
+
+### 0.2.0 数据处理
+
+决策：不自动迁移，不提供单条自动转换按钮；提供“旧版定时任务（已停用）”列表与逐条确认删除。理由：原生每次投回固定会话，旧任务没有可靠的目标会话，必须新建；every 会重锚，旧 skip/补跑、启停语义也不能等价映射。低成本转换会隐含语义变更，用户应在 Bot 对话中明确重新创建。
+
+启动以宽松 unknown 行 schema 打开旧 `dsh_bot_automation` v1，只读加载 routines/runs/control；逐条校验 Routine，坏行或 key 不一致跳过，整文件损坏/版本不符则报告不可读并继续启动。不会恢复旧 Run、修改游标、扣额度、自动回报或自动创建原生任务。显式删除只删除选中 routine 行，其他原始行、未知 runs/control、坏行仍保留。总览仍显示有效的孤立旧任务供删除；Bot 详情仅显示匹配 botId + createdAt 的旧任务，避免同 ID 重建混入。删除后的旧历史仅保留在文件中，没有本轮 UI。P1 Bot/记忆领域不改版本。
+
+没有应用层多 Host 锁；与宿主原生 schedule/storage 一样，以一个活动 Host 使用同一后端为支持范围。停止旧版本 Host 后升级；切回 0.2.0 可能重新启用保留的旧定时任务，不能把保留文件误称为跨版本永久停用。
+
+构建前清理生成的 lib，防止 tsc 留下已删 Dispatcher/锁的旧 JS 并混入包。版本仍为 0.2.0，R02 未进行发布升级或提交。截图命令 `DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v021` 使用真实原生工具、every60 投递和一次手动 mock 执行，目标 `.codex/screens/v021-light.png` / `v021-dark.png`；非视觉验证 `--v021-host-only` 不输出 PNG，不能替代亮暗浏览器验收。实际结果见 [R02 验收](acceptance/P2-R02.md)。

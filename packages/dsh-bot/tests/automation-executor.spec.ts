@@ -10,6 +10,7 @@ import * as storageJson from '@deepseek-ai/dsh-storage-json';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import { describe, expect, it, vi } from 'vitest';
 import { openAutomationStores } from '../src/host/automation/store.js';
+import { configSchema } from '../src/host/automation/config.js';
 import { RunExecutor, type ExecutorRuntime, runTitle } from '../src/host/automation/executor.js';
 import { inspectBarrier, type Observation } from '../src/host/automation/barrier.js';
 import type { RunRecord } from '../src/shared/automation.js';
@@ -34,17 +35,15 @@ async function facility(test: (f: {
     await ctx.plugin(Storage).await(); await ctx.plugin(storageJson, { root }).await();
     await ctx.plugin(storageDomain, { backend: 'json' }).await();
     const resolveBot = async () => ({ bot, presetId: 'actual-current-preset' });
-    const stores = await openAutomationStores(ctx, { assertOwner() {}, ownerId: 'owner', resolveBot });
-    const routine = await stores.routines.create({ botId: bot.id, title: 'Report', prompt: 'Task', timeZone: 'UTC',
-      rule: { kind: 'every', everySeconds: 60 } });
-    const run = await stores.runs.enqueue({ trigger: 'manual', routineId: routine.id, operationId: randomUUID() });
+    const stores = await openAutomationStores(ctx, { resolveBot });
+    const run = await stores.runs.enqueue({ trigger: 'manual', nativeScheduleId: 'schedule-test', operationId: randomUUID(), botId: bot.id, botCreatedAt: bot.createdAt, title: 'Report', prompt: 'Task', timeZone: 'UTC' });
     const calls: string[] = [];
     const observation: Observation = { events: [], idle: true, inboxEmpty: true, jobs: [], children: [] };
     const runtime: ExecutorRuntime = {
       resolveBot, async workspace() { calls.push('workspace'); return { workspaceId: 'bots', path: '/bots' }; },
-      async create(r) { calls.push('create'); expect(stores.runs.get(r.id).quotaCharged).toBe(true); return { sessionId: 'session-actual-receipt' }; },
+      async create(r) { calls.push('create'); expect(stores.runs.get(r.id).admittedAt).toBeDefined(); return { sessionId: 'session-actual-receipt' }; },
       async verify(r) { calls.push('verify'); expect(stores.runs.get(r.id).sessionId).toBe(r.sessionId); },
-      async rename(_r, title) { calls.push('rename'); expect(title).toMatch(/^\[Routine\] Report · .* UTC$/); },
+      async rename(_r, title) { calls.push('rename'); expect(title).toMatch(/^\[Run now\] Report · .* UTC$/); },
       async prompt(r) { calls.push('prompt'); observation.events = events(r.requestId); },
       async observe() { return structuredClone(observation); },
       async stop() { calls.push('stop'); observation.idle = true; observation.inboxEmpty = true; observation.jobs = []; observation.children = []; },
@@ -57,13 +56,17 @@ async function facility(test: (f: {
   } finally { await ctx.fiber.dispose(); await rm(root, { recursive: true, force: true }); }
 }
 describe('RunExecutor with real durable automation stores', () => {
+  it('ignores retired policy settings from a 0.2.0 Host configuration', () => {
+    expect(configSchema.parse({ maxConcurrentRuns: 2, maxRunsPerBotPerDay: 20, quotaTimeZone: 'UTC', catchUpMaxAgeMs: 86400000 }))
+      .toEqual({ runTimeoutMs: 900000, executorPollMs: 250, stopGraceMs: 5000, delegateReportMaxChars: 4000 });
+  });
   it('reserves once, persists actual create ID and joins concurrent execution, then does not replay', async () => facility(async f => {
     const [a, b] = await Promise.all([f.executor.execute(f.run.id), f.executor.execute(f.run.id)]);
     expect(a).toEqual(b); expect(a).toMatchObject({ status: 'succeeded', sessionId: 'session-actual-receipt', inputTurn: 0, slotHeld: false, summary: 'Done' });
     expect(a.inputMessageId).toBeDefined();
     expect(f.calls).toEqual(['workspace', 'create', 'verify', 'rename', 'flush', 'prompt', 'flush']);
     await f.executor.execute(a.id); expect(f.calls.filter(c => c === 'prompt')).toHaveLength(1);
-    expect(f.stores.runs.control().counts[0]?.count).toBe(1);
+    expect(f.stores.runs.list()).toHaveLength(1);
   }));
   it.each(['error', 'max-tokens', 'blocked', 'aborted'])('maps linked turn %s without promoting it to success', async reason => facility(async f => {
     f.runtime.prompt = async r => { f.observation.events = events(r.requestId, reason); };
@@ -81,10 +84,10 @@ describe('RunExecutor with real durable automation stores', () => {
     f.observation.inboxEmpty = true;
     expect((await pending).status).toBe('succeeded');
   }));
-  it('accepted alone times out and confirms stop before releasing quota slot', async () => facility(async f => {
+  it('accepted alone times out and confirms stop before releasing execution state', async () => facility(async f => {
     f.runtime.prompt = async () => {};
     const result = await f.executor.execute(f.run.id);
-    expect(result).toMatchObject({ status: 'timed_out', slotHeld: false, quotaCharged: true });
+    expect(result).toMatchObject({ status: 'timed_out', slotHeld: false });
     expect(f.calls).toContain('stop');
   }));
   it('cancel and unload drain active work; queued cancellation creates no session', async () => facility(async f => {
@@ -93,9 +96,8 @@ describe('RunExecutor with real durable automation stores', () => {
     expect((await f.executor.cancel(f.run.id)).status).toBe('cancelled'); await pending;
     await f.executor.close(); await f.executor.close();
     await expect(f.executor.execute(f.run.id)).rejects.toMatchObject({ code: 'automation/unavailable' });
-    if (!f.run.routineId) throw new Error('Missing routine');
-    const queued = await f.stores.runs.enqueue({ trigger: 'manual', routineId: f.run.routineId, operationId: randomUUID() });
-    expect((await f.executor.cancel(queued.id)).quotaCharged).toBe(false);
+    const queued = await f.stores.runs.enqueue({ trigger: 'manual', nativeScheduleId: 'schedule-test', operationId: randomUUID(), botId: bot.id, botCreatedAt: bot.createdAt, title: 'Report', prompt: 'Task', timeZone: 'UTC' });
+    expect((await f.executor.cancel(queued.id)).admittedAt).toBeUndefined();
   }));
   it('unknown descendants or an uncooperative stop preserve recovery occupancy', async () => facility(async f => {
     f.observation.children = [{ id: 'unknown', activity: 'unknown' }];
@@ -121,8 +123,7 @@ describe('RunExecutor with real durable automation stores', () => {
     f.runtime.verify = async () => { throw new Error('Workspace attach mismatch'); };
     expect((await f.executor.execute(f.run.id)).status).toBe('failed');
     expect(f.calls).not.toContain('prompt');
-    if (!f.run.routineId) throw new Error('Missing routine');
-    const next = await f.stores.runs.enqueue({ trigger: 'manual', routineId: f.run.routineId, operationId: randomUUID() });
+    const next = await f.stores.runs.enqueue({ trigger: 'manual', nativeScheduleId: 'schedule-test', operationId: randomUUID(), botId: bot.id, botCreatedAt: bot.createdAt, title: 'Report', prompt: 'Task', timeZone: 'UTC' });
     f.runtime.verify = async () => {};
     let reads = 0;
     f.runtime.resolveBot = async () => ({ bot: { ...bot, updatedAt: ++reads === 1 ? 2 : 3 }, presetId: 'actual-current-preset' });
@@ -158,6 +159,6 @@ describe('RunExecutor with real durable automation stores', () => {
   it('does not mistake a foreign request or empty completed turn for execution', async () => facility(async f => {
     expect(inspectBarrier({ ...f.observation, events: events('foreign') }, f.run).outcome).toBeUndefined();
     expect(inspectBarrier({ ...f.observation, events: events(f.run.requestId).filter(e => e.type !== 'step/start') }, f.run).outcome).toBeUndefined();
-    expect(runTitle({ ...f.run, scheduledAt: Date.parse('2026-10-20T12:34Z') })).toBe('[Routine] Report · 2026-10-20 12:34 UTC');
+    expect(runTitle({ ...f.run, requestedAt: Date.parse('2026-10-20T12:34Z') })).toBe('[Run now] Report · 2026-10-20 12:34 UTC');
   }));
 });

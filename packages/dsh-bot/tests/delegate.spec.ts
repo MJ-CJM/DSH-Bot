@@ -11,7 +11,7 @@ import Storage from '@deepseek-ai/dsh-storage';
 import * as storageDomain from '@deepseek-ai/dsh-storage-domain';
 import * as storageJson from '@deepseek-ai/dsh-storage-json';
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
-import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools';
+import ToolRuntime from '@deepseek-ai/dsh-tools';
 import ApprovalService from '@deepseek-ai/dsh-user-approval';
 import { describe, expect, it, vi } from 'vitest';
 import * as botContext from '../lib/host/bot-context.js';
@@ -41,12 +41,12 @@ async function setup(ctx: Context, root: string) {
     ensureHome: async () => ({ path: join(root, 'bots/alpha/home') }) } as unknown as Context['dshBots']);
   ctx.provide('llm', {} as Context['llm']); ctx.provide('agents', {} as Context['agents']);
   const resolveBot = async (id: string) => ({ bot: await get(id), presetId: `bot-${id}` });
-  const stores = await openAutomationStores(ctx, { ownerId: 'test-owner', assertOwner() {}, resolveBot });
+  const stores = await openAutomationStores(ctx, { resolveBot });
   ctx.provide('dshBotAutomationStores', stores);
-  ctx.provide('dshBotDispatcher', { submit: (request: Parameters<typeof stores.runs.enqueue>[0]) => stores.runs.enqueue(request) } as Context['dshBotDispatcher']);
+  ctx.provide('dshBotSubmitter', { submit: (request: Parameters<typeof stores.runs.enqueue>[0]) => stores.runs.enqueue(request) } as Context['dshBotSubmitter']);
   registerAutomationGuard(ctx, stores.runs);
   let owner!: Context;
-  await ctx.plugin({ inject: ['tools', 'systemPrompt', 'dshBots', 'agents', 'llm', 'dshBotAutomationStores', 'dshBotDispatcher'],
+  await ctx.plugin({ inject: ['tools', 'systemPrompt', 'dshBots', 'agents', 'llm', 'dshBotAutomationStores', 'dshBotSubmitter'],
     apply(value: Context) { owner = value; } }).await();
   const create = async (botId = 'alpha', sessionId = `session-${randomUUID()}`) => {
     const key = {}; const preset = createScope(owner, key); const plugin = preset.ctx.plugin(botContext, { botId }); await plugin.await();
@@ -107,14 +107,10 @@ describe('bot_delegate with published tools, approval, Bot binding and JSON stor
     const denied = await f.create('denied'); expect(f.ctx.tools.get('bot_delegate', denied.agent)).toBeUndefined();
     expect(f.stores.runs.list()).toHaveLength(1);
   }));
-  it('blocks background sessions and report-induced turns, including future routine mutation tools', async () => fixture(async f => {
+  it('blocks background sessions and report-induced turns', async () => fixture(async f => {
     f.ctx.on('approval/request', async () => 'allowed-once'); const run = await f.terminal();
     const target = await f.create('beta', run.sessionId);
-    const mutate = vi.fn(async () => 'changed');
-    target.agent.ctx.effect(() => target.agent.ctx.tools.register(defineTool({ name: 'routine_future_write', description: 'test', parameters: {},
-      output: { schema: { type: 'string' }, render: (_args, text) => [{ type: 'text', text }] }, execute: mutate })));
     expect((await f.execute(target.agent, args)).isError).toBe(true);
-    expect((await f.execute(target.agent, {}, randomUUID(), 'routine_future_write')).isError).toBe(true); expect(mutate).not.toHaveBeenCalled();
     const origin = await f.create();
     const notice = reportMessage(run, 4000);
     origin.session.append('user/message', { ...notice, id: MessageId(notice.id) }, { surfaceOp: 'append' });
@@ -135,7 +131,7 @@ describe('bot_delegate with published tools, approval, Bot binding and JSON stor
     const run = f.stores.runs.list()[0]; if (!run) throw new Error('Missing run');
     const bot = f.bots.get(id); if (!bot) throw new Error('Missing bot');
     f.bots.set(id, { ...bot, createdAt: 2, updatedAt: 2 });
-    expect(await f.stores.runs.reserve(run.id)).toMatchObject({ status: 'cancelled', quotaCharged: false, errorCode: 'delegate/identity-unavailable' });
+    expect(await f.stores.runs.reserve(run.id)).toMatchObject({ status: 'cancelled', errorCode: 'delegate/identity-unavailable' });
   }));
 });
 

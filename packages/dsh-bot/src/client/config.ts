@@ -15,7 +15,7 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
     return value;
   }).default(5),
   routineHistoryPageSize: Schema.transform(Schema.number(), (value) => {
-    if (!Number.isInteger(value) || value < 1 || value > 200) throw new TypeError('routineHistoryPageSize must be an integer from 1 to 200');
+    if (!Number.isInteger(value) || value < 1 || value > 100) throw new TypeError('routineHistoryPageSize must be an integer from 1 to 100');
     return value;
   }).default(50),
   memoryPageSize: Schema.transform(Schema.number(), (value) => {

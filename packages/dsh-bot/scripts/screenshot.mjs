@@ -41,9 +41,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const seedOnly = process.argv.includes('--seed-only');
 const extrasOnly = process.argv.includes('--extras-only');
 const homeOnly = process.argv.includes('--v015') || process.argv.includes('--home-only');
-const routinesSeedOnly = process.argv.includes('--v020-seed-only');
-const routinesHostOnly = process.argv.includes('--v020-host-only');
-const routinesOnly = process.argv.includes('--v020');
+const routinesSeedOnly = process.argv.includes('--v021-seed-only');
+const routinesHostOnly = process.argv.includes('--v021-host-only');
+const routinesOnly = process.argv.includes('--v021');
 const navOnly = process.argv.includes('--v016');
 const workspaceOnly = process.argv.includes('--workspace-only');
 const rightTabOnly = process.argv.includes('--right-tab-only');
@@ -86,7 +86,7 @@ async function verifyNativeBotsConversation(page, conversation, editor, workspac
 }
 
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --v020-seed-only: verify the exact Remote/Host screenshot fixtures without a browser or PNGs. --v020-host-only: nonvisual shipped Client/Gateway/Host every60, pause, runNow and CRUD verification with loopback mock, no PNGs. --v020: 8 en/zh light/dark Routine overview/detail screenshots using Remote/Host fixtures with two completed mock runs, followed by native history navigation; publishes .codex/screens/v020-{light,dark}.png and detail variants. --v016: 2 zh light/dark native navigation screenshots, verifies adjacent Plugins/automation/Bots rows and whale paint/geometry, then publishes .codex/screens/v016-light.png and v016-dark.png; sends no model prompts. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --v021-seed-only: verify the exact Remote/Host screenshot fixtures without a browser or PNGs. --v021-host-only: nonvisual shipped Client/Gateway/Host native every60 delivery, manual run, native edit/delete and changed-event verification with loopback mock, no PNGs. --v021: 8 en/zh light/dark native schedule overview/detail screenshots using a real native tool, every60 delivery and manual run, followed by native history navigation; publishes .codex/screens/v021-{light,dark}.png and detail variants. --v016: 2 zh light/dark native navigation screenshots, verifies adjacent Plugins/automation/Bots rows and whale paint/geometry, then publishes .codex/screens/v016-light.png and v016-dark.png; sends no model prompts. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
   assert.ok([seedOnly, extrasOnly, homeOnly, navOnly, routinesOnly, routinesHostOnly, routinesSeedOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
@@ -207,7 +207,8 @@ if (process.argv.includes('--help')) {
       activePage = await activeContext.newPage();
     }
     step = 'mock-start';
-    mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success', 'success', 'success'], repeatLast: false, successText: mockReply, randomSeed: 2 });
+    mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: routinesOnly || routinesHostOnly || routinesSeedOnly ? ['tool_call_success', 'success', 'success', 'success'] : ['success', 'success', 'success'],
+      toolName: 'schedule_create', toolArguments: JSON.stringify({ title: 'Project review / 项目回顾', prompt: 'Summarize this mock project in one sentence.', every_seconds: 60 }), repeatLast: false, successText: mockReply, randomSeed: 2 });
     assert.equal(new URL(mock.baseURL).hostname, '127.0.0.1');
     Object.assign(env, { DSH_BOT_MOCK_KEY: 'mock-key', DEEPSEEK_API_KEY: '', DEEPSEEK_BASE_URL: `${mock.baseURL}/v1` });
     stage = 'profile';
@@ -258,7 +259,7 @@ if (process.argv.includes('--help')) {
     api = new Context();
     await api.plugin({ apply(ctx) {
       new TypertRegistry(ctx);
-      installConnection(ctx, { interactions: 'none', transport: {
+      installConnection(ctx, { interactions: 'answer', transport: {
         streamBaseUrl: origin,
         fetch: (input, init) => fetch(new URL(String(input), origin), {
           ...init, headers: { ...Object.fromEntries(new Headers(init.headers)), cookie },
@@ -268,7 +269,7 @@ if (process.argv.includes('--help')) {
       } });
       ctx.plugin(Gateway);
     } }).await();
-    await api.effect(() => api.remote.$mount(remoteContribution));
+    let unmountRemote = await api.effect(() => api.remote.$mount(remoteContribution));
     const unwrap = (result) => { assert.equal(result.ok, true, `Remote failed: ${result.error?.code ?? ''} ${result.error?.message ?? ''}`); return result.value; };
     const raw = async (name, args) => unwrap(await api.connection.rpc.call('/api', name, { args }, AbortSignal.timeout(30_000)));
     // The loopback HTTP listener can open before Loader settlement and Bot
@@ -334,7 +335,8 @@ if (process.argv.includes('--help')) {
       assert.equal(activity.sessions.filter((row) => row.unread).length, 2, 'Two assistant sessions remain unread');
       // Also exercise the shipped factory's plugin scope: root-context Remote
       // calls alone cannot detect missing nested Cordis service access.
-      const client = await createClientActivityProbe(api.connection);
+      await unmountRemote();
+      const client = await createClientActivityProbe(api.connection, api);
       let clientActivity;
       try {
         await client.activity.refresh();
@@ -344,7 +346,7 @@ if (process.argv.includes('--help')) {
         assert.equal(client.activity.getSnapshot().error, undefined, 'Shipped Client markRead refetch succeeds');
         clientActivity = client.activity.getSnapshot();
         verifyScreenshotActivity(clientActivity, sessionFixtures, mockReply);
-      } finally { await client.dispose(); }
+      } finally { await client.dispose(); unmountRemote = await api.effect(() => api.remote.$mount(remoteContribution)); }
       save('mock-sessions.json', { sessionFixtures, activity, clientActivity, changeStream: client.changeStream, shippedClientFactory: true,
         mockPromptsSent, requests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) });
     }
@@ -376,9 +378,10 @@ if (process.argv.includes('--help')) {
     }
     if (routinesHostOnly) {
       stage = 'routine-host-only';
-      const client = await createClientActivityProbe(api.connection);
+      await unmountRemote();
+      const client = await createClientActivityProbe(api.connection, api);
       try { await verifyRoutineClient({ client, bot, raw, mock, save }); mockPromptsSent = mock.requests.length; }
-      finally { await client.dispose(); }
+      finally { await client.dispose(); unmountRemote = await api.effect(() => api.remote.$mount(remoteContribution)); }
     }
     if (routinesSeedOnly) {
       stage = 'routine-seed';
@@ -776,7 +779,7 @@ if (process.argv.includes('--help')) {
       catch (error) { failure ??= redact(error); process.exitCode = 1; }
     }
     process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal);
-    save('summary.json', { status: failure ? 'FAIL' : routinesSeedOnly ? 'SEED_ONLY_PASS' : routinesHostOnly ? 'HOST_ONLY_PASS' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: routinesSeedOnly ? 'v020-seed-only' : routinesHostOnly ? 'v020-host-only' : routinesOnly ? 'v020' : manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : homeOnly ? 'v015' : navOnly ? 'v016' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
+    save('summary.json', { status: failure ? 'FAIL' : routinesSeedOnly ? 'SEED_ONLY_PASS' : routinesHostOnly ? 'HOST_ONLY_PASS' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: routinesSeedOnly ? 'v021-seed-only' : routinesHostOnly ? 'v021-host-only' : routinesOnly ? 'v021' : manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : homeOnly ? 'v015' : navOnly ? 'v016' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
       ...(routinesOnly || routinesHostOnly || routinesSeedOnly ? { realModelRequests: 0, visualValidation: shots.length === 8 ? 'PASS' : 'NOT_RUN' } : {}),
       mockPromptsSent, sessionFixtures, mockRequests: mock?.requests.map(({ path, outcome }) => ({ path, outcome })),
       stage, step, failure, failureEvidence, profile, run, prompts: manualBrowser ? null : prompts, browserErrors,

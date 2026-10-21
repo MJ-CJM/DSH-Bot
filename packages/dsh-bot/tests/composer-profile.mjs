@@ -332,7 +332,7 @@ async function readActivity(bots, sessionId, label) {
 }
 
 async function clientActivityRoundTrip(ctx, sessionId, label) {
-  const client = await createClientActivityProbe(ctx.connection);
+  const client = await createClientActivityProbe(ctx.connection, ctx);
   try {
     await client.activity.refresh();
     const before = client.activity.getSnapshot();
@@ -365,7 +365,7 @@ async function probe(startupUrl, phase) {
   const owner = ctx.plugin({ apply(ownerCtx) {
     new TypertRegistry(ownerCtx);
     installConnection(ownerCtx, {
-      interactions: 'none',
+      interactions: 'answer',
       transport: {
         streamBaseUrl: base.href,
         fetch: (input, init) => fetch(new URL(String(input), base), {
@@ -379,7 +379,7 @@ async function probe(startupUrl, phase) {
   } });
   try {
     await owner.await();
-    const unmount = await ctx.effect(() => ctx.remote.$mount(remoteContribution));
+    let unmount = await ctx.effect(() => ctx.remote.$mount(remoteContribution));
     const bots = ctx.remote.dshBot;
     const raw = (endpoint, args = {}) => ctx.connection.rpc.call('/api', endpoint, { args }, AbortSignal.timeout(30_000));
     if (phase === 'resume') {
@@ -406,7 +406,9 @@ async function probe(startupUrl, phase) {
       const restored = ok(await bots.activity.list(), 'cold activity list');
       check('activity and read marker survive Host restart', restored, activityPrepared.afterRead);
       const continued = await activityTurn(bots, raw, sessionId, 3, activityPrepared.lastMessageAt);
+      await unmount();
       await clientActivityRoundTrip(ctx, sessionId, 'cold-resume');
+      unmount = await ctx.effect(() => ctx.remote.$mount(remoteContribution));
       const afterRead = await readActivity(bots, sessionId, 'cold resumed activity');
       const afterRepeat = ok(await bots.activity.markRead(sessionId), 'repeat cold markRead');
       check('repeated markRead preserves message and read state', {
@@ -565,7 +567,9 @@ async function probe(startupUrl, phase) {
     save('home-prepare.json', { botId: activityBotId, sessionId, home: botHome, workspace, createRequest, session: homeSession,
       host: homeEvidence, nativeSidebarGrouping: 'Bots-by-public-workspace-membership', browserVerified: false });
     const first = await activityTurn(bots, raw, sessionId, 1);
+    await unmount();
     await clientActivityRoundTrip(ctx, sessionId, 'completed-mock');
+    unmount = await ctx.effect(() => ctx.remote.$mount(remoteContribution));
     await readActivity(bots, sessionId, 'first activity round');
     ok(await raw('session/rename', { request: { sessionId, title: activityTitle } }), 'name activity session');
     const second = await activityTurn(bots, raw, sessionId, 2, first.session.lastMessage.at);

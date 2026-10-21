@@ -9,7 +9,7 @@ export function assertInteractiveOrigin(agent: Agent, runs: RunService): void {
   // Children/forks cannot shed the parent's automation provenance by changing preset.
   if (header.parentSession || header.origin === 'subagent' || (header.delegationDepth ?? 0) > 0
     || runs.forSession(agent.session.id)) {
-    throw new HarnessError('Background sessions cannot delegate or modify Routines', 'automation/depth');
+    throw new HarnessError('Background sessions cannot delegate', 'automation/depth');
   }
   // A report may cause multiple steps, tools and further notices. Only a new
   // ordinary user input clears this barrier, not an assistant or tool message.
@@ -20,10 +20,10 @@ export function assertInteractiveOrigin(agent: Agent, runs: RunService): void {
   }
 }
 
-/** Also gates future Routine tools, including definitions added after this hook. */
+/** Gate the explicit delegation entry. Native scheduling owns its own rules. */
 export function registerAutomationGuard(ctx: Context, runs: RunService): void {
   ctx.effect(() => ctx.on('tools/pre-execute', async (exec, next) => {
-    if (exec.name === 'bot_delegate' || (exec.name.startsWith('routine_') && !['routine_list', 'routine_get'].includes(exec.name))) {
+    if (exec.name === 'bot_delegate') {
       if (!exec.agent) throw new HarnessError('Automation tools require an owning agent', 'automation/invalid');
       assertInteractiveOrigin(exec.agent, runs);
     }

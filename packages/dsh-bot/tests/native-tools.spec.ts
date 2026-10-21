@@ -1,5 +1,8 @@
+import { NativeSchedules, bindingDomain, legacyDomain } from '../lib/host/native-schedule/service.js';
+import { NativeScheduleRemote } from '../lib/host/automation/remote.js';
+import { openAutomationStores } from '../lib/host/automation/store.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Context } from '@deepseek-ai/cordis';
@@ -47,7 +50,8 @@ async function setup(ctx: Context, root: string) {
   // Actual schedule storage/tools; this fixture does not exercise delivery or
   // cold restoration. All reminders are future-dated and no model is called.
   const resolve = vi.fn(async () => { throw new Error('Delivery is outside R01'); });
-  ctx.provide('sessionController', { resolveAgent: resolve } as unknown as Context['sessionController']);
+  const headers = new Map<string, { createdAt: number; agentPreset: string; isSeeded?: boolean }>();
+  ctx.provide('sessionController', { resolveAgent: resolve, inspect: async (id: string) => { const meta = headers.get(id); if (!meta) throw new Error('missing'); return { meta }; } } as unknown as Context['sessionController']);
   // Session persistence is a lifecycle double; schedule records use real JSON.
   ctx.provide('sessionPersistence', {
     create: async () => ({ append: async () => {}, flush: async () => {}, close: async () => {} }),
@@ -56,6 +60,9 @@ async function setup(ctx: Context, root: string) {
   const records = new Map<string, ReturnType<typeof botSchema.parse>>();
   ctx.provide('dshBots', {
     config: RegistryConfig({ dataDir: root }),
+    list: async () => [...records.values()],
+    get: async (id: string) => { const bot = records.get(id); if (!bot) throw new Error('missing'); return bot; },
+    status: async () => [...records.values()].map(b => ({ id: b.id, presetId: `bot-${b.id}`, preset: { state: 'ok' } })),
     presetBot: (id: string) => structuredClone(records.get(id)),
     ensureHome: async (id: string) => ({ path: join(root, 'bots', id, 'home') }),
   } as unknown as Context['dshBots']);
@@ -103,7 +110,7 @@ async function setup(ctx: Context, root: string) {
   const execute = (agent: Agent, name: string, args: unknown = {}) => ctx.tools.execute({
     agent, name, arguments: args, callId: ToolCallId(randomUUID()), signal: new AbortController().signal,
   });
-  return { ctx, preset, names, text, execute, resolve };
+  return { ctx, root, records, headers, preset, names, text, execute, resolve };
 }
 
 describe('R01 native scheduling with real Agents, ToolRuntime, schedule plugin and JSON storage', () => {
@@ -175,5 +182,93 @@ describe('R01 native scheduling with real Agents, ToolRuntime, schedule plugin a
     }
     expect(await f.ctx.schedule.catalog()).toEqual([]);
     expect(f.resolve).not.toHaveBeenCalled();
+  }));
+});
+
+
+describe('R02 native task association and retired storage', () => {
+  it('maps real native tool creation on changed, persists, follows native edits/deletion and refuses same-ID replacement', async () => fixture(async f => {
+    const p = await f.preset('standard'); const { agent } = await p.create();
+    const native = new NativeSchedules(f.ctx, f.ctx.dshBots); await native.start();
+    const result = await f.execute(agent, 'schedule_create', { title: 'Native task', prompt: 'Native prompt', every_seconds: 3600 });
+    expect(result.isError, JSON.stringify(result)).toBe(false);
+    const task = (await f.ctx.schedule.catalog())[0]; if (!task) throw new Error('Missing task');
+    // Read the durable sidecar, without triggering aggregate/reconcile ourselves.
+    await vi.waitFor(async () => {
+      const saved = await readFile(join(f.root, `${bindingDomain.name}.json`), 'utf8');
+      expect(saved).toContain(task.id); expect(saved).toContain(agent.session.id);
+    });
+    const first = await native.aggregate();
+    expect(first.bindings).toEqual([{ botId: p.bot.id, botCreatedAt: p.bot.createdAt, sessionId: agent.session.id, nativeScheduleId: task.id }]);
+    const { sessionId: _session, status: _status, lastDelivery: _last, ...expected } = task;
+    const changed = await f.ctx.schedule.update({ id: task.id, sessionId: task.sessionId, expected, title: 'Edited natively' });
+    expect(changed).toMatchObject({ updated: true });
+    expect((await native.task(task.id)).task.title).toBe('Edited natively');
+    await native.close();
+    const reopened = new NativeSchedules(f.ctx, f.ctx.dshBots); await reopened.start();
+    expect((await reopened.aggregate()).bindings).toEqual(first.bindings);
+    f.records.set(p.bot.id, { ...p.bot, createdAt: 100, updatedAt: 100 });
+    expect((await reopened.aggregate()).bindings).toEqual([]);
+    await expect(reopened.task(task.id)).rejects.toMatchObject({ code: 'automation/not-found' });
+    await f.ctx.schedule.delete({ id: task.id, sessionId: task.sessionId });
+    expect((await reopened.aggregate()).bindings).toEqual([]);
+    expect(await f.ctx.schedule.catalog()).toEqual([]);
+  }));
+  it('reconciles reliable cold session headers only, skips old/foreign/unreadable sessions and bad legacy rows', async () => fixture(async f => {
+    const p = await f.preset('minimal');
+    const native = new NativeSchedules(f.ctx, f.ctx.dshBots);
+    const old = await f.ctx.storageDomain.open(legacyDomain);
+    const legacyId = randomUUID();
+    await old.table('routines').put(legacyId, { id: legacyId, botId: p.bot.id, botCreatedAt: 1, title: 'Old task', prompt: 'Old prompt', rule: { kind: 'every', everySeconds: 60 }, timeZone: 'UTC', enabled: true, misfirePolicy: 'latest', schemaVersion: 1, revision: 1, ruleRevision: 1, createdBy: { kind: 'user' }, workspacePolicy: 'bots', anchorAt: 1, nextRunAt: 60001, createdAt: 1, updatedAt: 1 });
+    await old.table('routines').put('broken', { bad: true });
+    await old.table('runs').put('untouched', { unknown: 'preserved' });
+    await old.close();
+    const before = await readFile(join(f.root, 'dsh_bot_automation.json'), 'utf8');
+    f.headers.set('cold', { createdAt: 2, agentPreset: `bot-${p.bot.id}` });
+    f.headers.set('old', { createdAt: 0, agentPreset: `bot-${p.bot.id}` });
+    f.headers.set('foreign', { createdAt: 2, agentPreset: 'standard' });
+    f.headers.set('fork', { createdAt: 2, agentPreset: `bot-${p.bot.id}`, isSeeded: true });
+    for (const id of ['cold', 'old', 'foreign', 'missing', 'fork']) await f.ctx.schedule.create(SessionId(id), { title: p.bot.name, prompt: 'Task', every_seconds: 3600 });
+    await native.start();
+    const result = await native.aggregate();
+    expect(result.bindings.map(b => b.sessionId)).toEqual(['cold']);
+    expect(result.legacy).toHaveLength(1); expect(result.legacySkipped).toBe(1);
+    expect(await readFile(join(f.root, 'dsh_bot_automation.json'), 'utf8')).toBe(before);
+    f.records.delete(p.bot.id);
+    expect((await native.aggregate()).legacy).toHaveLength(1); // Orphans remain deletable from the overview.
+    await native.deleteLegacy(legacyId); await native.close();
+    const after = await readFile(join(f.root, 'dsh_bot_automation.json'), 'utf8');
+    expect(after).toContain('preserved'); expect(after).toContain('broken'); expect(after).not.toContain('Old task');
+  }));
+  it('ignores malformed legacy files without overwriting them', async () => fixture(async f => {
+    const path = join(f.root, 'dsh_bot_automation.json'); await writeFile(path, '{ broken JSON');
+    const native = new NativeSchedules(f.ctx, f.ctx.dshBots); await native.start();
+    expect(await native.aggregate()).toMatchObject({ legacy: [], legacyUnavailable: true });
+    await native.close(); expect(await readFile(path, 'utf8')).toBe('{ broken JSON');
+  }));
+  it('manual Remote requires confirmation, rejects stale prompt and dedupes concurrent requests without touching native timing', async () => fixture(async f => {
+    const p = await f.preset('minimal'); const { agent } = await p.create();
+    const native = new NativeSchedules(f.ctx, f.ctx.dshBots); await native.start();
+    const task = await f.ctx.schedule.create(agent.session.id, { title: 'Manual', prompt: 'Execute once', every_seconds: 3600 });
+    const stores = await openAutomationStores(f.ctx, { resolveBot: async () => ({ bot: p.bot, presetId: `bot-${p.bot.id}` }) });
+    const remote = new NativeScheduleRemote(f.ctx, native, request => stores.runs.enqueue(request));
+    const expected = { title: task.title, prompt: task.prompt, botCreatedAt: p.bot.createdAt };
+    await expect(remote.runNow(task.id, randomUUID(), expected, false as true)).rejects.toMatchObject({ code: 'automation/invalid' });
+    await expect(remote.runNow(task.id, randomUUID(), { ...expected, prompt: 'stale' }, true)).rejects.toMatchObject({ code: 'automation/conflict' });
+    expect(stores.runs.list()).toEqual([]);
+    const op = randomUUID(); const [a,b] = await Promise.all([remote.runNow(task.id, op, expected, true), remote.runNow(task.id, op, expected, true)]);
+    expect(a).toEqual(b); expect(stores.runs.list()).toHaveLength(1);
+    expect((await f.ctx.schedule.catalog())[0]?.scheduledAt).toBe(task.scheduledAt);
+    const admitted = await stores.runs.reserve(a.id);
+    expect(admitted).toMatchObject({ status: 'running', slotHeld: true });
+    // No daily quota or concurrency admission policy remains.
+    for (let i = 0; i < 21; i++) {
+      const run = await remote.runNow(task.id, randomUUID(), expected, true); await stores.runs.reserve(run.id);
+    }
+    expect(stores.runs.list().filter(r => r.slotHeld)).toHaveLength(22);
+    await stores.close();
+    const again = await openAutomationStores(f.ctx, { resolveBot: async () => ({ bot: p.bot, presetId: `bot-${p.bot.id}` }) });
+    expect(again.runs.list().every(r => r.status === 'recovery_needed')).toBe(true);
+    expect(await remote.runNow(task.id, op, expected, true).catch(() => undefined)).toBeUndefined();
   }));
 });

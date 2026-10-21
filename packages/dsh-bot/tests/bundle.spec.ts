@@ -34,7 +34,7 @@ describe('built bundle contract', () => {
       .toThrow('outside this package');
   });
 
-  it('loads the built Host and disposes its effect exactly once', async () => {
+  it.each([true, false])('loads Host with native schedule enabled=%s and disposes exactly once', async nativeEnabled => {
     const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
     await mkdir(isolatedHome, { recursive: true });
     const root = await mkdtemp(join(isolatedHome, 't04-bundle-'));
@@ -60,6 +60,7 @@ describe('built bundle contract', () => {
       ctx.provide('sessionController', {} as Context['sessionController']);
       ctx.provide('sessions', {} as Context['sessions']);
       ctx.provide('workspaceRegistry', {} as Context['workspaceRegistry']);
+      if (nativeEnabled) ctx.provide('schedule', { catalog: async () => [] } as unknown as Context['schedule']);
       ctx.provide('subagents', {} as Context['subagents']);
       ctx.provide('jobs', { attachController: () => () => {} } as unknown as Context['jobs']);
       const registrations: string[] = [];
@@ -122,8 +123,8 @@ describe('built bundle contract', () => {
     const payload = JSON.parse(readFileSync(`${clientPath}.map`, 'utf8'));
     expect(payload.version).toBe(3);
     const dependencySources = payload.sources.filter((path: string) => path.includes('/node_modules/'));
-    expect(dependencySources).toHaveLength(3);
-    expect(dependencySources.every((path: string) => /@deepseek-ai\/(dsh-typert-protocol\/lib\/types\/remote-info\.js|schemastery\/lib\/index\.mjs|cosmokit\/lib\/index\.js)$/.test(path))).toBe(true);
+    expect(dependencySources).toHaveLength(4);
+    expect(dependencySources.every((path: string) => /@deepseek-ai\/(dsh-typert-protocol\/lib\/types\/remote-info\.js|dsh-schedule\/lib\/typert.remote-client\.js|schemastery\/lib\/index\.mjs|cosmokit\/lib\/index\.js)$/.test(path))).toBe(true);
     expect(payload.sources.some((path: string) => /\/(?:host|spikes)\//.test(path))).toBe(false);
     const generatedLine = source.split('\n').findIndex((line) => line.startsWith('function BotsIcon('));
     expect(generatedLine).toBeGreaterThan(0);
@@ -206,11 +207,12 @@ describe('built bundle contract', () => {
     ctx.provide('sessions', { list: {} } as unknown as Context['sessions']);
     const mountedEndpoints: string[] = [];
     ctx.provide('remote', {
+      $on: () => register('schedule.changed'),
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
-        expect(['dsh-bot', 'dsh-bot/automation']).toContain(contribution.package);
+        expect(['dsh-bot', 'dsh-bot/automation', '@deepseek-ai/dsh-schedule']).toContain(contribution.package);
         await Promise.resolve();
         mountedEndpoints.push(...contribution.descriptors.map((entry) => `${entry.namespace}/${entry.method}`));
-        const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' : 'remote.automation');
+        const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' : contribution.package === 'dsh-bot/automation' ? 'remote.automation' : 'remote.schedule');
         return async () => { dispose(); };
       },
     } as unknown as Context['remote']);
@@ -226,14 +228,15 @@ describe('built bundle contract', () => {
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.dshBot',
+      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.dshBot', 'remote.schedule', 'schedule.changed',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'];
       expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([
         'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',
         'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
-        'dshBot.routine/create', 'dshBot.routine/delete', 'dshBot.routine/get', 'dshBot.routine/list', 'dshBot.routine/runNow', 'dshBot.routine/update', 'dshBot.run/get', 'dshBot.run/list',
+        'dshBot.nativeSchedule/aggregate', 'dshBot.nativeSchedule/deleteLegacy', 'dshBot.nativeSchedule/runNow', 'dshBot.run/get', 'dshBot.run/list',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
+        'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
       ]);
       await fork.dispose();
       await fork.dispose();

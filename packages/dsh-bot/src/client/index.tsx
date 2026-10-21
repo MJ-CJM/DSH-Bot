@@ -1,3 +1,4 @@
+import NATIVE_SCHEDULE_REMOTE from '@deepseek-ai/dsh-schedule/remote';
 import { AUTOMATION_REMOTE } from '../shared/automation-contract.js';
 import { createRoutineActions } from './automation-state.js';
 import type { Context } from '@deepseek-ai/cordis';
@@ -57,6 +58,8 @@ function unwrap<T>(result: RemoteResult<T>): T {
 export async function apply(ctx: Context, options: Partial<Config> = {}): Promise<void> {
   const config = Config(options);
   await ctx.effect(async () => await ctx.remote.$mount(TYPERT_REMOTE), 'dsh-bot: Remote contribution');
+  // Standard Web already mounts this public namespace; slim clients may not.
+  if (!ctx.get('remote.schedule')) await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SCHEDULE_REMOTE), 'dsh-bot: native schedule Remote');
   await ctx.effect(async () => await ctx.remote.$mount(AUTOMATION_REMOTE), 'dsh-bot: automation Remote');
   ctx.effect(() => ctx.locale.register(namespace, {
     en: en.ui,

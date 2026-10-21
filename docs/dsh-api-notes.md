@@ -1,5 +1,25 @@
 # DSH API 核实记录
 
+## R02：原生定时聚合、显式执行与旧库兼容（2026-10-20）
+
+按批准方案 A，移除 Dispatcher、规则计算、单 Host 锁、额度/并发/补跑及 `dshBot.routine/*`。P1 Remote 不变；新的 automation contribution 只有 nativeSchedule aggregate/deleteLegacy/runNow、run list/get、automation status 六个端点。详见 [R02 验收](acceptance/P2-R02.md) 与[当前架构](architecture.md#r02原生定时与-bots-聚合)。
+
+| 公开 API / 包 | 使用与核实边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-schedule` 的 `catalog/history/update/delete` | Host 用 catalog 可靠归属，Client 直接读写同一个原生任务；`schedule/src/index.ts:285-374`。history 是 Inbox 持久投递而非模型完成；limit 1–100，`nextBefore` 为 message cursor；原生删除同时移除该任务投递历史，不撤回已入 Inbox 的消息 |
+| `@deepseek-ai/dsh-schedule/remote` | 浏览器安全的生成 contribution，仅依赖 Zod 和公开 remote-info；在构建 allowlist 精确加入此文件。标准 Web 已挂载 namespace，先 `ctx.get('remote.schedule')` 判断，仅缺失时 mount，避免重复注册；本包卸载不清理宿主已有 namespace。Host 无 schedule runtime import，移除 schedule peer，保留精确 rc.2 dev |
+| `ScheduleUpdateRequest.expected` | 必须是完整 **ScheduleRecord**；catalog 的 sessionId/status/lastDelivery 与本包映射字段要剔除，否则原生返回 invalid_rule。未改规则时省略 change；冲突保留编辑草稿。真实 Host 和 Client 验证标题编辑不改相位、外部编辑可见 |
+| `schedule/changed`、`remote.$on`、`connection/reset` | 原生写入成功后发 changed；`schedule/src/index.ts:382-389`；Host assembly 转发白名单 `api/remotes/src/remote-events.ts:53`。新增 `@deepseek-ai/dsh-api-remotes@0.2.1-rc.2` 仅作 dev/type import，提供官方转发事件声明。真实推送需要 Connection `interactions=answer`，一条 Connection 只挂一个 Gateway generation source |
+| Cordis `ctx.get` / `ctx.effect` | 正式 Client 动态 mount 的 `remote.schedule` 通过 get 访问；直接 `ctx.remote.schedule` 在未声明 inject 的插件 scope 抛错。本轮实际 profile 暴露并修复，真实 Client/Gateway 重跑通过。聚合服务、事件、领域句柄、RunExecutor 和 reporter 均有卸载清理 |
+| `sessionController.inspect().meta`、本包 `getBotBinding` | `api/session-controller/src/index.ts:253-267`；存量冷会话仅按真实 agentPreset 与 registry status 的实际 presetId 匹配，并检查会话创建时间/Bot createdAt、排除子会话。活跃 Agent 优先 exact 本包绑定，无绑定不回退 header。不同 Bot 生日不重绑；标题不参与 |
+| `storageDomain.open` + `domainTable(z.unknown())` | 旧 dsh_bot_automation v1 只读宽松加载，再逐 Routine 校验，坏行跳过；整文件损坏/版本不符不阻止 P1 启动。显式删除仅删指定 Routine，保留 unknown runs/control。真实 JSON 测试逐字比较读取前后文件、验证坏 JSON 保留。新映射域为 dsh_bot_native_schedule v1；显式执行域 dsh_bot_executions v1 |
+| 既有 `RunExecutor` / SessionController / WorkspaceRegistry | 用户确认完整 prompt 后 operationId 幂等受理，在共享 Bots 工作区新建一次普通会话，沿用已核实的完成屏障和 flush；不改原生 schedule。没有自建调度或额度。queued 重启取消，进行中未确认链标 recovery_needed，不自动重放 |
+
+真实隔离 Web Host + loopback mock 验证：模型调用原生工具→every60 实际到期投递→原生 history→同操作并发手动请求仅一个新会话→正式 Client 原生编辑/外部 changed 刷新/删除→相同数据引用不变。4 个 mock 请求 completed，真实请求 0；证据 `dist/screenshots/2026-10-21T03-21-08.948Z-58788/{native-seed,native-client,summary}.json`。独立 JSON/Agent 测试覆盖 cold header 回填、sidecar 重开、Bot 同 ID 重建隔离与旧数据坏行/坏文件；这些不冒充完整 Host 冷恢复测试。
+
+`--v021` Chromium 在 `bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)` 启动失败，亮暗截图 **FAIL**，未生成目标 PNG；保留失败证据供编排方按同命令复跑。中英 DOM 测试、主题 token 静态检查不替代真实浏览器。
+
+
 ## R01：原生定时工具入口（2026-10-20）
 
 按 [P2 复用决策 §10](P2-reuse-proposal.md#10-用户批准的决策2026-10-20) 的方案 A，删除正式 `automation/tools.ts` 及 `routine_*` 注册/描述，Bot 仅提示 `Use schedule_* for scheduled tasks.`（中英 locale 同键）。现有 Dispatcher、Remote/UI、旧 automation 域与委派不在本次删除范围。完整命令和验收见 [R01](acceptance/P2-R01.md)。

@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { ToolCallId } from '@deepseek-ai/dsh-llm';
 export const name = 't15-probes';
-export const inject = ['loader', 'dshBots', 'dshBotAutomation', 'dshBotAutomationStores', 'dshBotDispatcher', 'dshBotReporter',
+export const inject = ['loader', 'dshBots', 'dshBotAutomation', 'dshBotAutomationStores', 'dshBotSubmitter', 'dshBotReporter',
   'agents', 'sessions', 'sessionController', 'workspaceRegistry', 'tools', 'approval'];
 export function apply(ctx, config) {
   ctx.effect(() => {
@@ -78,7 +78,7 @@ export function apply(ctx, config) {
 
         // Stage safe terminal reports before cold start. These cancelled fixture
         // runs exercise the outbox, not target model execution.
-        await ctx.dshBotReporter.close(); await ctx.dshBotDispatcher.close();
+        await ctx.dshBotReporter.close();
         const pending = [];
         await ctx.dshBots.create({ id: 'rebuilt', name: 'Rebuilt', template: 'minimal' });
         for (const scenario of ['cold', 'archived', 'missing', 'rebuilt']) {

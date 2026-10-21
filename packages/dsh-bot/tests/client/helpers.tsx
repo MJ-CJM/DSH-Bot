@@ -1,5 +1,8 @@
 import type { AutomationRemoteMethods } from '../../src/shared/automation-contract.js';
-import type { RoutineRecord, RunRecord } from '../../src/shared/automation.js';
+import type { RunRecord } from '../../src/shared/automation.js';
+import type { NativeTask } from '../../src/client/automation-state.js';
+import type { NativeAggregate } from '../../src/shared/native-schedule.js';
+import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol';
 import { Context } from '@deepseek-ai/cordis';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -25,7 +28,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { routines: [] as RoutineRecord[], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -104,25 +107,34 @@ export function remoteDouble(initial: BotRecord[] = []) {
     }),
   };
   const routine = {
-    list: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['list']>(async () => ({ ok: true, value: data.routines })),
-    get: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['get']>(),
-    create: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['create']>(),
-    update: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['update']>(async (id, patch, revision) => {
-      const record = data.routines.find(row => row.id === id);
-      if (!record || record.revision !== revision) return { ok: false, error: new RemoteError('automation/conflict', '', {}) };
-      const value = { ...record, ...patch, revision: record.revision + 1 };
-      data.routines = data.routines.map(row => row.id === id ? value : row);
-      return { ok: true, value };
+    aggregate: vi.fn<AutomationRemoteMethods<'dshBot.nativeSchedule'>['aggregate']>(async () => ({ ok: true, value: {
+      bindings: data.routines.map(r => ({ botId: r.botId, botCreatedAt: r.botCreatedAt, sessionId: r.sessionId, nativeScheduleId: r.id })),
+      legacy: data.legacy, legacySkipped: 0, legacyUnavailable: false, nativeAvailable: true,
+    } })),
+    deleteLegacy: vi.fn<AutomationRemoteMethods<'dshBot.nativeSchedule'>['deleteLegacy']>(async id => { data.legacy = data.legacy.filter(r => r.id !== id); return { ok: true, value: true }; }),
+    runNow: vi.fn<AutomationRemoteMethods<'dshBot.nativeSchedule'>['runNow']>(),
+  };
+  const schedule = {
+    catalog: vi.fn<TypertRemoteNamespaceMap['schedule']['catalog']>(async () => ({ ok: true, value: data.routines })),
+    update: vi.fn<TypertRemoteNamespaceMap['schedule']['update']>(async request => {
+      const r = data.routines.find(row => row.id === request.id);
+      if (!r) return { ok: true, value: { id: request.id, updated: false, code: 'schedule_not_found' } };
+      const value = { ...r, ...(request.title ? { title: request.title } : {}), ...(request.prompt ? { prompt: request.prompt } : {}) };
+      data.routines = data.routines.map(row => row.id === r.id ? value : row);
+      return { ok: true, value: { id: r.id, updated: true, record: value } };
     }),
-    delete: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['delete']>(),
-    runNow: vi.fn<AutomationRemoteMethods<'dshBot.routine'>['runNow']>(),
+    delete: vi.fn<TypertRemoteNamespaceMap['schedule']['delete']>(async request => {
+      data.routines = data.routines.filter(r => r.id !== request.id); return { ok: true, value: { id: request.id, deleted: true } };
+    }),
+    history: vi.fn<TypertRemoteNamespaceMap['schedule']['history']>(async request => ({ ok: true, value: { id: request.id,
+      records: [], earlierRecordsUnavailable: false, earlierRecordsPruned: false, retention: { days: 30, records: 200 } } })),
   };
   const run = {
     get: vi.fn<AutomationRemoteMethods<'dshBot.run'>['get']>(),
-    list: vi.fn<AutomationRemoteMethods<'dshBot.run'>['list']>(async options => ({ ok: true, value: data.runs.filter(row => !options.routineId || row.routineId === options.routineId).slice(0, options.limit ?? 50) })),
+    list: vi.fn<AutomationRemoteMethods<'dshBot.run'>['list']>(async options => ({ ok: true, value: data.runs.filter(row => !options.nativeScheduleId || row.nativeScheduleId === options.nativeScheduleId).slice(0, options.limit ?? 50) })),
   };
   const automation = { status: vi.fn<AutomationRemoteMethods<'dshBot.automation'>['status']>(async () => ({ ok: true, value: { state: 'ready' } })) };
-  return { methods, data, routine, run, automation };
+  return { methods, data, routine, schedule, run, automation };
 }
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
@@ -191,8 +203,9 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === '@deepseek-ai/dsh-schedule') return ctx.provide('remote.schedule', remote.schedule);
     if (contribution?.package === 'dsh-bot/automation') {
-      const releases = [ctx.provide('remote.dshBot.routine', remote.routine), ctx.provide('remote.dshBot.run', remote.run), ctx.provide('remote.dshBot.automation', remote.automation)];
+      const releases = [ctx.provide('remote.dshBot.nativeSchedule', remote.routine), ctx.provide('remote.dshBot.run', remote.run), ctx.provide('remote.dshBot.automation', remote.automation)];
       return async () => { for (const release of releases) await release(); };
     }
     remoteMounted = true;
@@ -259,7 +272,7 @@ export async function mountClient(
     inject: (_key: string, callback: () => () => void) => callback(),
     register: core.register.bind(core),
   } as unknown as Context['slots']);
-  ctx.provide('remote', { $mount: mountRemote, dshBot: remote.methods } as unknown as Context['remote']);
+  ctx.provide('remote', { $mount: mountRemote, $on: (name: string, fn: () => void) => ctx.on(name as 'schedule/changed', fn), schedule: remote.schedule, dshBot: remote.methods } as unknown as Context['remote']);
   const createSession = vi.fn<ISessions['create']>(async () => 'test-created-session' as SessionId);
   const createWorkspace = vi.fn<Context['workspaces']['create']>(async ({ path }) => ({ ...workspace('custom-workspace'), path }));
   const pickDirectory = vi.fn<Context['uiWorkspace']['pickDirectory']>(async () => null);

@@ -57,22 +57,23 @@ async function verifyChangeStream(ctx) {
   }
 }
 
-export async function createClientActivityProbe(connection) {
+export async function createClientActivityProbe(connection, parent) {
   const require = createRequire(import.meta.url);
   let plugin;
   new Function('window', readFileSync(require.resolve('dsh-bot/client'), 'utf8'))({ __ModuleLoader__: {
     load: ({ factory }) => { plugin = factory((id) => id === '@deepseek-ai/dsh-client-ui-primitives' ? {} : require(id)); },
   } });
   assert.ok(plugin, 'Built Client factory loaded');
-  const ctx = new Context();
+  let ctx;
+  if (parent) { await parent.plugin({ apply(scope) { ctx = scope; } }).await(); }
+  else ctx = new Context();
   const registrations = new Map();
   const openedSessions = [];
   let navigation = new AbortController();
   const beginNavigation = () => { navigation.abort(); navigation = new AbortController(); return navigation.signal; };
   const source = (value) => ({ getSnapshot: () => value, subscribe: () => () => {} });
   try {
-    ctx.provide('connection', connection);
-    new TypertRegistry(ctx);
+    if (!parent) { ctx.provide('connection', connection); new TypertRegistry(ctx); }
     ctx.provide('locale', { bind: () => (key) => key, register: () => () => {} });
     ctx.provide('slots', { inject: (_key, register) => register(), register: (options) => {
       registrations.set(options.name, options);
@@ -82,7 +83,7 @@ export async function createClientActivityProbe(connection) {
     ctx.provide('uiWorkspace', { openSession: (id) => { openedSessions.push(id); beginNavigation(); } });
     ctx.provide('workspaces', { list: source({ items: [], archivedSessionIds: [], phase: 'ready', state: 'idle' }) });
     ctx.provide('sessions', { list: source({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} }) });
-    await ctx.plugin(Gateway).await();
+    if (!parent) await ctx.plugin(Gateway).await();
     await ctx.plugin(plugin).await();
     const page = registrations.get('main')?.inject();
     assert.ok(page?.hooks.activity, 'Production page activity source is registered');

@@ -43,11 +43,7 @@ const activityLimit = (name: string, fallback: number) => Schema.transform(Schem
   return value;
 }).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
-  automation: Schema.object({
-    ...AutomationConfig.dict,
-    // Omission preserves the persisted quota timezone instead of overwriting it with a new machine default.
-    quotaTimeZone: Schema.string(),
-  }).default({}),
+  automation: Schema.object({ ...AutomationConfig.dict }).default({}),
   activityMaxSessionsPerBot: activityLimit('activityMaxSessionsPerBot', 50),
   activityMaxSessionsTotal: activityLimit('activityMaxSessionsTotal', 1000),
   seedExamples: Schema.boolean().default(true),

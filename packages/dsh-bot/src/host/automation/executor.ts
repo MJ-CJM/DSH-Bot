@@ -21,9 +21,9 @@ export interface ExecutorRuntime {
 export function runTitle(run: RunRecord): string {
   const parts = new Intl.DateTimeFormat('en', { timeZone: run.snapshot.timeZone,
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(run.scheduledAt ?? run.admittedAt ?? run.requestedAt);
+  }).formatToParts(run.admittedAt ?? run.requestedAt);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value;
-  return `[${run.trigger === 'delegate' ? 'Delegate' : 'Routine'}] ${run.snapshot.title} · ${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${run.snapshot.timeZone}`;
+  return `[${run.trigger === 'delegate' ? 'Delegate' : 'Run now'}] ${run.snapshot.title} · ${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${run.snapshot.timeZone}`;
 }
 type StopIntent = 'cancelled' | 'timed_out' | 'unloaded';
 interface Active { abort: AbortController; intent?: StopIntent; done: Promise<RunRecord> }
@@ -40,7 +40,7 @@ export class RunExecutor {
     this.config = configSchema.parse(config);
     ctx.effect(() => () => this.close(), 'dsh-bot: RunExecutor');
   }
-  /** False retains the Host lease on unload while an external operation may still be running. */
+  /** False retains the execution resources on unload while an external operation may still be running. */
   get safeToRelease() { return !this.uncertain; }
   execute(id: string): Promise<RunRecord> {
     if (this.closing) return Promise.reject(new AutomationError('automation/unavailable', 'Executor is closing'));

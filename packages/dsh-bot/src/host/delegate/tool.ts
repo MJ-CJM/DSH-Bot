@@ -26,7 +26,7 @@ export function registerDelegateTool(owner: Agent): () => void {
     if (exec.agent !== owner || !getBotBinding(owner)) throw new HarnessError('Missing owning Bot binding', 'automation/invalid');
     exec.signal.throwIfAborted();
     const stores = ctx.get('dshBotAutomationStores');
-    if (!stores || !ctx.get('dshBotDispatcher')) throw new HarnessError('Automation is unavailable', 'automation/unavailable');
+    if (!stores || !ctx.get('dshBotSubmitter')) throw new HarnessError('Automation is unavailable', 'automation/unavailable');
     assertInteractiveOrigin(owner, stores.runs);
     const parsed = inputSchema.safeParse(exec.arguments);
     if (!parsed.success) throw new HarnessError('Invalid delegate arguments', 'automation/invalid');
@@ -72,7 +72,7 @@ export function registerDelegateTool(owner: Agent): () => void {
           if (!binding) throw new HarnessError('Missing Bot binding', 'automation/invalid');
           try {
             const step = owner.session.snapshotEvents().findLast(e => e.type === 'step/start' || e.type === 'turn/start')?.seq ?? 0;
-            const dispatcher = ctx.get('dshBotDispatcher');
+            const dispatcher = ctx.get('dshBotSubmitter');
             if (!dispatcher) throw new HarnessError('Automation is unavailable', 'automation/unavailable');
             const run = await dispatcher.submit({ trigger: 'delegate', botId: args.targetBotId,
               title: args.title ?? 'Delegated task', prompt: args.task,
