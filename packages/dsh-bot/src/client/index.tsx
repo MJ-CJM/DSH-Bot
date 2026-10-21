@@ -11,7 +11,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types';
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
@@ -75,7 +74,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const detail = createBotDetailSource(ctx);
   const memories = new Set<MemoryCatalog>();
   // Client memory only: shared by page/sidebar, cleared on plugin unload.
-  let preferredWorkspace = '';
+  const preferredWorkspace = '';
   let active = true;
   ctx.effect(() => () => { active = false; }, 'dsh-bot: action lifetime');
   const remote = (): DshBotRemoteMethods => {
@@ -115,72 +114,18 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ctx.uiWorkspace.openSession(id as SessionId);
     }
   };
-  const startBotInWorkspace = async (id: string, workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) => {
-    if (!active || signal?.aborted) return;
-    const navigation = ctx.layout.beginNavigation();
-    const target = () => {
-      const snapshot = ctx.workspaces.list.getSnapshot();
-      if (snapshot.state === 'error') throw new Error(`${t('chat.workspaceUnavailable')} ${snapshot.error?.message ?? ''}`.trim());
-      if (snapshot.phase !== 'ready') throw new Error(t('chat.workspaceLoading'));
-      if (!snapshot.items.length) throw new Error(t('chat.workspaceRequired'));
-      const selected = snapshot.items.find((item) => item.workspaceId === workspaceId);
-      if (!selected) throw new Error(t('chat.workspaceChoose'));
-      return selected;
-    };
-    target();
-    // Recheck the snapshot at action time; Host still owns the final validity check.
-    const statuses = unwrap(await remote().status());
-    if (!active || signal?.aborted || navigation.aborted) return;
-    const status = statuses.find((entry) => entry.id === id);
-    if (status?.preset.state !== 'ok') {
-      void catalog.refresh();
-      throw new Error(status?.preset.reason ?? t(status?.preset.state === 'broken'
-        ? 'card.statusBroken' : status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown'));
-    }
-    // Unlike startSession (void, silently clears main when no workspace),
-    // this public API lets this page await and display Host refusals.
-    // Revalidate after the status query in case the workspace was removed.
-    await ctx.uiWorkspace.openWorkspace(target().workspaceId, (sessionId) => {
-      if (!active || signal?.aborted) throw new Error(t('chat.cancelled'));
-      // This callback is skipped for superseded navigation and runs before
-      // selectPanel unmounts the Bots page (and aborts its local lifetime).
-      preferredWorkspace = workspaceId;
-      beforeOpen?.(sessionId);
-    }, { agentPreset: status.presetId });
-    if (active) await refresh();
-  };
   const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) => {
     if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
-    const current = () => active && !signal?.aborted && !navigation.aborted;
-    // Read the authoritative Bot at click time so another Client's cwd edit is respected.
-    const [record, statuses] = await Promise.all([remote().get(id), remote().status()]);
-    if (!current()) return;
-    const bot = unwrap(record);
-    const status = unwrap(statuses).find((entry) => entry.id === id);
-    if (status?.preset.state !== 'ok') {
-      void catalog.refresh();
-      throw new Error(status?.preset.reason ?? t(status?.preset.state === 'broken'
-        ? 'card.statusBroken' : status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown'));
-    }
-    let workspaceId: WorkspaceId;
-    if (bot.defaultCwd) {
-      // Public Client service delegates to workspace/create, which resolves
-      // the canonical path before creating a new Workspace registration.
-      workspaceId = (await ctx.workspaces.create({ path: bot.defaultCwd })).workspaceId;
-    } else {
-      await remote().ensureHome(id).then(unwrap);
-      if (!current()) return;
-      workspaceId = unwrap(await remote().ensureBotsWorkspace()).workspaceId as WorkspaceId;
-    }
-    if (!current()) return;
-    const sessionId = await sessions.create({ workspaceId, agentPreset: status.presetId });
-    if (!current()) return;
-    // Keep the right-tab continuation before native navigation can unmount its origin.
-    beforeOpen?.(sessionId);
-    ctx.uiWorkspace.openSession(sessionId);
+    const { sessionId } = unwrap(await remote().openConversation(id));
+    if (!active || signal?.aborted || navigation.aborted) return;
+    beforeOpen?.(sessionId as SessionId);
+    ctx.uiWorkspace.openSession(sessionId as SessionId);
     if (active) await refresh();
   };
+  // Compatibility for existing injected callers: every launch resolves the same Host-owned main.
+  const startBotInWorkspace = (id: string, _workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) =>
+    startBot(id, signal, beforeOpen);
   const page: BotsPageInjected = {
     routines,
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },

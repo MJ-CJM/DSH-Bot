@@ -8,11 +8,12 @@ import { DshBotMemoryRemote } from './memory/remote.js';
 import { DshBotActivityRemote } from './activity/remote.js';
 import { AUTOMATION_HOST, AutomationStatusRemote } from './automation/remote.js';
 import type { AutomationStatus } from '../shared/automation-contract.js';
+import { MainSessions } from './main-session.js';
 import { startAutomation } from './automation/coordinator.js';
 export { Config, DshBotRegistry };
 export const name = 'dsh-bot';
 export const inject = ['storageDomain', 'agentPresets', 'typert', 'loader', 'tools', 'agents',
-  'sessionController', 'sessions', 'workspaceRegistry', 'jobs', 'subagents'];
+  'sessionController', 'sessions', 'workspaceRegistry', 'subagents'];
 export function apply(ctx: Context, config: Config): void {
   let automation: Awaited<ReturnType<typeof startAutomation>> | undefined;
   let status: AutomationStatus = { state: 'starting' };
@@ -25,12 +26,15 @@ export function apply(ctx: Context, config: Config): void {
   let stopping = false;
   const ready = registry.waitUntilReady().then(async () => {
     if (stopping) return;
-    automation = await startAutomation(ctx, registry, registry.config.automation ?? {});
+    const mainSessions = new MainSessions(ctx, registry);
+    await mainSessions.start();
+    registry.mainSessions = mainSessions;
+    automation = await startAutomation(ctx, registry);
     status = { state: 'ready' }; ctx.logger.info('[dsh-bot] loaded');
   }).catch(error => { status = { state: 'failed', reason: 'startup-failed' }; ctx.logger.error('[dsh-bot] startup failed', error); });
   ctx.effect(() => async () => {
     stopping = true; status = { state: 'stopping' }; await ready;
-    await automation?.close(); await automation?.stores.close(); await registry.close();
+    await automation?.close(); await automation?.stores.close(); await registry.mainSessions?.close(); await registry.close();
     ctx.logger.info('[dsh-bot] unloaded');
   }, 'dsh-bot: runtime');
 }

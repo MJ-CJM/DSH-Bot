@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-jobs';
 import { readFileSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createRequire, SourceMap } from 'node:module';
@@ -235,7 +236,7 @@ describe('built bundle contract', () => {
         'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',
         'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
         'dshBot.nativeSchedule/aggregate', 'dshBot.nativeSchedule/deleteLegacy', 'dshBot.nativeSchedule/runNow', 'dshBot.run/get', 'dshBot.run/list',
-        'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get', 'dshBot/list', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
+        'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get', 'dshBot/list', 'dshBot/openConversation', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
       ]);
       await fork.dispose();

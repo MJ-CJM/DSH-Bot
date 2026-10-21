@@ -185,18 +185,18 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
-      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'ensureHome' | 'ensureBotsWorkspace' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
+      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'>();
   });
 
-  it('shares all nineteen strict descriptors between Host and Client exports', () => {
+  it('shares all twenty strict descriptors between Host and Client exports', () => {
     expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
     // The Host owns registration in ctx.effect. ./typert would also be picked
     // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(19);
+    expect(TYPERT.invocations).toHaveLength(20);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -355,6 +355,9 @@ describe('single-source Remote contract', () => {
       } else if (descriptor.method === 'watch') {
         expect(codec.parse({ revision: 0 })).toEqual({ revision: 0 });
         expect(() => codec.parse({ revision: -1 })).toThrow();
+      } else if (descriptor.method === 'openConversation') {
+        expect(codec.parse({ sessionId: 'main' })).toEqual({ sessionId: 'main' });
+        expect(() => codec.parse({ sessionId: '' })).toThrow();
       } else if (descriptor.method === 'ensureHome') {
         expect(codec.parse({ path: '/private/home' })).toEqual({ path: '/private/home' });
         expect(() => codec.parse({ path: 'relative' })).toThrow();

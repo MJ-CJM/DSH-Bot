@@ -7,8 +7,8 @@ import { botSessionRows, previewText, relativeTime, sessionTitle, sortBotEntries
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 
-const entry = (id: string, name: string, createdAt = 1) => ({ bot: botSchema.parse({ ...botCreateSchema.parse({ id, name }), createdAt, updatedAt: createdAt, schemaVersion: 1 }),
-  status: { id, presetId: `custom/${id}`, preset: { state: 'ok' as const } } });
+const entry = (id: string, name: string, createdAt = 1, mainSessionId = 'current') => ({ bot: botSchema.parse({ ...botCreateSchema.parse({ id, name }), createdAt, updatedAt: createdAt, schemaVersion: 1 }),
+  status: { id, mainSessionId, presetId: `custom/${id}`, preset: { state: 'ok' as const } } });
 describe('activity display projection', () => {
   it('orders active Bots first and breaks inactive ties by localized name, creation time and id', () => {
     const entries = [entry('zebra-bot', 'Zebra'), entry('alpha-two', 'Alpha', 2), entry('alpha-one', 'Alpha'), entry('active-bot', 'Last')];
@@ -36,20 +36,19 @@ describe('activity display projection', () => {
     const activity: ActivitySession = { botId: 'alpha-bot', sessionId: 'current', title: ACTIVITY_HIDDEN_PREVIEW,
       lastMessage: { role: 'assistant', at: 10, preview: ACTIVITY_HIDDEN_PREVIEW }, updatedAt: 10, unread: true };
     expect(botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [activity], ['archived' as never]))
-      .toEqual([{ id: 'current', title: ACTIVITY_HIDDEN_PREVIEW, preview: ACTIVITY_HIDDEN_PREVIEW, updatedAt: 10, unread: true, running: true },
-        { id: 'old', title: 'Host title', preview: '', updatedAt: 2, unread: false, running: false }]);
+      .toEqual([{ id: 'current', title: ACTIVITY_HIDDEN_PREVIEW, preview: ACTIVITY_HIDDEN_PREVIEW, updatedAt: 10, unread: true, running: true }]);
   });
 
-  it('keeps a blank session out of history after its preset refreshes, then shows it after the first message', () => {
+  it('shows only the authoritative main once its preset resolves, including a blank main', () => {
     const id = 'new-session';
     const summary = { id, displayTitle: 'Bots', cwd: '/shared/bots', updatedAt: 5, running: false, blank: true };
     const snapshot = (row: typeof summary & { projectionValues?: { agentPreset: string } }) => ({
       ids: [id], byId: { [id]: row }, phase: 'ready', projectionsBySession: {},
     }) as unknown as SessionListState;
-    const entries = [entry('alpha-bot', 'Alpha')];
+    const entries = [entry('alpha-bot', 'Alpha', 1, id)];
     expect(botSessionRows('alpha-bot', entries, snapshot(summary), [])).toEqual([]);
     const resolved = { ...summary, projectionValues: { agentPreset: 'custom/alpha-bot' } };
-    expect(botSessionRows('alpha-bot', entries, snapshot(resolved), [])).toEqual([]);
+    expect(botSessionRows('alpha-bot', entries, snapshot(resolved), []).map(row => row.id)).toEqual([id]);
     // Native message state is authoritative; a delayed/evicted plugin activity
     // summary must not hide an otherwise valid conversation after its first send.
     expect(botSessionRows('alpha-bot', entries, snapshot({ ...resolved, blank: false }), []).map((row) => row.id))
@@ -66,7 +65,7 @@ describe('activity display projection', () => {
     const session = { id: 'test', displayTitle: 'pod_0814', cwd: '/projects/pod_0814', updatedAt: 5,
       running: false, projectionValues: { agentPreset: 'custom/alpha-bot' } };
     const sessions = { ids: ['test'], byId: { test: session }, phase: 'ready', projectionsBySession: {} } as unknown as SessionListState;
-    expect(botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [])[0]?.title).toBe('');
+    expect(botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha', 1, 'test')], sessions, [])[0]?.title).toBe('');
   });
 
   it('only adds a workspace label for a known workspace different from the current main-view context', () => {
@@ -76,7 +75,7 @@ describe('activity display projection', () => {
       other: { ...summary, id: 'other', cwd: '/other', retainedBy: {} },
     }, phase: 'ready', projectionsBySession: {} } as unknown as SessionListState;
     const workspaces = [{ path: '/current', title: 'Current' }, { path: '/other', title: 'Other workspace' }];
-    const rows = botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [], [], workspaces);
+    const rows = botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha', 1, 'other')], sessions, [], [], workspaces);
     expect(rows.find((row) => row.id === 'same')?.workspaceTitle).toBeUndefined();
     expect(rows.find((row) => row.id === 'other')?.workspaceTitle).toBe('Other workspace');
     expect(botSessionRows('alpha-bot', [entry('alpha-bot', 'Alpha')], sessions, [], [], []).every((row) => !row.workspaceTitle)).toBe(true);

@@ -56,7 +56,8 @@ export class NativeSchedules {
         // A live Agent with no Bot binding is not inferred from its old header.
         if (!live) {
           try {
-            const { meta } = await this.ctx.sessionController.inspect(task.sessionId);
+            const meta = (await this.ctx.get('sessionPersistence')?.stat(task.sessionId))?.header;
+            if (!meta) continue;
             const target = bots.find(bot => meta.createdAt >= bot.createdAt
               && statuses.some(status => status.id === bot.id && status.presetId === meta.agentPreset));
             if (target && !meta.isSeeded && !meta.parentSession && meta.origin !== 'subagent' && !(meta.delegationDepth ?? 0)) {

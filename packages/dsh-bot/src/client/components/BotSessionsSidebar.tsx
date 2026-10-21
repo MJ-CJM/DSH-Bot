@@ -38,10 +38,10 @@ export function groupBotSessions(entries: readonly BotCatalogEntry[], sessions: 
   const hidden = new Set(archived);
   for (const id of sessions.ids) {
     const session = sessions.byId[id];
-    if (!session || session.origin === 'subagent' || hidden.has(id)) continue;
+    if (!session || session.parentId || session.origin === 'subagent' || hidden.has(id)) continue;
     const preset = session.projectionValues?.agentPreset;
     const botId = typeof preset === 'string' ? mapping.get(preset) : undefined;
-    if (botId) groups.get(botId)?.push(session);
+    if (botId && entries.find(entry => entry.bot.id === botId)?.status?.mainSessionId === id) groups.get(botId)?.push(session);
   }
   for (const group of groups.values()) group.sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id));
   return groups;

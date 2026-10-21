@@ -43,10 +43,10 @@ export function runDedupeKey(request: RunRequest) {
   return JSON.stringify(['manual', request.nativeScheduleId, request.operationId]);
 }
 const transitions: Record<RunStatus, readonly RunStatus[]> = {
-  queued: ['cancelled', 'skipped'], running: ['waiting_approval', 'succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_needed'],
+  queued: ['cancelled', 'skipped'], running: ['delivered', 'waiting_approval', 'succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_needed'],
   waiting_approval: ['running', 'succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_needed'],
   recovery_needed: ['succeeded', 'failed', 'cancelled', 'timed_out'],
-  succeeded: [], failed: [], cancelled: [], timed_out: [], skipped: [],
+  delivered: [], succeeded: [], failed: [], cancelled: [], timed_out: [], skipped: [],
 };
 export const runProgressSchema = z.strictObject({
   step: runRecordSchema.shape.step.optional(), startedAt: automationTimeSchema.optional(),
@@ -112,8 +112,8 @@ export class RunService {
     return write(this.s, async () => {
       const current = run(this.s, key);
       if (current.revision !== expected) throw conflict();
-      // Only the create receipt may replace the preallocated session identity.
-      if ((fields.sessionId !== undefined && current.step !== 'creating')
+      // Only admission may bind the destination main session.
+      if ((fields.sessionId !== undefined && !['reserved', 'creating'].includes(current.step))
         || (fields.snapshot !== undefined && current.step !== 'reserved')) throw conflict();
       if ((current.status === target && isTerminalRun(target))
         || (current.status !== target && !transitions[current.status].includes(target))) throw conflict();

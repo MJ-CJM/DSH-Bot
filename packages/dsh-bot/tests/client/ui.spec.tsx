@@ -4,13 +4,11 @@ import { readFileSync } from 'node:fs';
 import type { ActivitySession } from '../../src/shared/activity.js';
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
-import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 import { Config } from '../../src/client/config.js';
-import type { BotStatus } from '../../src/shared/remote-contract.js';
-import { bot, button, click, field, fill, loadBuiltClient, mountClient, submit, workspace } from './helpers.js';
+import { bot, button, click, field, fill, loadBuiltClient, mountClient, submit } from './helpers.js';
 
 const t = en.ui;
 const mounted: Awaited<ReturnType<typeof mountClient>>[] = [];
@@ -80,7 +78,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     });
     await setSessions(app, [session('older', 'alpha-bot', now - 120_000), session('newer', 'alpha-bot', now - 60_000, { running: true, title: undefined })]);
     const rows = [...app.container.querySelectorAll('[data-session-id]')];
-    expect(rows.map((row) => row.getAttribute('data-session-id'))).toEqual(['newer', 'older']);
+    expect(rows.map((row) => row.getAttribute('data-session-id'))).toEqual(['newer']);
     expect(rows[0]?.textContent).toContain('Latest conversation');
     expect(rows[0]?.textContent).toContain(dictionary['activity.hidden']);
     expect(rows[0]?.textContent).toContain(dictionary['activity.running']);
@@ -89,7 +87,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     const option = app.container.querySelector('[role="option"]');
     expect(option?.querySelector('[data-unread]')?.getAttribute('aria-label')).toBe(dictionary['activity.unreadCount'].replace('{count}', '2'));
     expect(option?.querySelector('[data-activity-preview]')?.textContent).toBe(dictionary['activity.hidden']);
-    expect(rows[1]?.querySelector('[data-activity-preview]')?.getAttribute('title')).toBe(preview);
+    expect(app.container.querySelector('[data-session-id="older"]')).toBeNull();
     // jsdom cannot measure ellipsis; verify the CSS contract without claiming a screenshot.
     const css = readFileSync('src/client/styles/bots.module.css', 'utf8');
     expect(css.match(/\.activityPreview\s*\{([^}]+)\}/)?.[1]).toMatch(/overflow:\s*hidden/);
@@ -302,7 +300,8 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(app.container.querySelector('article')?.textContent).toContain('A careful helper');
     expect(app.container.querySelector('article')?.textContent).toContain('🦊');
     await click(button(app.container, t['bots.newSession']));
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
   });
@@ -424,13 +423,13 @@ describe('Bots main page through the public Cordis and Slot registration contrac
 
   it('awaits an asynchronous Host refusal and displays the reason on the page', async () => {
     const app = await mount([bot()]);
-    app.createSession.mockRejectedValueOnce(new Error('Host refused the selected preset'));
+    app.remote.methods.openConversation.mockRejectedValueOnce(new Error('Host refused the selected preset'));
     await click(button(app.container, t['bots.newSession']));
     expect(app.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain('Host refused the selected preset');
     expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
     await click(button(app.container, t['bots.newSession']));
-    expect(app.createSession).toHaveBeenCalledTimes(2);
+    expect(app.remote.methods.openConversation).toHaveBeenCalledTimes(2);
     expect(app.container.querySelector('[role="alert"]')).toBeNull();
   });
 
@@ -438,96 +437,12 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     const app = await mount([bot()]);
     await app.setWorkspaces({ items: [] });
     await click(button(app.container, t['bots.newSession']));
-    expect(app.remote.methods.ensureHome).toHaveBeenCalledExactlyOnceWith('alpha-bot');
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.remote.methods.ensureHome).not.toHaveBeenCalled();
+    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.container.querySelector('dialog')).toBeNull();
-  });
-
-  it.each(['en', 'zh'] as const)('confirms the multi-workspace launcher through the real form and public API in %s', async (language) => {
-    const app = await mount([bot()], language);
-    const t = language === 'zh' ? zh.ui : en.ui;
-    await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second project')] });
-    await click(button(app.container, t['card.more']));
-    await click(button(app.container, t['chat.inWorkspace']));
-    expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(app.container.querySelector('dialog')?.textContent).toContain(t['chat.workspaceChoose']);
-    await fill(field(app.container, t['chat.workspace']), 'workspace-two');
-    expect(app.openWorkspace).not.toHaveBeenCalled();
-    const dialog = app.container.querySelector('dialog');
-    if (!dialog) throw new Error('Workspace picker is missing');
-    await click(button(dialog, t['card.start']));
-    expect(app.openWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-two', expect.any(Function), {
-      agentPreset: 'host-selected/alpha-bot',
-    });
-    expect(app.container.querySelector('dialog')).toBeNull();
-    expect(app.container.querySelector('[role="alert"]')).toBeNull();
-  });
-
-  it('shows pending and failed workspace catalogs and revalidates a workspace after querying status', async () => {
-    const app = await mount([bot()]);
-    await app.setWorkspaces({ phase: 'pending', state: 'loading' });
-    await click(button(app.container, t['card.more']));
-    await click(button(app.container, t['chat.inWorkspace']));
-    expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceLoading']);
-    await app.setWorkspaces({ phase: 'ready', state: 'error', error: new RemoteError('gateway/service-unavailable', 'Offline', { endpoint: 'workspace/watch' }) });
-    await click(button(app.container, t['card.more']));
-    await click(button(app.container, t['chat.inWorkspace']));
-    expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceUnavailable']);
-    await app.setWorkspaces({ state: 'idle', error: null });
-    let finish: ((value: RemoteResult<BotStatus[]>) => void) | undefined;
-    app.remote.methods.status.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
-    await click(button(app.container, t['card.more']));
-    await click(button(app.container, t['chat.inWorkspace']));
-    await app.setWorkspaces({ items: [] });
-    await act(async () => { finish?.({ ok: true, value: [{ id: 'alpha-bot', presetId: 'correct-preset', preset: { state: 'ok' } }] }); });
-    expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['chat.workspaceRequired']);
-  });
-
-  it('uses beforeOpen to stop late navigation after its page unmounts', async () => {
-    const app = await mount([bot()]);
-    let finish: (() => void) | undefined;
-    app.openWorkspace.mockImplementationOnce((_id, beforeOpen) => new Promise((resolve, reject) => {
-      finish = () => {
-        try { beforeOpen?.('late-session' as never); resolve(); } catch (error) { reject(error); }
-      };
-    }));
-    await click(button(app.container, t['card.more']));
-    await click(button(app.container, t['chat.inWorkspace']));
-    await app.unmountPage();
-    await act(async () => { finish?.(); });
-    expect(app.container.textContent).toBe('');
-    expect(() => app.openWorkspace.mock.calls[0]?.[1]?.('late-session' as never)).toThrow(t['chat.cancelled']);
-  });
-
-  it('rechecks preset status when clicked and refuses a preset that broke since rendering', async () => {
-    const app = await mount([bot()]);
-    expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
-    app.remote.data.statuses = [{
-      id: 'alpha-bot', presetId: 'host-selected/alpha-bot', preset: { state: 'broken', reason: 'Preset changed while open' },
-    }];
-    await click(button(app.container, t['bots.newSession']));
-    expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(app.container.querySelector('[role="alert"]')?.textContent).toContain('Preset changed while open');
-    expect(button(app.container, t['bots.newSession']).disabled).toBe(true);
-  });
-
-  it('does not start a session when its pending status response arrives after the page unmounts', async () => {
-    const app = await mount([bot()]);
-    let resolveStatus: ((result: RemoteResult<BotStatus[]>) => void) | undefined;
-    app.remote.methods.status.mockReturnValueOnce(new Promise((resolve) => { resolveStatus = resolve; }));
-    await click(button(app.container, t['bots.newSession']));
-    expect(app.remote.methods.status).toHaveBeenCalledTimes(2);
-    await app.unmountPage();
-    await act(async () => {
-      resolveStatus?.({ ok: true, value: [{
-        id: 'alpha-bot', presetId: 'host-selected/alpha-bot', preset: { state: 'ok' },
-      }] });
-    });
-    expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(app.container.textContent).toBe('');
   });
 
   it('validates a duplicate id and calls the dedicated Remote operation before refreshing', async () => {

@@ -65,6 +65,8 @@ export function registerBotPresetActivity(ctx: Context, botId: string, botCreate
 /** Called within the Bot's agent/created effect. Only complete, newly appended
  * human/assistant text is observed; streaming deltas and replay are not writes. */
 export function registerActivityTracking(agent: Agent, botId: string, botCreatedAt: number, registry: ActivitySink): () => void {
+  const header = agent.session.header;
+  if (header.origin === 'subagent' || header.parentSession || (header.delegationDepth ?? 0) > 0) return () => {};
   const projections = agent.ctx.get('sessionProjections');
   let offProjection: (() => void) | undefined;
   try {

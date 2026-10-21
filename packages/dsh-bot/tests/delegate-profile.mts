@@ -72,7 +72,7 @@ try {
     const patch = [
       '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'storages'))}`,
       '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'sessions'))}`,
-      '- id: dsh-bot', '  config:', '    seedExamples: true', '    automation:', '      executorPollMs: 25', `    dataDir: ${JSON.stringify(resolve(runDir, 'bots-data'))}`,
+      '- id: dsh-bot', '  config:', '    seedExamples: true', `    dataDir: ${JSON.stringify(resolve(runDir, 'bots-data'))}`,
       '- id: agent-default-model', '  config:', '    provider: deepseek-official', '    model: deepseek-flash', '    reasoningEffort: off',
       '- id: llm-deepseek', '  config:', '    apiKeyEnv: DSH_BOT_R03_MOCK_KEY', `    baseURL: ${JSON.stringify(`${baseURL}/v1`)}`,
       '    thinking: disabled', '    reasoningEffort: off', '    maxTokens: 128',

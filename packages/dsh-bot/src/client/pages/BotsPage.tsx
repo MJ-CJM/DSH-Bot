@@ -205,7 +205,7 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
           {tab === 'bots' && entries.length > 0 && <div className={styles.twoPane}>
             {(!compact || !showDetail) && <BotList entries={entries} activities={activity.bots} t={t}
               selectedId={selected?.bot.id} listRef={listElement} idPrefix={listId}
-              onSelect={(id) => { setSelectedId(id); setMore(false); setToast(undefined); }} onActivate={() => setShowDetail(true)} />}
+              onSelect={(id) => { setSelectedId(id); setMore(false); setToast(undefined); }} onActivate={(id) => { setShowDetail(true); void perform(() => chat.start(id), 'errors.start').catch(() => {}); }} />}
             {selected && (!compact || showDetail) && <article className={styles.botDetail} data-bot-detail={selected.bot.id}>
               {compact && <Button ref={backElement} variant="ghost" size="sm" className={styles.backButton} onClick={() => { focusListOnReturn.current = true; setShowDetail(false); setMore(false); }}>{t('bots.back')}</Button>}
               <header className={styles.detailHeader}>
@@ -217,7 +217,7 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
                       aria-label={t('card.more')} title={t('card.more')} aria-haspopup="menu" aria-expanded={more}
                       onClick={() => setMore(!more)}><IconEllipsisOutlineRegular size={18} /></Button>}
                     items={[
-                      { id: 'workspace', label: t('chat.inWorkspace'), disabled: busy || !ready },
+
                       { id: 'duplicate', label: t('card.duplicate'), disabled: busy },
                       { id: 'delete', label: t('actions.delete'), disabled: busy, danger: true },
                     ]} onSelect={(action) => {

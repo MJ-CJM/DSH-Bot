@@ -1,5 +1,23 @@
 # DSH API 核实记录
 
+## R05：0.2.2 单主会话与原生标题固定（2026-10-21）
+
+主会话身份 sidecar `dsh_bot_main_session` v1、`dshBot/openConversation`、可选 `status.mainSessionId` 是本包新增契约。迁移仅元数据/投影，普通旧历史原样保留；原生 Session、标题、Inbox 与子代理继续复用。实施与限制见 [架构 R05](architecture.md#r05持久主会话与共享-bots-工作区)，实际命令见 [P2 验收](acceptance/P2.md)。
+
+| API / 来源（只读 rc.2） | 核实结论与用法 |
+| --- | --- |
+| `sessionController.rename`；`packages/api/session-controller/src/commands.ts:199-207` | 通过公开 resolveAgent 取得 Session，再调用原生标题服务；本包无内部导入。 |
+| `sessionTitle.rename`；`packages/session/session-title/src/index.ts:395-421,508-510` | 写 `source.kind=user`，取消已有自动生成，后续 human prompt 不再自动命名。无需关闭全局 title LLM。原生明确 refresh 会解锁，因此本包还监听主会话 title 事件合并恢复 Bot 名，自己的 rename 不递归。 |
+| `sessionController.list` / `SessionSummary`；`packages/api/session-controller/src/types.ts:178-194,267-274` | 迁移按 updatedAt 降序；过滤 parentSessionId / origin，检查 preset projection。没有顶层 title，断言用公开 projections.values.title。 |
+| `sessionPersistence.stat`；`packages/session/session-persistence/src/index.ts:46-55,196` | 返回轻量 header，无需完整 event log。主会话迁移与 native schedule 冷归属均使用它，移除旧 inspect().meta 用法。新增该包精确 rc.2 dev，仅类型导入，无新增 Host runtime peer。 |
+| `sessionController.create/prompt` | 新主会话只在共享 Bots workspace 创建；迁移保持原 cwd。显式立即运行 mode=queue 投递主会话，delivered 表示原生 accepted=true，不能等同模型完成。 |
+| `schedule_create`；`packages/schedule/tool-schedule/src/index.ts:483` | 原生绑定 agent.session.id；本包 pre-execute 校验 Bot 生日和主会话，拒绝旧多会话/子会话创建，直接复用原生工具。 |
+| Client SessionSummary；`packages/api/session-controller/src/client/sessions/service.ts:27-36` | Client 的父标记实际名 parentId，Host 是 parentSessionId，header 是 parentSession。三层各按公开类型过滤。 |
+| `@deepseek-ai/dsh-session-title` 根入口 | 新增精确 rc.2 dev 供真实标题服务单测；产品无此包 runtime import。测试 Session/投影/标题/JSON store 为真实公开实现，SessionController 和部分 metadata 生命周期是测试替身，不宣称完整冷 Host 重启。 |
+
+真实 tarball profile 使用原生 SessionController、schedule、ToolRuntime、spawn、安装后的 Client 和 loopback mock。测试覆盖迁移、重开、并发打开、删除后重建、Bot 生日隔离、标题固定/改名/修复、立即运行主会话幂等投递和子代理隐藏；浏览器亮暗单独列结果。R04 的“新建立即运行会话”证据属于历史行为，不能作为 0.2.2 验收。
+
+
 ## R04：0.2.1 tarball 集成（2026-10-20）
 
 统一 `scripts/p2-e2e` 改为原生定时聚合/显式立即运行/原生 spawn，按全新 profile 安装 0.2.1 包，核对安装文件与 tarball 字节一致；正式 Client factory 也读取已安装文件。旧 0.2.0 格式夹具在 Host 启动前写入，运行后检查只读保留。结果与浏览器失败边界见 [P2 验收](acceptance/P2.md)。没有新增依赖、Remote 端点或持久领域版本。

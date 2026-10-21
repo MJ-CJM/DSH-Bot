@@ -55,7 +55,9 @@ export function createRoutineActions(ctx: Context, options: BotCatalogOptions & 
     }),
     deleteLegacy: id => write(() => own().deleteLegacy(id)),
     runNow: (record, operationId) => write(() => own().runNow(record.id, operationId,
-      { title: record.title, prompt: record.prompt, botCreatedAt: record.botCreatedAt }, true)),
+      { title: record.title, prompt: record.prompt, botCreatedAt: record.botCreatedAt }, true), value => {
+        if (value.status !== 'delivered') throw Object.assign(new Error('Delivery not confirmed'), { code: 'automation/unavailable' });
+      }),
     history(record) {
       let pages = 1;
       const history = createPollingCatalog(ctx, { records: [] as ScheduleDeliveryRecord[], more: false, unavailable: false }, async () => {

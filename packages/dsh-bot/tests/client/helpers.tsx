@@ -1,3 +1,4 @@
+import type { BotsPageInjected } from '../../src/client/pages/BotsPage.js';
 import type { AutomationRemoteMethods } from '../../src/shared/automation-contract.js';
 import type { RunRecord } from '../../src/shared/automation.js';
 import type { NativeTask } from '../../src/client/automation-state.js';
@@ -9,7 +10,7 @@ import { createRequire } from 'node:module';
 import { SlotCore, type StoredEntry, resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
-import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { ISessions, SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SidebarRightTabDefinition, SidebarRightTabInjected } from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import { type ComponentType, Profiler, act, useSyncExternalStore } from 'react';
@@ -28,7 +29,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -72,9 +73,10 @@ export function remoteDouble(initial: BotRecord[] = []) {
     status: vi.fn<DshBotRemoteMethods['status']>(async () => ({
       ok: true,
       value: data.statuses ?? data.records.map((record) => ({
-        id: record.id, presetId: `host-selected/${record.id}`, preset: { state: 'ok' as const },
+        id: record.id, presetId: `host-selected/${record.id}`, mainSessionId: data.sessionRows.filter(row => !row.blank && row.origin !== 'subagent' && row.projectionValues?.agentPreset === `host-selected/${record.id}`).sort((a,b) => b.updatedAt - a.updatedAt)[0]?.id ?? data.activities.filter(row => row.botId === record.id).sort((a,b) => b.updatedAt - a.updatedAt)[0]?.sessionId, preset: { state: 'ok' as const },
       })),
     })),
+    openConversation: vi.fn<DshBotRemoteMethods['openConversation']>(async () => ({ ok: true, value: { sessionId: 'test-created-session' } })),
     ensureHome: vi.fn<DshBotRemoteMethods['ensureHome']>(async (id) => ({ ok: true, value: { path: `/test/dsh-bot/bots/${id}/home` } })),
     ensureBotsWorkspace: vi.fn<DshBotRemoteMethods['ensureBotsWorkspace']>(async () => ({ ok: true, value: { workspaceId: 'bots-workspace', path: '/test/dsh-bot/bots' } })),
     get: vi.fn<DshBotRemoteMethods['get']>(async (id) => {
@@ -396,6 +398,10 @@ export async function mountClient(
     async setSessions(patch: Partial<SessionListState>) {
       await act(async () => {
         sessionSnapshot = { ...sessionSnapshot, ...patch };
+        // Simulated authoritative main mapping for legacy Client fixtures. Host migration has separate real-store tests.
+        remote.data.sessionRows = sessionSnapshot.ids.map(id => sessionSnapshot.byId[id]).filter((row): row is SessionSummary => Boolean(row));
+        const actions = main.inject?.() as unknown as BotsPageInjected | undefined;
+        await actions?.onRefresh();
         for (const listener of sessionListeners) listener();
       });
     },

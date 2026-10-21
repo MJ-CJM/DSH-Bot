@@ -33,8 +33,8 @@ export function apply(ctx, config) {
       const status = (await ctx.dshBots.status()).find(row => row.id === 'assistant');
       const targetStatus = (await ctx.dshBots.status()).find(row => row.id === 'researcher');
       assert.equal(status.preset.state, 'ok'); assert.equal(targetStatus.preset.state, 'ok');
-      const workspace = await ctx.dshBots.ensureBotsWorkspace();
-      const created = await ctx.sessionController.create({ workspaceId: workspace.workspaceId, agentPreset: status.presetId });
+      await ctx.dshBots.ensureBotsWorkspace();
+      const created = await ctx.dshBots.openConversation('assistant');
       const origin = ctx.agents.get(created.sessionId); assert.ok(origin);
       origin.session.append('turn/start', { turn: 0 });
       const denied = await ctx.tools.execute({ agent: origin, name: 'bot_delegate', callId: ToolCallId(randomUUID()),
@@ -59,8 +59,14 @@ export function apply(ctx, config) {
       assert.equal(await ctx.sessions.flush(origin.session), true);
       await save('origin.json', await ctx.sessionController.inspect(origin.id));
       await save('target.json', view); await save('approvals.json', approvals); await save('lifecycle.json', lifecycle);
+      const activities = await ctx.dshBots.listActivity();
+      const mains = await ctx.dshBots.status();
+      assert.ok(!activities.sessions.some(row => row.sessionId === child.id));
+      assert.ok(!mains.some(row => row.mainSessionId === child.id));
+      assert.equal(mains.find(row => row.id === 'assistant').mainSessionId, origin.id);
+      assert.equal(mains.find(row => row.id === 'researcher').mainSessionId, undefined);
       await save('host-result.json', { status: 'PASS', origin: origin.id, child: child.id, presetId: targetStatus.presetId,
-        nativeReport: report.data, localRuns: 0 });
+        nativeReport: report.data, localRuns: 0, childHiddenFromBots: true, mainSessionId: origin.id });
       console.log('R03_DONE');
     })().catch(async error => { await save('fatal.json', { error: String(error), stack: error.stack }); console.log('R03_FAILED'); });
     return async () => { stopping = true; off(); offStart(); offEnd(); await task; await save('disposed.json', { disposed: true }); };

@@ -12,6 +12,7 @@ import {
 export const botStatusSchema = z.strictObject({
   id: botIdSchema,
   presetId: z.string().min(1),
+  mainSessionId: z.string().min(1).optional(),
   warnings: z.array(z.enum(['avatar/invalid'])).optional(),
   preset: z.strictObject({ state: z.enum(['ok', 'broken', 'missing']), reason: z.string().optional() }),
 });
@@ -153,6 +154,7 @@ export const dshBotRemoteSpec = {
     'dshBot/catalogInfo': { ...owner, parameters: [], result: codec('CatalogInfo', catalogInfoSchema) },
     'dshBot/status': { ...owner, parameters: [], result: codec('BotStatus[]', z.array(botStatusSchema)) },
     'dshBot/get': { ...owner, parameters: [id], result: bot },
+    'dshBot/openConversation': { ...owner, parameters: [botId], result: activityResultCodec('MainSession', z.strictObject({ sessionId: z.string().min(1) })) },
     'dshBot/ensureHome': { ...owner, parameters: [botId], result: activityResultCodec('BotHome', botHomeSchema) },
     'dshBot/ensureBotsWorkspace': { ...owner, parameters: [], result: activityResultCodec('BotsWorkspace', botsWorkspaceSchema) },
     'dshBot/create': { ...owner, parameters: [parameter('input', 'BotCreateInput', botCreateSchema)], result: bot },

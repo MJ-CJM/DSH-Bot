@@ -9,7 +9,7 @@ import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 import { Config } from '../../src/client/config.js';
 import { BotSessionsSidebar, groupBotSessions, type BotSessionsSidebarInjected } from '../../src/client/components/BotSessionsSidebar.js';
-import { bot, button, click, field, fill, mountClient, submit, workspace } from './helpers.js';
+import { bot, button, click, mountClient } from './helpers.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -140,8 +140,8 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     ]);
     rows.byId['retained-only' as SessionSummary['id']] = session('retained-only', 'namespace/alpha', 100);
     const before = structuredClone(rows);
-    const grouped = groupBotSessions([{ bot: bot(), status: { id: 'alpha-bot', presetId: 'namespace/alpha', preset: { state: 'ok' } } }], rows, ['archived' as SessionSummary['id']]);
-    expect(grouped.get('alpha-bot')?.map((row) => row.id)).toEqual(['newer', 'older']);
+    const grouped = groupBotSessions([{ bot: bot(), status: { id: 'alpha-bot', presetId: 'namespace/alpha', mainSessionId: 'newer', preset: { state: 'ok' } } }], rows, ['archived' as SessionSummary['id']]);
+    expect(grouped.get('alpha-bot')?.map((row) => row.id)).toEqual(['newer']);
     expect(rows).toEqual(before);
   });
 
@@ -157,9 +157,8 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     expect(app.sidebar.querySelector('dialog h2')?.textContent).toBe(app.dictionary['sidebar.sessions']);
     expect(app.core.entries('sidebar.footer.action')[0]?.component).toBe(BotSessionsSidebar);
     expect(app.core.entries('sidebar.panellist')).toHaveLength(1);
-    expect([...app.sidebar.querySelectorAll('[data-session-id]')].map((node) => node.getAttribute('data-session-id'))).toEqual(['alpha-new', 'alpha-mid', 'beta-one']);
-    await click(button(app.sidebar, app.dictionary['sidebar.more']));
-    expect(app.sidebar.textContent).toContain('alpha-old');
+    expect([...app.sidebar.querySelectorAll('[data-session-id]')].map((node) => node.getAttribute('data-session-id'))).toEqual(['alpha-new', 'beta-one']);
+    expect(app.sidebar.querySelector('[data-session-id="alpha-old"]')).toBeNull();
     const toggle = button(app.sidebar, app.dictionary['sidebar.toggle'].replace('{name}', 'Alpha Bot'));
     await click(toggle);
     expect(app.sidebar.textContent).not.toContain('alpha-new');
@@ -225,43 +224,18 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     const focused = document.activeElement;
     expect(focused?.closest('dialog')).not.toBeNull();
     await click(button(app.sidebar, en.ui['sidebar.newSession'].replace('{name}', 'Alpha Bot')));
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-selected/alpha-bot' });
+    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.sidebar.querySelector('dialog')).toBeNull();
   });
 
-  it('asks for multiple workspaces, remembers the successful choice across page/sidebar and cancels without creating', async () => {
-    const app = await setup();
-    await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second workspace')] });
-    await app.show();
-    await click(button(app.sidebar, en.ui['sidebar.moreActions'].replace('{name}', 'Alpha Bot')));
-    await click(button(app.sidebar, en.ui['chat.inWorkspace']));
-    expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(field(app.sidebar, en.ui['chat.workspace']).value).toBe('');
-    await fill(field(app.sidebar, en.ui['chat.workspace']), 'workspace-two');
-    await submit(app.sidebar);
-    expect(app.openWorkspace).toHaveBeenCalledWith('workspace-two', expect.any(Function), { agentPreset: 'host-selected/alpha-bot' });
-    await app.remountPage();
-    await click(button(app.container, en.ui['card.more']));
-    await click(button(app.container, en.ui['chat.inWorkspace']));
-    expect(field(app.container, en.ui['chat.workspace']).value).toBe('workspace-two');
-    await click(button(app.container, en.ui['actions.cancel']));
-    expect(app.openWorkspace).toHaveBeenCalledTimes(1);
-    await app.unmountPage();
-    await app.show();
-    await click(button(app.sidebar, en.ui['sidebar.moreActions'].replace('{name}', 'Beta Bot')));
-    await click(button(app.sidebar, en.ui['chat.inWorkspace']));
-    expect(field(app.sidebar, en.ui['chat.workspace']).value).toBe('workspace-two');
-    await click(button(app.sidebar, en.ui['actions.cancel']));
-    expect(app.openWorkspace).toHaveBeenCalledTimes(1);
-    expect(app.sidebar.textContent).toContain(en.ui['sidebar.sessions']);
-  });
-
   it('revalidates status at click time, reports failure and does not open an invalid preset', async () => {
     const app = await setup();
+    app.remote.methods.openConversation.mockRejectedValueOnce(new Error(en.ui['card.statusBroken']));
     await app.show();
-    app.remote.data.statuses = [{ id: 'alpha-bot', presetId: 'host-selected/alpha-bot', preset: { state: 'broken' } }];
+    app.remote.data.statuses = [{ id: 'alpha-bot', presetId: 'host-selected/alpha-bot', mainSessionId: 'alpha-new', preset: { state: 'broken' } }];
     await click(button(app.sidebar, en.ui['sidebar.newSession'].replace('{name}', 'Alpha Bot')));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.sidebar.querySelector('[role="alert"]')?.textContent).toContain(en.ui['card.statusBroken']);
@@ -269,36 +243,6 @@ describe('Bot conversations through the supported sidebar footer action', () => 
       app.sidebar.querySelector('dialog')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(app.sidebar.querySelector('dialog')).toBeNull();
-  });
-
-  it('remembers before successful navigation unmounts the page, but not a superseded open', async () => {
-    const app = await setup();
-    await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second workspace')] });
-    const actions = app.core.entries('sidebar.footer.action')[0]?.inject?.() as unknown as BotSessionsSidebarInjected;
-    app.openWorkspace.mockImplementationOnce(async () => {});
-    await actions.onStartInWorkspace('alpha-bot', 'workspace-two');
-    expect(actions.getPreferredWorkspace()).toBe('');
-    const lifetime = new AbortController();
-    app.openWorkspace.mockImplementationOnce(async (_id, beforeOpen) => {
-      beforeOpen?.('created' as SessionSummary['id']);
-      // A real selectPanel switches the page immediately after beforeOpen.
-      lifetime.abort();
-    });
-    await actions.onStartInWorkspace('alpha-bot', 'workspace-two', lifetime.signal);
-    expect(actions.getPreferredWorkspace()).toBe('workspace-two');
-  });
-
-  it('settles a pending workspace chooser on unload without creating or retaining subscriptions', async () => {
-    const app = await setup();
-    await app.setWorkspaces({ items: [workspace(), workspace('workspace-two', 'Second workspace')] });
-    await app.show();
-    await click(button(app.sidebar, en.ui['sidebar.moreActions'].replace('{name}', 'Alpha Bot')));
-    await click(button(app.sidebar, en.ui['chat.inWorkspace']));
-    expect(app.sidebar.querySelector('select')).not.toBeNull();
-    await app.unloadPlugin();
-    expect(app.sidebar.textContent).toBe('');
-    expect(app.openWorkspace).not.toHaveBeenCalled();
-    expect(app.sessionListeners.size).toBe(0);
   });
 
   it('validates the configurable page bound and guards captured navigation after disposal', async () => {

@@ -155,6 +155,7 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
               </select>
             </label>
             <section data-bot-default-cwd="" className={styles.cwdSection} aria-label={t('editor.defaultCwd')}>
+              <p className={styles.hint}>{t('editor.cwdHint')}</p>
               <label className={styles.field}>{t('editor.defaultCwd')}
                 <input value={defaultCwd} disabled={disabled} placeholder={botsPath ?? t('editor.cwdPlaceholder')}
                   onChange={(event) => setDefaultCwd(event.target.value)}

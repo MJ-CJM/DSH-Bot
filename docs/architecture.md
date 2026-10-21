@@ -1,4 +1,4 @@
-# DSH-Bot 架构（R02 原生定时聚合）
+# DSH-Bot 架构（R05 单主会话，0.2.2）
 
 本页描述当前正式包的实现。DSH 参考源码锁定 `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`），只使用已发布包的公开入口、service、Remote 和 slot。具体 API 出处见 [DSH API 核实记录](dsh-api-notes.md)，P1 操作清单见 [P1 验收清单](acceptance/P1.md)，P2 运行证据与验收边界见 [P2 报告](acceptance/P2.md)；架构说明本身不代表运行验收通过。
 
@@ -70,20 +70,20 @@ home 固定从公开 `resolveDshHome()` 推导，不跟随自定义技能 `dataD
 
 卸载插件仅释放运行资源和关闭存储，不删除领域记录或上述用户文件。升级保持原 `DSH_HOME`、profile、存储后端及 `dataDir`；安装步骤见 [README](../README.md)。
 
-## 共享 Bots 工作区（T08i）
+## R05：持久主会话与共享 Bots 工作区
 
-DSH 对工作区成员有硬约束：**会话的 canonical cwd 必须精确等于 `workspace.path`**。把 Bot 的 home 作为 cwd、再把会话归到父目录 Bots 工作区不满足该约束。当前默认流程为：
+每个 Bot 的一个主会话由 `dsh_bot_main_session` v1 sidecar 保存，键为 JSON `[botId, botCreatedAt]`，值为 `{botId, botCreatedAt, sessionId}`。没有消息副本或第二个会话系统。原生 Agent、Session、Inbox、持久存储、标题与导航仍由 DSH 管理。
 
-1. Client 在点击时重新读取 Bot 与 preset status，确认 preset 可用。
-2. `ensureHome(botId)` 准备该 Bot 的 home；`ensureBotsWorkspace()` 准备共享根，并通过公开 `workspaceRegistry.resolveByPath()` / `create(path, 'Bots')` 复用或创建原生工作区。
-3. Client 调用 `sessions.create({ workspaceId, agentPreset })`，不同时传 cwd。DSH 令真实 cwd 等于 Bots 根，并登记会话归属。
-4. 创建成功且导航未取消后，调用 `uiWorkspace.openSession()`。右侧 tab 的继续打开请求也受此次导航生命周期约束。
+- Client 的所有打开入口调用 `dshBot/openConversation(botId)`，取得同一个 sessionId 后用 `uiWorkspace.openSession` 导航；同一 Host 中并发打开串行合并。列表每 Bot 一行显示主会话活动，详情仅显示主对话；“新会话”改为“打开对话”。
+- 初次对账只使用公开 `sessionController.list` 的更新时间/投影、活跃 Session header 或 `sessionPersistence.stat().header`，绝不调用 inspect/search 读取历史内容。选最近活跃、身份匹配且不是 origin=subagent、parentSession、fork、delegationDepth 的会话；映射持久化后不随其他历史活跃度变化。live Agent 还须具有本包精确 Bot 生日绑定。
+- 没有历史候选时，只在打开/立即运行时惰性创建：`ensureBotsWorkspace` → `sessionController.create({workspaceId, agentPreset})` → flush → sidecar。新会话 cwd 为共享 Bots 根，preset 默认 `bot-<id>`，保留宿主配置的前缀。迁移会话保持原 cwd/工作区；DSH 不提供任意改 header cwd 的公开 API，移动会破坏原生工作区路径约束。`defaultCwd` 保留兼容读取/编辑，但不再选择新主会话位置。
+- 其余原有会话不删除、不改标题、不改工作区/归档状态，在原生普通历史保留，仅在 Bots 的主会话展示中隐藏。已映射主会话被删除或不再属于此 Bot 时，保留 sidecar 墓碑；下次打开创建新主会话，不复活隐藏历史。同 ID Bot 重建用新生日，已映射给旧生日的会话不得被重新领用。
+- 原生 `sessionController.rename` 写入 `session/title`、`source.kind=user`，取消未完成自动标题并固定后续标题。Bot 更新完成后同步 rename；初始化对账/重新打开也会修复标题。显式外部标题变更由事件观察器按 microtask 合并修复，自己的 rename 不再次排队；卸载清理订阅并排空队列。标题遵守原生空白/控制字符规范化和宿主字节上限；普通 Bot 名称保持完全一致。
+- Bot 改名与会话 rename 没有跨存储事务。rename/flush 失败会报告错误，已保存的 Bot 名不回滚；后续对账可重试。映射写入前先 flush 新会话，崩溃留下的未映射会话可由下轮元数据迁移领用；绝不以清理方式删除用户会话。
 
-`registry_state` 保存工作区 ID 以记录身份，每次仍按真实路径查询，不信任过期 ID。已有工作区的用户自定义标题保留。用户删除工作区后，下次启动或开始聊天可重建登记；旧日志、归档状态和删除后留下的未分组会话保持原状，不自动重新附加历史。工作区存储与 Bot 领域没有跨资源事务，写 ID 失败时下一次按路径复用后补写。
+决策：原生已有的 rename 固定标题、SessionController 与 prompt 队列全部复用，仅增加 Bot 身份映射与入口约束。理由：原生不认识 Bot 的 birthday，也不维护“一 Bot 一主会话”，这部分必须由插件 sidecar 补足。仅支持同一后端一个活动 Host，不自建跨进程锁。
 
-若 Bot 配置 `defaultCwd`，Client 经公开 `workspaces.create({path})` 创建或复用该目录工作区，再以 workspaceId 创建会话。“在工作区中聊天”沿用用户选定的原生工作区。这两条路径的 cwd 同样由工作区决定。
-
-Agent 提示提供 home、实际 cwd 与共享根，并说明 Bots 互不隔离。原生文件读取不按 home 隔离，写入及越界提权沿用用户 DSH 权限/审批设置，插件不放宽或覆盖它们。`persona.complete=true` 仍遵循 DSH 完整人设语义，会抑制包括 home、memory 在内的其他 prompt sections。
+源码依据（只读参考 tag `dsh-v0.2.1-rc.2`）：`packages/api/session-controller/src/commands.ts:199-207`；`packages/session/session-title/src/index.ts:395-421,508-510`；`packages/session/session-persistence/src/index.ts:46-55,196`。所有资源由 Host effect 管理，创建过程不占 registry 的写队列，避免 Agent 初始化访问记忆/home 时死锁。
 
 ## Remote 契约
 
@@ -91,7 +91,7 @@ Agent 提示提供 home、实际 cwd 与共享根，并说明 Bots 互不隔离�
 
 | namespace | 方法 |
 | --- | --- |
-| `dshBot` | `list`、`get`、`catalogInfo`、`status`、`create`、`update`、`duplicate`、`delete`、`ensureHome`、`ensureBotsWorkspace`、`watch` |
+| `dshBot` | `list`、`get`、`catalogInfo`、`status`、`create`、`update`、`duplicate`、`delete`、`ensureHome`、`ensureBotsWorkspace`、`openConversation`、`watch` |
 | `dshBot.memory` | `list`、`search`、`save`、`update`、`delete`、`count` |
 | `dshBot.activity` | `list`、`markRead` |
 
@@ -111,7 +111,7 @@ wire 使用 `delete` 避开 Client namespace 的保留方法名 `remove`；Host 
 
 Host 内部 `dsh-bot/changed` 不假定能通过宿主事件白名单转发；跨 Client 更新依赖上述 stream。revision 不持久化，不是事件回放日志。
 
-Bot 历史列表以公开 session catalog 的 preset 投影确定归属，过滤 blank、subagent 和归档会话，活动只补充摘要与未读。标题优先级是 **Client live `title` → Host activity title → firstUserPreview → 本地化“新会话”**；不使用含 cwd basename 回退的 `displayTitle`。所有标题候选经过相同摘要和凭据筛查。当前 Bot 选择在初次成功选定后保持稳定，活动排序刷新不会自行切换选择。
+Bot 展示只接受 `status.mainSessionId` 指定的原生 catalog 行，复核 preset，过滤 origin=subagent、parentId 和归档记录；空白主会话也可显示。Host 活动 Remote 只聚合主会话摘要/未读；原始历史活动不删除。Agent 活动观察器对 origin、parentSession、delegationDepth 的子代理直接不注册，避免子任务预览盖过主对话。没有旧消息回读，因此迁移会话若从未有活动摘要，预览留空，下一条真实消息才更新。当前 Bot 选择与活动排序刷新仍相互独立。
 
 ## 记忆与管理工具
 
@@ -129,7 +129,7 @@ Host 合约、preset disposer、领域句柄、stream 订阅、Agent 事件/工�
 
 Host 配置集中在导出的 Schemastery `Config`；Client 刷新、分页及侧栏条数使用独立 Client `Config`，rc.2 不自动透传 Host 行的配置。记忆条数、工具 deny、人设、默认目录等属于 Bot 记录。
 
-当前 0.2.1 版本在 P1 Bot、记忆、活动和原生 UI 扩展上提供原生定时聚合、显式立即运行与原生子代理委派。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
+当前 0.2.2 版本在 P1 Bot、记忆、活动和原生 UI 扩展上提供原生定时聚合、显式立即运行与原生子代理委派。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
 
 
 ## R02：原生定时与 Bots 聚合
@@ -148,16 +148,16 @@ flowchart LR
   UI --> Edit[原生 update / delete Remote]
   Edit --> Native
   UI --> Confirm[确认完整指令 + operationId]
-  Confirm --> Executor[RunExecutor 新建 Bots 会话]
+  Confirm --> Delivery[原生 prompt 投递主会话]
 ```
 
 ### 归属与刷新
 
 独立 `dsh_bot_native_schedule` v1 的 `bindings` 只保存 `{botId, botCreatedAt, sessionId, nativeScheduleId}`。不镜像 prompt、规则或投递状态。启动、`schedule/changed` 及聚合读取会对账；原生成功而映射写入失败时，下次对账可按可靠会话证据找回。没有可靠证据的任务仍由原生页管理，不按标题、名字或 preset 前缀猜测。
 
-优先使用当前 Agent 的本包绑定；没有 live Agent 时，使用公开 `sessionController.inspect().meta` 的准确 agentPreset，与注册表的实际 presetId 匹配，并要求会话创建时间不早于 Bot 创建时间且不是子会话/fork。活跃 Agent 没有绑定时不回退旧 header；活跃绑定同样检查会话创建时间。对切换 preset 或来源不可证明的旧会话宁可不归属。已持久绑定的 Bot 被删除/同 ID 重建后不重绑；保留旧 sidecar 防串归属。原生删除后按 catalog 权威隐藏，绝不重建任务。
+优先使用当前 Agent 的本包绑定；没有 live Agent 时，使用公开 `sessionPersistence.stat().header` 的准确 agentPreset，与注册表的实际 presetId 匹配，并要求会话创建时间不早于 Bot 创建时间且不是子会话/fork。活跃 Agent 没有绑定时不回退旧 header；活跃绑定同样检查会话创建时间。对切换 preset 或来源不可证明的旧会话宁可不归属。已持久绑定的 Bot 被删除/同 ID 重建后不重绑；保留旧 sidecar 防串归属。原生删除后按 catalog 权威隐藏，绝不重建任务。
 
-Client 读取原生 catalog，以 Host sidecar 过滤；编辑/删除/历史直接走原生 `schedule.update/delete/history`。update 只传原生 ScheduleRecord 作为完整 `expected`，排除 catalog 和 sidecar 附加字段，保留原生冲突检查。未修改规则时不传 change，不改变 every 相位。原生不支持暂停，因此没有旧暂停/恢复或本包新建表单。新建请在 Bot 会话中使用原生工具。
+Client 读取原生 catalog，以 Host sidecar 过滤；编辑/删除/历史直接走原生 `schedule.update/delete/history`。update 只传原生 ScheduleRecord 作为完整 `expected`，排除 catalog 和 sidecar 附加字段，保留原生冲突检查。未修改规则时不传 change，不改变 every 相位。原生不支持暂停，因此没有旧暂停/恢复或本包新建表单。新建请打开 Bot 主会话后使用原生工具；Host 对 Bot 的 schedule_create 校验调用会话必须为主会话，旧普通会话/子代理会被拒绝，普通非 Bot 会话不受影响。原生 tool-schedule/src/index.ts:483 将任务绑定 agent.session.id，无需包装另一套 schedule 创建器。
 
 复用原生公开 `/remote` 的 codec：已挂载 `remote.schedule` 时直接复用；精简 Client 缺失时才挂载并纳入 effect。`schedule/changed` 和 `connection/reset` 触发重读；共享轮询仍作断连/前台恢复兜底。结构相等时不发布新快照，保留旧数据且不闪烁。历史明确标注“投递记录”，展示投递/计划时间、当时 prompt 及裁剪提示，分页使用原生 message cursor，单页 1–100。它不证明模型处理或任务成功。
 
@@ -165,11 +165,11 @@ Client 读取原生 catalog，以 Host sidecar 过滤；编辑/删除/历史直�
 
 “立即运行”展示完整标题、prompt，用户确认后发送 `approved=true`、已观察的 Bot 创建时间和内容、UUID operationId。Host 重查映射和当前内容，不一致拒绝；同 nativeScheduleId + operationId 只持久受理一次。直接 UI Remote 调用的显式确认是此入口的审批，不是一个供模型免审批调用的工具；后续执行中的 DSH 工具审批仍由宿主管理。
 
-保留现有 RunExecutor 的创建→核实 Bots 工作区→prompt→完成屏障→flush；每次在 Bots 工作区新开普通会话，不改变原生任务的规则或到期时间。受理回执不等于执行成功。会话标题使用“任务标题 · 时间 时区”，与原生 `session/rename` 的内容标题方式一致；不保存 `[Run now]` 等 UI 语言标签，避免中文界面出现英文操作前缀，也无须把 UI locale 写入执行协议。新的 `dsh_bot_executions` v1 仅为 explicit manual 新请求保存身份、幂等记录和执行状态；历史 delegate 行和 report 字段兼容读取；没有额度/control 表、到期游标或后台排队驱动。`slotHeld` 仅表示执行链尚未确认停止，不再作为并发配额。重启时 queued 取消，未确认的进行中执行标记 recovery_needed，均不自动重放。
+R05 将立即运行改为 `MainSessionDelivery`：幂等入库 → 核实 Bot 生日 → 打开主会话 → 保存目标 → 原生 `sessionController.prompt(mode=queue)`。`delivered` 只证明 Inbox 受理，模型执行/审批/子代理完成由原生会话管理。UI 对未确认投递显示错误，不展示成功通知。不会修改原生任务的规则、相位或到期目标。删除 RunExecutor、运行时适配器、完成屏障与超时/轮询配置，不再新建执行会话、扫描历史推断完成或取消共享会话。
 
-R03 已取消委派对 RunExecutor 的调用，见下节。立即运行仍复用普通会话执行器；它满足显式“新建一次普通 Bot 会话”的现有行为，不是第二套委派或调度服务。
+保留 `dsh_bot_executions` v1 的历史字段用于读取旧版本。新请求仍以 nativeScheduleId + operationId 幂等；不同内容重用相同操作 ID 拒绝，已经投递的请求重试不再入 Inbox。投递链路异常可能已受理时标记 recovery_needed，重启不重放；queued 重启取消，旧未确认执行保留恢复状态。卸载排空已接受的投递操作，不 cancel 用户会话。没有持久的逐消息执行调度器。
 
-Config 只剩 runTimeoutMs=900000、executorPollMs=250、stopGraceMs=5000。旧 Host 行里的 delegateReportMaxChars、额度/并发/补跑配置只忽略，不执行。P1 19 个 Remote 保留；本包新 contribution 提供 nativeSchedule aggregate/deleteLegacy/runNow、run list/get 和 automation status，共 6 个。旧 `dshBot.routine/*` 全部移除。
+P1 契约增加 openConversation 和可选 status.mainSessionId，共 20 个端点；automation contribution 仍为原有 6 个端点。旧 Host 行里的 automation 超时/额度配置不再使用。原生委派继续由 spawn 管理。共享主会话不能因历史上有 manual Run 就永久禁止委派，因此递归门禁按 header 和最新真实输入来源判断；新的人工输入可再次委派，schedule/settlement 等通知不能递归发起。
 
 ### 0.2.0 数据处理
 
@@ -179,7 +179,7 @@ Config 只剩 runTimeoutMs=900000、executorPollMs=250、stopGraceMs=5000。旧 
 
 没有应用层多 Host 锁；与宿主原生 schedule/storage 一样，以一个活动 Host 使用同一后端为支持范围。停止旧版本 Host 后升级；切回 0.2.0 可能重新启用保留的旧定时任务，不能把保留文件误称为跨版本永久停用。
 
-构建前清理生成的 lib，防止 tsc 留下已删 Dispatcher/锁的旧 JS 并混入包。R04 集成版本为 0.2.1；统一 tarball 验证入口为 `scripts/p2-e2e`，结果见 [P2 验收](acceptance/P2.md)。截图命令 `DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v021` 使用真实原生工具、every60 投递和一次手动 mock 执行，目标 `.codex/screens/v021-light.png` / `v021-dark.png`；非视觉验证 `--v021-host-only` 不输出 PNG，不能替代亮暗浏览器验收。实际结果见 [R02 验收](acceptance/P2-R02.md)。
+构建前清理生成的 lib，防止 tsc 留下已删 Dispatcher/锁的旧 JS 并混入包。R05 集成版本为 0.2.2；统一 tarball 验证入口为 `scripts/p2-e2e`，结果见 [P2 验收](acceptance/P2.md)。截图命令 `DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v022` 使用真实原生工具、every60 投递和一次手动 mock 执行，目标 `.codex/screens/v022-light.png` / `v022-dark.png`；非视觉验证 `--v022-host-only` 不输出 PNG，不能替代亮暗浏览器验收。实际结果见 [R02 验收](acceptance/P2-R02.md)。
 
 
 ## R03：原生 Bot 委派
@@ -191,11 +191,11 @@ Config 只剩 runTimeoutMs=900000、executorPollMs=250、stopGraceMs=5000。旧 
 | 决策 | 理由与边界 |
 | --- | --- |
 | 保留 Bot 身份与审批薄层 | 原生识别 Agent/preset，不识别本包 Bot 的 createdAt。工具参数严格校验；父绑定检查生日；目标审批记录 createdAt/updatedAt，批准后重验并从 status 取当前可用 preset。目标删除重建或审批期间修改均拒绝。仍使用原生 approval，不代替用户批准。 |
-| 保留后台与通知来源门禁 | 原生 delegationDepth 识别子会话，本包还需阻止显式立即运行和旧执行会话委派；依靠 header、Run 归属和跳过原生 ambient context 后的最新 user/message 的可信 source。除 agent-instructions/runtime-context/time-context/tmux-context 环境消息之外的非 user 来源（包括原生 settlement、agent-message、schedule、旧报告）不能开启 bot_delegate 链，直到新人工输入。此规则只约束本包工具，不宣称是对任意宿主插件或其他原生委派工具的全局沙箱。 |
+| 保留后台与通知来源门禁 | 原生 delegationDepth 识别子会话，本包还需阻止通知递归委派；依靠 header 和跳过原生 ambient context 后的最新 user/message 的可信 source。除 agent-instructions/runtime-context/time-context/tmux-context 环境消息之外的非 user 来源（包括原生 settlement、agent-message、schedule、旧报告）不能开启 bot_delegate 链，直到新人工输入。此规则只约束本包工具，不宣称是对任意宿主插件或其他原生委派工具的全局沙箱。 |
 | 普通委派只用原生 spawn，不自动回退 | provider 缺失、不支持独立 preset、继承父上下文或启动失败时明确失败，不偷偷创建普通会话。原生管理自己的深度上限；本包入口拒绝子会话再次委派。 |
 | 删除本包持久 reporter/runtime 和报告更新 API | 本轮采用原生在线父回报承诺。原生仅发给仍是同一对象的 live parent；idle 时 queue，busy 时 steer，父对象消失或替换时不补发。没有新建冷恢复 outbox 或第二份摘要，不再承诺本包凭据筛查/摘要长度上限。历史 report 只用于兼容读取，不重发。 |
 | 不保留需要子任务交互审批的另一条执行链 | 原生 child 的 approvalPolicy=never：需要 ask 的动作被拒绝，并非自动批准。入口审批只授权发起委派，不授权后续 ask。需要交互审批时应由用户在普通 Bot 会话处理；本工具不提供隐含模式切换。中英工具说明和审批展示均明示。 |
 | 保留有限的 live 调用去重和资源清理 | 同一 live step/rootCallId/callId 重试共享受理 promise，不维护跨重启执行账本。Agent/preset ctx.effect 取消正在启动的请求，等待启动并 dispose 未完成 activation；自然完成由原生清理。本包不接管执行、轮询或回报。 |
-| 保留 RunExecutor 供显式立即运行 | R02 的 manual runNow 仍使用它；新 RunRequest 只允许 manual，删除 delegate 入队、持久回报写入与配置。`dsh_bot_executions` v1 和旧 report schema 保留以读取已有数据。重启仍取消 queued、对未确认执行标 recovery_needed；不恢复旧委派或回报。 |
+| 显式投递也复用原生主会话 | R05 删除剩余 RunExecutor；旧 Run/report 只兼容读取，新 manual 使用主会话投递回执，不恢复旧委派或回报。 |
 
 子会话走 DSH 原生子代理目录/导航；既有 Bots 最近普通会话列表继续排除 subagent，不把它当普通会话展示。本轮没有新增 UI 或亮暗主题修改。完整运行证据与限制见 [R03 验收](acceptance/P2-R03.md)。

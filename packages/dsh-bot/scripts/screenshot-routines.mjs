@@ -9,14 +9,17 @@ const wait = async (check, label, timeout = 100_000) => {
   for (;;) { const value = await check(); if (value) return value; assert.ok(Date.now() < deadline, label); await new Promise(r => setTimeout(r, 200)); }
 };
 const recordOf = ({ sessionId, status, lastDelivery, ...record }) => record;
-/** Actual model tool invocation, native timer, persisted delivery, and manual executor. */
+/** Actual model tool invocation, native timer, persisted delivery, and main-session delivery. */
 export async function seedRoutineScreenshots({ raw, bot, mock, save, setStep = () => {} }) {
   setStep('native-seed-create-session');
   await wait(async () => (await raw('dshBot.automation/status', {})).state === 'ready', 'Aggregation readiness');
   const statuses = await raw('dshBot/status', {});
   const preset = statuses.find(r => r.id === bot.id);
-  const workspace = await raw('dshBot/ensureBotsWorkspace', {});
-  const { sessionId } = await raw('session/create', { request: { workspaceId: workspace.workspaceId, agentPreset: preset.presetId } });
+  await raw('dshBot/ensureBotsWorkspace', {});
+  const [main, same] = await Promise.all([raw('dshBot/openConversation', { botId: bot.id }), raw('dshBot/openConversation', { botId: bot.id })]);
+  assert.deepEqual(main, same); const { sessionId } = main;
+  assert.equal((await raw('dshBot/status', {})).find(row => row.id === bot.id).mainSessionId, sessionId);
+  assert.equal((await raw('session/projections', { request: { sessionId } })).values.title, bot.name);
   const accepted = await raw('session/prompt', { request: { sessionId, requestId: crypto.randomUUID(), mode: 'queue',
     content: [{ type: 'text', text: 'Create the native schedule specified by the local mock fixture.' }] } });
   assert.equal(accepted.accepted, true);
@@ -43,17 +46,24 @@ export async function seedRoutineScreenshots({ raw, bot, mock, save, setStep = (
   assert.equal(a.id, b.id);
   const completed = await wait(async () => {
     const run = await raw('dshBot.run/get', { id: a.id });
-    assert.ok(['queued', 'running', 'succeeded'].includes(run.status), JSON.stringify(run));
-    return run.status === 'succeeded' ? run : undefined;
-  }, 'Manual execution did not succeed');
+    assert.ok(['queued', 'running', 'delivered'].includes(run.status), JSON.stringify(run));
+    return run.status === 'delivered' ? run : undefined;
+  }, 'Manual prompt was not delivered');
   const projection = await raw('session/projections', { request: { sessionId: completed.sessionId } });
   const manualTitle = projection.values.title;
-  assert.ok(manualTitle?.startsWith(`${task.title} · `), String(manualTitle));
-  assert.ok(!manualTitle.includes('[Run now]'));
-  assert.notEqual(completed.sessionId, sessionId); assert.equal(completed.workspaceId, workspace.workspaceId);
+  assert.equal(manualTitle, bot.name);
+  assert.equal(completed.sessionId, sessionId);
+  await wait(async () => mock.requests.length === 4 && mock.requests.every(r => r.outcome === 'completed')
+    && !(await raw('session/list', { _request: {} })).items.find(row => row.sessionId === sessionId)?.running, 'Shared conversation mock completion');
+  assert.equal((await raw('session/list', { _request: {} })).items.filter(row => row.projections?.values?.agentPreset === preset.presetId).length, 1);
+  const renamed = await raw('dshBot/update', { id: bot.id, patch: { name: `${bot.name} renamed` } });
+  assert.equal((await raw('session/projections', { request: { sessionId } })).values.title, renamed.name);
+  await raw('session/rename', { request: { sessionId, title: 'Greeting' } });
+  await wait(async () => (await raw('session/projections', { request: { sessionId } })).values.title === renamed.name, 'Title invariant repair');
+  await raw('dshBot/update', { id: bot.id, patch: { name: bot.name } });
   assert.equal((await raw('schedule/catalog', {})).find(r => r.id === task.id).scheduledAt, task.scheduledAt);
   assert.equal(mock.requests.length, 4); assert.ok(mock.requests.every(r => r.outcome === 'completed'));
-  const receipt = { seedSource: 'native-tool-timer-and-manual-executor', visualValidation: 'NOT_RUN', realModelRequests: 0,
+  const receipt = { seedSource: 'native-tool-timer-and-main-delivery', visualValidation: 'NOT_RUN', realModelRequests: 0,
     task, history, completed, manualTitle, idempotentRunId: a.id, mockRequests: mock.requests.map(({ path, outcome }) => ({ path, outcome })) };
   save('native-seed.json', receipt);
   return { routine: task, completed: { sessionId }, receipt };
@@ -72,21 +82,23 @@ export async function captureRoutines({ browser, cookies, origin, raw, bot, outp
       await dismissFirstRunOverlays(page, overlay, 'native-entry');
       await page.getByRole('button', { name: 'Bots', exact: true }).click();
       const bots = page.locator('[data-bots-page]');
-      await bots.locator(`[role="option"][data-bot-id="${bot.id}"]`).click();
+      // Selecting with arrows keeps management visible; activating a Bot opens its main conversation.
+      await bots.getByRole('listbox').press('Home');
+      await bots.locator(`[data-bot-detail="${bot.id}"]`).waitFor();
       const detail = bots.locator(`[data-routine-panel="${bot.id}"]`);
       const capture = async (surface, panel) => {
-        setStep(`v021-${language}-${theme}-${surface}`);
+        setStep(`v022-${language}-${theme}-${surface}`);
         await panel.locator(`[data-routine-id="${routine.id}"]`).getByRole('button', { name: t['routine.history'], exact: true }).click();
         await panel.locator('[data-delivery-id]').first().waitFor();
         await panel.scrollIntoViewIfNeeded(); await page.evaluate(() => document.fonts.ready);
         const evidence = await panel.evaluate(el => ({ text: el.innerText, tasks: el.querySelectorAll('[data-routine-id]').length, deliveries: el.querySelectorAll('[data-delivery-id]').length }));
         assert.equal(evidence.tasks, 1); assert.ok(evidence.deliveries >= 1); assert.ok(evidence.text.includes(t['native.deliveryHint']));
         const bodyTheme = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base').trim());
-        const file = `v021-${language}-${theme}-${surface}.png`;
+        const file = `v022-${language}-${theme}-${surface}.png`;
         await page.screenshot({ path: resolve(output, file), fullPage: true, animations: 'disabled' });
         shots.push({ file, language, theme, surface, bodyTheme, evidence });
         if (language === 'zh') { mkdirSync(resolve(root, '.codex/screens'), { recursive: true });
-          copyFileSync(resolve(output, file), resolve(root, '.codex/screens', surface === 'overview' ? `v021-${theme}.png` : `v021-${theme}-detail.png`)); }
+          copyFileSync(resolve(output, file), resolve(root, '.codex/screens', surface === 'detail' ? `v022-${theme}.png` : `v022-${theme}-schedules.png`)); }
       };
       await capture('detail', detail);
       await bots.getByRole('tab', { name: t['routine.title'], exact: true }).click();

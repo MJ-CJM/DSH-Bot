@@ -40,7 +40,7 @@ describe('background refresh across mounted Bot surfaces', () => {
     expect(readBotsLayout().sessionIds).toEqual([]);
     await app.setSessions({ phase: 'ready', ids: sessions.map((session) => session.id),
       byId: Object.fromEntries(sessions.map((session) => [session.id, session])) });
-    expect(readBotsLayout()).toMatchObject({ sessionIds: ['new', 'old'], detailStatuses: [] });
+    expect(readBotsLayout()).toMatchObject({ sessionIds: ['new'], detailStatuses: [] });
     const rows = [...app.container.querySelectorAll('[data-bot-detail] [data-session-id]')];
     const commits = app.renderCount();
     const mutations: MutationRecord[] = [];
@@ -50,7 +50,7 @@ describe('background refresh across mounted Bot surfaces', () => {
       await act(async () => actions.onRefresh());
       await act(async () => actions.onRefresh());
       expect(app.renderCount()).toBe(commits);
-      expect(readBotsLayout()).toMatchObject({ sessionIds: ['new', 'old'], detailStatuses: [] });
+      expect(readBotsLayout()).toMatchObject({ sessionIds: ['new'], detailStatuses: [] });
       const nextRows = [...app.container.querySelectorAll('[data-bot-detail] [data-session-id]')];
       nextRows.forEach((row, index) => { expect(row).toBe(rows[index]); });
       expect([...mutations, ...observer.takeRecords()]).toEqual([]);

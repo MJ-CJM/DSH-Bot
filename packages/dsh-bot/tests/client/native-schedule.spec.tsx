@@ -62,7 +62,7 @@ describe('R02 shipped native task Client', () => {
       expect(app.remote.routine.runNow).not.toHaveBeenCalled();
       const dialog = document.querySelector('dialog'); if (!dialog) throw new Error('Missing dialog');
       expect(dialog.textContent).toContain('Full native instruction');
-      app.remote.routine.runNow.mockResolvedValue({ ok: true, value: {} as never });
+      app.remote.routine.runNow.mockResolvedValue({ ok: true, value: { status: 'delivered' } as never });
       await click(button(dialog, t['routine.confirm']));
       expect(app.remote.routine.runNow).toHaveBeenCalledWith('schedule-test', expect.any(String),
         { title: 'Native example', prompt: 'Full native instruction', botCreatedAt: 1 }, true);

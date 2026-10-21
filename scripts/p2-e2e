@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** R04: install the release tarball in fresh profiles; native schedule and spawn only. */
+/** R05: install the release tarball in fresh profiles; native schedule and spawn only. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -11,20 +11,20 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 assert.equal(process.cwd(), root, 'Run scripts/p2-e2e from the repository root');
 const home = resolve(root, '.dsh-dev');
 assert.ok(!process.env.DSH_HOME || process.env.DSH_HOME === home, 'Only repository .dsh-dev is allowed');
-const artifact = resolve(root, 'dist/dsh-bot-0.2.1.tgz');
+const artifact = resolve(root, 'dist/dsh-bot-0.2.2.tgz');
 const manifest = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'), 'utf8'));
-assert.equal(manifest.version, '0.2.1');
+assert.equal(manifest.version, '0.2.2');
 const sha256 = data => createHash('sha256').update(data).digest('hex');
-const runDir = resolve(home, 'p2/r04', `${Date.now()}-${process.pid}`);
+const runDir = resolve(home, 'p2/r05', `${Date.now()}-${process.pid}`);
 await mkdir(runDir, { recursive: true });
-await writeFile(resolve(home, 'p2/r04/latest-run.txt'), `${runDir}\n`);
+await writeFile(resolve(home, 'p2/r05/latest-run.txt'), `${runDir}\n`);
 const summary = { status: 'FAIL', runDir, artifact: { path: relative(root, artifact), sha256: sha256(await readFile(artifact)) },
   isolation: 'Fresh profiles/storage/session/agents roots under required existing repository .dsh-dev; not an empty DSH_HOME.',
   visualValidation: 'NOT_RUN', scenarios: [], checks: [], mockRequests: 0, realModelRequests: 0 };
 const scenarios = [
-  { name: 'native', args: ['scripts/screenshot.mjs', '--v021-host-only'], result: 'summary.json', status: 'HOST_ONLY_PASS', checks: [
+  { name: 'native', args: ['scripts/screenshot.mjs', '--v022-host-only'], result: 'summary.json', status: 'HOST_ONLY_PASS', checks: [
     ['model_schedule_create_and_bot_binding', 'native-seed.json'], ['native_every60_delivery', 'native-seed.json'],
-    ['manual_new_session_completed_idempotent_title', 'native-seed.json'], ['installed_client_aggregate_update_delete_push', 'native-client.json'],
+    ['manual_main_session_delivery_idempotent_pinned_title', 'native-seed.json'], ['installed_client_aggregate_update_delete_push', 'native-client.json'],
     ['legacy_020_readonly_no_crash', 'legacy-compatibility.json'],
   ] },
   { name: 'delegate', args: ['packages/dsh-bot/tests/delegate-profile.mts'], result: 'result.json', status: 'PASS', checks: [
@@ -55,8 +55,8 @@ async function files(dir, base = dir) {
   return result.sort();
 }
 const packedRoot = resolve(unpack, 'package'); const packedFiles = await files(packedRoot);
-assert.equal(JSON.parse(await readFile(resolve(packedRoot, 'package.json'))).version, '0.2.1');
-assert.ok(!packedFiles.some(p => /(?:dispatcher|delegate\/(?:reporter|runtime)|automation\/(?:lock|rules))\./.test(p)), 'No retired generated modules');
+assert.equal(JSON.parse(await readFile(resolve(packedRoot, 'package.json'))).version, '0.2.2');
+assert.ok(!packedFiles.some(p => /(?:dispatcher|delegate\/(?:reporter|runtime)|automation\/(?:lock|rules|executor|runtime|barrier))\./.test(p)), 'No retired generated modules');
 for (const scenario of scenarios) {
   console.log(`START ${scenario.name} (loopback mock only)`);
   const outputDir = resolve(runDir, scenario.name);
@@ -69,7 +69,7 @@ for (const scenario of scenarios) {
     assert.equal(result.status, scenario.status); assert.equal(result.realModelRequests, 0);
     const installedRoot = resolve(home, 'profiles', result.profile, 'node_modules/dsh-bot');
     const installed = JSON.parse(await readFile(resolve(installedRoot, 'package.json'), 'utf8'));
-    assert.equal(installed.version, '0.2.1');
+    assert.equal(installed.version, '0.2.2');
     const audit = [];
     for (const file of packedFiles) {
       const packed = await readFile(resolve(packedRoot, file)); const installedBytes = await readFile(resolve(installedRoot, file));

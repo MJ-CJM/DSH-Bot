@@ -58,8 +58,9 @@ interface WorkspaceLabel { path: string; title: string }
  * Activity only enriches those rows; a retained projection is not a row. */
 export function botSessionRows(botId: string, entries: readonly BotCatalogEntry[], sessions: SessionListState,
   activities: readonly ActivitySession[], archived: readonly SessionId[] = [], workspaces: readonly WorkspaceLabel[] = []): SessionRow[] {
-  const presetId = entries.find((entry) => entry.bot.id === botId)?.status?.presetId;
-  if (!presetId) return [];
+  const status = entries.find((entry) => entry.bot.id === botId)?.status;
+  const presetId = status?.presetId;
+  if (!presetId || !status?.mainSessionId) return [];
   const hidden = new Set(archived);
   const summaries = new Map(activities.filter((item) => item.botId === botId).map((item) => [item.sessionId, item]));
   const current = Object.values(sessions.byId).filter((session) => (session.retainedBy?.mainView ?? 0) > 0);
@@ -67,7 +68,7 @@ export function botSessionRows(botId: string, entries: readonly BotCatalogEntry[
   const knownContext = workspaces.some((workspace) => workspace.path === currentPath);
   return sessions.ids.flatMap((id): SessionRow[] => {
     const session = sessions.byId[id];
-    if (!session || session.blank || session.origin === 'subagent' || hidden.has(id) || session.projectionValues?.agentPreset !== presetId) return [];
+    if (!session || id !== status.mainSessionId || session.parentId || session.origin === 'subagent' || hidden.has(id) || session.projectionValues?.agentPreset !== presetId) return [];
     const activity = summaries.get(id);
     const workspaceTitle = knownContext && session.cwd !== currentPath
       ? workspaces.find((workspace) => workspace.path === session.cwd)?.title.trim() : undefined;

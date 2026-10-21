@@ -58,7 +58,7 @@ async function fixture(title: unknown = 'Conversation title') {
   const plainPreset = () => ({ key: {} });
   const agent = (botId = 'alpha', botCreatedAt = 100, options: { parent?: object; managed?: boolean; realSession?: boolean } = {}) => {
     const sessionId = SessionId(`activity-fixture-${++next}`);
-    const session = options.realSession ? Session.create(sessionId) : { id: sessionId } as Session;
+    const session = options.realSession ? Session.create(sessionId) : { id: sessionId, header: { id: sessionId, createdAt: 100, isSeeded: false } } as Session;
     const payload = { id: session.id, session, ctx: owner };
     const subject = payload as unknown as Agent;
     let parentBinding = options.parent ? bindScopeParent(subject, options.parent) : undefined;
@@ -93,6 +93,13 @@ async function withFixture(run: (value: Awaited<ReturnType<typeof fixture>>) => 
 }
 
 describe('Bot activity tracking through public scoped session events', () => {
+  it.each([{ origin: 'subagent' }, { parentSession: 'parent' }, { delegationDepth: 1 }])('does not register activity for child metadata %s', async header => withFixture(async ({ owner, recordActivity }) => {
+    const child = { session: { id: 'child', header }, ctx: owner } as unknown as Agent;
+    const dispose = registerActivityTracking(child, 'alpha', 100, { recordActivity });
+    owner.emit('session/event', child.session, message('assistant', [{ type: 'text', text: 'Child result' }]));
+    expect(recordActivity).not.toHaveBeenCalled(); dispose();
+  }));
+
   it('uses the captured Host sink when the real Session Agent context cannot inject dshBots', async () => withFixture(async ({
     ctx, owner, recordActivity,
   }) => {

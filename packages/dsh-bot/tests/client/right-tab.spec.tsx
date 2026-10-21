@@ -97,7 +97,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
 
   it.each(['source', 'built'] as const)('opens the latest eligible Host session after markRead and follows only after destination commit (%s)', async (implementation) => {
     const now = Date.now();
-    const app = await mount('en', (remote) => { remote.data.activities = [activity('older', now - 60_000), activity('latest', now), activity('evicted', now + 50_000)]; }, implementation === 'built');
+    const app = await mount('en', (remote) => { remote.data.activities = [activity('older', now - 60_000), activity('latest', now), activity('evicted', now + 50_000)]; remote.data.statuses = [{ id: 'alpha-bot', presetId: 'host-selected/alpha-bot', mainSessionId: 'latest', preset: { state: 'ok' } }]; }, implementation === 'built');
     await setSessions(app, [session('older', now - 60_000), session('latest', now), session('archived', now + 1_000),
       session('subagent', now + 2_000, { origin: 'subagent' }),
       session('other-bot', now + 3_000, { projectionValues: { agentPreset: 'host-selected/other-bot' } })]);
@@ -136,7 +136,8 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     await app.setRightSession('source-session');
     const tab = await app.mountRightTab();
     await click(option(tab));
-    expect(app.createSession).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'bots-workspace', agentPreset: 'host-custom/preset-v2' });
+    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(app.remote.methods.activity.markRead).not.toHaveBeenCalled();
@@ -178,7 +179,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     await click(option(tab));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     await click(button(tab, zh.ui['actions.retry']));
-    app.createSession.mockRejectedValueOnce(new Error('private workspace path'));
+    app.remote.methods.openConversation.mockRejectedValueOnce(new Error('private workspace path'));
     await click(option(tab));
     expect(tab.querySelector('[role="alert"]')?.textContent).toContain(zh.ui['activity.openError']);
     expect(tab.textContent).not.toContain('private workspace path');

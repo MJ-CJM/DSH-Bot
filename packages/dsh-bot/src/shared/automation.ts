@@ -39,9 +39,9 @@ export const routineRecordSchema = routineCreateSchema.extend({
   createdAt: automationTimeSchema, updatedAt: automationTimeSchema,
 }).refine((r) => r.updatedAt >= r.createdAt && (r.enabled || r.nextRunAt === undefined)
   && (r.deletedAt === undefined || (!r.enabled && r.deletedAt >= r.createdAt && r.deletedAt <= r.updatedAt)), 'Invalid routine lifecycle');
-export const runStatusSchema = z.enum(['queued', 'running', 'waiting_approval', 'succeeded', 'failed',
+export const runStatusSchema = z.enum(['queued', 'running', 'waiting_approval', 'delivered', 'succeeded', 'failed',
   'cancelled', 'timed_out', 'skipped', 'recovery_needed']);
-export const terminalRunStatuses = ['succeeded', 'failed', 'cancelled', 'timed_out', 'skipped'] as const;
+export const terminalRunStatuses = ['delivered', 'succeeded', 'failed', 'cancelled', 'timed_out', 'skipped'] as const;
 export const isTerminalRun = (status: RunStatus) => (terminalRunStatuses as readonly string[]).includes(status);
 const safeSummary = z.string().max(8192).refine((value) => !hasCredential(value), 'Summary must be screened');
 export const reportMessageSchema = z.strictObject({

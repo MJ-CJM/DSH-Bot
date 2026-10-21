@@ -21,7 +21,7 @@ import { BotMemoryService } from './memory/service.js';
 import type { ActivityListResult, ActivitySession } from '../shared/activity.js';
 import { activitySessionIdSchema } from '../shared/activity.js';
 import type { ActivityStore } from './store.js';
-import { Config as AutomationConfig } from './automation/config.js';
+import type { MainSessions } from './main-session.js';
 
 export interface Config {
   seedExamples: boolean;
@@ -36,14 +36,12 @@ export interface Config {
   botManagePersonaPreviewChars: number;
   activityMaxSessionsPerBot: number;
   activityMaxSessionsTotal: number;
-  automation?: Partial<AutomationConfig>;
 }
 const activityLimit = (name: string, fallback: number) => Schema.transform(Schema.number(), (value) => {
   if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${name} must be a positive safe integer`);
   return value;
 }).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
-  automation: Schema.object({ ...AutomationConfig.dict }).default({}),
   activityMaxSessionsPerBot: activityLimit('activityMaxSessionsPerBot', 50),
   activityMaxSessionsTotal: activityLimit('activityMaxSessionsTotal', 1000),
   seedExamples: Schema.boolean().default(true),
@@ -103,6 +101,7 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   static inject = ['storageDomain', 'agentPresets'];
   static Config = Config;
   readonly config: Config;
+  mainSessions?: MainSessions;
   private stores!: Awaited<ReturnType<typeof openBotStores>>;
   private readonly leases = new Map<string, Lease>();
   private readonly activating = new Map<string, BotRecord>();
@@ -337,7 +336,19 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   }
 
   async listActivity(): Promise<ActivityListResult> {
-    try { return await this.enqueue(() => this.stores.activities.list()); }
+    try {
+      const data = await this.enqueue(() => this.stores.activities.list());
+      const mainSessions = this.mainSessions;
+      if (!mainSessions) return data;
+      const bots = await this.list();
+      const mains = await Promise.all(bots.map(async bot => ({ bot, main: await mainSessions.find(bot.id) })));
+      const sessions = data.sessions.filter(row => mains.some(({ bot, main }) => bot.id === row.botId && main?.sessionId === row.sessionId));
+      return { sessions, bots: bots.map(bot => {
+        const latest = sessions.find(row => row.botId === bot.id);
+        return { botId: bot.id, lastActivityAt: latest?.updatedAt ?? 0, unreadCount: latest?.unread ? 1 : 0,
+          ...(latest ? { latest: { ...latest.lastMessage, sessionId: latest.sessionId } } : {}) };
+      }) };
+    }
     catch (error) {
       if (error instanceof DshBotError && (error.code === 'store/unavailable' || error.code === 'bot/unavailable')) {
         return { sessions: [], bots: [] };
@@ -467,7 +478,24 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   }
 
   @Remote
-  async status(): Promise<BotStatus[]> { return this.enqueue(() => this.statusRows()); }
+  async status(): Promise<BotStatus[]> {
+    const rows = await this.enqueue(() => this.statusRows());
+    const mainSessions = this.mainSessions;
+    if (!mainSessions) return rows;
+    return Promise.all(rows.map(async row => {
+      const main = await mainSessions.find(row.id);
+      return { ...row, ...(main ? { mainSessionId: main.sessionId } : {}) };
+    }));
+  }
+
+  @Remote
+  async openConversation(botId: string) {
+    await this.waitUntilReady();
+    if (!this.mainSessions) throw new DshBotError('bot/unavailable', 'Main sessions are starting');
+    const result = await this.mainSessions.open(parseInput(botIdSchema, botId));
+    this.invalidate();
+    return result;
+  }
 
   @Remote
   async get(id: string): Promise<BotRecord> { return this.enqueue(() => this.stores.bots.get(id)); }
@@ -528,7 +556,7 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
 
   @Remote
   async update(id: string, patch: BotPatch): Promise<BotRecord> {
-    return this.enqueue(async () => {
+    const updated = await this.enqueue(async () => {
       const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
       const previous = this.stores.bots.get(id);
       const candidate = parseInput(botSchema, { ...previous, ...fields });
@@ -537,6 +565,8 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       this.changed(id, 'update');
       return record;
     }, true);
+    await this.mainSessions?.find(id);
+    return updated;
   }
 
   @Remote

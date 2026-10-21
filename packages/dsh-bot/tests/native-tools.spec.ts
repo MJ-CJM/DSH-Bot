@@ -1,3 +1,4 @@
+import { registerAutomationGuard } from '../lib/host/delegate/guard.js';
 import { NativeSchedules, bindingDomain, legacyDomain } from '../lib/host/native-schedule/service.js';
 import { NativeScheduleRemote } from '../lib/host/automation/remote.js';
 import { openAutomationStores } from '../lib/host/automation/store.js';
@@ -54,6 +55,7 @@ async function setup(ctx: Context, root: string) {
   ctx.provide('sessionController', { resolveAgent: resolve, inspect: async (id: string) => { const meta = headers.get(id); if (!meta) throw new Error('missing'); return { meta }; } } as unknown as Context['sessionController']);
   // Session persistence is a lifecycle double; schedule records use real JSON.
   ctx.provide('sessionPersistence', {
+    stat: async (id: string) => headers.has(id) ? { header: headers.get(id) } : undefined,
     create: async () => ({ append: async () => {}, flush: async () => {}, close: async () => {} }),
   } as unknown as Context['sessionPersistence']);
   await ctx.plugin(ScheduleService, {}).await();
@@ -187,6 +189,20 @@ describe('R01 native scheduling with real Agents, ToolRuntime, schedule plugin a
 
 
 describe('R02 native task association and retired storage', () => {
+  it('allows native schedule creation only from the authoritative main Bot conversation', async () => fixture(async f => {
+    const preset = await f.preset('standard');
+    const main = await preset.create(); const legacy = await preset.create();
+    f.ctx.dshBots.mainSessions = {} as NonNullable<Context['dshBots']['mainSessions']>;
+    f.ctx.dshBots.get = async () => preset.bot;
+    f.ctx.dshBots.openConversation = vi.fn(async () => ({ sessionId: main.agent.session.id }));
+    registerAutomationGuard(f.ctx, {} as Parameters<typeof registerAutomationGuard>[1]);
+    const args = { title: 'Main only', prompt: 'Task', every_seconds: 3600 };
+    expect((await f.execute(legacy.agent, 'schedule_create', args)).isError).toBe(true);
+    expect(await f.ctx.schedule.catalog()).toEqual([]);
+    expect((await f.execute(main.agent, 'schedule_create', args)).isError).toBe(false);
+    expect((await f.ctx.schedule.catalog()).map(row => row.sessionId)).toEqual([main.agent.session.id]);
+  }));
+
   it('maps real native tool creation on changed, persists, follows native edits/deletion and refuses same-ID replacement', async () => fixture(async f => {
     const p = await f.preset('standard'); const { agent } = await p.create();
     const native = new NativeSchedules(f.ctx, f.ctx.dshBots); await native.start();
