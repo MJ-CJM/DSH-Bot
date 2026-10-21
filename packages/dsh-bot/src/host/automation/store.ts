@@ -3,11 +3,11 @@ import type { Context } from '@deepseek-ai/cordis';
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain';
 import { z } from 'zod';
 import { automationIdSchema, automationTimeSchema, revisionSchema, isTerminalRun, runListSchema,
-  runRecordSchema, runReportSchema, runRequestSchema, type RunRecord, type RunRequest, type RunStatus } from '../../shared/automation.js';
+  runRecordSchema, runRequestSchema, type RunRecord, type RunRequest, type RunStatus } from '../../shared/automation.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { AutomationError, parse, unavailable } from './errors.js';
 
-/** Fresh manual/delegate executions only. The retired v1 domain is never resumed. */
+/** New manual executions only; historical delegate rows remain readable. */
 export const executionDomain = defineDomain({ name: 'dsh_bot_executions', version: 1,
   tables: { runs: domainTable(runRecordSchema) } });
 export interface AutomationOptions {
@@ -40,8 +40,7 @@ async function bot(s: State, id: string, expected?: number) {
   return value;
 }
 export function runDedupeKey(request: RunRequest) {
-  return JSON.stringify(request.trigger === 'manual' ? ['manual', request.nativeScheduleId, request.operationId]
-    : ['delegate', request.originSessionId, request.operationId]);
+  return JSON.stringify(['manual', request.nativeScheduleId, request.operationId]);
 }
 const transitions: Record<RunStatus, readonly RunStatus[]> = {
   queued: ['cancelled', 'skipped'], running: ['waiting_approval', 'succeeded', 'failed', 'cancelled', 'timed_out', 'recovery_needed'],
@@ -55,12 +54,11 @@ export const runProgressSchema = z.strictObject({
   workspaceId: runRecordSchema.shape.workspaceId, cwd: runRecordSchema.shape.cwd,
   inputMessageId: runRecordSchema.shape.inputMessageId, inputTurn: runRecordSchema.shape.inputTurn,
   lastEventSeq: runRecordSchema.shape.lastEventSeq, execution: runRecordSchema.shape.execution, summary: runRecordSchema.shape.summary,
-  errorCode: runRecordSchema.shape.errorCode, report: runReportSchema.optional(), skipReason: runRecordSchema.shape.skipReason,
+  errorCode: runRecordSchema.shape.errorCode, skipReason: runRecordSchema.shape.skipReason,
 }).refine((v) => Object.values(v).every((x) => x !== undefined), 'Undefined progress field');
 export class RunService {
   constructor(private readonly s: State) {}
   forSession(id: string) { return read(() => allRuns(this.s).find(r => r.sessionId === id)); }
-  reportable() { return read(() => allRuns(this.s).filter(r => r.trigger === 'delegate' && isTerminalRun(r.status) && (!r.report || r.report.state === 'pending'))); }
   get(id: string) { return read(() => run(this.s, parse(automationIdSchema, id))); }
   list(options: z.input<typeof runListSchema> = {}): RunRecord[] {
     const f = parse(runListSchema, options);
@@ -76,35 +74,31 @@ export class RunService {
       const prior = allRuns(this.s).find(r => r.dedupeKey === key);
       if (prior) {
         if (prior.botId !== fields.botId || prior.snapshot.prompt !== fields.prompt || prior.snapshot.title !== fields.title
-          || (fields.trigger === 'manual' && prior.botCreatedAt !== fields.botCreatedAt)
-          || (fields.trigger === 'delegate' && (prior.originBotId !== fields.originBotId || prior.originBotCreatedAt !== fields.originBotCreatedAt))) throw conflict();
+          || prior.botCreatedAt !== fields.botCreatedAt) throw conflict();
         return prior;
       }
-      const { bot: target, presetId } = await bot(this.s, fields.botId, fields.trigger === 'manual' ? fields.botCreatedAt : undefined);
-      if (fields.trigger === 'delegate') await bot(this.s, fields.originBotId, fields.originBotCreatedAt);
+      const { bot: target, presetId } = await bot(this.s, fields.botId, fields.botCreatedAt);
       const now = stamp(this.s);
       return putRun(this.s, runRecordSchema.parse({ id: randomUUID(), schemaVersion: 1, revision: 1,
         dedupeKey: key, trigger: fields.trigger, operationId: fields.operationId,
-        ...(fields.trigger === 'manual' ? { nativeScheduleId: fields.nativeScheduleId } : {}),
+        nativeScheduleId: fields.nativeScheduleId,
         botId: target.id, botCreatedAt: target.createdAt,
-        snapshot: { title: fields.title, prompt: fields.prompt, timeZone: fields.trigger === 'manual' ? fields.timeZone : 'UTC', presetId, botUpdatedAt: target.updatedAt },
+        snapshot: { title: fields.title, prompt: fields.prompt, timeZone: fields.timeZone, presetId, botUpdatedAt: target.updatedAt },
         requestedAt: now, updatedAt: now, status: 'queued', step: 'queued', decision: 'run',
-        sessionId: `session-${randomUUID()}`, requestId: randomUUID(), slotHeld: false, depth: fields.trigger === 'delegate' ? 1 : 0,
-        ...(fields.trigger === 'delegate' ? { originSessionId: fields.originSessionId, originBotId: fields.originBotId, originBotCreatedAt: fields.originBotCreatedAt } : {}),
+        sessionId: `session-${randomUUID()}`, requestId: randomUUID(), slotHeld: false, depth: 0,
       }));
     });
   }
   async reserve(id: string): Promise<RunRecord> {
     const key = parse(automationIdSchema, id);
     return write(this.s, async () => {
-      const current = run(this.s, key); if (current.status !== 'queued') return current;
+      const current = run(this.s, key); if (current.status !== 'queued' || current.trigger !== 'manual') return current;
       const now = stamp(this.s, current.updatedAt);
       try {
         await bot(this.s, current.botId, current.botCreatedAt);
-        if (current.originBotId) await bot(this.s, current.originBotId, current.originBotCreatedAt);
       } catch {
         return putRun(this.s, { ...current, status: 'cancelled', step: 'settled', endedAt: now, updatedAt: now,
-          revision: current.revision + 1, errorCode: 'delegate/identity-unavailable' });
+          revision: current.revision + 1, errorCode: 'execution/identity-unavailable' });
       }
       return putRun(this.s, { ...current, status: 'running', step: 'reserved', slotHeld: true, admittedAt: now,
         revision: current.revision + 1, updatedAt: now });
@@ -132,17 +126,6 @@ export class RunService {
         ...(target === 'skipped' ? { decision: 'skip' as const } : {}),
         ...(target === 'recovery_needed' ? { step: 'unknown' as const } : {}),
       });
-    });
-  }
-  async updateReport(id: string, report: z.input<typeof runReportSchema>, expectedRevision: number): Promise<RunRecord> {
-    const key = parse(automationIdSchema, id); const fields = parse(runReportSchema, report); const expected = parse(revisionSchema, expectedRevision);
-    return write(this.s, async () => {
-      const current = run(this.s, key);
-      if (current.revision !== expected || !isTerminalRun(current.status) || current.trigger !== 'delegate') throw conflict();
-      if (current.report?.state === 'sent' || (current.report?.messageId && (current.report.messageId !== fields.messageId
-        || JSON.stringify(current.report.message) !== JSON.stringify(fields.message)))
-        || fields.attempts < (current.report?.attempts ?? 0)) throw conflict();
-      return putRun(this.s, { ...current, report: fields, revision: current.revision + 1, updatedAt: stamp(this.s, current.updatedAt) });
     });
   }
 }

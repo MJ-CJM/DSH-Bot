@@ -7,8 +7,6 @@ import { dshExecutorRuntime } from './runtime.js';
 import { openAutomationStores } from './store.js';
 import { NativeScheduleRemote, RunRemote } from './remote.js';
 import { NativeSchedules } from '../native-schedule/service.js';
-import { DelegateReporter } from '../delegate/reporter.js';
-import { dshReportRuntime } from '../delegate/runtime.js';
 import { registerAutomationGuard } from '../delegate/guard.js';
 import { AutomationError } from './errors.js';
 declare module '@deepseek-ai/cordis' {
@@ -16,18 +14,17 @@ declare module '@deepseek-ai/cordis' {
     dshBotExecutor: RunExecutor;
     dshBotAutomationStores: Awaited<ReturnType<typeof openAutomationStores>>;
     dshBotSubmitter: { submit(request: RunRequest): ReturnType<Awaited<ReturnType<typeof openAutomationStores>>['runs']['enqueue']> };
-    dshBotReporter: DelegateReporter;
   }
 }
 /** Explicit requests only: no clock, queue driver, quota, catch-up or Host lease. */
 export async function startAutomation(ctx: Context, bots: DshBotRegistry, config: Partial<Config>) {
   const runtime = dshExecutorRuntime(ctx, bots);
-  let executor: RunExecutor | undefined; let reporter: DelegateReporter | undefined;
+  let executor: RunExecutor | undefined;
   let stopped = false; const admissions = new Set<Promise<unknown>>();
   const native = new NativeSchedules(ctx, bots);
   const close = async () => {
     stopped = true; await Promise.allSettled([...admissions]);
-    await reporter?.close(); await executor?.close(); await native.close();
+    await executor?.close(); await native.close();
   };
   const stores = await openAutomationStores(ctx, { resolveBot: runtime.resolveBot, beforeClose: close });
   try {
@@ -44,8 +41,6 @@ export async function startAutomation(ctx: Context, bots: DshBotRegistry, config
     };
     ctx.provide('dshBotExecutor', executor); ctx.provide('dshBotAutomationStores', stores); ctx.provide('dshBotSubmitter', { submit });
     registerAutomationGuard(ctx, stores.runs);
-    reporter = new DelegateReporter(ctx, stores, dshReportRuntime(ctx, bots), () => {}, config);
-    ctx.provide('dshBotReporter', reporter);
     await native.start();
     new NativeScheduleRemote(ctx, native, submit); new RunRemote(ctx, stores.runs);
     return { executor, stores, native, close };

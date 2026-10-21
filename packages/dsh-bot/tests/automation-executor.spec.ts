@@ -58,7 +58,7 @@ async function facility(test: (f: {
 describe('RunExecutor with real durable automation stores', () => {
   it('ignores retired policy settings from a 0.2.0 Host configuration', () => {
     expect(configSchema.parse({ maxConcurrentRuns: 2, maxRunsPerBotPerDay: 20, quotaTimeZone: 'UTC', catchUpMaxAgeMs: 86400000 }))
-      .toEqual({ runTimeoutMs: 900000, executorPollMs: 250, stopGraceMs: 5000, delegateReportMaxChars: 4000 });
+      .toEqual({ runTimeoutMs: 900000, executorPollMs: 250, stopGraceMs: 5000 });
   });
   it('reserves once, persists actual create ID and joins concurrent execution, then does not replay', async () => facility(async f => {
     const [a, b] = await Promise.all([f.executor.execute(f.run.id), f.executor.execute(f.run.id)]);

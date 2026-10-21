@@ -12,8 +12,8 @@
     "bot_manage.approval.selfUpdate": "\n警告：正在修改当前 Bot 自身！修改 tools.deny 可能解除后续会话的工具限制；当前 live Agent 仍保留原有限制。",
     "bot_manage.approval.selfDelete": "\n警告：正在删除当前 Bot 自身！当前 live Agent 仍保留原有限制；缺少此 Bot 预设时，无法新建或冷恢复它的会话。",
     "bot_manage.approval.combined": "{operation}\n其他审批策略：{upstream}",
-    "bot_delegate.description": "经审批将任务委派给 Bot 的新后台会话。立即返回受理结果 runId 和预分配 sessionId；最终会话 ID 与结果以 Run 记录为准。仅传递 task，完成后向当前会话排入一次摘要。后台会话和回报轮次不能再委派。",
-    "bot_delegate.approval": "委派给 {target}，在共享 Bots 工作区执行。仅传递以下任务：{task}\n使用目标 Bot 的权限；完成后向当前会话排入摘要，触发额外模型轮次。",
+    "bot_delegate.description": "经审批通过原生 spawn 委派给 Bot。只传递 task，不复制父会话历史。返回 childId 与 accepted 受理状态，不代表完成。原生结果回报送给同一在线父会话（忙时 steer）；父会话冷恢复不补发。子任务需要审批的操作会被拒绝。后台会话和通知轮次不能再委派。",
+    "bot_delegate.approval": "委派给 {target}，以原生子代理在当前工作目录执行。仅传递以下任务：{task}\n使用目标 Bot preset 和原生委派权限，需要审批的操作会被拒绝。结果送到当前在线会话，可能 steer 或触发新模型轮次；父会话被替换后不补发。",
     "schedule.guidance": "定时任务用 schedule_*。"
   },
   "ui": {

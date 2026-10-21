@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { createUserMessage, MessageId, ToolCallId } from '@deepseek-ai/dsh-llm';
+import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { bindScopeParent, createScope, scopeTarget } from '@deepseek-ai/dsh-scope';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
 import Storage from '@deepseek-ai/dsh-storage';
@@ -16,11 +16,9 @@ import ApprovalService from '@deepseek-ai/dsh-user-approval';
 import { describe, expect, it, vi } from 'vitest';
 import * as botContext from '../lib/host/bot-context.js';
 import { Config as RegistryConfig } from '../lib/host/registry.js';
-import { openAutomationStores } from '../lib/host/automation/store.js';
+import { executionDomain, openAutomationStores } from '../lib/host/automation/store.js';
 import { registerAutomationGuard } from '../lib/host/delegate/guard.js';
-import { DelegateReporter, reportMessage, type ReportTarget } from '../lib/host/delegate/reporter.js';
-import { delegateOperationId } from '../lib/host/delegate/tool.js';
-import { dshReportRuntime } from '../lib/host/delegate/runtime.js';
+import { runRecordSchema, type RunRequest } from '../lib/shared/automation.js';
 import { botCreateSchema, botSchema } from '../lib/shared/schema.js';
 
 async function fixture(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<void>) {
@@ -38,15 +36,21 @@ async function setup(ctx: Context, root: string) {
   })]));
   const get = async (id: string) => { const bot = bots.get(id); if (!bot) throw new Error('missing'); return structuredClone(bot); };
   ctx.provide('dshBots', { config: RegistryConfig({}), presetBot: (id: string) => bots.get(id), get,
+    status: async () => [...bots.values()].map(bot => ({ id: bot.id, presetId: `custom-${bot.id}`, preset: { state: 'ok' } })),
     ensureHome: async () => ({ path: join(root, 'bots/alpha/home') }) } as unknown as Context['dshBots']);
   ctx.provide('llm', {} as Context['llm']); ctx.provide('agents', {} as Context['agents']);
   const resolveBot = async (id: string) => ({ bot: await get(id), presetId: `bot-${id}` });
   const stores = await openAutomationStores(ctx, { resolveBot });
   ctx.provide('dshBotAutomationStores', stores);
-  ctx.provide('dshBotSubmitter', { submit: (request: Parameters<typeof stores.runs.enqueue>[0]) => stores.runs.enqueue(request) } as Context['dshBotSubmitter']);
+  const dispose = vi.fn(async () => {});
+  let settle!: (value: { output: []; stopReason: 'completed' }) => void;
+  const result = new Promise<{ output: []; stopReason: 'completed' }>(accept => { settle = accept; });
+  const provider = { inheritsParentContext: false, capabilities: { agentPreset: true, depthLimit: true }, prepareContinuable: async () => ({}) };
+  const startActivation = vi.fn(async (_spec: unknown) => ({ childId: SessionId('native-child'), result, dispose }));
+  ctx.provide('subagents', { getProvider: () => provider, startActivation } as unknown as Context['subagents']);
   registerAutomationGuard(ctx, stores.runs);
   let owner!: Context;
-  await ctx.plugin({ inject: ['tools', 'systemPrompt', 'dshBots', 'agents', 'llm', 'dshBotAutomationStores', 'dshBotSubmitter'],
+  await ctx.plugin({ inject: ['tools', 'systemPrompt', 'dshBots', 'agents', 'llm', 'dshBotAutomationStores', 'subagents'],
     apply(value: Context) { owner = value; } }).await();
   const create = async (botId = 'alpha', sessionId = `session-${randomUUID()}`) => {
     const key = {}; const preset = createScope(owner, key); const plugin = preset.ctx.plugin(botContext, { botId }); await plugin.await();
@@ -60,41 +64,36 @@ async function setup(ctx: Context, root: string) {
   const execute = (agent: Agent, args: unknown, callId = randomUUID(), name = 'bot_delegate') => ctx.tools.execute({
     agent, name, arguments: args, callId: ToolCallId(callId), signal: new AbortController().signal,
   });
-  const terminal = async (status: 'succeeded' | 'failed' = 'succeeded', summary = 'Target final response') => {
-    const queued = await stores.runs.enqueue({ trigger: 'delegate', botId: 'beta', operationId: randomUUID(), title: 'Task', prompt: 'Task only',
-      originBotId: 'alpha', originBotCreatedAt: 1, originSessionId: 'origin' });
-    const reserved = await stores.runs.reserve(queued.id);
-    return stores.runs.transition(reserved.id, status, reserved.revision, { summary }, true);
-  };
-  return { ctx, bots, stores, create, execute, terminal };
+  return { ctx, bots, stores, create, execute, startActivation, dispose, provider, settle };
 }
+
 const args = { targetBotId: 'beta', task: 'Task only', title: 'Research' };
 
-describe('bot_delegate with published tools, approval, Bot binding and JSON store', () => {
-  it('denied approval leaves no run; approval shows target and full task in both languages', async () => fixture(async f => {
+describe('native bot delegation wrapper (native service double, real ToolRuntime/approval)', () => {
+  it('denied approval starts nothing and records bilingual full task approval', async () => fixture(async f => {
     const origin = await f.create(); const approvals: unknown[] = [];
-    f.ctx.on('approval/request', async request => { approvals.push({ reason: request.reason, displayReason: request.displayReason }); return 'rejected'; });
-    const result = await f.execute(origin.agent, args);
-    expect(result.isError).toBe(true); expect(f.stores.runs.list()).toEqual([]);
-    expect(approvals).toHaveLength(1); expect(JSON.stringify(approvals)).toContain('Task only');
-    const audit = origin.session.snapshotEvents().filter(e => e.type.startsWith('approval/'));
-    expect(audit.map(e => e.type)).toEqual(['approval/asked', 'approval/decided']);
-    expect(JSON.stringify(approvals)).toContain('委派给'); expect(JSON.stringify(approvals)).toContain('beta');
+    f.ctx.on('approval/request', async request => { approvals.push(request.displayReason); return 'rejected'; });
+    expect((await f.execute(origin.agent, args)).isError).toBe(true);
+    expect(f.startActivation).not.toHaveBeenCalled(); expect(f.stores.runs.list()).toEqual([]);
+    expect(JSON.stringify(approvals)).toContain('Task only'); expect(JSON.stringify(approvals)).toContain('委派给');
+    expect(origin.session.snapshotEvents().filter(e => e.type.startsWith('approval/')).map(e => e.type))
+      .toEqual(['approval/asked', 'approval/decided']);
   }));
-  it('returns queued IDs immediately, binds provenance, sends only task and dedupes a repeated invocation', async () => fixture(async f => {
+  it('uses exact target preset, native parent delivery and only task; dedupes live invocation', async () => fixture(async f => {
     f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
     origin.session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'PARENT_PRIVATE_HISTORY' }], source: { kind: 'user' } }), { surfaceOp: 'append' });
     const callId = randomUUID(); const first = await f.execute(origin.agent, args, callId);
     const second = await f.execute(origin.agent, args, callId);
-    expect(first.isError, JSON.stringify(first)).toBe(false); expect(second).toMatchObject({ value: first.isError ? undefined : first.value });
-    const run = f.stores.runs.list()[0]; if (!run) throw new Error('Missing run');
-    expect(run).toMatchObject({ status: 'queued', depth: 1, originBotId: 'alpha', originBotCreatedAt: 1,
-      originSessionId: origin.session.id, snapshot: { prompt: 'Task only', presetId: 'bot-beta' } });
-    expect(JSON.stringify(run)).not.toContain('PARENT_PRIVATE_HISTORY'); expect(f.stores.runs.list()).toHaveLength(1);
+    expect(first).toMatchObject({ isError: false, value: { childId: 'native-child', status: 'accepted' } });
+    expect(second).toMatchObject({ value: first.isError ? undefined : first.value });
+    expect(f.startActivation).toHaveBeenCalledOnce(); expect(f.stores.runs.list()).toEqual([]);
+    expect(f.startActivation.mock.calls[0]?.[0]).toMatchObject({ provider: 'spawn', delivery: 'parent', label: 'Research',
+      request: { parent: origin.agent, agentPreset: 'custom-beta', prompt: [{ type: 'text', text: 'Task only' }] } });
+    expect((await f.execute(origin.agent, { ...args, task: 'changed' }, callId)).isError).toBe(true);
     origin.session.append('step/start', { turn: 0, step: 1 });
-    await f.execute(origin.agent, args, callId); expect(f.stores.runs.list()).toHaveLength(2);
+    await f.execute(origin.agent, args, callId); expect(f.startActivation).toHaveBeenCalledTimes(2);
   }));
-  it('supports self delegation; rejects forged identity, unknown target, stale binding and denied local tool', async () => fixture(async f => {
+  it('supports self delegation; rejects forged identity, missing Bot, stale origin and hidden tool', async () => fixture(async f => {
     f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
     expect((await f.execute(origin.agent, { ...args, targetBotId: 'alpha' })).isError).toBe(false);
     for (const extra of [{ originBotId: 'beta' }, { originSessionId: 'forged' }, { depth: 0 }, { operationId: randomUUID() }]) {
@@ -105,102 +104,76 @@ describe('bot_delegate with published tools, approval, Bot binding and JSON stor
     f.bots.set('alpha', { ...alpha, createdAt: 2, updatedAt: 2 });
     expect((await f.execute(origin.agent, args)).isError).toBe(true);
     const denied = await f.create('denied'); expect(f.ctx.tools.get('bot_delegate', denied.agent)).toBeUndefined();
-    expect(f.stores.runs.list()).toHaveLength(1);
+    expect(f.startActivation).toHaveBeenCalledOnce();
   }));
-  it('blocks background sessions and report-induced turns', async () => fixture(async f => {
-    f.ctx.on('approval/request', async () => 'allowed-once'); const run = await f.terminal();
-    const target = await f.create('beta', run.sessionId);
-    expect((await f.execute(target.agent, args)).isError).toBe(true);
-    const origin = await f.create();
-    const notice = reportMessage(run, 4000);
-    origin.session.append('user/message', { ...notice, id: MessageId(notice.id) }, { surfaceOp: 'append' });
-    expect((await f.execute(origin.agent, args)).isError).toBe(true);
-    origin.session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'A new human task' }], source: { kind: 'user' } }), { surfaceOp: 'append' });
-    expect((await f.execute(origin.agent, args)).isError).toBe(false);
-    await origin.plugin.dispose(); expect(f.ctx.tools.get('bot_delegate', origin.agent)).toBeUndefined();
+  it.each(['createdAt', 'updatedAt'] as const)('rejects target %s change during approval', async field => fixture(async f => {
+    const origin = await f.create(); f.ctx.on('approval/request', async () => {
+      const beta = f.bots.get('beta'); if (!beta) throw new Error('missing');
+      f.bots.set('beta', { ...beta, [field]: 2 }); return 'allowed-once';
+    });
+    expect((await f.execute(origin.agent, args)).isError).toBe(true); expect(f.startActivation).not.toHaveBeenCalled();
   }));
-  it('operation identity includes session, persisted step and root call', () => {
-    const id = delegateOperationId('s', 'c', 2, 'root');
-    expect(delegateOperationId('s', 'c', 2, 'root')).toBe(id);
-    expect(delegateOperationId('s', 'c', 3, 'root')).not.toBe(id);
-    expect(delegateOperationId('t', 'c', 2, 'root')).not.toBe(id);
-  });
-  it.each(['alpha', 'beta'])('cancels a queued delegate if %s is replaced before reservation', async id => fixture(async f => {
+  it.each(['subagent-settled', 'agent-message', 'schedule', 'dsh-bot-delegate'])('blocks %s notices until human input', async kind => fixture(async f => {
     f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
-    await f.execute(origin.agent, args);
-    const run = f.stores.runs.list()[0]; if (!run) throw new Error('Missing run');
-    const bot = f.bots.get(id); if (!bot) throw new Error('Missing bot');
-    f.bots.set(id, { ...bot, createdAt: 2, updatedAt: 2 });
-    expect(await f.stores.runs.reserve(run.id)).toMatchObject({ status: 'cancelled', errorCode: 'delegate/identity-unavailable' });
+    // Provenance is Host-owned; test each source without pretending this is native delivery.
+    const notice = createUserMessage({ content: [{ type: 'text', text: 'notice' }], source: { kind: 'user' } });
+    const sourced = Object.assign({}, notice, { source: { kind } }) as typeof notice;
+    origin.session.append('user/message', sourced, { surfaceOp: 'append' });
+    for (const ambient of ['agent-instructions', 'runtime-context', 'time-context', 'tmux-context']) {
+      origin.session.append('user/message', Object.assign({}, notice, { source: { kind: ambient } }) as typeof notice, { surfaceOp: 'append' });
+    }
+    expect((await f.execute(origin.agent, args)).isError).toBe(true); expect(f.startActivation).not.toHaveBeenCalled();
+    origin.session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'human' }], source: { kind: 'user' } }), { surfaceOp: 'append' });
+    origin.session.append('user/message', Object.assign({}, notice, { source: { kind: 'time-context' } }) as typeof notice, { surfaceOp: 'append' });
+    expect((await f.execute(origin.agent, args)).isError).toBe(false);
   }));
-});
-
-describe('durable delegate outbox', () => {
-  function target(state: { evidence: 'absent' | 'pending' | 'committed'; flush?: boolean }): ReportTarget {
-    return { validate: vi.fn(async () => {}), evidence: () => state.evidence,
-      followup: vi.fn(() => { state.evidence = 'pending'; }), flush: vi.fn(async () => state.flush !== false) };
-  }
-  it.each(['succeeded', 'failed'] as const)('delivers one %s report and does not retry on notifications or recreation', async status => fixture(async f => {
-    const run = await f.terminal(status); const state = { evidence: 'absent' as const }; const recipient = target(state);
-    const runtime = { resolve: vi.fn(async () => recipient) };
-    const reporter = new DelegateReporter(f.ctx, f.stores, runtime, () => {});
-    await Promise.all([reporter.tick(), reporter.tick()]);
-    expect(f.stores.runs.get(run.id).report).toMatchObject({ state: 'sent', attempts: 1 });
-    expect(recipient.followup).toHaveBeenCalledTimes(1); await reporter.close();
-    const again = new DelegateReporter(f.ctx, f.stores, runtime, () => {}); await again.tick(); await again.close();
-    expect(recipient.followup).toHaveBeenCalledTimes(1);
+  it('refuses inherited-context provider and native start failures without fallback', async () => fixture(async f => {
+    f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
+    f.provider.inheritsParentContext = true;
+    expect((await f.execute(origin.agent, args)).isError).toBe(true); expect(f.startActivation).not.toHaveBeenCalled();
+    f.provider.inheritsParentContext = false; f.startActivation.mockRejectedValue(new Error('native unavailable'));
+    expect((await f.execute(origin.agent, args)).isError).toBe(true); expect(f.stores.runs.list()).toEqual([]);
   }));
-  it.each(['absent', 'pending', 'committed'] as const)('reconciles a crash after persisted attempt with %s evidence without resending', async evidence => fixture(async f => {
-    let run = await f.terminal(); const message = reportMessage(run, 4000);
-    run = await f.stores.runs.updateReport(run.id, { state: 'pending', originSessionId: 'origin', message, messageId: message.id, attempts: 1 }, run.revision);
-    const recipient = target({ evidence }); const reporter = new DelegateReporter(f.ctx, f.stores, { resolve: async () => recipient }, () => {});
-    await reporter.tick(); await reporter.close();
-    expect(recipient.followup).not.toHaveBeenCalled();
-    expect(f.stores.runs.get(run.id).report?.state).toBe(evidence === 'committed' ? 'sent' : 'blocked');
+  it('unload unregisters tool, aborts native signal and disposes outstanding activation', async () => fixture(async f => {
+    f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
+    await f.execute(origin.agent, args); await origin.plugin.dispose();
+    expect(f.ctx.tools.get('bot_delegate', origin.agent)).toBeUndefined();
+    await vi.waitFor(() => expect(f.dispose).toHaveBeenCalledOnce());
+    const spec = f.startActivation.mock.calls[0]?.[0] as { signal: AbortSignal };
+    expect(spec.signal.aborted).toBe(true);
   }));
-  it('restarts an unattempted pending message using its original id', async () => fixture(async f => {
-    let run = await f.terminal(); const message = reportMessage(run, 4000);
-    run = await f.stores.runs.updateReport(run.id, { state: 'pending', originSessionId: 'origin', message, messageId: message.id, attempts: 0 }, run.revision);
-    const recipient = target({ evidence: 'absent' }); const reporter = new DelegateReporter(f.ctx, f.stores, { resolve: async () => recipient }, () => {});
-    await reporter.tick(); await reporter.close(); expect(recipient.followup).toHaveBeenCalledWith(message);
+  it('cancels startup on unload without leaving a child or local run', async () => fixture(async f => {
+    f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
+    f.startActivation.mockImplementation(async spec => new Promise((_accept, reject) => {
+      (spec as { signal: AbortSignal }).signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
+    }));
+    const request = f.execute(origin.agent, args);
+    await vi.waitFor(() => expect(f.startActivation).toHaveBeenCalledOnce());
+    const closed = origin.plugin.dispose();
+    expect((await request).isError).toBe(true); await closed;
+    expect(f.stores.runs.list()).toEqual([]); expect(f.dispose).not.toHaveBeenCalled();
   }));
-  it('blocks unreachable origins and unconfirmed flush, preserving fixed message and diagnostic without raw errors', async () => fixture(async f => {
-    const run = await f.terminal(); const reporter = new DelegateReporter(f.ctx, f.stores, { resolve: async () => { throw new Error('private diagnostic'); } }, () => {});
-    await reporter.tick(); await reporter.close();
-    expect(f.stores.runs.get(run.id).report).toMatchObject({ state: 'blocked', attempts: 0 });
-    expect(JSON.stringify(f.stores.runs.get(run.id).report)).not.toContain('private diagnostic');
-    const other = await f.terminal(); const recipient = target({ evidence: 'absent', flush: false });
-    const second = new DelegateReporter(f.ctx, f.stores, { resolve: async () => recipient }, () => {});
-    await second.tick(); await second.close(); expect(f.stores.runs.get(other.id).report).toMatchObject({ state: 'blocked', attempts: 1 });
+  it('keeps historical delegate report readable but rejects new legacy execution', async () => fixture(async f => {
+    await f.stores.close();
+    const id = randomUUID();
+    const legacy = runRecordSchema.parse({ id, schemaVersion: 1, revision: 1, trigger: 'delegate', operationId: randomUUID(),
+      dedupeKey: 'historical', botId: 'beta', botCreatedAt: 1, originBotId: 'alpha', originBotCreatedAt: 1,
+      originSessionId: 'parent', sessionId: 'old-child', requestId: randomUUID(),
+      snapshot: { title: 'Old task', prompt: 'Old task', timeZone: 'UTC', presetId: 'bot-beta', botUpdatedAt: 1 },
+      requestedAt: 1, updatedAt: 2, endedAt: 2, status: 'cancelled', step: 'settled', decision: 'run', slotHeld: false, depth: 1,
+      report: { state: 'pending', originSessionId: 'parent', attempts: 0 },
+    });
+    const domain = await f.ctx.storageDomain.open(executionDomain);
+    await domain.table('runs').put(id, legacy); await domain.close();
+    const reopened = await openAutomationStores(f.ctx, { resolveBot: async () => { throw new Error('must not resolve'); } });
+    expect(reopened.runs.get(id)).toEqual(legacy);
+    await expect(reopened.runs.enqueue({ trigger: 'delegate' } as unknown as RunRequest)).rejects.toThrow();
+    expect(reopened.runs.get(id)).toEqual(legacy); await reopened.close();
   }));
-  it('screens before truncating, limits Unicode safely and emits status without task/title/history', async () => fixture(async f => {
-    const run = await f.terminal();
-    const secret = `sk-${'x'.repeat(30)}`;
-    const message = reportMessage({ ...run, summary: `${'safe'.repeat(3000)} ${secret}` }, 10);
-    expect(message.content[0]?.text).toContain('[redacted]'); expect(JSON.stringify(message)).not.toContain(secret);
-    const limited = reportMessage({ ...run, summary: '😀'.repeat(8000) }, 8000);
-    expect(limited.content[0]?.text.length).toBeLessThanOrEqual(8192); expect(JSON.stringify(limited)).not.toContain('Task only');
-  }));
-  it('joins unload during resolution and never sends after close', async () => fixture(async f => {
-    const run = await f.terminal(); const recipient = target({ evidence: 'absent' });
-    let release!: (value: ReportTarget) => void;
-    const resolve = vi.fn(() => new Promise<ReportTarget>(accept => { release = accept; }));
-    const reporter = new DelegateReporter(f.ctx, f.stores, { resolve }, () => {});
-    await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
-    const closed = reporter.close(); release(recipient); await closed;
-    expect(recipient.followup).not.toHaveBeenCalled(); expect(f.stores.runs.get(run.id).report).toMatchObject({ state: 'pending', attempts: 0 });
-  }));
-  it.each(['archived', 'deleted', 'rebuilt', 'wrong-binding'])('runtime refuses %s origins', async scenario => fixture(async f => {
-    const run = await f.terminal(); const origin = await f.create('beta', 'origin');
-    const inspect = vi.fn(async () => { if (scenario === 'deleted') throw new Error('session/not-found'); return {}; });
-    const resolveAgent = vi.fn(async () => ({ agent: origin.agent }));
-    const context = {
-      workspaceRegistry: { archivedSessionIds: scenario === 'archived' ? ['origin'] : [] },
-      sessionController: { inspect, resolveAgent },
-      agents: { get: () => origin.agent },
-    } as unknown as Context;
-    const registry = { get: async () => ({ createdAt: scenario === 'rebuilt' ? 2 : 1 }) } as unknown as Context['dshBots'];
-    await expect(dshReportRuntime(context, registry).resolve(run)).rejects.toThrow();
-    if (scenario !== 'wrong-binding') expect(resolveAgent).not.toHaveBeenCalled();
+  it('leaves settled teardown to native manager', async () => fixture(async f => {
+    f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
+    await f.execute(origin.agent, args); f.settle({ output: [], stopReason: 'completed' });
+    await Promise.resolve(); await Promise.resolve(); await origin.plugin.dispose();
+    expect(f.dispose).not.toHaveBeenCalled();
   }));
 });

@@ -1,5 +1,20 @@
 # DSH API 核实记录
 
+## R03：原生 spawn 委派（2026-10-20）
+
+普通 `bot_delegate` 改为原生子代理，删除本包 delegate reporter/runtime、delegate RunRequest 与 outbox 写入；RunExecutor 仅服务显式 manual。设计和差异取舍见 [架构 R03](architecture.md#r03原生-bot-委派)，实测见 [R03 验收](acceptance/P2-R03.md)。
+
+| 公开 API / 包 | 用法与核实边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-subagent` `getProvider/startActivation` | 类型使用既有 rc.2 dev 包，无 runtime import/新增 peer。`index.ts:269-283,573`；核实 spawn 为本地、不继承父上下文、支持 agentPreset/depthLimit。`request={parent,agentPreset,prompt}`，`delivery=parent`；不从内部实现导入。 |
+| `SubagentActivation.childId/result/dispose` | 原生 `result` 在 teardown 和 notification 后 settled；工具立即返回 accepted + childId。ctx.effect 所有权覆盖启动、取消、卸载；自然完成由原生 manager 清理。无本包 sessionController.create 或 followup。 |
+| 原生 `subagent-settled`、`agent-message` 来源 | `subagent/src/continuation-messages.ts`；跳过原生 ambient context 后的最新 user/message 的 source 非 user 时本包委派拒绝，不回溯更早人工输入。native manager 对在线同对象父 Agent idle→queue/busy→steer；不支持父冷恢复补发。 |
+| 原生 child preset/权限 | `child-agent.ts:135-153,220-277`；选定 preset，origin=subagent、parentSession、delegationDepth、isSeeded=false；原生 approvalPolicy=never，ask 拒绝。没有绕过或自动批准机制。 |
+| `dshBots.get/status`、`tools/pre-execute` | 沿用公开注册表与审批；保存批准目标的 createdAt/updatedAt，执行前重验父身份、目标身份和 preset 可用性。同 live invocation 去重，不宣称跨重启幂等。 |
+
+历史 T15/R02 的普通会话委派与持久报告证据不再代表当前实现；本轮测试已改用原生 spawn/settlement。
+
+
 ## R02：原生定时聚合、显式执行与旧库兼容（2026-10-20）
 
 按批准方案 A，移除 Dispatcher、规则计算、单 Host 锁、额度/并发/补跑及 `dshBot.routine/*`。P1 Remote 不变；新的 automation contribution 只有 nativeSchedule aggregate/deleteLegacy/runNow、run list/get、automation status 六个端点。详见 [R02 验收](acceptance/P2-R02.md) 与[当前架构](architecture.md#r02原生定时与-bots-聚合)。

@@ -13,10 +13,13 @@ export function assertInteractiveOrigin(agent: Agent, runs: RunService): void {
   }
   // A report may cause multiple steps, tools and further notices. Only a new
   // ordinary user input clears this barrier, not an assistant or tool message.
+  // Native assembly appends ambient context as user-role messages after input.
+  // They neither authorize delegation nor clear an earlier notice barrier.
+  const ambient = new Set(['agent-instructions', 'runtime-context', 'time-context', 'tmux-context']);
   const input = agent.session.snapshotEvents().findLast(event => event.type === 'user/message'
-    && (event.data.source.kind === 'user' || event.data.source.kind === 'dsh-bot-delegate'));
-  if (input?.type === 'user/message' && input.data.source.kind === 'dsh-bot-delegate') {
-    throw new HarnessError('Delegate reports cannot start another automation chain', 'automation/depth');
+    && !ambient.has(event.data.source.kind));
+  if (input?.type === 'user/message' && input.data.source.kind !== 'user') {
+    throw new HarnessError('Background notices cannot start another delegation chain', 'automation/depth');
   }
 }
 

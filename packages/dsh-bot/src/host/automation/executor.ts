@@ -23,7 +23,7 @@ export function runTitle(run: RunRecord): string {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).formatToParts(run.admittedAt ?? run.requestedAt);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value;
-  return `[${run.trigger === 'delegate' ? 'Delegate' : 'Run now'}] ${run.snapshot.title} · ${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${run.snapshot.timeZone}`;
+  return `[Run now] ${run.snapshot.title} · ${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${run.snapshot.timeZone}`;
 }
 type StopIntent = 'cancelled' | 'timed_out' | 'unloaded';
 interface Active { abort: AbortController; intent?: StopIntent; done: Promise<RunRecord> }
@@ -73,7 +73,7 @@ export class RunExecutor {
   }
   private async perform(id: string, active: Active): Promise<RunRecord> {
     let run = this.runs.get(id);
-    if (run.status !== 'queued') return run;
+    if (run.status !== 'queued' || run.trigger !== 'manual') return run;
     // reserve errors may follow an authoritative Run commit. Do not retry creation.
     try { run = await this.runs.reserve(id); }
     catch (error) {

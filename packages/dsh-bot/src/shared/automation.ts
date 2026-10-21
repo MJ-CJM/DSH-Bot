@@ -113,12 +113,9 @@ export const runListSchema = z.strictObject({ botId: botIdSchema.optional(), nat
   limit: z.number().int().min(1).max(200).default(50),
   before: z.strictObject({ requestedAt: automationTimeSchema, id: automationIdSchema }).optional(),
 });
-export const runRequestSchema = z.discriminatedUnion('trigger', [
-  z.strictObject({ trigger: z.literal('manual'), nativeScheduleId: text(256), operationId: automationIdSchema,
-    botId: botIdSchema, botCreatedAt: automationTimeSchema, title: text(120), prompt: text(65536), timeZone: timeZoneSchema }),
-  z.strictObject({ trigger: z.literal('delegate'), botId: botIdSchema, operationId: automationIdSchema,
-    title: text(120), prompt: text(65536), originSessionId: text(256), originBotId: botIdSchema, originBotCreatedAt: automationTimeSchema }),
-]);
+// Old delegate records remain readable, but no new ordinary-session delegate is admitted.
+export const runRequestSchema = z.strictObject({ trigger: z.literal('manual'), nativeScheduleId: text(256), operationId: automationIdSchema,
+  botId: botIdSchema, botCreatedAt: automationTimeSchema, title: text(120), prompt: text(65536), timeZone: timeZoneSchema });
 export type RoutineRule = z.output<typeof routineRuleSchema>;
 export type RoutineRecord = z.output<typeof routineRecordSchema>;
 export type RoutineCreate = z.input<typeof routineCreateSchema>;
