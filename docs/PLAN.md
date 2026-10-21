@@ -552,3 +552,6 @@ nohup codex exec \
 
 ### 推理强度
 设计/提案 run 用 `-c model_reasoning_effort=ultra`；实现/返工/文档/打包 run 用 `-c model_reasoning_effort=high`；不改 ~/.codex/config.toml。
+
+## 核心原则（用户，2026-10-20）
+DSH 原生已有的能力优先复用，不自建重复实现。设计前先盘点原生能力；只有原生确实无法满足且无法通过包装桥接时才自研，并在设计文档写明理由。

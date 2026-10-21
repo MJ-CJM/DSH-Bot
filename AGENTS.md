@@ -28,3 +28,6 @@
 - 设计/提案类 run：`codex exec -c model_reasoning_effort=ultra ...`
 - 实现、返工、文档、打包类 run：`-c model_reasoning_effort=high`
 - 每次 run 通过 -c 传入，不修改 ~/.codex/config.toml；派发时 stdin 用 </dev/null（否则会卡在读 stdin）。
+
+## 核心原则（用户，2026-10-20）
+DSH 原生已有的能力优先复用，不自建重复实现。设计前先盘点原生能力；只有原生确实无法满足且无法通过包装桥接时才自研，并在设计文档写明理由。
