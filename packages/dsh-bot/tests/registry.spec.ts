@@ -866,12 +866,12 @@ describe('DshBotRegistry with JSON storage and a preset service double', () => {
 
   it('duplicates editable fields under a new identity without sharing nested data or copying memories', async () => withFacility(async ({ start, memories, presets }) => {
     const { registry } = await start();
-    const original = await registry.create({ id: 'alpha', name: 'Original', avatarColor: '--dsw-alias-state-success-primary', persona: { prefix: '原始人设' },
+    const original = await registry.create({ id: 'alpha', name: 'Original', avatarVariant: 'spout', avatarColor: '--dsw-alias-state-success-primary', persona: { prefix: '原始人设' },
       tools: { deny: ['shell'] }, memory: { enabled: true, injectLimit: 5 }, template: 'minimal' });
     await memories().add({ botId: 'alpha', content: 'Original private memory' });
     const copied = await registry.duplicate('alpha', 'beta');
     expect(copied).toMatchObject({ id: 'beta', persona: original.persona, template: original.template,
-      tools: original.tools, memory: original.memory, avatarColor: original.avatarColor });
+      tools: original.tools, memory: original.memory, avatarColor: original.avatarColor, avatarVariant: original.avatarVariant });
     copied.tools.deny.push('caller mutation');
     expect((await registry.get('beta')).tools.deny).toEqual(['shell']);
     expect(await registry.get('alpha')).toStrictEqual(original);

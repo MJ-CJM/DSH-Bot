@@ -6,6 +6,8 @@ Personal agents for DeepSeek Harness: create multiple personal agents, each with
 
 当前交付版本为 **0.2.2**，参考运行时锁定 **DeepSeek Harness 0.2.1-rc.2**。包声明的兼容范围为 `>=0.2.1-rc.2 <0.3.0`；这不代表已验证该范围内的其他版本。安装包为 `dist/dsh-bot-0.2.2.tgz`。P2 验收、mock e2e 证据与未执行项见 [P2 验收报告](docs/acceptance/P2.md)。
 
+头像选择器提供 12 种主题配色和 6 种鲸鱼造型，支持自动分配与键盘选择；旧头像缺省仍为经典造型。R06 的运行验证和浏览器阻断见 [头像扩展验收](docs/acceptance/P2-R06.md)。
+
 ## 安装与升级
 
 桌面版安装由用户或编排方手动执行：
@@ -70,3 +72,5 @@ DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v022
 - 0.2.2 提供原生定时聚合、显式立即运行与原生子代理回报。仅支持同一后端一个活动 Host，没有本包跨进程锁。立即运行恢复不明时保留 `recovery_needed`，不自动重放；新执行记录与 sidecar 尚未自动裁剪。切回旧 0.2.0 可能重新启用保留的旧任务。
 
 设计与公开 API 依据分别见[架构文档](docs/architecture.md)、[DSH API 核实记录](docs/dsh-api-notes.md)。源码检查、隔离运行和最终桌面体验的证据分别记录，不以构建或历史截图代替当前验收。
+
+头像截图复跑（先 `scripts/pnpm check`）：`DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v022-avatar`。目标 `.codex/screens/v022-avatar-light.png`、`v022-avatar-dark.png`，真实隔离 Web Host，不发送模型请求。

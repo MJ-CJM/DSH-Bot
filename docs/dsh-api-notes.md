@@ -1,5 +1,14 @@
 # DSH API 核实记录
 
+## R06：12 色与 6 种鲸鱼头像（2026-10-21）
+
+无新增 DSH API、依赖、Remote 方法或存储领域版本。只读核对参考源码仍为 `dsh-v0.2.1-rc.2`；原生 `packages/client/ui-primitives/src/FishLogo.tsx:9-30` 只有单轮廓、size/className/currentColor，没有造型选择器。本包沿用现有共享 `WhaleGlyph`，保留经典路径；五种派生造型使用本次原创共用轮廓和几何装饰，不导入宿主内部实现或第三方素材。
+
+决策：扩展既有 Bot 字段和编辑器，不增加头像服务。理由：原生图标可复用，但没有可直接包装的造型/配色选择器。`avatarVariant` 可选，允许 classic/glasses/spout/baby/hat/sleeping/auto；缺省值在渲染时解释为 classic，旧 Zod 记录仍原样解析，显式 null 清空。`avatarColor` 保留旧四个 alias ID，追加八个受限配色 ID，通过已有四个 alias 和 label-primary 做 sRGB 混合。Remote codec 从 shared schema 生成；`bot_manage` 的显式输入/输出枚举同步。
+
+亮暗基线沿用已核实的主题 fixture，12 色非文本图形最小对比度亮色 **3.964:1**、暗色 **7.512:1**。这是锁定主题的计算验证，不是实拍或自定义主题保证。键盘/中英 accessible-name 使用 DOM 测试；真实浏览器 `--v022-avatar` 启动被系统权限拒绝，详见 [R06 验收](acceptance/P2-R06.md)。
+
+
 ## R05：0.2.2 单主会话与原生标题固定（2026-10-21）
 
 主会话身份 sidecar `dsh_bot_main_session` v1、`dshBot/openConversation`、可选 `status.mainSessionId` 是本包新增契约。迁移仅元数据/投影，普通旧历史原样保留；原生 Session、标题、Inbox 与子代理继续复用。实施与限制见 [架构 R05](architecture.md#r05持久主会话与共享-bots-工作区)，实际命令见 [P2 验收](acceptance/P2.md)。

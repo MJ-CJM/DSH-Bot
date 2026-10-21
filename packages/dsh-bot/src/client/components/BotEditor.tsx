@@ -28,6 +28,7 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
   const [name, setName] = useState(duplicate && bot ? t('editor.copyName', { name: bot.name }) : bot?.name ?? '');
   const [avatar, setAvatar] = useState(bot?.avatar);
   const [avatarColor, setAvatarColor] = useState(bot?.avatarColor);
+  const [avatarVariant, setAvatarVariant] = useState(bot?.avatarVariant ?? (bot ? 'classic' : 'auto'));
   const [defaultCwd, setDefaultCwd] = useState(bot?.defaultCwd ?? '');
   const [home, setHome] = useState<string>();
   const [homeFailed, setHomeFailed] = useState(false);
@@ -87,7 +88,7 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
     if (disabled) return;
     setFailure(false);
     const fields: BotPatch = {
-      name, avatar: avatar ?? null, avatarColor: avatarColor ?? null, description,
+      name, avatar: avatar ?? null, avatarColor: avatarColor ?? null, avatarVariant, description,
       defaultCwd: defaultCwd.trim() || null,
       // Patches replace a whole top-level field, so retain advanced persona flags.
       persona: { ...bot?.persona, prefix: persona }, template,
@@ -140,7 +141,7 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
               </label>
             </div>
             {avatarWarning && <p className={styles.warning}>{t('avatar.invalidStored')}</p>}
-            <AvatarPicker id={id} value={avatar} color={avatarColor} onChange={setAvatar} onColorChange={setAvatarColor} disabled={disabled} t={t} />
+            <AvatarPicker id={id} value={avatar} color={avatarColor} variant={avatarVariant} onVariantChange={setAvatarVariant} onChange={setAvatar} onColorChange={setAvatarColor} disabled={disabled} t={t} />
             <label className={styles.field}>{t('editor.description')}
               <textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} disabled={disabled} />
             </label>

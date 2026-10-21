@@ -71,8 +71,11 @@ describe('BotStore with the published JSON storage backend', () => {
   it('keeps version-one records without colors compatible and persists only the curated theme palette', async () => withStores(async ({ ctx, bots, close }) => {
     const old = await bots.create({ id: 'legacy-color', name: 'Legacy' });
     expect(old).not.toHaveProperty('avatarColor');
+    expect(old).not.toHaveProperty('avatarVariant');
+    expect(botSchema.parse(old)).toEqual(old);
     expect(old.schemaVersion).toBe(1);
-    const colored = await bots.update(old.id, { avatarColor: '--dsw-alias-state-success-primary' });
+    const colored = await bots.update(old.id, { avatarColor: '--dsw-alias-state-success-primary', avatarVariant: 'glasses' });
+    await expectCode(() => bots.update(old.id, { avatarVariant: 'invalid' } as never), 'bot/invalid');
     expect(colored.avatarColor).toBe('--dsw-alias-state-success-primary');
     for (const avatarColor of ['#123456', 'red', '--dsw-alias-bg-base', 'var(--dsw-alias-state-error-primary)']) {
       await expectCode(() => bots.update(old.id, { avatarColor } as never), 'bot/invalid');
@@ -82,6 +85,8 @@ describe('BotStore with the published JSON storage backend', () => {
     const reopened = await openOwned(ctx);
     expect(reopened.bots.get(old.id)).toEqual(colored);
     expect(await reopened.bots.update(old.id, { avatarColor: null })).not.toHaveProperty('avatarColor');
+    expect(await reopened.bots.update(old.id, { avatarVariant: null })).not.toHaveProperty('avatarVariant');
+    expect(await reopened.bots.update(old.id, { avatarVariant: 'auto', avatarColor: 'purple' })).toMatchObject({ avatarVariant: 'auto', avatarColor: 'purple' });
   }));
 
   it('shares strict raster base64 avatar validation across write and wire schemas', async () => withStores(async ({ bots }) => {

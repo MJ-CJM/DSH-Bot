@@ -167,7 +167,7 @@
     "avatar.green": "Green",
     "avatar.amber": "Amber",
     "avatar.red": "Red",
-    "avatar.automatic": "Use automatic color",
+    "avatar.automatic": "Automatic shape and color",
     "avatar.otherOptions": "Emoji or uploaded image",
     "avatar.upload": "Upload image",
     "avatar.uploadHint": "PNG, JPEG, GIF or WebP; encoded data must fit within 64 KiB.",
@@ -302,6 +302,21 @@
     "native.timingHint": "Changing the interval reanchors an every schedule. Native timing validation applies. Weekdays: comma-separated ISO 1–7.",
     "native.unavailable": "Native schedules are disabled or unavailable in this Host.",
     "routine.status.delivered": "Delivered",
-    "editor.cwdHint": "Retained for compatibility. New main conversations use the shared Bots workspace; migrated conversations keep their original directory."
+    "editor.cwdHint": "Retained for compatibility. New main conversations use the shared Bots workspace; migrated conversations keep their original directory.",
+    "avatar.teal": "Teal",
+    "avatar.cyan": "Cyan",
+    "avatar.indigo": "Indigo",
+    "avatar.purple": "Purple",
+    "avatar.rose": "Rose",
+    "avatar.orange": "Orange",
+    "avatar.olive": "Olive",
+    "avatar.slate": "Slate",
+    "avatar.variant": "Whale shape",
+    "avatar.variant.classic": "Classic",
+    "avatar.variant.glasses": "Glasses",
+    "avatar.variant.spout": "Spouting",
+    "avatar.variant.baby": "Baby whale",
+    "avatar.variant.hat": "Hat",
+    "avatar.variant.sleeping": "Sleeping"
   }
 }

@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from 'react';
+import { getByRole } from '@testing-library/dom';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
-import { avatarColors, BotAvatar, defaultAvatarColor } from '../../src/client/components/BotAvatar.js';
+import { avatarColors, BotAvatar, defaultAvatarColor, defaultAvatarVariant, resolvedAvatarVariant } from '../../src/client/components/BotAvatar.js';
 import { BotEditor, type BotEditorProps } from '../../src/client/components/BotEditor.js';
-import { AVATAR_COLOR_TOKENS } from '../../src/shared/schema.js';
+import { WhaleGlyph } from '../../src/client/components/WhaleGlyph.js';
+import { AVATAR_COLOR_TOKENS, AVATAR_VARIANTS, botSchema } from '../../src/shared/schema.js';
 import { bot, button, click, field, fill, submit } from './helpers.js';
 import palette from '../fixtures/avatar-palette-0.2.1-rc.2.json';
 
@@ -42,14 +45,101 @@ describe('shared Bot avatars', () => {
     }).reduce((sum, value, i) => sum + value * ([0.2126, 0.7152, 0.0722][i] ?? 0), 0);
     for (const theme of [palette.light, palette.dark]) {
       for (const token of AVATAR_COLOR_TOKENS) {
-        const weight = Number(avatarColors[token].color.match(/\) (\d+)%/u)?.[1]) / 100;
-        expect(weight).toBeGreaterThan(0);
-        const color = theme.colors[token].map((value, i) => value * weight + (theme.foreground[i] ?? 0) * (1 - weight));
+        // Evaluate the actual CSS expression, including nested sRGB mixtures.
+        const resolveColor = (expression: string): number[] => {
+          const variable = expression.match(/^var\((--[\w-]+)\)$/u)?.[1];
+          if (variable) {
+            if (variable === '--dsw-alias-label-primary') return theme.foreground;
+            const value = theme.colors[variable as keyof typeof theme.colors];
+            if (!value) throw new Error(`Unknown palette fixture ${variable}`);
+            return value;
+          }
+          const parts = expression.match(/^color-mix\(in srgb, (.+) (\d+)%, (.+)\)$/u);
+          if (!parts) throw new Error(`Unexpected color ${expression}`);
+          const a = resolveColor(parts[1] ?? '');
+          const b = resolveColor(parts[3] ?? '');
+          const weight = Number(parts[2]) / 100;
+          return a.map((value, i) => value * weight + (b[i] ?? 0) * (1 - weight));
+        };
+        const color = resolveColor(avatarColors[token].color);
         const a = luminance(color);
         const b = luminance(theme.background);
         expect((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)).toBeGreaterThanOrEqual(3);
       }
     }
+  });
+
+  it('parses legacy records without migration and defaults them to classic', () => {
+    const old = bot({ id: 'legacy-bot', name: 'Legacy', avatarColor: '--dsw-alias-state-success-primary' });
+    expect(botSchema.parse(old)).toEqual(old);
+    expect(botSchema.parse(old)).not.toHaveProperty('avatarVariant');
+    expect(resolvedAvatarVariant(old)).toBe('classic');
+    for (const variant of [...AVATAR_VARIANTS, 'auto']) {
+      expect(botSchema.parse({ ...old, avatarVariant: variant }).avatarVariant).toBe(variant);
+    }
+    expect(botSchema.safeParse({ ...old, avatarVariant: 'unknown' }).success).toBe(false);
+  });
+
+  it('distributes automatic shapes and colors independently and preserves identity', async () => {
+    const ids = Array.from({ length: 120 }, (_, index) => `bot-${index}`);
+    expect(new Set(ids.map(defaultAvatarVariant)).size).toBe(6);
+    expect(new Set(ids.map(defaultAvatarColor)).size).toBe(12);
+    expect(new Set(ids.map((id) => `${defaultAvatarVariant(id)}:${defaultAvatarColor(id)}`)).size).toBeGreaterThan(24);
+    expect(defaultAvatarVariant('bot-42')).toBe('classic');
+    expect(defaultAvatarColor('bot-42')).toBe('slate');
+    const original = bot({ id: 'bot-42', name: 'Auto', avatarVariant: 'auto' });
+    const app = await mount(<BotAvatar bot={original} label="Avatar" />);
+    const expected = app.container.querySelector('[data-bot-avatar]')?.getAttribute('data-avatar-variant');
+    expect(expected).toBe(defaultAvatarVariant(original.id));
+    document.body.setAttribute('data-ds-dark-theme', '');
+    await app.render(<BotAvatar bot={{ ...original }} label="头像" />);
+    expect(app.container.querySelector('[data-bot-avatar]')?.getAttribute('data-avatar-variant')).toBe(expected);
+    document.body.removeAttribute('data-ds-dark-theme');
+  });
+
+  it.each(AVATAR_VARIANTS)('renders %s with currentColor only', (variant) => {
+    const markup = renderToStaticMarkup(<WhaleGlyph variant={variant} />);
+    const svg = new DOMParser().parseFromString(markup, 'image/svg+xml');
+    expect(svg.querySelector('image,style,foreignObject')).toBeNull();
+    expect(markup).not.toMatch(/#[\da-f]{3,8}\b|(?:rgb|hsl)a?\s*\(/i);
+    for (const node of svg.querySelectorAll('[fill],[stroke]')) {
+      for (const attr of ['fill', 'stroke']) if (node.hasAttribute(attr)) expect(['currentColor', 'none']).toContain(node.getAttribute(attr));
+    }
+  });
+
+  it.each(['en', 'zh'] as const)('selects shapes and colors with keyboard, saves, and restores automatic (%s)', async (language) => {
+    const dictionary = language === 'zh' ? zh.ui : en.ui;
+    const onSave = vi.fn<BotEditorProps['onSave']>();
+    const app = await mount(<BotEditor bot={bot()} onSave={onSave} onCancel={() => {}} t={translate(language)} />);
+    const shapes = getByRole(app.container, 'group', { name: dictionary['avatar.variant'] });
+    const classic = getByRole(shapes, 'button', { name: dictionary['avatar.variant.classic'] });
+    const key = async (element: HTMLElement, key: string) => {
+      element.focus();
+      await act(async () => { element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key })); });
+    };
+    await key(classic, 'ArrowRight');
+    const glasses = getByRole(shapes, 'button', { name: dictionary['avatar.variant.glasses'] });
+    expect(document.activeElement).toBe(glasses);
+    expect(glasses.getAttribute('aria-pressed')).toBe('true');
+    const colors = getByRole(app.container, 'group', { name: dictionary['avatar.color'] });
+    expect(colors.querySelectorAll('button')).toHaveLength(12);
+    await key(getByRole(colors, 'button', { name: dictionary['avatar.blue'] }), 'End');
+    expect(document.activeElement).toBe(getByRole(colors, 'button', { name: dictionary['avatar.slate'] }));
+    await submit(app.container);
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatarVariant: 'glasses', avatarColor: 'slate' }));
+    await key(glasses, 'Home');
+    await key(classic, 'ArrowLeft');
+    await submit(app.container);
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatarVariant: 'sleeping', avatarColor: 'slate' }));
+    await click(button(app.container, dictionary['avatar.automatic']));
+    await submit(app.container);
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatarVariant: 'auto', avatarColor: null }));
+    await app.render(<BotEditor bot={bot()} busy onSave={onSave} onCancel={() => {}} t={translate(language)} />);
+    expect(app.container.querySelector('fieldset')?.disabled).toBe(true);
+    const calls = onSave.mock.calls.length;
+    await key(classic, 'ArrowRight');
+    await submit(app.container);
+    expect(onSave.mock.calls).toHaveLength(calls);
   });
 
   it('assigns deterministic palette colors from identity across renders, locales and themes', async () => {

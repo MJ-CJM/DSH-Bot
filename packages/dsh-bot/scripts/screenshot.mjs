@@ -16,6 +16,7 @@
  * No browser download, global install, Desktop mutation or real model calls.
  */
 import assert from 'node:assert/strict';
+import { captureAvatars } from './screenshot-avatars.mjs';
 import { captureRoutines, seedRoutineScreenshots, verifyRoutineClient } from './screenshot-routines.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -38,6 +39,7 @@ import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const avatarOnly = process.argv.includes('--v022-avatar');
 const seedOnly = process.argv.includes('--seed-only');
 const extrasOnly = process.argv.includes('--extras-only');
 const homeOnly = process.argv.includes('--v015') || process.argv.includes('--home-only');
@@ -86,9 +88,9 @@ async function verifyNativeBotsConversation(page, conversation, editor, workspac
 }
 
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --v022-seed-only: verify the exact Remote/Host screenshot fixtures without a browser or PNGs. --v022-host-only: nonvisual shipped Client/Gateway/Host native every60 delivery, manual run, native edit/delete and changed-event verification with loopback mock, no PNGs. --v022: 8 en/zh light/dark native schedule overview/detail screenshots using a real native tool, every60 delivery and manual run, followed by native history navigation; publishes .codex/screens/v022-{light,dark}.png and detail variants. --v016: 2 zh light/dark native navigation screenshots, verifies adjacent Plugins/automation/Bots rows and whale paint/geometry, then publishes .codex/screens/v016-light.png and v016-dark.png; sends no model prompts. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --v022-avatar: 2 zh light/dark avatar editor screenshots with six Bot variants, twelve palette colors, real keyboard checks and contrast measurements; publishes .codex/screens/v022-avatar-{light,dark}.png, no model requests. --v022-seed-only: verify the exact Remote/Host screenshot fixtures without a browser or PNGs. --v022-host-only: nonvisual shipped Client/Gateway/Host native every60 delivery, manual run, native edit/delete and changed-event verification with loopback mock, no PNGs. --v022: 8 en/zh light/dark native schedule overview/detail screenshots using a real native tool, every60 delivery and manual run, followed by native history navigation; publishes .codex/screens/v022-{light,dark}.png and detail variants. --v016: 2 zh light/dark native navigation screenshots, verifies adjacent Plugins/automation/Bots rows and whale paint/geometry, then publishes .codex/screens/v016-light.png and v016-dark.png; sends no model prompts. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
-  assert.ok([seedOnly, extrasOnly, homeOnly, navOnly, routinesOnly, routinesHostOnly, routinesSeedOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
+  assert.ok([avatarOnly, seedOnly, extrasOnly, homeOnly, navOnly, routinesOnly, routinesHostOnly, routinesSeedOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
   const home = resolve(root, '.dsh-dev');
   assert.ok(!process.env.DSH_HOME || resolve(process.env.DSH_HOME) === home, 'Only the repository .dsh-dev home is allowed');
@@ -308,7 +310,7 @@ if (process.argv.includes('--help')) {
     const statuses = unwrap(await api.remote.dshBot.status());
     const status = statuses.find((entry) => entry.id === bot.id);
     assert.equal(status?.preset.state, 'ok', 'Screenshot Bot preset healthy');
-    if (mock && !navOnly && !routinesOnly && !routinesHostOnly && !routinesSeedOnly) {
+    if (mock && !avatarOnly && !navOnly && !routinesOnly && !routinesHostOnly && !routinesSeedOnly) {
       for (const [index, sample] of [bot, researcher, bot].entries()) {
         step = `seed-${sample.id}`;
         const preset = statuses.find((entry) => entry.id === sample.id);
@@ -421,6 +423,12 @@ if (process.argv.includes('--help')) {
         errors: browserErrors, overlays });
       mockPromptsSent = mock.requests.length;
     }
+    if (avatarOnly) {
+      stage = 'avatar-ui';
+      await captureAvatars({ browser, cookies, origin, remote: api.remote.dshBot, bot, researcher, output, root, shots, save,
+        setPage: page => { activePage = page; }, setStep: value => { step = value; }, errors: browserErrors });
+      assert.equal(mock.requests.length, 0, 'Avatar screenshots send no model requests');
+    }
     stage = routinesSeedOnly ? 'routine-seed' : routinesHostOnly ? 'routine-host-only' : manualBrowser ? 'manual-host-only' : seedOnly ? 'seed-validation' : 'screenshots';
     for (const { language, theme, viewport, width, height } of navOnly ? screenshotCases(true) : []) {
       step = `v016-${theme}-new-page`;
@@ -456,7 +464,7 @@ if (process.argv.includes('--help')) {
       shots.push({ file, language, theme, viewport, width, height, surface: 'navigation', bodyTheme: evidence.bodyTheme, evidence });
       console.log(`PASS: zh/${theme} adjacent native navigation rows with centered currentColor whale`);
     }
-    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || navOnly || routinesOnly || routinesHostOnly || routinesSeedOnly || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly || homeOnly)) {
+    for (const { language, theme, viewport, width, height } of avatarOnly || seedOnly || manualBrowser || navOnly || routinesOnly || routinesHostOnly || routinesSeedOnly || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly || homeOnly)) {
       const copy = language === 'zh' ? zh.ui : en.ui;
       const filename = `${language}-${theme}-${viewport}`;
       step = `${filename}-new-page`;
@@ -638,7 +646,7 @@ if (process.argv.includes('--help')) {
     // Opening each native conversation clears the Host's new-message state,
     // which otherwise replaces its leading slot with a status dot. Run this
     // after the existing matrix so its read/unread fixtures remain unchanged.
-    for (const { language, theme, viewport, width, height } of seedOnly || manualBrowser || navOnly || routinesOnly || routinesHostOnly || routinesSeedOnly || extrasOnly || homeOnly || rightTabOnly ? [] : screenshotCases(true)) {
+    for (const { language, theme, viewport, width, height } of avatarOnly || seedOnly || manualBrowser || navOnly || routinesOnly || routinesHostOnly || routinesSeedOnly || extrasOnly || homeOnly || rightTabOnly ? [] : screenshotCases(true)) {
       const filename = `${language}-${theme}-${viewport}-workspace`;
       step = `${filename}-new-page`;
       await activeContext.close();
@@ -774,8 +782,8 @@ if (process.argv.includes('--help')) {
     step = manualBrowser ? 'manual-host-validation' : 'matrix-validation';
     if (!manualBrowser) assert.equal(prompts, 0, 'No browser model prompt attempted');
     assert.equal(browserErrors.length, 0, 'Browser page errors; inspect summary');
-    assert.equal(shots.length, seedOnly || manualBrowser || routinesHostOnly || routinesSeedOnly ? 0 : routinesOnly ? 8 : homeOnly ? 6 : extrasOnly ? 4 : navOnly || workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
-    if (!seedOnly && !manualBrowser && !navOnly && !routinesOnly && !routinesHostOnly && !routinesSeedOnly && !extrasOnly && !homeOnly && !workspaceOnly && !rightTabOnly) assert.equal(refreshStabilityChecks.length, 1, 'Complete the additional refresh stability pair');
+    assert.equal(shots.length, seedOnly || manualBrowser || routinesHostOnly || routinesSeedOnly ? 0 : routinesOnly ? 8 : homeOnly ? 6 : extrasOnly ? 4 : avatarOnly || navOnly || workspaceOnly || rightTabOnly ? 2 : 9, 'Complete the requested screenshot set');
+    if (!seedOnly && !manualBrowser && !avatarOnly && !navOnly && !routinesOnly && !routinesHostOnly && !routinesSeedOnly && !extrasOnly && !homeOnly && !workspaceOnly && !rightTabOnly) assert.equal(refreshStabilityChecks.length, 1, 'Complete the additional refresh stability pair');
     if (!seedOnly && !manualBrowser && !routinesHostOnly && !routinesSeedOnly) assert.notEqual(shots.find((shot) => shot.theme === 'light').bodyTheme, shots.find((shot) => shot.theme === 'dark').bodyTheme, 'Host theme actually changes tokens');
     if (navOnly) {
       assert.equal(mockPromptsSent, 0, 'Navigation screenshots need no mock conversation');
@@ -804,7 +812,7 @@ if (process.argv.includes('--help')) {
       catch (error) { failure ??= redact(error); process.exitCode = 1; }
     }
     process.removeListener('SIGINT', onSignal); process.removeListener('SIGTERM', onSignal);
-    save('summary.json', { status: failure ? 'FAIL' : routinesSeedOnly ? 'SEED_ONLY_PASS' : routinesHostOnly ? 'HOST_ONLY_PASS' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: routinesSeedOnly ? 'v022-seed-only' : routinesHostOnly ? 'v022-host-only' : routinesOnly ? 'v022' : manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : homeOnly ? 'v015' : navOnly ? 'v016' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
+    save('summary.json', { status: failure ? 'FAIL' : routinesSeedOnly ? 'SEED_ONLY_PASS' : routinesHostOnly ? 'HOST_ONLY_PASS' : manualBrowser ? 'MANUAL_HOST_ONLY' : 'PASS', mode: avatarOnly ? 'v022-avatar' : routinesSeedOnly ? 'v022-seed-only' : routinesHostOnly ? 'v022-host-only' : routinesOnly ? 'v022' : manualBrowser ? 'manual-browser' : seedOnly ? 'seed-only' : extrasOnly ? 'extras-only' : homeOnly ? 'v015' : navOnly ? 'v016' : workspaceOnly ? 'workspace-only' : rightTabOnly ? 'right-tab-only' : 'matrix',
       ...(routinesOnly || routinesHostOnly || routinesSeedOnly ? { realModelRequests: 0, visualValidation: shots.length === 8 ? 'PASS' : 'NOT_RUN' } : {}),
       mockPromptsSent, sessionFixtures, mockRequests: mock?.requests.map(({ path, outcome }) => ({ path, outcome })),
       stage, step, failure, failureEvidence, profile, run, prompts: manualBrowser ? null : prompts, browserErrors,

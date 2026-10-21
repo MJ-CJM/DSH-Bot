@@ -70,6 +70,17 @@ home 固定从公开 `resolveDshHome()` 推导，不跟随自定义技能 `dataD
 
 卸载插件仅释放运行资源和关闭存储，不删除领域记录或上述用户文件。升级保持原 `DSH_HOME`、profile、存储后端及 `dataDir`；安装步骤见 [README](../README.md)。
 
+## R06：头像造型与配色
+
+`WhaleGlyph` 是导航、Bot 头像和选择器的共享入口。导航不传 variant，继续使用经典图标；头像可选择经典、戴眼镜、喷水、小鲸鱼、戴帽子、睡觉六种。五种原创派生造型组合一份身体路径及负空间眼睛/鳍，喷水、帽子和 Zz 由单色几何路径绘制；SVG 仅 currentColor/none，避免主题固定色或重复身体 path。
+
+决策：存储可选 `avatarVariant`，显式 `auto` 表示自动造型；保留 `avatarColor` 并扩为 12 个受限 ID。理由：旧字段不存在的记录必须保持 classic，不能仅用字段缺失同时代表自动造型。新建 UI 默认 auto，编辑旧 Bot 默认 classic，自动按钮同时设置 auto 并清空指定颜色；按 Bot ID 的两个 FNV-1a 哈希域独立选择造型/颜色，重载、主题、语言和名称变化不影响结果。API 创建省略 variant 仍按兼容规则显示 classic。图片优先于 emoji，再使用鲸鱼；选造型或颜色切回鲸鱼并保留另一个维度。`null` 清空 variant 后恢复 classic，无批量改写、无 schemaVersion 升级。
+
+决策：八个新增配色由原四个主题 alias 混合，再朝 label-primary 混合以保证对比度。理由：只用原生主题 token 即可扩色，无需硬编码亮暗色值。亮暗计算阈值为非文本图形 3:1；中英名称键一致。选择器分造型、颜色两个有名称的 fieldset，使用可聚焦的原生按钮和 aria-pressed，支持 Tab、Enter、Space、左右键循环及 Home/End；窄屏自然换行。上传 FileReader 的原有卸载取消保持有效。
+
+`--v022-avatar` 安装本地构建到隔离 profile，以真实 Remote 种六个 Bot，打开编辑器并验证键盘选择、12 色对比度、两行完整可见及对话框旁的六种头像。目标为 `.codex/screens/v022-avatar-{light,dark}.png`，不发送模型请求。实际运行在 Chromium 启动阶段失败，未验证页面几何或视觉，见 [R06 验收](acceptance/P2-R06.md)。
+
+
 ## R05：持久主会话与共享 Bots 工作区
 
 每个 Bot 的一个主会话由 `dsh_bot_main_session` v1 sidecar 保存，键为 JSON `[botId, botCreatedAt]`，值为 `{botId, botCreatedAt, sessionId}`。没有消息副本或第二个会话系统。原生 Agent、Session、Inbox、持久存储、标题与导航仍由 DSH 管理。

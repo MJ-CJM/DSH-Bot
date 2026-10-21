@@ -167,7 +167,7 @@
     "avatar.green": "绿色",
     "avatar.amber": "琥珀色",
     "avatar.red": "红色",
-    "avatar.automatic": "使用自动配色",
+    "avatar.automatic": "自动造型与配色",
     "avatar.otherOptions": "表情或上传图片",
     "avatar.upload": "上传图片",
     "avatar.uploadHint": "支持 PNG、JPEG、GIF 或 WebP，编码后数据不得超过 64 KiB。",
@@ -302,6 +302,21 @@
     "native.timingHint": "修改间隔会重设 every 相位。时间规则由原生服务校验；星期用逗号分隔的 ISO 1–7。",
     "native.unavailable": "此 Host 的原生定时服务未启用或不可用。",
     "routine.status.delivered": "已投递",
-    "editor.cwdHint": "保留旧设置供兼容。新建主对话使用共享 Bots 工作区；迁移对话保留原目录。"
+    "editor.cwdHint": "保留旧设置供兼容。新建主对话使用共享 Bots 工作区；迁移对话保留原目录。",
+    "avatar.teal": "青绿",
+    "avatar.cyan": "青蓝",
+    "avatar.indigo": "靛蓝",
+    "avatar.purple": "紫色",
+    "avatar.rose": "玫瑰",
+    "avatar.orange": "橙色",
+    "avatar.olive": "橄榄",
+    "avatar.slate": "灰蓝",
+    "avatar.variant": "鲸鱼造型",
+    "avatar.variant.classic": "经典",
+    "avatar.variant.glasses": "戴眼镜",
+    "avatar.variant.spout": "喷水",
+    "avatar.variant.baby": "小鲸鱼",
+    "avatar.variant.hat": "戴帽子",
+    "avatar.variant.sleeping": "睡觉"
   }
 }
