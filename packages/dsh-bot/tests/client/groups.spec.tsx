@@ -54,7 +54,7 @@ describe('U08 real public slots / Remote-double group UI', () => {
       const picker = app.container.querySelector('fieldset'); if (!picker) throw new Error();
       const recipients = picker.querySelectorAll<HTMLInputElement>('input'); await click(recipients[1] as HTMLInputElement);
       await click(button(picker,t['groups.close'])); expect(document.activeElement).toBe(draft);
-      app.remote.groups.send.mockResolvedValue({ok:false,error:new RemoteError('p34/recovery-needed','',{})});
+      app.remote.groups.send.mockResolvedValue({ok:false,error:new RemoteError('dsh-bot/recovery-needed','',{})});
       await click(button(app.container,t['groups.send'])); expect((draft as HTMLTextAreaElement).value).toBe('@Same name is text only');
       const first = app.remote.groups.send.mock.calls[0]?.[1]; expect(first?.memberIds).toEqual(['member:beta']);
       const current = app.remote.data.groupView; if (!current) throw new Error();
@@ -82,7 +82,7 @@ describe('U08 real public slots / Remote-double group UI', () => {
       const draft = field(app.container, t['groups.message']);
       for (const [text, id] of [['@研究员 请分析', 'member:alpha'], ['@research ASSISTANT please help', 'member:beta']]) {
         await fill(draft, text as string);
-        app.remote.groups.send.mockResolvedValue({ ok: false, error: new RemoteError('p34/recovery-needed', '', {}) });
+        app.remote.groups.send.mockResolvedValue({ ok: false, error: new RemoteError('dsh-bot/recovery-needed', '', {}) });
         await click(button(app.container, t['groups.send']));
         expect(app.remote.groups.send.mock.calls.at(-1)?.[1].memberIds).toEqual([id]);
       }
@@ -121,7 +121,7 @@ describe('U08 real public slots / Remote-double group UI', () => {
       const old = app.remote.data.groupView; if (!old) throw new Error();
       app.remote.data.groupView = {...old,group:{...old.group,revision:8,membershipRevision:5}};
       await act(async () => { await app.ctx.emit('connection/reset'); });
-      app.remote.groups.edit.mockResolvedValue({ok:false,error:new RemoteError('p34/conflict','',{})}); await act(async () => { form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); });
+      app.remote.groups.edit.mockResolvedValue({ok:false,error:new RemoteError('dsh-bot/conflict','',{})}); await act(async () => { form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); });
       expect(app.remote.groups.edit.mock.calls[0]?.[1]).toMatchObject({name:'Keep edit draft',expectedRevision:1,expectedMembershipRevision:1});
       expect(field(form,t['groups.name']).value).toBe('Keep edit draft');
       await click(button(form,t['groups.close']));

@@ -1,3 +1,4 @@
+import { hasOperationCode } from '../../shared/operation-errors.js';
 import { access, constants } from 'node:fs/promises';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -416,7 +417,7 @@ export class Connectors {
         await child?.dispose();
         e.status.state = 'unavailable';
         e.status.reasonCode =
-          error instanceof OperationError && error.code === 'p34/not-found'
+          error instanceof OperationError && hasOperationCode(error, 'not-found')
             ? 'missing-credential'
             : this.stopping
               ? 'stopping'

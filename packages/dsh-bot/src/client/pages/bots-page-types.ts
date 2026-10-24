@@ -1,0 +1,45 @@
+import type { WorkspaceActions } from '../workspace-state.js';
+import type { GroupActions } from '../groups-state.js';
+import type { CollaborationActions } from '../collaboration-state.js';
+import type { IntegrationActions } from '../integrations-state.js';
+import type { RoutineActions } from '../automation-state.js';
+import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
+import type { Context } from '@deepseek-ai/cordis';
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { BotCreateInput, BotPatch, BotRecord } from '../../shared/schema.js';
+import type { ActivityCatalog } from '../activity-state.js';
+import type { MemoryPanelProps } from '../components/MemoryPanel.js';
+import type { BotDetailSource } from '../detail-state.js';
+import type { BotCatalog } from '../state.js';
+import type { ChatLauncherActions } from '../chat-launcher.js';
+
+export interface BotsPageInjected extends ChatLauncherActions {
+  management?: WorkspaceActions;
+  groups?: GroupActions;
+  routines?: RoutineActions;
+  integrations?: IntegrationActions;
+  collaboration?: CollaborationActions;
+  hooks: {
+    catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>;
+    activity: Pick<ActivityCatalog, 'getSnapshot' | 'subscribe'>;
+    workspaceCatalog: Context['workspaces']['list'];
+    sessionCatalog: ObservableSnapshot<SessionListState>;
+    botDetail: Pick<BotDetailSource, 'getSnapshot' | 'subscribe'>;
+  };
+  onOpenSession(id: string, signal?: AbortSignal): Promise<void>;
+  onDetailConsumed(requestId: number): void;
+  onCountMemories(id: string): Promise<number>;
+  createMemoryPanel(id: string): Omit<MemoryPanelProps, 'bot' | 't'> & { dispose(): void };
+  onRefresh(): Promise<void>;
+  onPollInterval(value: number): void;
+  onCreate(input: BotCreateInput): Promise<void>;
+  onUpdate(id: string, input: BotPatch): Promise<void>;
+  onDuplicate(id: string, newId: string): Promise<void>;
+  onDelete(id: string, deleteMemories: boolean, deleteHome: boolean): Promise<void>;
+  onEnsureHome(id: string): Promise<string>;
+  onEnsureBotsWorkspace(): Promise<string>;
+  onPickDirectory?: () => Promise<string | null>;
+}
+export type BotsPageProps = InjectFace<BotsPageInjected> & PropsLocale<'dsh-bot'>;
+export type Dialog = { kind: 'create' } | { kind: 'edit' | 'delete' | 'duplicate' | 'memory'; bot: BotRecord };

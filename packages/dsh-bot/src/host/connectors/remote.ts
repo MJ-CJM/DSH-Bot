@@ -6,7 +6,7 @@ import { integrationCatalogSchema, type BotKey } from '../../shared/integrations
 import type { Connectors } from '../connectors/service.js';
 import type { Notifications } from '../notifications/service.js';
 export const INTEGRATIONS_HOST = {
-  package: 'dsh-bot/p34',
+  package: 'dsh-bot/integrations',
   face: 'host',
   schemas: [],
   get invocations() {

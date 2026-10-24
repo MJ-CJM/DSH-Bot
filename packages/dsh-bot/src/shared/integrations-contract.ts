@@ -18,7 +18,7 @@ import {
 } from './integrations.js';
 const codec = <S extends z.ZodType>(name: string, schema: S) => ({
   mode: 'strict' as const,
-  typeSymbol: `dsh-bot/p34#${name}`,
+  typeSymbol: `dsh-bot/integrations#${name}`,
   create: () => schema,
   encode: (v: unknown) => schema.parse(v),
   decode: (v: unknown) => schema.parse(v),
@@ -32,7 +32,7 @@ const param = <S extends z.ZodType>(name: string, s: S) => ({
 const base = { service: 'dshBotP34', invocation: { kind: 'direct' as const } };
 const expected = param('expectedRevision', z.number().int().nonnegative());
 export const integrationsSpec = {
-  package: 'dsh-bot/p34',
+  package: 'dsh-bot/integrations',
   methods: {
     'dshBot.connectors/catalog': { ...base, parameters: [], result: codec('Catalog', integrationCatalogSchema) },
     'dshBot.connectors/saveDefinition': {

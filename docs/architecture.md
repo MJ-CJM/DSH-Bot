@@ -241,9 +241,19 @@ Bots 一级导航只有 Bots、群聊、管理。管理分区提供记忆/传输
 ## P34 审查返工：领域模块与兼容边界（2026-10-24）
 
 - `shared/identity.ts`、`connectors.ts`、`notifications.ts` 定义身份与各领域 schema，`integrations.ts` 只组合 catalog；Client 对应 `integrations-state.ts`、`ConnectorsPanel` / `ConnectorEditor` / `CredentialEditor` / `NotificationsPanel`，locale 使用领域 namespace。Host 的通用队列/错误位于 `common/operations.ts`，存储组合位于 `common/integration-stores.ts`，连接器和通知的 Remote 分别归属各自目录。
-- 兼容保留 `dsh-bot/p34` Remote contribution/typeSymbol、`dshBotP34` service id、`p34/*` 错误码，以及既有所有 Domain 名称、表、schemaVersion 和 operation digest。它们是已有协议/数据身份，文件改名不触发数据重写；`OperationError` 仍生成原错误值。没有新增依赖或升级发布版本。
+- r2 按任务要求将 Remote contribution/package/typeSymbol 统一为 `dsh-bot/integrations` / `dsh-bot/integrations#…`，通用操作错误统一为 `dsh-bot/<code>`，消息为 `DSH-Bot: <code>`。`shared/operation-errors.ts` 导出错误码常量及结构类型守卫，Client 不导入 Host 错误类。Host 与 Client 必须一起更新，旧 `p34/*` 错误码和旧 contribution 不再作为新响应输出。保留 `dshBotP34` 的 Cordis service id、所有 Domain/表/schemaVersion/operation digest；无需数据迁移，没有新增依赖或升级发布版本。
 - `ReferenceMemory` 是薄请求入口，继承链按职责分为 `MemoryCopyWorkflow`（复制状态机）、`ReferenceBackend`（主会话选择与后端状态）、`ReferenceWriter`（MCP client/串行调用/关闭）；`model.ts` 集中 domain、writer lease 和完整读回校验。保持同一 `control` 队列、同一 writer Map 及关闭顺序，原 `service.ts` 继续 re-export 验证 helper/domain。所有这些单文件均小于 300 行。
 - 图谱 UI 分为后端概览、`GraphTools` 和 `MemoryCopySteps`，导入 UI 的预览收据拆到 `TransferPreview`。单向复制说明明确“不会同步回写、不删除源”；暂存前显示条目数并要求用户确认，确认绑定 copyId/sourceDigest/count。提交和回退仍使用原 Host 契约。
 - 群的 `prepareDelivery`、`deliver`、`recordDeliveryResult` 将身份复核、原生 worker 生命周期、持久回执分开，仍在根 flush=true 且成功时推进 nextMemberId。公开 sidebar leading/hover slots 根据 exact 群根 SessionId 显示鲸鱼及群名称；成员 worker 保持原生 subagent，Bot 列表仍只显示唯一 mainSessionId。
 
 静态、DOM、完整首次/冷 Host 与浏览器证据分开列于 [返工验收](acceptance/P34-rework.md)。截图统一入口为 `packages/dsh-bot/scripts/screenshot-v03.mjs`，只使用仓库 `.dsh-dev`、全新 profile 和 loopback mock，输出中英×亮暗共 40 个目标至 `docs/screenshots/v03/<run>/`；沙箱内 Chromium 受 MachPort 权限阻断，真实截图与窄屏验收仍为 FAIL（环境）。
+
+
+### r2 拆分边界（2026-10-24）
+
+- 群服务 `groups/service.ts`（103 行）只组合内部模块、转发公开请求并协调关闭。`state.ts` 集中同一个 Serial 队列、Domain、根/worker 所有权与取消状态；`members.ts` 处理群创建及成员编辑；`roots.ts` 负责根的创建辅助、恢复、命名与 preset；`messages.ts` 读取原生日志并管理摘要/读状态；`turns.ts` 负责准入、取消与归档；`turn-runner.ts` 负责准备、原生 activation、回文落盘与结算；`round-robin.ts` 计算成功后的下个成员。所有文件 ≤300 行，最大的回合执行模块 246 行。继续先 flush 回文再推进指针，先排空 worker/队列再释放根、preset 与 Domain。
+- `pages/BotsPage.tsx`（162 行）保留页面布局、一级导航与状态提示；Bots 主分区、历史、对话框和记忆页分别在 `BotsTab`、`BotSessionHistory`、`BotDialogs`、`BotMemoryTab`。管理和群分区继续复用既有独立组件。`use-bots-page.ts` 保持原订阅、选中项、导航取消与表单操作状态，`bots-page-types.ts` 定义注入合同。组件在模块顶层定义，未为轮询引入新 key、新订阅或卸载重挂载；原页面继续导出注入类型。
+- `store.ts`（70 行）保留原导出与 effect 打开/关闭入口；`stores/{bots,activity,memory}.ts` 按领域拆分，`stores/domain.ts` 集中原领域 schema、同一 WeakMap 写队列及级联删除 helper。Bot 删除在已有 writer 槽调用 helper，不能二次入队；所有 Store 实例继续按同一个 Domain 串行写入。没有修改表名、读写校验、CAS、落盘或失败映射。
+- Registry 仅低风险移出 `registry-config.ts` 的配置/schema，并从原路径 re-export `Config`。剩余 `registry.ts`（712 行）暂不强拆：初始化/关闭共享 `ready`、`tail`、`releaseResources`、`watchOwner`；preset transition 的注销/获取/回滚共享 `leases`、`activating`、诊断和同一写队列，Agent setup 又会回调本注册表。按 CRUD 或活动分成多个有状态服务会引入重入、回滚和 disposer 次序风险。本轮保留此所有权边界；以后需要拆分时可先抽取显式 transition 状态机，再独立验证注册失败与关闭并发，不能只以减少行数为目的。
+
+r2 实际检查结果及未重新运行的完整 Host/浏览器边界见 [返工验收 r2](acceptance/P34-rework.md#r2-返工2026-10-24)。

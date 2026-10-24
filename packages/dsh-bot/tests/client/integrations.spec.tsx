@@ -27,7 +27,7 @@ describe('P34 management through the public main slot and shared polling catalog
       await submit(app.container);
       expect(app.remote.connectors.saveDefinition).toHaveBeenCalledWith(expect.objectContaining({ id: 'connector', url: 'https://example.test/mcp', credentialBindings: [{ destination: 'header', key: 'Authorization', credentialRef: 'GITHUB_TOKEN', format: 'bearer' }] }), 0);
       expect(JSON.stringify(app.remote.connectors.saveDefinition.mock.calls)).not.toContain('Bearer ');
-      app.remote.connectors.saveAssignment.mockResolvedValue({ ok: false, error: new RemoteError('p34/conflict', 'P34: conflict', {}) });
+      app.remote.connectors.saveAssignment.mockResolvedValue({ ok: false, error: new RemoteError('dsh-bot/conflict', 'DSH-Bot: conflict', {}) });
       await click(button(app.container, t['connectors.assign']));
       expect(app.remote.connectors.saveAssignment).toHaveBeenCalledWith(expect.objectContaining({ bot: { botId: 'alpha', botCreatedAt: 1 }, enabled: true }), 0);
       expect(app.container.textContent).toContain(t['integrations.operationFailed']);
@@ -52,7 +52,7 @@ describe('P34 management through the public main slot and shared polling catalog
   it('uses only native credential write/describe, clears password after success, failure and leaving the tab', async () => {
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })]); const t = en.ui;
     const describe = vi.fn(async () => ({ ok: true, value: { GITHUB_TOKEN: { configured: false, writable: true } } }));
-    const set = vi.fn(async (_ref: string, _value: string) => ({ ok: true as boolean, value: undefined, error: new RemoteError('p34/unavailable', '', {}) }));
+    const set = vi.fn(async (_ref: string, _value: string) => ({ ok: true as boolean, value: undefined, error: new RemoteError('dsh-bot/unavailable', '', {}) }));
     const release = app.ctx.provide('remote.credentials', { describe, set } as never);
     try {
       await click(button(app.container, t['manage.title'])); await click(button(app.container, t['connectors.connectors']));
@@ -62,7 +62,7 @@ describe('P34 management through the public main slot and shared polling catalog
       await fill(password, 'SYNTHETIC_UI_SECRET'); await click(button(app.container, t['connectors.storeCredential']));
       expect(set).toHaveBeenCalledWith('GITHUB_TOKEN', 'SYNTHETIC_UI_SECRET'); expect(password.value).toBe('');
       expect(app.remote.connectors.saveDefinition).not.toHaveBeenCalled(); expect(JSON.stringify(app.remote.data.integrations)).not.toContain('SYNTHETIC_UI_SECRET');
-      set.mockResolvedValue({ ok: false, value: undefined, error: new RemoteError('p34/unavailable', '', {}) });
+      set.mockResolvedValue({ ok: false, value: undefined, error: new RemoteError('dsh-bot/unavailable', '', {}) });
       await fill(password, 'SYNTHETIC_UI_FAILURE'); await click(button(app.container, t['connectors.storeCredential'])); expect(password.value).toBe('');
       await fill(password, 'SYNTHETIC_NOT_SUBMITTED'); await click(button(app.container, t['manage.title'])); await click(button(app.container, t['notifications.notifications'])); await click(button(app.container, t['manage.title'])); await click(button(app.container, t['connectors.connectors']));
       expect(field(app.container, t['connectors.secret']).value).toBe('');
@@ -102,7 +102,7 @@ describe('P34 management through the public main slot and shared polling catalog
       await click(field(app.container, t['notifications.preapproved']));
       expect((field(app.container, t['notifications.confirmScope']) as HTMLInputElement).checked).toBe(false);
       await click(field(app.container, t['notifications.confirmScope']));
-      app.remote.notifications.savePolicy.mockResolvedValue({ ok: false, error: new RemoteError('p34/conflict', 'P34: conflict', {}) });
+      app.remote.notifications.savePolicy.mockResolvedValue({ ok: false, error: new RemoteError('dsh-bot/conflict', 'DSH-Bot: conflict', {}) });
       await submit(app.container);
       expect(app.remote.notifications.savePolicy).toHaveBeenCalledWith(expect.objectContaining({ id: 'local', owner: { botId: 'alpha', botCreatedAt: 1 }, authorization: { mode: 'preapproved' }, dailyLimit: 20, cooldownSec: 60 }), 0, true);
       expect(field(app.container, t['integrations.id']).value).toBe('local');

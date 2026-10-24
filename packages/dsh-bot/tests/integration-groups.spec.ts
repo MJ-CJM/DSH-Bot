@@ -50,10 +50,10 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
   it('deduplicates create before native side effects and enforces birthday/CAS/member identity', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const [g, again] = await Promise.all([s.createGroup(), s.createGroup()]); expect(g.id).toBe(again.id); expect(s.create).toHaveBeenCalledTimes(1);
-      await expect(s.groups.create({ operationId: 'create-1', name: 'changed', mode: 'mention', members: [alpha,beta], historyConfirmed: true })).rejects.toMatchObject({ code: 'p34/conflict' });
-      await expect(s.groups.create({ operationId: 'bad', name: 'bad', mode: 'mention', members: [alpha,{ ...beta, botCreatedAt: 2 }], historyConfirmed: true })).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(s.groups.create({ operationId: 'create-1', name: 'changed', mode: 'mention', members: [alpha,beta], historyConfirmed: true })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      await expect(s.groups.create({ operationId: 'bad', name: 'bad', mode: 'mention', members: [alpha,{ ...beta, botCreatedAt: 2 }], historyConfirmed: true })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       const edit = { name: 'Renamed', members: [beta,alpha], mode: 'round-robin', expectedRevision: 1, expectedMembershipRevision: 1, historyConfirmed: true };
-      const changed = await s.groups.edit(groupKey(g), edit); expect(changed.membershipRevision).toBe(2); await expect(s.groups.edit(groupKey(g), edit)).rejects.toMatchObject({ code: 'p34/conflict' });
+      const changed = await s.groups.edit(groupKey(g), edit); expect(changed.membershipRevision).toBe(2); await expect(s.groups.edit(groupKey(g), edit)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       expect(s.rename).toHaveBeenCalledWith({ sessionId: g.rootSessionId, title: 'Renamed' });
       expect((await s.groups.view(groupKey(g))).members.filter(m => m.enabled).map(m => m.bot.botId)).toEqual(['beta','alpha']);
     } finally { await s.close(); }
@@ -67,19 +67,19 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       expect(v.messages.map(m => m.text)).toEqual(['question','reply-1','reply-2']); expect(v.deliveries.map(d => d.state)).toEqual(['completed','completed']);
       expect(v.deliveries[1]?.contextOutputMessageIds).toEqual([v.messages[1]?.id]); expect(s.calls[1]?.prompt).toContain('reply-1');
       expect(s.roots.get(g.rootSessionId)?.agent.session.snapshotEvents().filter(e => e.type === 'assistant/message')).toEqual([]);
-      await expect(s.groups.send(groupKey(g), { ...input, text: 'changed' })).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(s.groups.send(groupKey(g), { ...input, text: 'changed' })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       const seq = v.messages.at(-1)?.seq; if (seq === undefined) throw new Error();
       expect(v.unread).toBe(true); await s.groups.markRead(groupKey(g),seq,0);
-      await expect(s.groups.markRead(groupKey(g),seq,0)).rejects.toMatchObject({code:'p34/conflict'});
+      await expect(s.groups.markRead(groupKey(g),seq,0)).rejects.toMatchObject({code:'dsh-bot/conflict'});
       await s.reopen(); const cold = await s.groups.view(groupKey(g)); expect(cold.unread).toBe(false); expect(cold.messages).toEqual(v.messages); expect(s.create).toHaveBeenCalledTimes(1);
     } finally { await s.close(); }
   }));
   it('rejects unknown and text-only mentions; duplicate names and a new birthday do not route by display name', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); const members = (await s.groups.view(groupKey(g))).members;
-      for (const memberIds of [[], ['unknown'], [members[0]?.id, members[0]?.id]]) await expect(s.groups.send(groupKey(g), { operationId: `bad-${JSON.stringify(memberIds)}`, text: '@Same name', memberIds, expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'p34/invalid' });
+      for (const memberIds of [[], ['unknown'], [members[0]?.id, members[0]?.id]]) await expect(s.groups.send(groupKey(g), { operationId: `bad-${JSON.stringify(memberIds)}`, text: '@Same name', memberIds, expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
       const b = f.bots.get('beta'); if (!b) throw new Error(); f.bots.set('beta', { ...b, createdAt: 2 });
-      await expect(s.groups.send(groupKey(g), { operationId: 'bad-birthday', text: 'q', memberIds: [members[1]?.id], expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'p34/conflict' }); expect(s.start).not.toHaveBeenCalled();
+      await expect(s.groups.send(groupKey(g), { operationId: 'bad-birthday', text: 'q', memberIds: [members[1]?.id], expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'dsh-bot/conflict' }); expect(s.start).not.toHaveBeenCalled();
     } finally { await s.close(); }
   }));
   it('cancels an active member and pending targets, preserves queued input cutoff and drains child before root/preset', () => withIntegrations(async f => {
@@ -143,7 +143,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); const m = (await s.groups.view(groupKey(g))).members[0]; s.flush.mockResolvedValueOnce(false);
       const input = { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 };
-      await expect(s.groups.send(groupKey(g), input)).rejects.toMatchObject({ code: 'p34/recovery-needed' });
+      await expect(s.groups.send(groupKey(g), input)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
       await s.reopen(); const t = await s.groups.send(groupKey(g), input); expect(t.state).toBe('recovery_needed'); expect(s.calls).toHaveLength(0);
     } finally { await s.close(); }
   }));
@@ -169,7 +169,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 });
       await vi.waitFor(async () => expect((await s.groups.view(groupKey(g))).turns[0]?.state).toBe('cancelled'), { timeout: 2500 });
       const v = await s.groups.view(groupKey(g)); await s.groups.archive(groupKey(g), v.group.revision);
-      await expect(s.groups.send(groupKey(g), { operationId: 'two', text: 'q', memberIds: [m?.id], expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'p34/recovery-needed' });
+      await expect(s.groups.send(groupKey(g), { operationId: 'two', text: 'q', memberIds: [m?.id], expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
     } finally { await s.close(); }
   }));
 });

@@ -18,8 +18,8 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
     expect((await f.notifications.deliver(r.id)).state).toBe('recorded');
     expect(f.notifications.list()).toHaveLength(1);
     expect((await f.notifications.markRead(r.id, f.notifications.get(r.id).revision)).readAt).toBe(f.clock.at);
-    await expect(f.notifications.markRead(r.id, 1)).rejects.toMatchObject({ code: 'p34/conflict' });
-    await expect(f.notifications.record(beta, input('wrong-owner'), source)).rejects.toMatchObject({ code: 'p34/not-found' });
+    await expect(f.notifications.markRead(r.id, 1)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    await expect(f.notifications.record(beta, input('wrong-owner'), source)).rejects.toMatchObject({ code: 'dsh-bot/not-found' });
   }));
   it('serializes quota reservations, deduplicates operationId and holds unknown quota across reopen', async () => {
     const p = port(); p.send.mockRejectedValue(new Error('disconnect AFTER send'));
@@ -30,7 +30,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
       expect(results.map(r => r.state).sort()).toEqual(['suppressed', 'unknown']); expect(p.send).toHaveBeenCalledOnce();
       expect(await f.notifications.record(alpha, input('one'), source)).toMatchObject({ id: 'one' });
       await f.notifications.deliver('one', saved.scopeDigest); expect(p.send).toHaveBeenCalledOnce();
-      await expect(f.notifications.record(alpha, { ...input('one'), text: 'changed' }, source)).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(f.notifications.record(alpha, { ...input('one'), text: 'changed' }, source)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       await f.notifications.close();
       const reopened = new Notifications(f.ctx, f.stores, f.registry, f.notifications.options, () => {}, p, () => f.clock.at);
       await reopened.recover(); await reopened.deliver('one', saved.scopeDigest); expect(p.send).toHaveBeenCalledOnce(); await reopened.close();
@@ -52,7 +52,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
   });
   it('rejects changed scope, fingerprint, Bot birthday and unconfirmed preapproval', async () => {
     const p = port(); await withIntegrations(async f => {
-      await expect(f.notifications.savePolicy(policy('pre', 'im', { authorization: { mode: 'preapproved' } }), 0, false)).rejects.toMatchObject({ code: 'p34/approval-denied' });
+      await expect(f.notifications.savePolicy(policy('pre', 'im', { authorization: { mode: 'preapproved' } }), 0, false)).rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
       const saved = await f.notifications.savePolicy(policy(), 0, false); const one = await f.notifications.record(alpha, input('changed'), source);
       await f.notifications.savePolicy(policy('policy', 'im', { dailyLimit: 2 }), 1, false);
       expect((await f.notifications.deliver(one.id, saved.scopeDigest)).reasonCode).toBe('changed');
@@ -60,7 +60,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
       p.describe.mockResolvedValue({ targetDigest: 'replaced', label: 'Synthetic target' });
       expect((await f.notifications.deliver(fresh.id, fresh.scopeDigest)).reasonCode).toBe('changed');
       f.bots.set('alpha', { ...need(f.bots.get('alpha')), createdAt: 2 });
-      await expect(f.notifications.record(alpha, input('stale'), source)).rejects.toMatchObject({ code: 'p34/conflict' }); expect(p.send).not.toHaveBeenCalled();
+      await expect(f.notifications.record(alpha, input('stale'), source)).rejects.toMatchObject({ code: 'dsh-bot/conflict' }); expect(p.send).not.toHaveBeenCalled();
     }, p);
   });
   it('enforces cross-midnight local dates, DST transitions, exact quiet boundaries and clock rollback', async () => {
@@ -88,7 +88,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
       expect(f.notifications.get('cool').reasonCode).toBe('cooldown');
       f.clock.at += 61_000; const r = await f.notifications.record(alpha, input('later'), source); expect((await f.notifications.deliver(r.id, saved.scopeDigest)).state).toBe('failed');
       f.clock.at += 31 * 86400000; await f.notifications.record(alpha, input('prune'), source);
-      await expect(f.notifications.record(alpha, input('first'), source)).rejects.toMatchObject({ code: 'p34/recovery-needed' });
+      await expect(f.notifications.record(alpha, input('first'), source)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
     }, p);
   });
   it('bounds a stuck platform send, records unknown and keeps the reservation', async () => {
@@ -108,11 +108,11 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
       const saved = await f.notifications.savePolicy(policy(), 0, false); const r = await f.notifications.record(alpha, input('close'), source);
       const request = f.notifications.deliver(r.id, saved.scopeDigest); await vi.waitFor(() => expect(p.send).toHaveBeenCalledOnce());
       await f.notifications.close(); expect((await request).state).toBe('unknown');
-      await expect(f.notifications.record(alpha, input('late'), source)).rejects.toMatchObject({ code: 'p34/unavailable' });
+      await expect(f.notifications.record(alpha, input('late'), source)).rejects.toMatchObject({ code: 'dsh-bot/unavailable' });
     }, p);
   });
   it('refuses IM without adapter while local policies remain usable', async () => withIntegrations(async f => {
-    await expect(f.notifications.savePolicy(policy(), 0, false)).rejects.toMatchObject({ code: 'p34/unsupported' });
+    await expect(f.notifications.savePolicy(policy(), 0, false)).rejects.toMatchObject({ code: 'dsh-bot/unsupported' });
     expect((await f.notifications.savePolicy(policy('policy', 'im', { enabled: false }), 0, false)).enabled).toBe(false);
     expect(f.notifications.supported()).toBe(false);
   }));

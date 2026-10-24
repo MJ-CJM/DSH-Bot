@@ -1,5 +1,11 @@
 # DSH API 核实记录
 
+## P34 审查返工 r2（2026-10-24）
+
+本轮没有新增或改变 DSH API 用法、依赖、公开包入口或服务作用域。按 r2 要求更新本插件 wire 身份：Remote package/typeSymbol 为 `dsh-bot/integrations` / `dsh-bot/integrations#…`，操作错误为 `dsh-bot/<code>`，消息为 `DSH-Bot: <code>`。Client 使用共享常量/守卫；Host 和 Client 同包更新。Cordis service id `dshBotP34` 和全部持久化身份保留。此节取代下方 r1 的“保留旧 wire/error”决定，不追溯修改历史收据。
+
+群服务、Bots 页面和 Store 仅按职责移动；同一队列、effect、flush、CAS、abort/dispose 和关闭顺序保留。r2 `scripts/pnpm check` 实测 52 文件 / 667 测试、build、strict、lint PASS，包括 JSON 后端生命周期/恢复和正式 Client factory 的无重绘/DOM 稳定测试。完整首次/冷 Host、浏览器和桌面本轮未重跑；前一轮收据不能算作 r2 的运行证据。详见 [r2 验收](acceptance/P34-rework.md#r2-返工2026-10-24)。
+
 ## P34 审查返工（2026-10-24）
 
 没有新增 DSH API 或依赖。既有公开 `sidebar.session.row.leading` / `hover` slot 新增 exact 群根身份贡献，与 Bot/原生 schedule 的贡献并存并随 effect 注销；52 文件 / 667 测试验证挂载、卸载及鲸鱼/群名。输入式 @ 只在 Client 解析为既有 memberIds，Host codec/准入/CAS 不放宽。保留旧 Remote contribution/service/typeSymbol/错误码及所有 v1 存储身份，领域文件和 locale 改名不需要数据迁移。

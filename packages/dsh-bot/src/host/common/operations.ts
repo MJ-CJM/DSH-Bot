@@ -1,17 +1,11 @@
 import { createHash } from 'node:crypto';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type { z } from 'zod';
-export type OperationCode =
-  | 'invalid'
-  | 'conflict'
-  | 'not-found'
-  | 'unavailable'
-  | 'unsupported'
-  | 'approval-denied'
-  | 'recovery-needed';
-export class OperationError extends RemoteError<`p34/${OperationCode}`> {
+import { OPERATION_CODES, type OperationCode, type OperationErrorCode } from '../../shared/operation-errors.js';
+export type { OperationCode } from '../../shared/operation-errors.js';
+export class OperationError extends RemoteError<OperationErrorCode> {
   constructor(code: OperationCode) {
-    super(`p34/${code}`, `P34: ${code}`, {});
+    super(OPERATION_CODES[code], `DSH-Bot: ${code}`, {});
   }
 }
 export function parse<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
@@ -36,7 +30,7 @@ export class Serial {
   }
 }
 
-type OperationErrors = { [K in `p34/${OperationCode}`]: Record<string, never> };
+type OperationErrors = { [K in OperationErrorCode]: Record<string, never> };
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap extends OperationErrors {}
 }

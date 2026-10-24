@@ -37,7 +37,7 @@ describe('U04/U05 public slot UI', () => {
       await vi.waitFor(() => expect(app.remote.collaboration.board.mock.calls.length).toBeGreaterThan(reads));
       expect(document.activeElement).toBe(input);
       expect(field(app.container, t['team.subject'])).toBe(input);
-      app.remote.collaboration.createTask.mockResolvedValue({ ok: false, error: new RemoteError('p34/conflict', '', {}) });
+      app.remote.collaboration.createTask.mockResolvedValue({ ok: false, error: new RemoteError('dsh-bot/conflict', '', {}) });
       await submit(app.container); expect(input.value).toBe('Keep my draft'); expect(app.container.textContent).toContain(t['team.conflict']);
       app.remote.collaboration.updateTask.mockImplementation(async (_key, update) => {
         const next = { ...task, revision: 2, status: update.action === 'claim' ? 'in_progress' as const : 'completed' as const, ownerName: 'lead' };
@@ -46,7 +46,7 @@ describe('U04/U05 public slot UI', () => {
       await click(button(app.container, t['team.claim'])); expect(app.remote.collaboration.updateTask).toHaveBeenLastCalledWith(link.bot, { taskId: 'task-1', expectedRevision: 1, action: 'claim' });
       await click(button(app.container, t['team.complete'])); expect(app.remote.collaboration.updateTask).toHaveBeenLastCalledWith(link.bot, { taskId: 'task-1', expectedRevision: 2, action: 'complete' });
       expect(app.container.textContent).toContain(t['team.inherits']); expect(input.value).toBe('Keep my draft');
-      app.remote.collaboration.createTask.mockResolvedValue({ ok: false, error: new RemoteError('p34/recovery-needed', '', {}) });
+      app.remote.collaboration.createTask.mockResolvedValue({ ok: false, error: new RemoteError('dsh-bot/recovery-needed', '', {}) });
       const attempts = app.remote.collaboration.createTask.mock.calls.length;
       await submit(app.container); expect(app.container.textContent).toContain(t['team.recovery']);
       expect(app.remote.collaboration.createTask).toHaveBeenCalledTimes(attempts + 1); expect(input.value).toBe('Keep my draft');

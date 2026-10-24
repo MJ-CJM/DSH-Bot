@@ -1,3 +1,4 @@
+import { OPERATION_CODES } from '../../shared/operation-errors.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools';
@@ -81,7 +82,8 @@ export function registerNotifyTool(agent: Agent, owner: BotKey, service: Notific
         async execute(_args, exec) {
           read(exec);
           const approved = intents.get(exec);
-          if (!approved) throw new HarnessError('Notification approval unavailable', 'p34/approval-denied');
+          if (!approved)
+            throw new HarnessError('Notification approval unavailable', OPERATION_CODES['approval-denied']);
           try {
             const r = await service.deliver(
               approved.id,
@@ -90,7 +92,7 @@ export function registerNotifyTool(agent: Agent, owner: BotKey, service: Notific
             );
             return { id: r.id, state: r.state };
           } catch {
-            throw new HarnessError('Notification unavailable', 'p34/unavailable');
+            throw new HarnessError('Notification unavailable', OPERATION_CODES.unavailable);
           }
         },
       }),

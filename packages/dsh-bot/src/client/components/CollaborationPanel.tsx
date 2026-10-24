@@ -1,3 +1,4 @@
+import { hasOperationCode } from '../../shared/operation-errors.js';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
@@ -64,8 +65,9 @@ function Board({ actions, bot, onOpenSession, t }: Omit<CollaborationPanelProps,
       await catalog.refresh();
     } catch (e) {
       if (alive.current) {
-        const code = e && typeof e === 'object' && 'code' in e ? e.code : '';
-        setError(code === 'p34/conflict' ? 'conflict' : code === 'p34/recovery-needed' ? 'recovery' : 'failed');
+        setError(
+          hasOperationCode(e, 'conflict') ? 'conflict' : hasOperationCode(e, 'recovery-needed') ? 'recovery' : 'failed',
+        );
       }
       await catalog.refresh();
     } finally {

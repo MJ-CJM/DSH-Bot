@@ -29,7 +29,7 @@ describe('U05 identity links and public native-service boundary (Agent/Controlle
   it('does not create a main Session during reads or while the optional native service is absent', () => withIntegrations(async f => {
     const s = await setup(f); try {
       expect(await s.current.board(alpha)).toMatchObject({ supported: false, reason: 'native-service-missing' });
-      await expect(s.current.ensure(alpha, 0)).rejects.toMatchObject({ code: 'p34/unavailable' }); expect(s.open).not.toHaveBeenCalled();
+      await expect(s.current.ensure(alpha, 0)).rejects.toMatchObject({ code: 'dsh-bot/unavailable' }); expect(s.open).not.toHaveBeenCalled();
       s.enable(); expect(await s.current.board(alpha)).toMatchObject({ supported: true, reason: 'not-linked' }); expect(s.open).not.toHaveBeenCalled();
     } finally { await s.close(); }
   }));
@@ -46,19 +46,19 @@ describe('U05 identity links and public native-service boundary (Agent/Controlle
     const s = await setup(f); s.enable(); try {
       await s.current.ensure(alpha, 0);
       vi.mocked(getBotBinding).mockReturnValue({ botId: 'beta', botCreatedAt: 1 });
-      await expect(s.current.updateTask(alpha, { taskId: 'task-1', expectedRevision: 1, action: 'claim' })).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(s.current.updateTask(alpha, { taskId: 'task-1', expectedRevision: 1, action: 'claim' })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       expect(s.native.updateTask).not.toHaveBeenCalled(); vi.mocked(getBotBinding).mockReturnValue(alpha);
       if (!f.registry.mainSessions) throw new Error('No fixture main sessions');
       vi.mocked(f.registry.mainSessions.find).mockResolvedValue({ sessionId: 'different-main' });
-      await expect(s.current.board(alpha)).rejects.toMatchObject({ code: 'p34/recovery-needed' });
-      await expect(s.current.ensure({ ...alpha, botCreatedAt: 2 }, 0)).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(s.current.board(alpha)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+      await expect(s.current.ensure({ ...alpha, botCreatedAt: 2 }, 0)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
     } finally { await s.close(); }
   }));
   it('checks identity again after asynchronous native resolve and never calls a stale Agent', () => withIntegrations(async f => {
     const s = await setup(f); s.enable(); try {
       await s.current.ensure(alpha, 0);
       s.resolve.mockImplementation(async () => { const bot = f.bots.get('alpha'); if (!bot) throw new Error('No fixture Bot'); f.bots.set('alpha', { ...bot, createdAt: 2 }); return { agent: s.agent }; });
-      await expect(s.current.updateTask(alpha, { taskId: 'task-1', expectedRevision: 1, action: 'claim' })).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(s.current.updateTask(alpha, { taskId: 'task-1', expectedRevision: 1, action: 'claim' })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       expect(s.native.updateTask).not.toHaveBeenCalled();
     } finally { await s.close(); }
   }));
@@ -66,13 +66,13 @@ describe('U05 identity links and public native-service boundary (Agent/Controlle
     const s = await setup(f); s.enable(); try {
       await s.current.ensure(alpha, 0);
       s.native.updateTask.mockRejectedValueOnce(Object.assign(new Error('sensitive native failure'), { code: 'TEAM_TASK_STALE_REVISION' }));
-      await expect(s.current.updateTask(alpha, { taskId: 'task-1', expectedRevision: 1, action: 'claim' })).rejects.toMatchObject({ code: 'p34/conflict', message: 'P34: conflict' });
+      await expect(s.current.updateTask(alpha, { taskId: 'task-1', expectedRevision: 1, action: 'claim' })).rejects.toMatchObject({ code: 'dsh-bot/conflict', message: 'DSH-Bot: conflict' });
       s.flush.mockResolvedValueOnce(false);
-      await expect(s.current.createTask(alpha, { subject: 'Task', description: 'Details' })).rejects.toMatchObject({ code: 'p34/recovery-needed' });
+      await expect(s.current.createTask(alpha, { subject: 'Task', description: 'Details' })).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
       expect(s.native.createTask).toHaveBeenCalledTimes(1);
       expect(s.native.updateTask.mock.calls[0]?.[0]).toBe(s.agent);
       expect(s.agent.id).toBe('main-alpha' as SessionId);
-      await s.close(); await expect(s.current.board(alpha)).rejects.toMatchObject({ code: 'p34/unavailable' });
+      await s.close(); await expect(s.current.board(alpha)).rejects.toMatchObject({ code: 'dsh-bot/unavailable' });
     } finally { await s.close(); }
   }));
   it('strict codecs prohibit independent Bot presets, arbitrary claimant IDs and unsupported actions', () => {

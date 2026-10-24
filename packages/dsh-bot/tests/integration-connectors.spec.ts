@@ -61,15 +61,15 @@ describe('P34 connector bridge with real native MCP over loopback (Agent lifecyc
     try { await withIntegrations(async f => {
       await f.connectors.saveDefinition(definition('a', server.url), 0); await f.connectors.saveDefinition(definition('b', server.url), 0);
       await f.connectors.saveAssignment({ id: 'a-alpha', bot: alpha, connectorId: 'a', enabled: true }, 0);
-      await expect(f.connectors.saveAssignment({ id: 'b-alpha', bot: alpha, connectorId: 'b', enabled: false }, 0)).rejects.toMatchObject({ code: 'p34/conflict' });
-      await expect(f.connectors.saveDefinition(definition('a', server.url), 0)).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(f.connectors.saveAssignment({ id: 'b-alpha', bot: alpha, connectorId: 'b', enabled: false }, 0)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      await expect(f.connectors.saveDefinition(definition('a', server.url), 0)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       const a = f.createAgent(); await f.connectors.attach(a.agent, alpha);
       expect(f.connectors.runtime()[0]).toMatchObject({ state: 'unavailable', reasonCode: 'missing-credential' });
       f.secrets.set('SYNTHETIC_TOKEN', 'synthetic-token'); server.failDiscovery(true); await f.connectors.applyIdle(alpha);
       expect(f.connectors.runtime()[0]).toMatchObject({ state: 'unavailable', reasonCode: 'initialization-failed', toolCount: 0 });
       server.failDiscovery(false); await f.connectors.applyIdle(alpha); expect(f.connectors.runtime()[0]?.state).toBe('ready');
       f.bots.set('alpha', { ...need(f.bots.get('alpha')), createdAt: 2 });
-      await expect(f.connectors.applyIdle(alpha)).rejects.toMatchObject({ code: 'p34/conflict' });
+      await expect(f.connectors.applyIdle(alpha)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       f.connectors.botChanged('alpha');
       await vi.waitFor(() => expect(f.ctx.tools.schemas(a.agent).filter(t => t.name.startsWith('mcp__'))).toEqual([]));
       expect(f.connectors.runtime()[0]?.state).toBe('disabled');
@@ -82,7 +82,7 @@ describe('P34 connector bridge with real native MCP over loopback (Agent lifecyc
     expect(f.connectors.definitions()[0]?.enabled).toBe(false); expect(f.connectors.assignments()[0]?.enabled).toBe(false); expect(JSON.stringify(row)).toBe(before);
     await f.connectors.copyDisabled(alpha, beta); expect(f.connectors.assignments().find(a => a.bot.botId === 'beta')?.enabled).toBe(false);
     row.mcpServers = [{ serverName: 'bad', transport: 'streamable-http', url: 'https://host/mcp?token=inline' }];
-    await expect(f.connectors.importLegacy(alpha)).rejects.toMatchObject({ code: 'p34/invalid' });
+    await expect(f.connectors.importLegacy(alpha)).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
     expect(f.connectors.assignments()).toHaveLength(2);
   }));
   it.each([
@@ -109,8 +109,8 @@ describe('P34 connector bridge with real native MCP over loopback (Agent lifecyc
     await f.connectors.saveDefinition({ id: 'overrides', label: 'Local installed server', transport: 'stdio', serverName: 'local', command: process.execPath, args: ['default.js'], enabled: false }, 0);
     const saved = await f.connectors.saveAssignment({ id: 'custom-args', bot: alpha, connectorId: 'overrides', enabled: false, overrides: { args: ['bot-specific.js'], literalEnv: { TZ: 'UTC' } } }, 0);
     expect(saved.overrides.args).toEqual(['bot-specific.js']); expect(f.connectors.definitions()[0]?.args).toEqual(['default.js']);
-    await expect(f.connectors.saveAssignment({ id: 'unsafe-args', bot: beta, connectorId: 'overrides', enabled: false, overrides: { args: ['--token=secret'] } }, 0)).rejects.toMatchObject({ code: 'p34/invalid' });
-    await expect(f.connectors.saveAssignment({ id: 'unsafe-env', bot: beta, connectorId: 'overrides', enabled: false, overrides: { literalEnv: { TOKEN: 'secret' } } }, 0)).rejects.toMatchObject({ code: 'p34/invalid' });
+    await expect(f.connectors.saveAssignment({ id: 'unsafe-args', bot: beta, connectorId: 'overrides', enabled: false, overrides: { args: ['--token=secret'] } }, 0)).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+    await expect(f.connectors.saveAssignment({ id: 'unsafe-env', bot: beta, connectorId: 'overrides', enabled: false, overrides: { literalEnv: { TOKEN: 'secret' } } }, 0)).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
   }));
   it('leaves inherited namespaces untouched, including after assignment revocation', async () => withIntegrations(async f => {
     const off = f.ctx.tools.register(defineTool({ name: 'mcp__github__inherited', description: 'Synthetic inherited MCP capability', parameters: {},

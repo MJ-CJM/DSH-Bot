@@ -244,7 +244,7 @@ export async function mountClient(
       const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];
       return () => { for (const release of releases) release(); };
     }
-    if (contribution?.package === 'dsh-bot/p34') {
+    if (contribution?.package === 'dsh-bot/integrations') {
       const releases = [ctx.provide('remote.dshBot.connectors', remote.connectors), ctx.provide('remote.dshBot.notifications', remote.notifications)];
       return async () => { for (const release of releases) await release(); };
     }

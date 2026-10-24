@@ -62,3 +62,45 @@
 ## 遗留与建议
 
 按 [截图说明](../screenshots/v03/README.md) 由编排方在沙箱外重跑相同命令，检查亮暗可读性、窄屏布局和真实浏览器切换/输入交互。现有 U01 IM gate、物理强杀窗口、PTC 图谱 unsupported、桌面版与最终 0.3.0 发布矩阵仍保持原报告边界，本轮没有扩展这些能力或将其记为通过。
+
+
+## r2 返工（2026-10-24）
+
+执行任务：`tasks/P34/R-review-r2.md` 1–5；基线 `phase/p3-p4` / `27dd4c9ac379a7897405968ea54aff3f847a2c68`。开始时已有 `pnpm-workspace.yaml` 修改及未跟踪 `.codex/`、本任务单，均保留。没有提交、推送、安装依赖、修改 lockfile/版本或触碰全局配置、桌面安装、`~/.dsh`、只读 DSH 参考树。
+
+### 逐项验收
+
+| 项 | 结果 | 实际结果与证据 |
+| --- | --- | --- |
+| 1 错误与 Remote 领域命名 | PASS | 新 `shared/operation-errors.ts` 导出七个 `dsh-bot/<code>` 常量及 `hasOperationCode`；Host OperationError / notification HarnessError、连接器/群错误分支和 Client 协作判断统一使用。消息为 `DSH-Bot: <code>`。Host/Client contribution/package/typeSymbol 统一到 `dsh-bot/integrations`，测试期望同步。保留 `dshBotP34` service id 和所有持久身份，Host/Client 需同包更新。生产代码已无旧错误前缀/消息/package/typeSymbol。 |
+| 2 群服务拆分 | PASS | service 103 行；members 150、messages 115、roots 126、state 114、model 45、turns 161、turn-runner 246、round-robin 6 行；群目录全部文件 ≤300 行。继续同一个队列、所有权与取消状态；关闭和 flush 顺序保留。既有群路由/生日/CAS/幂等/取消/超时/部分失败/轮流/重开/清理回归通过。 |
+| 3 Bots 页面拆分与无闪烁回归 | PASS | BotsPage 162 行；拆出 BotsTab、BotSessionHistory、BotDialogs、BotMemoryTab、共享类型和 useBotsPage。管理/群继续使用独立组件。全部 Client 回归通过，包含中英相同刷新零额外提交、MutationObserver 零 DOM 变化、节点/焦点/选区/滚动/草稿保留和错误恢复。此为 DOM/渲染测试，不宣称真实浏览器视觉通过。 |
+| 4 registry/store 风险控制 | PASS | Store 按 bots/activity/memory/domain 分离，原入口 70 行，原导出、WeakMap 队列、校验、CAS 与排空关闭保留。Registry 低风险抽出 Config/schema 并 re-export，原入口 712 行；其余共享状态与重入/回滚/生命周期风险已写入 architecture.md，按任务允许保留。现有 Store、registry 与内存/活动集成测试通过。 |
+| 5 r2 验收记录 | PASS | 本节列出文件、实际命令、逐项结果和运行证据边界；architecture/API notes 已同步。 |
+
+### 改动文件列表
+
+精确列表见 [P34-rework-r2-files.txt](P34-rework-r2-files.txt)；生产代码/测试路径以下相对 `packages/dsh-bot/`：
+
+- 错误与协议：`src/shared/{operation-errors,integrations-contract}.ts`、`src/host/common/operations.ts`、`src/host/connectors/{remote,service}.ts`、`src/host/notifications/tool.ts`、`src/client/components/CollaborationPanel.tsx`。
+- 群：`src/host/groups/{service,state,model,roots,members,messages,turns,turn-runner,round-robin}.ts`。
+- 页面：`src/client/pages/{BotsPage,BotsTab,BotSessionHistory,BotDialogs,BotMemoryTab}.tsx`、`src/client/pages/{bots-page-types,use-bots-page}.ts`。
+- 注册表/存储：`src/host/{registry,registry-config,store}.ts`、`src/host/stores/{domain,bots,activity,memory}.ts`。
+- 测试期望：`tests/bundle.spec.ts`、`tests/integration-{collaboration,connectors,groups,notifications}.spec.ts`、`tests/client/{collaboration,groups,integrations}.spec.tsx`、`tests/client/helpers.tsx`。
+- 仓库文档：`docs/{architecture,dsh-api-notes}.md`、本验收文档与 r2 文件清单。
+
+### 命令与结果
+
+| 命令（仓库根） | 结果 |
+| --- | --- |
+| `git status --short`、`git branch --show-current`、`git rev-parse HEAD` | 记录基线及已有修改，未改 staging。 |
+| `scripts/pnpm typecheck` | 拆分过程中多次运行，修复生成阶段的 service id 文本替换后最终 PASS；再由全量 check 覆盖。 |
+| `scripts/pnpm exec biome lint --write --unsafe <本轮拆分文件>` | 删除移动后不用的 imports；剩余 unused 解构手动收敛，随后 lint 无警告。 |
+| `scripts/pnpm exec biome check --write --formatter-enabled=true --linter-enabled=false --assist-enabled=false --line-width=120 --indent-style=space --indent-width=2 --javascript-formatter-quote-style=single <本轮生产文件>` | 统一新模块格式，未格式化无关测试。 |
+| `scripts/pnpm check` | PASS：正式 Host/Client build、52 文件 / 667 测试、strict typecheck、lint（243 文件，无警告）。日志 `.dsh-dev/rework-r2/check-1.log`。 |
+| `wc -l`、旧错误/Remote 字符串检索 | PASS：群目录全部 ≤300；BotsPage 162 ≤250；生产旧错误前缀、`P34: ` 消息与 `dsh-bot/p34` 均无匹配。 |
+| `git diff --check` | PASS。 |
+
+### 遗留与建议
+
+r2 是本次结构/协议返工，任务要求的自动化检查全部通过。未新增 DSH 能力或重新验证完整 tarball 首次/冷 Host、真实浏览器、桌面或 IM。若把这些额外运行项目纳入整期验收，本轮状态仍为 **FAIL（未执行）**；上一节 r1 的 Host 收据及截图环境失败保留为历史证据。建议下次发布验收用同一份新 Host/Client 包重跑真实 Gateway/完整 Host 与截图矩阵；不能混用旧 Client contribution 或将本轮 DOM 测试计作亮暗/窄屏视觉证明。
