@@ -1,3 +1,5 @@
+import { CollaborationPanel, ImPanel } from '../components/CollaborationPanel.js';
+import type { CollaborationActions } from '../collaboration-state.js';
 import { WhaleGlyph } from '../components/WhaleGlyph.js';
 import { P34Panel } from '../components/P34Panel.js';
 import type { P34Actions } from '../p34-state.js';
@@ -27,6 +29,7 @@ import css from '../styles/bots.module.css?inline';
 export interface BotsPageInjected extends ChatLauncherActions {
   routines?: RoutineActions;
   p34?: P34Actions;
+  collaboration?: CollaborationActions;
   hooks: {
     catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>;
     activity: Pick<ActivityCatalog, 'getSnapshot' | 'subscribe'>;
@@ -61,7 +64,7 @@ function detail(error: unknown): string {
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ routines, p34, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotsPageProps) {
+export function BotsPage({ routines, p34, collaboration, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
@@ -69,7 +72,7 @@ export function BotsPage({ routines, p34, useCatalog, useActivity, useSessionCat
   const workspaces = useWorkspaceCatalog((value) => value);
   const pageElement = useRef<HTMLElement>(null);
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
-  const [tab, setTab] = useState<'bots' | 'routines' | 'connectors' | 'notifications'>('bots');
+  const [tab, setTab] = useState<'bots' | 'routines' | 'connectors' | 'notifications' | 'collaboration' | 'im'>('bots');
   const [selectedId, setSelectedId] = useState<string>();
   const [showDetail, setShowDetail] = useState(false);
   const [more, setMore] = useState(false);
@@ -224,11 +227,14 @@ export function BotsPage({ routines, p34, useCatalog, useActivity, useSessionCat
                 disabled={busy || !snapshot.loaded || Boolean(snapshot.error)} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
             </div>
           </header>
-          {(routines || p34) && <div role="tablist" aria-label={t('bots.title')} className={styles.actions}>
+          {(routines || p34 || collaboration) && <div role="tablist" aria-label={t('bots.title')} className={styles.actions}>
             <button type="button" role="tab" aria-selected={tab === 'bots'} className={styles.button} onClick={() => setTab('bots')}>{t('bots.title')}</button>
             {p34 && <><button type="button" role="tab" aria-selected={tab === 'connectors'} className={styles.button} onClick={() => setTab('connectors')}>{t('p34.connectors')}</button><NotificationTab actions={p34} selected={tab === 'notifications'} onSelect={() => setTab('notifications')} t={t} /></>}
+            {collaboration && <><button type="button" role="tab" aria-selected={tab === 'collaboration'} className={styles.button} onClick={() => setTab('collaboration')}>{t('team.title')}</button><button type="button" role="tab" aria-selected={tab === 'im'} className={styles.button} onClick={() => setTab('im')}>{t('im.title')}</button></>}
             <button type="button" role="tab" aria-selected={tab === 'routines'} className={styles.button} onClick={() => setTab('routines')}>{t('routine.title')}</button>
           </div>}
+          {collaboration && tab === 'collaboration' && <CollaborationPanel actions={collaboration} bots={entries.map(entry => entry.bot)} onOpenSession={onOpenSession} t={t} />}
+          {collaboration && tab === 'im' && <ImPanel actions={collaboration} t={t} />}
           {p34 && (tab === 'connectors' || tab === 'notifications') && <P34Panel actions={p34} bots={entries.map(entry => entry.bot)} mode={tab} onOpenSession={onOpenSession} t={t} />}
           {tab === 'routines' && routines && <RoutinePanel key="overview" actions={routines} bots={entries.map(entry => entry.bot)} onOpenSession={onOpenSession} t={t} />}
           {snapshot.error && <div role="alert" className={styles.error}>

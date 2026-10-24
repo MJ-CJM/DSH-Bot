@@ -1,3 +1,5 @@
+import { Collaboration, collaborationDomain } from './collaboration/service.js';
+import { CollaborationRemote, ImRemote, COLLABORATION_HOST } from './collaboration/remote.js';
 import { openP34Stores } from './p34/store.js';
 import { Connectors } from './connectors/service.js';
 import { Notifications } from './notifications/service.js';
@@ -28,6 +30,7 @@ export function apply(ctx: Context, config: Config): void {
   new DshBotMemoryRemote(ctx); new DshBotActivityRemote(ctx);
   if (registry.config.enableBotManageInStandard) registerStandardBotManage(ctx);
   let p34: { close(): Promise<void> } | undefined;
+  let collaboration: Collaboration | undefined;
   let stopping = false;
   const ready = registry.waitUntilReady().then(async () => {
     if (stopping) return;
@@ -56,13 +59,21 @@ export function apply(ctx: Context, config: Config): void {
     const mainSessions = new MainSessions(ctx, registry);
     await mainSessions.start();
     registry.mainSessions = mainSessions;
+    await ctx.effect(async () => {
+      const domain = await ctx.storageDomain.open(collaborationDomain);
+      collaboration = new Collaboration(ctx, registry, domain, () => registry.invalidate());
+      return () => collaboration?.close();
+    }, 'dsh-bot: collaboration');
+    if (!collaboration) throw new Error('Collaboration startup failed');
+    new CollaborationRemote(ctx, collaboration); new ImRemote(ctx);
+    await ctx.effect(() => ctx.typert.register(COLLABORATION_HOST), 'dsh-bot: collaboration Remote');
     automation = await startAutomation(ctx, registry);
     status = { state: 'ready' }; ctx.logger.info('[dsh-bot] loaded');
   }).catch(error => { status = { state: 'failed', reason: 'startup-failed' }; ctx.logger.error('[dsh-bot] startup failed', error); });
   ctx.effect(() => async () => {
     stopping = true; status = { state: 'stopping' }; await ready;
     const errors: unknown[] = [];
-    for (const close of [() => p34?.close(), () => automation?.close(), () => automation?.stores.close(), () => registry.mainSessions?.close(), () => registry.close()]) {
+    for (const close of [() => collaboration?.close(), () => p34?.close(), () => automation?.close(), () => automation?.stores.close(), () => registry.mainSessions?.close(), () => registry.close()]) {
       try { await close(); } catch (error) { errors.push(error); }
     }
     if (errors.length) throw new AggregateError(errors, 'Bot runtime shutdown failed');

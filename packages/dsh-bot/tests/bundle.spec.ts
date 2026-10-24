@@ -79,7 +79,7 @@ describe('built bundle contract', () => {
         if (typeof failure === 'string') throw new Error(failure);
         expect(messages).toContain('[dsh-bot] loaded');
       });
-      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/p34']);
+      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/p34', 'dsh-bot/collaboration']);
       await fork.dispose();
       await fork.dispose();
       expect(registrations).toEqual([]);
@@ -210,10 +210,10 @@ describe('built bundle contract', () => {
     ctx.provide('remote', {
       $on: () => register('schedule.changed'),
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
-        expect(['dsh-bot', 'dsh-bot/automation', '@deepseek-ai/dsh-schedule', 'dsh-bot/p34']).toContain(contribution.package);
+        expect(['dsh-bot', 'dsh-bot/automation', '@deepseek-ai/dsh-schedule', 'dsh-bot/p34', 'dsh-bot/collaboration']).toContain(contribution.package);
         await Promise.resolve();
         mountedEndpoints.push(...contribution.descriptors.map((entry) => `${entry.namespace}/${entry.method}`));
-        const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' : contribution.package === 'dsh-bot/automation' ? 'remote.automation' : contribution.package === 'dsh-bot/p34' ? 'remote.p34' : 'remote.schedule');
+        const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' : contribution.package === 'dsh-bot/automation' ? 'remote.automation' : contribution.package === 'dsh-bot/p34' ? 'remote.p34' : contribution.package === 'dsh-bot/collaboration' ? 'remote.collaboration' : 'remote.schedule');
         return async () => { dispose(); };
       },
     } as unknown as Context['remote']);
@@ -229,13 +229,14 @@ describe('built bundle contract', () => {
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.dshBot', 'remote.p34', 'remote.schedule', 'schedule.changed',
+      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.collaboration', 'remote.dshBot', 'remote.p34', 'remote.schedule', 'schedule.changed',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'];
       expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([
         'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',
+        'dshBot.collaboration/board', 'dshBot.collaboration/createTask', 'dshBot.collaboration/ensure', 'dshBot.collaboration/updateTask',
         'dshBot.connectors/applyIdle', 'dshBot.connectors/catalog', 'dshBot.connectors/importLegacy', 'dshBot.connectors/saveAssignment', 'dshBot.connectors/saveDefinition',
-        'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
+        'dshBot.im/status', 'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update',
         'dshBot.nativeSchedule/aggregate', 'dshBot.nativeSchedule/deleteLegacy', 'dshBot.nativeSchedule/runNow', 'dshBot.notifications/markRead', 'dshBot.notifications/savePolicy', 'dshBot.notifications/test', 'dshBot.run/get', 'dshBot.run/list',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get', 'dshBot/list', 'dshBot/openConversation', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',

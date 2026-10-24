@@ -1,3 +1,5 @@
+import type { CollaborationMethods } from '../../src/shared/collaboration-contract.js';
+import { IM_PIN, type TeamBoard } from '../../src/shared/collaboration.js';
 import type { P34Methods } from '../../src/shared/p34-contract.js';
 import { EMPTY_P34 } from '../../src/client/p34-state.js';
 import type { BotsPageInjected } from '../../src/client/pages/BotsPage.js';
@@ -31,7 +33,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { p34: structuredClone(EMPTY_P34), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { board: { supported: false, reason: 'native-service-missing', members: [], tasks: [] } as TeamBoard, p34: structuredClone(EMPTY_P34), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -148,7 +150,12 @@ export function remoteDouble(initial: BotRecord[] = []) {
   const notifications = {
     savePolicy: vi.fn<P34Methods<'dshBot.notifications'>['savePolicy']>(), markRead: vi.fn<P34Methods<'dshBot.notifications'>['markRead']>(), test: vi.fn<P34Methods<'dshBot.notifications'>['test']>(),
   };
-  return { methods, data, routine, schedule, run, automation, connectors, notifications };
+  const collaboration = {
+    board: vi.fn<CollaborationMethods['board']>(async () => ({ ok: true, value: data.board })),
+    ensure: vi.fn<CollaborationMethods['ensure']>(), createTask: vi.fn<CollaborationMethods['createTask']>(), updateTask: vi.fn<CollaborationMethods['updateTask']>(),
+  };
+  const im = { status: vi.fn(async () => ({ ok: true as const, value: { pin: IM_PIN, installed: false, contractDetected: false, inboundSupported: false as const, outboundSupported: false as const, reason: 'plugin-missing' as const } })) };
+  return { methods, data, routine, schedule, run, automation, connectors, notifications, collaboration, im };
 }
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
@@ -217,6 +224,10 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === 'dsh-bot/collaboration') {
+      const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];
+      return () => { for (const release of releases) release(); };
+    }
     if (contribution?.package === 'dsh-bot/p34') {
       const releases = [ctx.provide('remote.dshBot.connectors', remote.connectors), ctx.provide('remote.dshBot.notifications', remote.notifications)];
       return async () => { for (const release of releases) await release(); };

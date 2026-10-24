@@ -126,6 +126,7 @@
     "react-dom": "18.3.1",
     "ws": "8.21.0",
     "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-credentials": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-experimental-agent-team": "0.2.1-rc.2"
   }
 }

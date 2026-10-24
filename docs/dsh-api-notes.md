@@ -1,5 +1,23 @@
 # DSH API 核实记录
 
+## U04–U05：IM 依赖门禁与原生 Team 任务板（2026-10-24）
+
+执行范围和逐项 PASS/FAIL 见 [U04–U05 验收](acceptance/P34-U04-05.md)。按设计 §14：U04 依赖的 U01 consumer gate 未通过，正式包只提供可选服务/合同诊断与禁用 UI，不挂入站消费者、不连接通知端口、不开放 IM 绑定/发送 Remote。方法名/版本检测不代表已验证账号、安装 commit 或消费卸载行为。锁定 dsh-im 只在本仓库隔离 profile 打包安装，无真实平台账号。
+
+| 公开入口 / 只读 rc.2 源码 | 本轮用法和验证边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-experimental-agent-team` 根类型；`packages/experimental/agent-team/src/index.ts:111-219` | 产品只有 type import；真实 Host 探针从根 default 挂载 TeamService。成员/任务由原生 membership/listMembers/listTasks/createTask/updateTask 提供，不复制任务账本。宿主未挂此实验服务则任务板 unsupported，本包不接管全局服务生命周期。新增精确 devDependency，无新增 Team runtime peer。 |
+| 同包 `TeamTaskView` / `UpdateTeamTaskRequest`；`src/types.ts:83-99,224-251` | Client 仅传 taskId/expectedRevision 和 claim/complete，不接受 owner/Agent/任意 action；原生 lead 权限允许完成所属 Team 任务。真实 Gateway 严格拒绝额外 sessionId；严格 codec 拒绝 agentPreset/agentId/reassign。 |
+| `agentTeams.membership`；`src/roster.ts:90-113` | Team 是顶层 live lead 的隐式身份，无 createTeam API。用户显式 ensure 只关联既有 Bot 主会话；不将另一 Bot 主会话充当 teammate。实际 native child header 的 parent/preset 已核对继承 lead。 |
+| `sessionController.resolveAgent` / `agents.get` / 本包 Bot binding | 从主会话关联取得 exact live Agent，再校主会话、生日、顶层 header 和 native membership；无 Client 任意 Agent 参数。关联 sidecar 冷重开与完整冷 Host 验证分开；读冷板可恢复原生 Agent/已有子代理，不作零模型恢复保证。 |
+| `sessions.flush`；`packages/experimental/agent-team/src/journal.ts:67-83` | 原生事务 append 后调用 flush，本包在成功回执前另核 flush=true。false 返回 recovery-needed；不自动重放任务。原生 CAS/依赖测试使用真实服务，不把 Agent/Controller fixture 单测当完整 Host。 |
+| native subagent settlement；`packages/subagent/subagent/src/continuation-messages.ts:137-169`、`src/manager.ts:675-689` | 原生 Team teammate 完成会向 lead 投递 `subagent-settled` 并唤醒。探针记录合成 worker 与 lead 的 loopback 请求，以及原生 source/childId；不能误断言 U05 的 lead 必须零模型调用，也不能把该行为套用到尚未实施的群根。 |
+| `defineDomain/domainTable`、Typert 根与 `/remote-info` | 新增 `dsh_bot_collaboration` v1 的 `team_links`，仅保存 BotKey/leadSessionId/nativeTeamId/版本，不保存 roster/tasks。显式 contribution 5 端点同源编解码，Host/Client effect 注册与释放。 |
+| 锁定 `xmanrui/dsh-im@4645cf7` 的公开 `dshIm` v1 | 只同步检测 contractVersion/inboundVersion 及公开方法，无读取凭据/历史/账号的诊断调用。真实隔离服务零账号；fake 公共合同验证零调用及恒定禁用。consumer 注册/注销无 fallback、去重、thread 回复和 checked 实际发送仍 FAIL/NOT_RUN，未用 mock 结果覆盖 U01。 |
+
+全量检查通过 47 文件 / 601 测试、strict/build/lint；真实 Host/冷恢复与 Chromium 亮暗尝试另见验收收据。浏览器受系统 MachPort 权限限制的 FAIL 不以 DOM/token 测试替代；真实平台收发与 OS 通知仍未验证/不支持。
+
+
 ## U02–U03：产品连接器桥与通知中心（2026-10-24）
 
 实现/命令/逐项结果见 [U02–U03 验收](acceptance/P34-U02-03.md)。参考树和 CLI 仍锁定 rc.2。正式包新增 MCP、credentials 根入口的精确 dev + 兼容 peer；不从私有 connection/transport 导入，不改变 engines/exports/发布版本。
