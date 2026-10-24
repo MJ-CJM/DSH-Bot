@@ -1,3 +1,5 @@
+import type { P34Methods } from '../../src/shared/p34-contract.js';
+import { EMPTY_P34 } from '../../src/client/p34-state.js';
 import type { BotsPageInjected } from '../../src/client/pages/BotsPage.js';
 import type { AutomationRemoteMethods } from '../../src/shared/automation-contract.js';
 import type { RunRecord } from '../../src/shared/automation.js';
@@ -29,7 +31,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { p34: structuredClone(EMPTY_P34), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -136,7 +138,17 @@ export function remoteDouble(initial: BotRecord[] = []) {
     list: vi.fn<AutomationRemoteMethods<'dshBot.run'>['list']>(async options => ({ ok: true, value: data.runs.filter(row => !options.nativeScheduleId || row.nativeScheduleId === options.nativeScheduleId).slice(0, options.limit ?? 50) })),
   };
   const automation = { status: vi.fn<AutomationRemoteMethods<'dshBot.automation'>['status']>(async () => ({ ok: true, value: { state: 'ready' } })) };
-  return { methods, data, routine, schedule, run, automation };
+  const connectors = {
+    catalog: vi.fn<P34Methods<'dshBot.connectors'>['catalog']>(async () => ({ ok: true, value: data.p34 })),
+    saveDefinition: vi.fn<P34Methods<'dshBot.connectors'>['saveDefinition']>(),
+    saveAssignment: vi.fn<P34Methods<'dshBot.connectors'>['saveAssignment']>(),
+    applyIdle: vi.fn<P34Methods<'dshBot.connectors'>['applyIdle']>(),
+    importLegacy: vi.fn<P34Methods<'dshBot.connectors'>['importLegacy']>(),
+  };
+  const notifications = {
+    savePolicy: vi.fn<P34Methods<'dshBot.notifications'>['savePolicy']>(), markRead: vi.fn<P34Methods<'dshBot.notifications'>['markRead']>(), test: vi.fn<P34Methods<'dshBot.notifications'>['test']>(),
+  };
+  return { methods, data, routine, schedule, run, automation, connectors, notifications };
 }
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
@@ -205,6 +217,10 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === 'dsh-bot/p34') {
+      const releases = [ctx.provide('remote.dshBot.connectors', remote.connectors), ctx.provide('remote.dshBot.notifications', remote.notifications)];
+      return async () => { for (const release of releases) await release(); };
+    }
     if (contribution?.package === '@deepseek-ai/dsh-schedule') return ctx.provide('remote.schedule', remote.schedule);
     if (contribution?.package === 'dsh-bot/automation') {
       const releases = [ctx.provide('remote.dshBot.nativeSchedule', remote.routine), ctx.provide('remote.dshBot.run', remote.run), ctx.provide('remote.dshBot.automation', remote.automation)];

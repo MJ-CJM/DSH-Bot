@@ -1,3 +1,6 @@
+import { WhaleGlyph } from '../components/WhaleGlyph.js';
+import { P34Panel } from '../components/P34Panel.js';
+import type { P34Actions } from '../p34-state.js';
 import type { RoutineActions } from '../automation-state.js';
 import { RoutinePanel } from '../components/RoutinePanel.js';
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -5,7 +8,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client';
 import { Button, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { botIdSchema } from '../../shared/ids.js';
 import type { BotCreateInput, BotPatch, BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from '../components/BotAvatar.js';
@@ -23,6 +26,7 @@ import css from '../styles/bots.module.css?inline';
 
 export interface BotsPageInjected extends ChatLauncherActions {
   routines?: RoutineActions;
+  p34?: P34Actions;
   hooks: {
     catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>;
     activity: Pick<ActivityCatalog, 'getSnapshot' | 'subscribe'>;
@@ -47,12 +51,17 @@ export interface BotsPageInjected extends ChatLauncherActions {
 export type BotsPageProps = InjectFace<BotsPageInjected> & PropsLocale<'dsh-bot'>;
 type Dialog = { kind: 'create' } | { kind: 'edit' | 'delete' | 'duplicate' | 'memory'; bot: BotRecord };
 
+function NotificationTab({ actions, selected, onSelect, t }: { actions: P34Actions; selected: boolean; onSelect(): void } & PropsLocale<'dsh-bot'>) {
+  const snapshot = useSyncExternalStore(actions.catalog.subscribe, actions.catalog.getSnapshot, actions.catalog.getSnapshot);
+  return <button type="button" role="tab" aria-selected={selected} className={styles.button} onClick={onSelect}>{t('p34.notifications')}{snapshot.unread > 0 && <span role="status" aria-label={t('p34.unread')}><WhaleGlyph size={14} />{snapshot.unread}</span>}</button>;
+}
+
 function detail(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'message' in error) return String(error.message);
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotsPageProps) {
+export function BotsPage({ routines, p34, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
@@ -60,7 +69,7 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
   const workspaces = useWorkspaceCatalog((value) => value);
   const pageElement = useRef<HTMLElement>(null);
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
-  const [tab, setTab] = useState<'bots' | 'routines'>('bots');
+  const [tab, setTab] = useState<'bots' | 'routines' | 'connectors' | 'notifications'>('bots');
   const [selectedId, setSelectedId] = useState<string>();
   const [showDetail, setShowDetail] = useState(false);
   const [more, setMore] = useState(false);
@@ -215,10 +224,12 @@ export function BotsPage({ routines, useCatalog, useActivity, useSessionCatalog,
                 disabled={busy || !snapshot.loaded || Boolean(snapshot.error)} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
             </div>
           </header>
-          {routines && <div role="tablist" aria-label={t('bots.title')} className={styles.actions}>
+          {(routines || p34) && <div role="tablist" aria-label={t('bots.title')} className={styles.actions}>
             <button type="button" role="tab" aria-selected={tab === 'bots'} className={styles.button} onClick={() => setTab('bots')}>{t('bots.title')}</button>
+            {p34 && <><button type="button" role="tab" aria-selected={tab === 'connectors'} className={styles.button} onClick={() => setTab('connectors')}>{t('p34.connectors')}</button><NotificationTab actions={p34} selected={tab === 'notifications'} onSelect={() => setTab('notifications')} t={t} /></>}
             <button type="button" role="tab" aria-selected={tab === 'routines'} className={styles.button} onClick={() => setTab('routines')}>{t('routine.title')}</button>
           </div>}
+          {p34 && (tab === 'connectors' || tab === 'notifications') && <P34Panel actions={p34} bots={entries.map(entry => entry.bot)} mode={tab} onOpenSession={onOpenSession} t={t} />}
           {tab === 'routines' && routines && <RoutinePanel key="overview" actions={routines} bots={entries.map(entry => entry.bot)} onOpenSession={onOpenSession} t={t} />}
           {snapshot.error && <div role="alert" className={styles.error}>
             <p>{t(unavailable ? 'errors.unavailable' : 'errors.load')}</p>

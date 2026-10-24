@@ -1,5 +1,26 @@
 # DSH API 核实记录
 
+## U02–U03：产品连接器桥与通知中心（2026-10-24）
+
+实现/命令/逐项结果见 [U02–U03 验收](acceptance/P34-U02-03.md)。参考树和 CLI 仍锁定 rc.2。正式包新增 MCP、credentials 根入口的精确 dev + 兼容 peer；不从私有 connection/transport 导入，不改变 engines/exports/发布版本。
+
+| 公开入口 / 只读源码 | 本轮实际组合与边界 |
+| --- | --- |
+| `dsh-mcp-client` 根 `Config/apply`；`packages/mcp/mcp-client/src/index.ts:154-203` | Agent 私有无 config 参数 child closure；只在内存解析 credentials。真实 HTTP 两 Bot scope、认证/发现失败、stdio 原生 reconnect、PID 清理通过；fiber.config、preset/DTO/log/sidecar/lib sentinel 检查通过。不是第三方 MCP 永不泄密保证。 |
+| `dsh-credentials` 根 `credentialRef` / `credentials.resolve` / `credentials/reference-updated` | provider-managed 变化标 pending；显式空闲 apply 后重新 resolve，不缓存到配置。环境仍是 CLI launch snapshot，需重启 Host。Client 复用宿主已挂载的 `remote.credentials.describe/set`：describe 只返回配置/可写状态，密码只写入原生提供者；不预填，提交或离页清空，不新增秘密 Remote。缺 namespace 时引导原生设置。 |
+| Agent `runMaintenance` / `agent/status`；`core/agent/src/runtime-types.ts:185-202,280` | 真实 turn busy 时保留 pending，维护抢占失败仍 pending；关闭旧 child 后才挂新 child。新旧代际和凭据事件使用本桥 epoch 防迟到成功覆盖。主会话 ID、native Session/Inbox 保持权威。 |
+| `tools.guard`；`core/tools/src/index.ts:724-732,1133-1151` | 对本桥真正拥有的工具先拒新调用，禁止 namespace 冲突时误伤宿主继承工具。已发到远端的请求不能承诺撤销；guard 和 child 归 Agent effect/preset/Host 联合停止。 |
+| `tools/pre-execute` / `tools/result`、`defineTool` / `approval` | bot_notify 从当前 Agent 固定 BotKey，先持久中心意图。原生 ask 展示目标/文本/scope；execute 再核对 birthday、revision、targetDigest。真实拒绝与 native never 策略、审批中改策略均无发送。preapproved 只能由用户 Remote 管理显式确认。 |
+| `setApprovalPolicy`；`interaction/user-approval/src/index.ts:99-106` | 仅新增测试的公开原生策略 helper，产品不切换或抬高 child policy。never 测试为原生 ToolRuntime/ApprovalService + Agent fixture，不冒充真实平台子代理发送。 |
+| `defineDomain/domainTable` 根入口 | 两个独立 v1 sidecar；表名必须匹配 `/^[a-z][a-z0-9_]*$/`，因此采用 legacy_imports/read_state。intent 同行额度/状态为权威，无跨表/跨 Host 事务。JSON 重开恢复 sending→unknown，绝不自动重发。 |
+| `TypertRemoteService` / `Remote` / `createTypertRemoteInfo` / Gateway | 新 contribution 有 8 个同源严格端点，connectors 与 notifications 使用各自 service/namespace。真实 Gateway 暴露跨 namespace 绑定不合法并已修正；Client await mount，显式 encode/decode，不增加自动 generator。 |
+| 原生 `Inbox.append/remove` / `sessions.flush`；`core/agent/src/runtime-types.ts:48-88` | 完整 Host 检查外推 suppressed 不影响已有 native Inbox，flush=true。产品普通通知只写中心，不为通知再唤醒模型；未开启任意 schedule 回复的自动外推。 |
+
+新增 `NotificationPort` 是本包 Host 能力，不是 DSH API；通过 `notifications.attachPort(port, ownerContext)` 纳入适配器 effect。生产 adapter 缺席时外推 unavailable，U04 才接 dsh-im。fake 端口仅证明策略/AbortSignal/状态，不代表平台受理或已读。
+
+完整 `scripts/pnpm check` 通过 44 文件 / 589 测试；真实首次/冷 Web Host、2 次 loopback 模型和 0 次真实模型请求另有运行收据。浏览器因 `bootstrap_check_in Permission denied (1100)` 启动失败，亮暗实际 UI 为 FAIL；DOM/主题 token 检查不替代该验收。OS 桌面通知无公开 API，继续禁用。
+
+
 ## U01：P34 公开 API 组合实测（2026-10-24）
 
 探针仅在 `spikes/p34/`，不接入正式包。逐 gate、重跑命令和失败记录见 [U01 报告](spikes/P34-api-spike.md)。参考树仍为锁定 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`；CLI 为同版。以下是实际隔离 Web Host / loopback 结果，不代表桌面或真实平台验收。

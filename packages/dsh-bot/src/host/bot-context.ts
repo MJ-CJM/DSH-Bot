@@ -1,3 +1,5 @@
+import { registerNotifyTool } from './notifications/tool.js';
+import type {} from './connectors/service.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { dirname } from 'node:path';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -59,7 +61,7 @@ export function apply(ctx: Context, config: Config): void {
   const deniedMemory = new Set(bot.tools.deny.filter((name) => MEMORY_TOOL_NAMES.includes(name)));
   const denyBotManage = bot.tools.deny.includes(BOT_MANAGE_TOOL_NAME);
   if (!denyBotManage) registerBotPresetManage(ctx, botId);
-  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME && name !== BOT_DELEGATE_TOOL_NAME && !RETIRED_ROUTINE_TOOL_NAMES.includes(name));
+  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME && name !== BOT_DELEGATE_TOOL_NAME && name !== 'bot_notify' && !RETIRED_ROUTINE_TOOL_NAMES.includes(name));
   const model = bot.model ? {
     provider: bot.model.provider,
     model: bot.model.model,
@@ -91,7 +93,7 @@ export function apply(ctx: Context, config: Config): void {
   // A retained preset generation owns this map. Retiring a generation does not
   // unload it while Agents still reference it; explicit plugin unload does.
   ctx.effect(() => {
-    const agents = new Map<Agent, () => void>();
+    const agents = new Map<Agent, () => void | Promise<void>>();
     let stopped = false;
     const offCreated = ctx.on('agent/created', async ({ agent }) => {
       if (bindings.has(agent)) throw new Error(`Agent ${agent.id} already has a Bot binding`);
@@ -180,14 +182,30 @@ export function apply(ctx: Context, config: Config): void {
           throw error;
         }
       }, `dsh-bot: agent ${botId}`);
-      agents.set(agent, dispose);
+      const notifications = agent.ctx.get('dshBotNotifications');
+      const releaseNotify = notifications && !bot.tools.deny.includes('bot_notify') ? registerNotifyTool(agent, binding, notifications) : undefined;
+      const connectors = agent.ctx.get('dshBotConnectors');
+      let starting: Promise<(() => Promise<void>) | undefined> | undefined;
+      let closing: Promise<void> | undefined;
+      const cleanup = () => {
+        closing ??= (async () => { dispose(); releaseNotify?.(); const releaseConnector = await starting; await releaseConnector?.(); })();
+        return closing;
+      };
+      // Publish cleanup before the asynchronous MCP start. A preset can unload
+      // while agent/created is awaiting discovery; teardown must join that start.
+      agents.set(agent, cleanup);
+      starting = connectors?.attach(agent, binding);
+      try {
+        await starting;
+        if (stopped) throw new DshBotError('bot/unavailable', 'Bot context is unloading');
+      } catch (error) { await cleanup(); throw error; }
     });
-    return () => {
+    return async () => {
       stopped = true;
       offCreated();
       const errors: unknown[] = [];
       for (const dispose of [...agents.values()]) {
-        try { dispose(); } catch (error) { errors.push(error); }
+        try { await dispose(); } catch (error) { errors.push(error); }
       }
       agents.clear();
       if (errors.length) throw new AggregateError(errors, 'Bot preset cleanup failed');

@@ -1,3 +1,5 @@
+import { P34_REMOTE } from '../shared/p34-contract.js';
+import { createP34Actions } from './p34-state.js';
 import NATIVE_SCHEDULE_REMOTE from '@deepseek-ai/dsh-schedule/remote';
 import { AUTOMATION_REMOTE } from '../shared/automation-contract.js';
 import { createRoutineActions } from './automation-state.js';
@@ -60,6 +62,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   // Standard Web already mounts this public namespace; slim clients may not.
   if (!ctx.get('remote.schedule')) await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SCHEDULE_REMOTE), 'dsh-bot: native schedule Remote');
   await ctx.effect(async () => await ctx.remote.$mount(AUTOMATION_REMOTE), 'dsh-bot: automation Remote');
+  await ctx.effect(async () => await ctx.remote.$mount(P34_REMOTE), 'dsh-bot: P34 Remote');
   ctx.effect(() => ctx.locale.register(namespace, {
     en: en.ui,
     zh: zh.ui,
@@ -68,6 +71,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const catalog = createBotCatalog(ctx, config);
   const activity = createActivityCatalog(ctx, config);
   const routines = createRoutineActions(ctx, config);
+  const p34 = createP34Actions(ctx, config);
   // Host and Client ambient Context declarations share a TS program here;
   // this entry runs only on the Client and uses its public service contract.
   const sessions = ctx.sessions as unknown as ISessions;
@@ -127,7 +131,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const startBotInWorkspace = (id: string, _workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) =>
     startBot(id, signal, beforeOpen);
   const page: BotsPageInjected = {
-    routines,
+    routines, p34,
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },
     onOpenSession: (id, signal) => openSession(id, undefined, signal),
     onDetailConsumed: detail.consume,
@@ -155,6 +159,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       catalog.setPollIntervalMs(interval);
       activity.setPollIntervalMs(interval);
       routines.catalog.setPollIntervalMs(interval);
+      p34.catalog.setPollIntervalMs(interval);
       for (const memory of memories) memory.setPollIntervalMs(interval);
     },
     onCreate: (input) => mutate(() => remote().create(input)),

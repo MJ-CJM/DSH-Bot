@@ -1,3 +1,7 @@
+import { openP34Stores } from './p34/store.js';
+import { Connectors } from './connectors/service.js';
+import { Notifications } from './notifications/service.js';
+import { P34Remote, NotificationRemote, P34_HOST } from './p34/remote.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/cordis-plugin-loader';
 import type {} from '@deepseek-ai/dsh-typert-registry';
@@ -23,9 +27,32 @@ export function apply(ctx: Context, config: Config): void {
   const registry = new DshBotRegistry(ctx, config, () => ctx.loader.await());
   new DshBotMemoryRemote(ctx); new DshBotActivityRemote(ctx);
   if (registry.config.enableBotManageInStandard) registerStandardBotManage(ctx);
+  let p34: { close(): Promise<void> } | undefined;
   let stopping = false;
   const ready = registry.waitUntilReady().then(async () => {
     if (stopping) return;
+    const sidecars = await openP34Stores(ctx);
+    const connectors = new Connectors(ctx, sidecars, registry, registry.config.connectorApplyTimeoutMs, () => registry.invalidate());
+    const notifications = new Notifications(ctx, sidecars, registry, {
+      sendTimeoutMs: registry.config.notificationSendTimeoutMs,
+      dailyLimit: registry.config.notificationDailyLimit, cooldownSec: registry.config.notificationCooldownSec,
+      retentionDays: registry.config.notificationRetentionDays, maxRecords: registry.config.notificationMaxRecords,
+    }, () => registry.invalidate());
+    const releases: Array<() => void> = [];
+    let closingP34: Promise<void> | undefined;
+    p34 = { close() { closingP34 ??= (async () => {
+      const results = await Promise.allSettled([notifications.close(), connectors.close()]);
+      for (const release of releases.splice(0)) release();
+      await sidecars.close();
+      const errors = results.flatMap(r => r.status === 'rejected' ? [r.reason] : []);
+      if (errors.length) throw new AggregateError(errors, 'P34 shutdown failed');
+    })(); return closingP34; } };
+    await notifications.recover();
+    releases.push(ctx.provide('dshBotConnectors', connectors), ctx.provide('dshBotNotifications', notifications));
+    releases.push(ctx.on('credentials/reference-updated', ref => connectors.credentialChanged(ref)));
+    releases.push(ctx.on('dsh-bot/changed', change => connectors.botChanged(change.id)));
+    new P34Remote(ctx, connectors, notifications); new NotificationRemote(ctx, notifications);
+    await ctx.effect(() => ctx.typert.register(P34_HOST), 'dsh-bot: P34 Remote');
     const mainSessions = new MainSessions(ctx, registry);
     await mainSessions.start();
     registry.mainSessions = mainSessions;
@@ -34,7 +61,11 @@ export function apply(ctx: Context, config: Config): void {
   }).catch(error => { status = { state: 'failed', reason: 'startup-failed' }; ctx.logger.error('[dsh-bot] startup failed', error); });
   ctx.effect(() => async () => {
     stopping = true; status = { state: 'stopping' }; await ready;
-    await automation?.close(); await automation?.stores.close(); await registry.mainSessions?.close(); await registry.close();
+    const errors: unknown[] = [];
+    for (const close of [() => p34?.close(), () => automation?.close(), () => automation?.stores.close(), () => registry.mainSessions?.close(), () => registry.close()]) {
+      try { await close(); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw new AggregateError(errors, 'Bot runtime shutdown failed');
     ctx.logger.info('[dsh-bot] unloaded');
   }, 'dsh-bot: runtime');
 }

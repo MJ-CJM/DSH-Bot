@@ -24,6 +24,12 @@ import type { ActivityStore } from './store.js';
 import type { MainSessions } from './main-session.js';
 
 export interface Config {
+  connectorApplyTimeoutMs: number;
+  notificationDailyLimit: number;
+  notificationCooldownSec: number;
+  notificationRetentionDays: number;
+  notificationMaxRecords: number;
+  notificationSendTimeoutMs: number;
   seedExamples: boolean;
   presetIdPrefix: string;
   presetOrder: number;
@@ -42,6 +48,12 @@ const activityLimit = (name: string, fallback: number) => Schema.transform(Schem
   return value;
 }).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
+  connectorApplyTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
+  notificationDailyLimit: Schema.number().min(0).max(1000).step(1).default(20),
+  notificationCooldownSec: Schema.number().min(0).max(86400).step(1).default(60),
+  notificationRetentionDays: Schema.number().min(1).max(365).step(1).default(30),
+  notificationSendTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
+  notificationMaxRecords: Schema.number().min(1).max(10000).step(1).default(1000),
   activityMaxSessionsPerBot: activityLimit('activityMaxSessionsPerBot', 50),
   activityMaxSessionsTotal: activityLimit('activityMaxSessionsTotal', 1000),
   seedExamples: Schema.boolean().default(true),
@@ -434,7 +446,7 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     });
   }
 
-  private invalidate(): void {
+  invalidate(): void {
     this.changeRevision++;
     for (const changed of this.changeListeners) changed();
   }
@@ -574,7 +586,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     return this.enqueue(async () => {
       const original = this.stores.bots.get(id);
       const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, schemaVersion: _schemaVersion, ...fields } = original;
-      return this.createRecord({ ...fields, id: newId }, 'duplicate');
+      const duplicate = await this.createRecord({ ...fields, id: newId }, 'duplicate');
+      await this.ctx.get('dshBotConnectors')?.copyDisabled({ botId: original.id, botCreatedAt: original.createdAt }, { botId: duplicate.id, botCreatedAt: duplicate.createdAt });
+      return duplicate;
     }, true);
   }
 

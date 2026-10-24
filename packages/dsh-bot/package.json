@@ -61,7 +61,9 @@
     "@deepseek-ai/dsh-scope": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-storage-domain": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0",
-    "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-rc.2 <0.3.0"
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-mcp-client": ">=0.2.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-credentials": ">=0.2.1-rc.2 <0.3.0"
   },
   "dependencies": {
     "@deepseek-ai/cordis-plugin-include": "1.0.10",
@@ -122,6 +124,8 @@
     "playwright-core": "1.58.2",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "ws": "8.21.0"
+    "ws": "8.21.0",
+    "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.2"
   }
 }
