@@ -1,5 +1,22 @@
 # DSH API 核实记录
 
+## U01：P34 公开 API 组合实测（2026-10-24）
+
+探针仅在 `spikes/p34/`，不接入正式包。逐 gate、重跑命令和失败记录见 [U01 报告](spikes/P34-api-spike.md)。参考树仍为锁定 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`；CLI 为同版。以下是实际隔离 Web Host / loopback 结果，不代表桌面或真实平台验收。
+
+| 公开入口 / 源码（H 为只读参考树） | 实测与后续约束 |
+| --- | --- |
+| `dsh-mcp-client` 根 `Config/apply`；H `packages/mcp/mcp-client/src/index.ts:154-203` | 两 Bot Agent 下同名 github namespace 可隔离；无 config 参数的 child closure 中调用 apply，sentinel 不进入 preset 文档、fiber.config、真实 TypertGateway.invoke 的 Bot DTO 或 Host 日志。busy 时维护拒绝；idle 关闭旧 child、resolve、再挂新 child；guard 撤权立即拒绝调用。发现/认证失败无残留工具；stdio 退出后 native reconnect，再 dispose 验证 PID 退出。无需 deep import。 |
+| `dsh-credentials` 根 `credentialRef` / `credentials.resolve/describe/set/unset`；H `packages/credentials/credentials-local/src/index.ts:557-570,624-649`；`packages/util/launch-environment/src/index.ts:78-100,114-116` | **设计修正**：CLI process 环境来自启动快照，后改 process.env 不会改变 resolve。真正热轮换使用 provider-managed set，观察 reference-updated 后维护窗口重建。探针只写运行目录的合成凭据文件，并 unset 清理；不读实际用户凭据。 |
+| `agents.create/resume` / `AgentHandle.dispose` / `agentPresets.mount` / scoped `agent/pre-step`；H `packages/core/agent/src/index.ts:51-162`、`packages/core/agent/src/runtime-types.ts:309-320` | owned 群根创建、flush、第二个 Host 冷恢复通过。原生 prompt accepted 后 blocked，零根 assistant、零根模型请求。重复 resume 与 Controller 抢先拥有时拒绝；声明 preset 的 contribution fiber 真正卸载后，既有 Controller 根保留 guard。不能把裸 Agent 当 owned handle。 |
+| `createUserMessage` / `Session.append('user/message', …, {surfaceOp:'append'})` / `sessions.flush` | 本地输入及 producer 来源的成员回文均持久化、冷恢复；不伪造根 assistant。这里只验证原生日志，不验证群 renderer。 |
+| `subagents.getProvider/startActivation` + `delivery:'caller'`；H `packages/subagent/subagent/src/types.ts:118-182,252-277` | 两个真实 Bot preset 分别成功输出并持久回文；无 Bot.model 的 beta 使用显式 currentSelection 路由成功；caller 不唤醒根，主会话 ID 不变。仍复用 native 取消/权限/生命周期。 |
+| `dsh-experimental-agent-team` 根 default `TeamService`；H `packages/experimental/agent-team/src/index.ts:111-219` | roster、同 revision 两 claimant 仅一成功、依赖阻塞/完成及第二 Host 恢复通过。teammate header 继承 lead preset；SpawnTeammateRequest 无 agentPreset，不得冒充另一个 Bot。 |
+| 锁定 `xmanrui/dsh-im@4645cf7` 的公开根与 `dshIm` service | 源码 archive SHA256 校验、tarball 安装、服务方法加载通过；**消费者注册/撤销后无 fallback 的运行 gate FAIL / NOT_RUN**。无公开 fake 平台注入证据，不导入其私有工厂；U04 依赖的入站/checked 平台投递暂不可启用，U03 本地通知不受阻。 |
+| `@modelcontextprotocol/server-memory@2026.7.4` 公开 CLI + SDK Client/stdio | 两个真实 server 共享文件并发 create_entities 均确认成功，但 round 0 丢一条；串行写、分文件隔离、冷重开和四个 PID 退出通过。此 PASS 是“风险复现”，绝非多写者安全证明；U10 必须具备跨主/子 Agent/代际的单写者所有权。 |
+
+依赖只加到 private spike：DSH 精确 rc.2、Cordis 4.0.5、Schemastery 3.18.5；实际 Host runtime service imports 同时声明兼容 peer。正式产品依赖/exports/版本均未改变。最终产品回归仍为 41 文件 / 555 测试通过；IM gate 使完整 spike 命令按约定退出 1，不能报告全 gate PASS。
+
 ## R06：12 色与 6 种鲸鱼头像（2026-10-21）
 
 **r2 返工**：无新增 DSH API；造型图块增大、单色特征加粗，截图按选择器与关闭模态框后的列表分开，测色限定各自 DOM 范围。见 [r2 报告](acceptance/P2-R06-r2.md)。

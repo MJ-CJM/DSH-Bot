@@ -107,7 +107,7 @@ Host effect 负责 sidecar、队列和服务；Agent effect 负责 MCP child、�
 3. 先 `whenIdle()`，再 `runMaintenance()` 同步抢真正 idle；若被新 turn 抢走则回到 pending。原生保证 maintenance 中后续 wake 留 Inbox（`H/packages/core/agent/src/runtime-types.ts:185-202`）。
 4. 同 serverName 不双挂：await 关闭旧 child → 重新 resolve → 挂新 child → 发现工具 → appliedRevision。连接失败显示 unavailable，重试显式执行；不以旧已撤销秘密回退。
 5. 删除/撤权先用 scoped `tools.guard` 拒绝本连接器新调用，再在空闲边界关闭；已发给远端的请求不能承诺撤回。原生 guard 证据 `H/packages/core/tools/src/index.ts:724-732,1133-1151`。卸载清 guard 和 child，等待取消/关闭。
-6. provider credential 变化事件将引用它的 assignment 标 pending；普通环境变量变化无事件，只在 bridge 显式重新应用、销毁并重建 child 时重新读取。native 自己 reconnect 使用静态 config，不会重新读取环境或 resolve（`H/packages/mcp/mcp-client/src/connection.ts:301-328`）；本包不为此另写重连器。
+6. provider credential 变化事件将引用它的 assignment 标 pending。U01 实测修正：CLI 的 credentials-local 从不可变 launchEnvironment 快照读取 process 层；运行时改变 `process.env` 后，即使 bridge 重新 resolve/重建 child 仍读旧快照。环境变更须重启 Host；热轮换使用原生 provider-managed set/unset 与 reference-updated，再在维护窗口重新 resolve。native 自己 reconnect 使用静态 config，不会重新读取环境或 resolve（`H/packages/mcp/mcp-client/src/connection.ts:301-328`）；本包不为此另写重连器。证据见 [U01](spikes/P34-api-spike.md)。
 
 ### 3.4 UI、风险与 mock e2e
 
