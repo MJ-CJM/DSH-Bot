@@ -34,7 +34,7 @@ for (const language of ['en', 'zh']) for (const theme of ['light', 'dark']) {
     matrix.push({ language, theme, screen, status: 'FAIL', reason: 'not run' });
   }
 }
-const narrowChecks = ['en', 'zh'].flatMap(language => ['light', 'dark'].flatMap(theme => ['group', 'management'].map(surface => ({ language, theme, surface, status: 'FAIL', reason: 'not run' }))));
+const narrowChecks = ['en', 'zh'].flatMap(language => ['light', 'dark'].flatMap(theme => ['group', 'management', 'connectors', 'memory'].map(surface => ({ language, theme, surface, status: 'FAIL', reason: 'not run' }))));
 const pageErrors = [];
 let failure;
 let browser, mock, host;
@@ -114,12 +114,32 @@ async function capture(url) {
       await installOverlayHandler(page, () => {});
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await dismissFirstRunOverlays(page, () => {}, 'v03');
+      const fixture = JSON.parse(await readFile(resolve(workDir, 'sidebar-main-identity.json')));
+      // A fresh rc.2 Client auto-connects a provisional standard blank. Use
+      // native row navigation to select a real main before opening a global page;
+      // the native tree then excludes unselected blank placeholders. No deletion,
+      // projection edits or browser-store seeding to arrange sidebar results.
+      const firstMain = fixture.rows[0].sessionId;
+      await page.locator(`[role="treeitem"][data-row-key="session:${firstMain}"]`).click();
+      await page.locator(`[data-conversation-content][data-conversation-session="${firstMain}"]`).waitFor();
       await page.getByRole('button', { name: 'Bots', exact: true }).click();
+      const assertSidebar = async () => {
+        const rows = page.locator('[role="treeitem"][data-row-key^="session:"]:visible');
+        const actual = await rows.evaluateAll(elements => elements.map(element => ({
+          sessionId: element.getAttribute('data-row-key').slice('session:'.length), text: element.textContent,
+        })));
+        assert.deepEqual(actual.map(row => row.sessionId).sort(), fixture.rows.map(row => row.sessionId).sort(),
+          'Bots sidebar must show exactly the three Bot mains after group creation');
+        assert.ok(actual.every(row => !/New Session|新会话/i.test(row.text)), 'Bots workspace must have no New Session row');
+        return actual;
+      };
       const bots = page.locator('[data-bots-page]');
       const shot = async screen => {
         // Actionability/focus may scroll the outer Bots page to its composer.
         // Capture from the page header; the log has its own reachable scrollbar.
         await bots.locator('h1').evaluate(heading => heading.scrollIntoView({ block: 'start' }));
+        const visibleRows = await assertSidebar();
+        sidebarEvidence.push({ language, theme, screen, visibleRows, noNewSession: true });
         const file = `${language}-${theme}-${screen}.png`;
         const path = resolve(outputDir, file);
         const bodyTheme = await page.locator('body').evaluate(body => ({ color: getComputedStyle(body).color, background: getComputedStyle(body).backgroundColor }));
@@ -137,7 +157,6 @@ async function capture(url) {
       // Fixture turns reorder bots by recent activity; pin the seeded bot in per-bot selectors.
       const pickAssistant = async () => { for (const s of await bots.locator('select:visible').all()) { if (await s.locator('option', { hasText: 'Assistant (assistant)' }).count()) await s.selectOption({ label: 'Assistant (assistant)' }); } };
       await bots.getByText('Assistant', { exact: true }).first().waitFor();
-      const fixture = JSON.parse(await readFile(resolve(workDir, 'sidebar-main-identity.json')));
       for (const fixtureRow of fixture.rows) {
         const row = page.locator(`[role="treeitem"][data-row-key="session:${fixtureRow.sessionId}"]`);
         await row.waitFor();
@@ -220,6 +239,21 @@ async function capture(url) {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Narrow management overflow');
       await page.screenshot({ path: resolve(outputDir, `${language}-${theme}-narrow-management.png`), fullPage: true });
       Object.assign(narrowChecks.find(row => row.language === language && row.theme === theme && row.surface === 'management'), { status: 'PASS', reason: undefined });
+      for (const [surface, tab] of [['connectors', 'connectors.connectors'], ['memory', 'manage.memoryTools']]) {
+        await bots.getByRole('tab', { name: t[tab], exact: true }).click();
+        await pickAssistant();
+        if (surface === 'memory') await bots.getByRole('tab', { name: t['manage.records'], exact: true }).click();
+        const controls = surface === 'memory'
+          ? bots.getByRole('searchbox', { name: t['memory.search'], exact: true }).locator('xpath=ancestor::form')
+          : bots.locator('[data-management-header]:visible');
+        const bounds = await controls.evaluate(element => ({ width: element.clientWidth, fullWidth: element.scrollWidth }));
+        assert.ok(bounds.fullWidth <= bounds.width + 1, `Narrow ${surface} controls overflow`);
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Narrow ${surface} page overflow`);
+        // At 390px the native shell collapses the sidebar; only assert no blank rows are visible.
+        assert.ok(!/New Session|新会话/i.test((await page.locator('[role="treeitem"]:visible').allInnerTexts()).join('\n')), 'Narrow sidebar shows a blank session');
+        await page.screenshot({ path: resolve(outputDir, `${language}-${theme}-narrow-${surface}.png`), fullPage: true });
+        Object.assign(narrowChecks.find(row => row.language === language && row.theme === theme && row.surface === surface), { status: 'PASS', reason: undefined, bounds });
+      }
       assert.deepEqual(pageErrors, [], 'Browser page errors');
     } finally { await context.close(); }
   }

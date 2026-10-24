@@ -1,5 +1,16 @@
 # DSH API 核实记录
 
+## P34 r4：额外 standard 空白行来源与管理头部（2026-10-24）
+
+本轮未新增产品 DSH API、依赖、Remote 或存储 schema。指定 `19-56-19.688Z-25397` run 的额外行是 `session-64aff497-3ab7-45b2-8ea7-92bf7699ca88`（`standard`、空标题、blank=true、零轮次），不是三个 Bot 主会话，也不是 `group-root-a08113f7-a405-4cb1-a35b-a712345c3873`。该群根不在 Bots workspace 的 sessionIds 中。此结论只针对该 run，不能沿用 r3 对更早 run 的三主会话 blank 来源判断；原 r3 收据保留。
+
+只读锁定 rc.2：`packages/client/ui-workspace/src/client/navigation.ts:411-471` 在全新 Client 无保存选择时恢复最近 workspace，`:193-209` 的 connectWorkspace/connectBlank 会创建原生空白会话；`tree.ts:233-245` 仅让当前选中的 blank 行可见，`rows/Rows.tsx:47-50` 显示本地化新会话。创建者归因为这些源码与落盘身份、时间、fixture/浏览器顺序的共同推断，原 run 无逐 RPC 审计轨迹。fixture 已完成三主会话 mock 轮次，新脚本只通过原生侧栏行点击选中已有主会话，再打开 Bots 页；不写原生 projection、不伪造事件、不删除或归档原生用户会话。每张截图前断言全部可见会话 ID 恰为三主会话且无“新会话/New Session”。
+
+公开原生隐藏能力也已核对：`@deepseek-ai/dsh-workspace` 根导出 `WorkspaceRegistry`，`packages/workspace/workspace/src/index.ts:339-389` 的 `archivedSessionIds/archiveSession` 是持久归档并进行活动检查；并非无副作用的视觉隐藏。本次来源不是群根，且群根本来不在 Bots workspace，因此不调用归档，不改变群的生命周期与原有直接 prompt guard。
+
+Host fixture 与完整群运行探针新增对公开 `workspaceRegistry.list()` / workspace.sessionIds 的精确集合断言（源码 `workspace/src/index.ts:287-301`），验证创建群后 Bots workspace 仍仅含三主会话。实际回归与 Chromium MachPort 阻塞边界见 [r4 验收](acceptance/P34-rework-r3.md#5-r4返工2026-10-24)。共享管理头部与记忆搜索布局不改变 Host 契约；UI 继续使用既有 locale 和主题 alias。
+
+
 ## P34 r3：0.3.1 UI 与 fixture（2026-10-24）
 
 产品未增加 DSH API、依赖或 Remote 方法，存储领域/版本与兼容范围不变。UI 使用现有公开主题 alias；轮次展开偏好仅存在 Client 插件生命周期内，由 effect 清理，不写 Host 或 localStorage。

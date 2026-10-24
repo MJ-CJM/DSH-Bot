@@ -167,6 +167,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
           catalog.setQuery(search);
         }}
       >
+        <div className={panel.searchGroup}>
         <label className={styles.field}>
           {t('memory.search')}
           <input type="search" value={search} disabled={busy} onChange={(event) => setSearch(event.target.value)} />
@@ -174,8 +175,9 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
         <button className={styles.button} type="submit" disabled={busy}>
           {t('memory.searchAction')}
         </button>
+        </div>
         <button
-          className={styles.button}
+          className={`${styles.button} ${panel.refresh}`}
           type="button"
           disabled={busy}
           onClick={() => {

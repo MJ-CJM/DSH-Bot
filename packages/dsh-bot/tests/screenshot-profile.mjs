@@ -4,7 +4,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import TeamService from '@deepseek-ai/dsh-experimental-agent-team';
 export const name = 'bot-screenshot-fixture';
-export const inject = ['loader', 'dshBots', 'dshBotGroups', 'dshBotConnectors', 'dshBotNotifications', 'dshBotCollaborationRemote', 'dshBotReferenceMemory', 'schedule', 'sessionController', 'sessionTitle', 'agents', 'sessions'];
+export const inject = ['loader', 'dshBots', 'dshBotGroups', 'dshBotConnectors', 'dshBotNotifications', 'dshBotCollaborationRemote', 'dshBotReferenceMemory', 'schedule', 'workspaceRegistry', 'sessionController', 'sessionTitle', 'agents', 'sessions'];
 export function apply(ctx, config) {
   ctx.effect(() => {
     let team;
@@ -56,6 +56,11 @@ export function apply(ctx, config) {
       await ctx.dshBotCollaborationRemote.ensure(keys[0], 0);
       await ctx.dshBotCollaborationRemote.createTask(keys[0], { subject: 'Review research summary', description: 'Compare the two synthetic summaries.', blockedBy: [] });
       const group = await ctx.dshBotGroups.create({ operationId: 'screenshot', name: 'Research group', mode: 'round-robin', members: keys, historyConfirmed: true });
+      const workspace = ctx.workspaceRegistry.list().find(workspace => mains.every(main => workspace.sessionIds.includes(main.sessionId)));
+      assert.ok(workspace);
+      assert.deepEqual([...workspace.sessionIds].sort(), mains.map(main => main.sessionId).sort(), 'Creating a group must not add any row to the Bots workspace');
+      assert.ok(!workspace.sessionIds.includes(group.rootSessionId));
+      await writeFile(join(config.outputDir, 'sidebar-after-group.json'), JSON.stringify({ status: 'PASS', workspaceId: workspace.id, sessionIds: workspace.sessionIds, mainSessionIds: mains.map(main => main.sessionId), groupRootId: group.rootSessionId, groupRootInBotsWorkspace: false }, null, 2));
       const groupKey = { groupId: group.id, groupCreatedAt: group.createdAt };
       await ctx.dshBotGroups.send(groupKey, { operationId: 'screenshot-round', expectedMembershipRevision: 1, text: 'Compare the research approaches for this synthetic example.', round: true });
       const deadline = Date.now() + 30000;

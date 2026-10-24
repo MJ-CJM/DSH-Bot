@@ -1,3 +1,4 @@
+import { ManagementHeader } from './ManagementHeader.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -17,26 +18,14 @@ export function CollaborationPanel({ actions, bots, onOpenSession, t }: Collabor
   return (
     <section className={styles.panel} aria-label={t('team.title')}>
       <style>{css}</style>
-      <h2>{t('team.title')}</h2>
-      <p>{t('team.inherits')}</p>
-      <p>{t('team.delegateHint')}</p>
-      <label>
-        {t('integrations.bot')}
-        <select value={bot?.id ?? ''} onChange={(e) => setSelected(e.target.value)}>
-          {bots.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name} ({b.id})
-            </option>
-          ))}
-        </select>
-      </label>
+      {!bot && <ManagementHeader title={t('team.title')} selector={{ bots, value: '', onChange: setSelected }} t={t} />}
       {bot && (
-        <Board key={`${bot.id}:${bot.createdAt}`} actions={actions} bot={bot} onOpenSession={onOpenSession} t={t} />
+        <Board key={`${bot.id}:${bot.createdAt}`} actions={actions} bot={bot} bots={bots} onBotChange={setSelected} onOpenSession={onOpenSession} t={t} />
       )}
     </section>
   );
 }
-function Board({ actions, bot, onOpenSession, t }: Omit<CollaborationPanelProps, 'bots'> & { bot: BotRecord }) {
+function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: CollaborationPanelProps & { bot: BotRecord; onBotChange(id: string): void }) {
   const key = useMemo(() => ({ botId: bot.id, botCreatedAt: bot.createdAt }), [bot.id, bot.createdAt]);
   const catalog = useMemo(() => actions.createBoard(key), [actions, key]);
   useEffect(() => () => catalog.dispose(), [catalog]);
@@ -78,6 +67,16 @@ function Board({ actions, bot, onOpenSession, t }: Omit<CollaborationPanelProps,
   const link = data.link;
   return (
     <>
+      <ManagementHeader title={t('team.title')} selector={{ bots, value: bot.id, onChange: onBotChange }} actions={<button
+        type="button"
+        onClick={() => {
+          void catalog.refresh();
+        }}
+      >
+        {t('bots.refresh')}
+      </button>} t={t} />
+      <p>{t('team.inherits')}</p>
+      <p>{t('team.delegateHint')}</p>
       {data.error && <p role="alert">{t('integrations.loadFailed')}</p>}
       {error && (
         <p role="alert">
@@ -90,14 +89,6 @@ function Board({ actions, bot, onOpenSession, t }: Omit<CollaborationPanelProps,
           )}
         </p>
       )}
-      <button
-        type="button"
-        onClick={() => {
-          void catalog.refresh();
-        }}
-      >
-        {t('bots.refresh')}
-      </button>
       {!data.loaded && data.loading && <p role="status">{t('bots.loading')}</p>}
       {data.loaded && !data.supported && <p>{t('team.unsupported')}</p>}
       {data.loaded && data.supported && !data.link && (
@@ -225,21 +216,20 @@ export function ImPanel({ actions, t }: { actions: CollaborationActions } & Prop
   return (
     <section className={styles.panel} aria-label={t('im.title')}>
       <style>{css}</style>
-      <h2>{t('im.title')}</h2>
-      {data.error && <p role="alert">{t('integrations.loadFailed')}</p>}
-      <p>
-        {t('im.pin')}: {data.pin}
-      </p>
-      <p>{t(`im.${data.reason}`)}</p>
-      <p>{t('im.gateHint')}</p>
-      <button
+      <ManagementHeader title={t('im.title')} actions={<button
         type="button"
         onClick={() => {
           void actions.im.refresh();
         }}
       >
         {t('bots.refresh')}
-      </button>
+      </button>} t={t} />
+      {data.error && <p role="alert">{t('integrations.loadFailed')}</p>}
+      <p>
+        {t('im.pin')}: {data.pin}
+      </p>
+      <p>{t(`im.${data.reason}`)}</p>
+      <p>{t('im.gateHint')}</p>
       <button type="button" disabled>
         {t('im.bind')}
       </button>

@@ -1,3 +1,4 @@
+import { ManagementHeader } from './ManagementHeader.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { ScheduleTimingChange } from '@deepseek-ai/dsh-schedule/client';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
@@ -93,21 +94,9 @@ export function RoutinePanel({
   return (
     <section className={styles.panel} data-routine-panel={botId ?? 'overview'} aria-label={t('routine.title')}>
       <style>{css}</style>
-      <header className={styles.header}>
-        <div>
-          <h3>{t('routine.title')}</h3>
-          <p>{t('routine.hint')}</p>
-        </div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            void actions.catalog.refresh();
-          }}
-        >
-          {t('bots.refresh')}
-        </button>
-      </header>
+      <ManagementHeader title={t('routine.title')} level={3} description={t('routine.hint')} actions={
+        <button type="button" disabled={busy} onClick={() => { void actions.catalog.refresh(); }}>{t('bots.refresh')}</button>
+      } t={t} />
       {!data.loaded && !data.error && <p role="status">{t('routine.loading')}</p>}
       {data.error && <p role="alert">{errorText(data.error, t)}</p>}
       {data.loaded && !data.nativeAvailable && <p role="status">{t('native.unavailable')}</p>}

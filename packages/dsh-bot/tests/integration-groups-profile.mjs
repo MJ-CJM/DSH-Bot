@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Peer } from '@deepseek-ai/dsh-client-connection';
 export const name = 'p34-group-probes';
-export const inject = ['loader', 'dshBots', 'dshBotAutomation', 'dshBotGroupsRemote', 'dshBotGroups', 'typertGateway', 'agents', 'sessions', 'sessionController', 'subagents', 'agentDefaultModel','dshBotConnectors','sessionTitle'];
+export const inject = ['loader', 'dshBots', 'dshBotAutomation', 'dshBotGroupsRemote', 'dshBotGroups', 'typertGateway', 'agents', 'sessions', 'workspaceRegistry', 'sessionController', 'subagents', 'agentDefaultModel','dshBotConnectors','sessionTitle'];
 export function apply(ctx, config) {
   ctx.effect(() => {
     const abort = new AbortController(); let stopping = false, peer;
@@ -29,6 +29,11 @@ export function apply(ctx, config) {
       if (first) {
         const input = { operationId: 'runtime-create', name: 'Synthetic whale group', mode: 'mention', members: [keys.alpha,keys.beta,keys.gamma], historyConfirmed: true };
         group = await invoke('create',{input}); groupKey = key(group);
+        const workspace = ctx.workspaceRegistry.list().find(workspace => mainIds.every(id => workspace.sessionIds.includes(id)));
+        assert.ok(workspace);
+        assert.deepEqual([...workspace.sessionIds].sort(), [...mainIds].sort(), 'Group creation leaves only Bot mains in the Bots workspace');
+        assert.ok(!workspace.sessionIds.includes(group.rootSessionId));
+        await save('sidebar-after-group', { status: 'PASS', sessionIds: workspace.sessionIds, mainIds, groupRootId: group.rootSessionId, groupRootInBotsWorkspace: false });
         assert.equal((await invoke('create',{input})).id,group.id);
         await assert.rejects(() => invoke('create',{input:{ ...input,name:'Changed payload' }}));
         const view = () => invoke('view',{group:groupKey,page:{}});

@@ -1,3 +1,4 @@
+import { ManagementHeader } from './ManagementHeader.js';
 import { RetainedPanel } from './RetainedPanel.js';
 import { useEffect, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -27,17 +28,7 @@ export function ManagementPanel({
   return (
     <section className={styles.panel} aria-label={t('manage.memoryTools')}>
       <style>{css}</style>
-      <h2>{t('manage.memoryTools')}</h2>
-      <label>
-        {t('integrations.bot')}
-        <select value={bot?.id ?? ''} onChange={(e) => setId(e.target.value)}>
-          {bots.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name} ({b.id})
-            </option>
-          ))}
-        </select>
-      </label>
+      <ManagementHeader title={t('manage.memoryTools')} selector={{ bots, value: bot?.id ?? '', onChange: setId }} t={t} />
       <div role="tablist" aria-label={t('manage.memoryTools')}>
         {(['records', 'graph', 'transfer'] as const).map((key) => (
           <button type="button" key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>

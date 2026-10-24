@@ -1,3 +1,4 @@
+import { ManagementHeader } from './ManagementHeader.js';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
@@ -64,34 +65,17 @@ export function IntegrationFrame({
       aria-label={t(title === 'connectors' ? 'connectors.connectors' : 'notifications.notifications')}
     >
       <style>{css}</style>
-      <h2>{t(title === 'connectors' ? 'connectors.connectors' : 'notifications.notifications')}</h2>
+      <ManagementHeader
+        title={t(title === 'connectors' ? 'connectors.connectors' : 'notifications.notifications')}
+        selector={{ bots, value: state.bot?.id ?? '', onChange: (id) => {
+          state.setOwnerId(id);
+          onOwnerChange?.();
+        } }}
+        actions={<button type="button" disabled={state.busy} onClick={() => { void actions.catalog.refresh(); }}>{t('bots.refresh')}</button>}
+        t={t}
+      />
       {state.data.error && <p role="alert">{t('integrations.loadFailed')}</p>}
       {state.error && <p role="alert">{t('integrations.operationFailed')}</p>}
-      <button
-        type="button"
-        disabled={state.busy}
-        onClick={() => {
-          void actions.catalog.refresh();
-        }}
-      >
-        {t('bots.refresh')}
-      </button>
-      <label>
-        {t('integrations.bot')}
-        <select
-          value={state.bot?.id ?? ''}
-          onChange={(e) => {
-            state.setOwnerId(e.target.value);
-            onOwnerChange?.();
-          }}
-        >
-          {bots.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name} ({b.id})
-            </option>
-          ))}
-        </select>
-      </label>
       {children}
     </section>
   );
