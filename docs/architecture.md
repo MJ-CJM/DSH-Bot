@@ -1,4 +1,4 @@
-# DSH-Bot 架构（R05 单主会话，0.2.2）
+# DSH-Bot 架构（0.3.0）
 
 本页描述当前正式包的实现。DSH 参考源码锁定 `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`），只使用已发布包的公开入口、service、Remote 和 slot。具体 API 出处见 [DSH API 核实记录](dsh-api-notes.md)，P1 操作清单见 [P1 验收清单](acceptance/P1.md)，P2 运行证据与验收边界见 [P2 报告](acceptance/P2.md)；架构说明本身不代表运行验收通过。
 
@@ -140,7 +140,7 @@ Host 合约、preset disposer、领域句柄、stream 订阅、Agent 事件/工�
 
 Host 配置集中在导出的 Schemastery `Config`；Client 刷新、分页及侧栏条数使用独立 Client `Config`，rc.2 不自动透传 Host 行的配置。记忆条数、工具 deny、人设、默认目录等属于 Bot 记录。
 
-当前 0.2.2 版本在 P1 Bot、记忆、活动和原生 UI 扩展上提供原生定时聚合、显式立即运行与原生子代理委派。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
+当前 0.3.0 在原有 Bot、记忆、活动、原生定时与 spawn 委派上增加每 Bot MCP 桥、应用内通知、独立群聊、原生 Team 任务板、管理传输及附加图谱。IM 收发依赖的 consumer gate 未通过；系统通知没有公开 API。Host 存活、构建或 dump-config 不能证明桌面导航、亮暗视觉或完整端到端流程；本轮证据及未通过项见 [P3/P4 验收](acceptance/P3-P4.md)。
 
 
 ## R02：原生定时与 Bots 聚合
@@ -257,3 +257,16 @@ Bots 一级导航只有 Bots、群聊、管理。管理分区提供记忆/传输
 - Registry 仅低风险移出 `registry-config.ts` 的配置/schema，并从原路径 re-export `Config`。剩余 `registry.ts`（712 行）暂不强拆：初始化/关闭共享 `ready`、`tail`、`releaseResources`、`watchOwner`；preset transition 的注销/获取/回滚共享 `leases`、`activating`、诊断和同一写队列，Agent setup 又会回调本注册表。按 CRUD 或活动分成多个有状态服务会引入重入、回滚和 disposer 次序风险。本轮保留此所有权边界；以后需要拆分时可先抽取显式 transition 状态机，再独立验证注册失败与关闭并发，不能只以减少行数为目的。
 
 r2 实际检查结果及未重新运行的完整 Host/浏览器边界见 [返工验收 r2](acceptance/P34-rework.md#r2-返工2026-10-24)。
+
+
+## U12–U13：最终包和可重跑证据
+
+正式版本为 0.3.0，宿主仍锁定 rc.2，`engines.dsh` 不变。发布内容只有现有 exports 的 lib、bundle patch、双语 locale、鲸鱼图标、README、LICENSE 和 manifest。仓库原先没有许可证授权，本轮显式记录 UNLICENSED，不自行赋予开源许可。repository 指向本仓库 packages/dsh-bot；没有新增产品服务或在线安装源。
+
+Client CSS 构建的虚拟模块键及嵌套编译入口使用相对 packageRoot 的路径。原产物将本机绝对目录写入 CSS 注释和 sourcemap；最终包审计发现后修复，bundle 回归同时检查 client.js/map 不包含构建路径。类映射和平台 external 策略不变。
+
+`scripts/p34-e2e` 从仓库根、隔离 DSH_HOME 运行 frozen install/check/build/pack，生成 dist/artifact-manifest.json 与 tgz SHA256。artifact 审计遍历实际文件、exports、版本、依赖、locale、机器路径和合成 secret sentinel；pnpm 会重新序列化 manifest，因此源码 manifest 比语义，其余文件比字节；每个 profile 的安装文件全部按 tgz hash 核验。四个原生领域 runtime、原生 schedule/delegate 和截图脚本均接收同一 `DSH_BOT_E2E_PACKAGE`；故障场景使用独立 profile/storage/session/agents 根，避免共享测试状态。CLI remove/reinstall 另验证持久文件不变及重新启动 Host 可读。升级场景使用本地保留的实际 0.2.2 tgz，在新 profile 生成合成 Bot/置顶记忆/主会话，再安装最终包逐字段比较；缺少旧包时明确 FAIL，不修改当前 manifest 来伪造旧发行版。
+
+公开 `dsh-plugin-market-index` 仅为精确 rc.2 开发依赖。离线 fixture 使用显式合成包和 .invalid registry；运行时换成 loopback registry，原生 CLI 验证安装、版本读回及 404。Git 的 commit/path 仅由公开 parser/target 验证；没有最终已发布来源时不执行或宣称 Git 安装、线上市场验证。未运行只读参考树的 private generator。
+
+`scripts/screenshot.mjs --v03` 复用返工 screenshot-v03：中英 × 亮暗 × 15 页面（60 张目标），另做群聊/管理 390px 操作与截图。先准备并核验安装包及真实种子 Host，再启动缓存 Chromium；浏览器失败不抹去 Host 成功收据，矩阵仍逐项 FAIL。正式报告汇总 U01–U13、r1/r2，清楚区分历史证据、最终 tgz Host 回归、DOM 与浏览器验收，见 [P3/P4 验收](acceptance/P3-P4.md)。

@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-// Keep the executable requested by T08b at the repository root; implementation
-// and dependencies belong to the formal package.
-await import('../packages/dsh-bot/scripts/screenshot.mjs');
+// Reuse the formal screenshot implementation and its package-local dependencies.
+if (process.argv.includes('--v03')) await import('../packages/dsh-bot/scripts/screenshot-v03.mjs');
+else await import('../packages/dsh-bot/scripts/screenshot.mjs');

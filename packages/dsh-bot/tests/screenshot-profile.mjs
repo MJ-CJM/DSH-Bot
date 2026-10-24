@@ -3,18 +3,21 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import TeamService from '@deepseek-ai/dsh-experimental-agent-team';
 export const name = 'bot-screenshot-fixture';
-export const inject = ['loader', 'dshBots', 'dshBotGroups', 'dshBotConnectors', 'dshBotNotifications', 'dshBotCollaborationRemote', 'dshBotReferenceMemory'];
+export const inject = ['loader', 'dshBots', 'dshBotGroups', 'dshBotConnectors', 'dshBotNotifications', 'dshBotCollaborationRemote', 'dshBotReferenceMemory', 'schedule'];
 export function apply(ctx, config) {
   ctx.effect(() => {
     let team;
     let stopping = false;
     const run = (async () => {
       await ctx.loader.await();
+      await ctx.dshBots.waitUntilReady();
       const bots = [];
-      for (const [id, name] of [['assistant', 'Assistant'], ['researcher', 'Research Assistant']]) {
+      for (const [id, name] of [['assistant', 'Assistant'], ['researcher', 'Research Assistant'], ['reviewer', 'Reviewer']]) {
         bots.push(await ctx.dshBots.create({ id, name, template: 'minimal', persona: { prefix: 'Synthetic screenshot fixture. Use no tools.' } }));
         await ctx.dshBots.openConversation(id);
       }
+      const mains = await Promise.all(bots.map(bot => ctx.dshBots.openConversation(bot.id)));
+      const schedule = await ctx.schedule.create(mains[0].sessionId, { title: 'Synthetic daily review', prompt: 'Review the synthetic research summary.', every_seconds: 86400 });
       const keys = bots.map(bot => ({ botId: bot.id, botCreatedAt: bot.createdAt }));
       await ctx.dshBots.memoryFor('assistant').save({ content: 'Prefers clear, concise research summaries.', kind: 'preference', tags: ['demo'], pinned: true }, { by: 'user', at: Date.now() });
       await ctx.dshBotConnectors.saveDefinition({ id: 'sample', label: 'Example MCP connector', serverName: 'sample', transport: 'streamable-http', url: 'http://127.0.0.1:9/mcp', enabled: false }, 0);
@@ -32,7 +35,7 @@ export function apply(ctx, config) {
       do { view = await ctx.dshBotGroups.view(groupKey); if (view.turns.every(t => t.state === 'completed')) break; await new Promise(r => setTimeout(r, 25)); } while (!stopping && Date.now() < deadline);
       assert.ok(view.turns.every(t => t.state === 'completed'));
       await ctx.dshBotReferenceMemory.request({ action: 'configure', bot: keys[0], mode: 'internal+reference-graph', expectedRevision: 0 });
-      await writeFile(join(config.outputDir, 'fixture.json'), JSON.stringify({ status: 'PASS', bots: bots.map(b => b.id), groupId: group.id }));
+      await writeFile(join(config.outputDir, 'fixture.json'), JSON.stringify({ status: 'PASS', bots: bots.map(b => b.id), mainSessionIds: mains.map(m => m.sessionId), scheduleId: schedule.id, groupId: group.id }));
       console.log('V03_SCREENSHOT_READY');
     })().catch(async error => {
       await writeFile(join(config.outputDir, 'fixture-error.json'), JSON.stringify({ error: String(error), stack: error.stack }));

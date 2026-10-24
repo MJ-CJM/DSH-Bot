@@ -1,5 +1,12 @@
 # DSH API 核实记录
 
+## U12–U13：0.3.0 交付与市场 fixture（2026-10-24）
+
+产品 API、Remote、持久身份和宿主兼容范围不变。新增公开开发工具入口 `@deepseek-ai/dsh-plugin-market-index@0.2.1-rc.2` 根的 `parseMarketIndex` / `marketInstallTarget`，只用于 scripts/p34-market.mjs，不进入 Host/Client，也不需 runtime peer。依据只读 rc.2 `packages/util/plugin-market-index/src/{index,types}.ts`；format=1、秒级时间戳、exact semver、Git 40hex commit/相对 path，以及 npm spec/registry 由原生函数验证和生成。private generator 不运行。
+
+市场安装使用原生 `scripts/dsh plugin ... add <target> --registry <loopback>`，合成空 bundle，无真实平台或模型。fixture 不是 0.3.0 发布索引；本地 release tgz 的所有安装文件另比 SHA256。实际命令、Host/Client 与截图结果汇总见 [P3/P4 验收](acceptance/P3-P4.md)。历史各 U/r1/r2 的证据边界继续保留。
+
+
 ## P34 审查返工 r2（2026-10-24）
 
 本轮没有新增或改变 DSH API 用法、依赖、公开包入口或服务作用域。按 r2 要求更新本插件 wire 身份：Remote package/typeSymbol 为 `dsh-bot/integrations` / `dsh-bot/integrations#…`，操作错误为 `dsh-bot/<code>`，消息为 `DSH-Bot: <code>`。Client 使用共享常量/守卫；Host 和 Client 同包更新。Cordis service id `dshBotP34` 和全部持久化身份保留。此节取代下方 r1 的“保留旧 wire/error”决定，不追溯修改历史收据。

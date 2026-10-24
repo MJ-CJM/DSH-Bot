@@ -1,6 +1,6 @@
 {
   "name": "dsh-bot",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "description": "Your personal agent workspace for DeepSeek Harness. Create multiple personal agents, each with its own persona, long-term memory, tools and skills, working alongside you over time.",
   "exports": {
@@ -32,7 +32,9 @@
     "lib",
     "cordis.patch.yml",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "README.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
@@ -134,6 +136,20 @@
     "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.2",
     "@deepseek-ai/dsh-credentials": "0.2.1-rc.2",
     "@deepseek-ai/dsh-experimental-agent-team": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.2"
-  }
+    "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.1-rc.2"
+  },
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MJ-CJM/DSH-Bot.git",
+    "directory": "packages/dsh-bot"
+  },
+  "homepage": "https://github.com/MJ-CJM/DSH-Bot",
+  "keywords": [
+    "deepseek-harness",
+    "personal-agents",
+    "bots",
+    "mcp"
+  ]
 }

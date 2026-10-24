@@ -12,7 +12,7 @@ const require = createRequire(resolve(root, 'packages/dsh-bot/package.json'));
 const { startMockLlmServer } = await import(require.resolve('@deepseek-ai/dsh-llm-mock-server'));
 const mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['tool_call_success', 'slow_success'], repeatLast: true, chunkDelayMs: 60,
   toolName: 'bot_notify', toolArguments: JSON.stringify({ policyId: 'local-alpha', text: 'P34_PRODUCT_REPORT' }), successText: 'P34_PRODUCT_COMPLETED' });
-const runDir = resolve(home, 'p34-u02-03', `runtime-${Date.now()}-${process.pid}`); await mkdir(runDir, { recursive: true });
+const runDir = process.env.DSH_BOT_E2E_DIR ? resolve(process.env.DSH_BOT_E2E_DIR) : resolve(home, 'p34-u02-03', `runtime-${Date.now()}-${process.pid}`); await mkdir(runDir, { recursive: true });
 await writeFile(resolve(home, 'p34-u02-03/latest-runtime.txt'), `${runDir}\n`);
 const profile = `p34-product-${Date.now()}-${process.pid}`;
 const env = { PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER, SHELL: process.env.SHELL,
@@ -51,7 +51,7 @@ async function scan(dir) {
 try {
   await command(['--version'], 'version');
   await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-  await command(['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'install');
+  await command(['plugin', '--profile', profile, 'add', process.env.DSH_BOT_E2E_PACKAGE ?? resolve(root, 'packages/dsh-bot')], 'install');
   for (const phase of ['first','cold']) {
     const patch = [
       '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(runDir, 'storages'))}`,

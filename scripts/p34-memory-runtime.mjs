@@ -21,7 +21,7 @@ const mock = await startMockLlmServer({
   repeatLast: true,
   successText: 'P34_MEMORY_FAKE_REPLY',
 });
-const runDir = resolve(home, 'p34-u09-11', `runtime-${Date.now()}-${process.pid}`);
+const runDir = process.env.DSH_BOT_E2E_DIR ? resolve(process.env.DSH_BOT_E2E_DIR) : resolve(home, 'p34-u09-11', `runtime-${Date.now()}-${process.pid}`);
 await mkdir(runDir, { recursive: true });
 await writeFile(resolve(home, 'p34-u09-11/latest-runtime.txt'), `${runDir}\n`);
 const profile = `p34-memory-${Date.now()}-${process.pid}`;
@@ -114,9 +114,9 @@ async function command(executable, args, name, live = false) {
 }
 try {
   await command('dsh', ['--version'], 'version');
-  await command('pnpm', ['-C', 'packages/dsh-bot', 'pack', '--pack-destination', runDir], 'pack-bot');
+  if (!process.env.DSH_BOT_E2E_PACKAGE) await command('pnpm', ['-C', 'packages/dsh-bot', 'pack', '--pack-destination', runDir], 'pack-bot');
   const version = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version;
-  const botArchive = resolve(runDir, `dsh-bot-${version}.tgz`);
+  const botArchive = process.env.DSH_BOT_E2E_PACKAGE ?? resolve(runDir, `dsh-bot-${version}.tgz`);
   await command('dsh', ['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
   await command('dsh', ['plugin', '--profile', profile, 'add', botArchive], 'install-bot');
   for (const file of ['host/reference-memory/service.js', 'host/workspace/service.js', 'client.js']) {

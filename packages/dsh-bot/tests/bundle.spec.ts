@@ -21,6 +21,13 @@ import * as primitives from './client/platform-primitives.js';
 const require = createRequire(import.meta.url);
 
 describe('built bundle contract', () => {
+  it('distributes relocatable Client CSS labels and sourcemaps without the build checkout path', () => {
+    const packageRoot = fileURLToPath(new URL('../', import.meta.url)).replace(/\/$/, '');
+    for (const file of ['client.js', 'client.js.map']) {
+      const text = readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8');
+      expect(text).not.toContain(packageRoot);
+    }
+  });
   it('allows only package Client code and the exact public Remote helper', () => {
     const packageRoot = fileURLToPath(new URL('../', import.meta.url));
     const remoteInfo = require.resolve('@deepseek-ai/dsh-typert-protocol/remote-info');

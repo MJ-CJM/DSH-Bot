@@ -14,7 +14,7 @@ const { startMockLlmServer } = await import(require.resolve('@deepseek-ai/dsh-ll
 const mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success','success','success','success','success','success','success','max_tokens','stall','success'], repeatLast: true, successText: 'P34_GROUP_FAKE_REPLY' });
 const mcpAlpha = await startMcpFixture('alpha_probe'), mcpBeta = await startMcpFixture('beta_probe');
 mcpAlpha.authorize('synthetic-alpha'); mcpBeta.authorize('synthetic-beta');
-const runDir = resolve(home, 'p34-u06-08', `runtime-${Date.now()}-${process.pid}`); await mkdir(runDir, { recursive: true });
+const runDir = process.env.DSH_BOT_E2E_DIR ? resolve(process.env.DSH_BOT_E2E_DIR) : resolve(home, 'p34-u06-08', `runtime-${Date.now()}-${process.pid}`); await mkdir(runDir, { recursive: true });
 await writeFile(resolve(home, 'p34-u06-08/latest-runtime.txt'), `${runDir}\n`);
 const profile = `p34-groups-${Date.now()}-${process.pid}`;
 const env = { PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER, SHELL: process.env.SHELL, DSH_HOME: home,
@@ -50,9 +50,9 @@ async function command(executable, args, name, live = false) {
 }
 try {
   await command('dsh', ['--version'], 'version');
-  await command('pnpm', ['-C','packages/dsh-bot','pack','--pack-destination', runDir], 'pack-bot');
+  if (!process.env.DSH_BOT_E2E_PACKAGE) await command('pnpm', ['-C','packages/dsh-bot','pack','--pack-destination', runDir], 'pack-bot');
   const version = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version;
-  const botArchive = resolve(runDir, `dsh-bot-${version}.tgz`);
+  const botArchive = process.env.DSH_BOT_E2E_PACKAGE ?? resolve(runDir, `dsh-bot-${version}.tgz`);
   await command('dsh', ['--profile',profile,'--from-default-profile','web','--dump-config'], 'initialize');
   await command('dsh', ['plugin','--profile',profile,'add',botArchive], 'install-bot');
   for (const file of ['host/groups/service.js','host/groups/root-guard.js','host/groups/remote.js','client.js']) {

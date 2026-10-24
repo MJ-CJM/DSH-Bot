@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { build, type Plugin } from 'esbuild';
 
 /** Compile-time only: exports a class map and ?inline CSS string. BotsPage renders
@@ -10,21 +10,23 @@ export function cssModules(): Plugin {
   return {
     name: 'component-css-modules',
     setup(builder) {
+      const root = builder.initialOptions.absWorkingDir ?? process.cwd();
       // Watch/rebuild must read changed CSS, while both imports in one build share
       // the same compilation. A failed prior build must not poison the next one.
       builder.onStart(() => { cache.clear(); });
       builder.onResolve({ filter: /\.module\.css(?:\?inline)?$/ }, (args) => ({
-        path: resolve(args.resolveDir, args.path), namespace: 'component-css',
+        path: relative(root, resolve(args.resolveDir, args.path)), namespace: 'component-css',
       }));
       builder.onLoad({ filter: /.*/, namespace: 'component-css' }, async (args) => {
-        const path = args.path.replace(/\?inline$/, '');
+        const path = resolve(root, args.path.replace(/\?inline$/, ''));
         let compilation = cache.get(path);
         if (!compilation) {
           compilation = (async () => {
             const result = await build({
+              absWorkingDir: root,
               stdin: {
-                contents: `export { default } from ${JSON.stringify(path)};`,
-                resolveDir: dirname(path), loader: 'js',
+                contents: `export { default } from ${JSON.stringify(`./${relative(root, path)}`)};`,
+                resolveDir: root, loader: 'js',
               },
               bundle: true, write: false, format: 'esm', outdir: 'css-output',
               plugins: [{ name: 'read-owned-css', setup(nested) {

@@ -12,7 +12,7 @@ const root = process.cwd(), home = resolve(root, '.dsh-dev'); assert.equal(proce
 const require = createRequire(resolve(root, 'packages/dsh-bot/package.json'));
 const { startMockLlmServer } = await import(require.resolve('@deepseek-ai/dsh-llm-mock-server'));
 const mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success'], repeatLast: true, successText: 'P34_TEAM_FAKE_REPLY' });
-const runDir = resolve(home, 'p34-u04-05', `runtime-${Date.now()}-${process.pid}`); await mkdir(runDir, { recursive: true });
+const runDir = process.env.DSH_BOT_E2E_DIR ? resolve(process.env.DSH_BOT_E2E_DIR) : resolve(home, 'p34-u04-05', `runtime-${Date.now()}-${process.pid}`); await mkdir(runDir, { recursive: true });
 await writeFile(resolve(home, 'p34-u04-05/latest-runtime.txt'), `${runDir}\n`);
 const profile = `p34-collaboration-${Date.now()}-${process.pid}`;
 const env = { PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER, SHELL: process.env.SHELL, DSH_HOME: home,
@@ -46,9 +46,9 @@ async function command(executable, args, name, live = false) {
 }
 try {
   await command('dsh', ['--version'], 'version');
-  await command('pnpm', ['-C','packages/dsh-bot','pack','--pack-destination', runDir], 'pack-bot');
+  if (!process.env.DSH_BOT_E2E_PACKAGE) await command('pnpm', ['-C','packages/dsh-bot','pack','--pack-destination', runDir], 'pack-bot');
   const version = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version;
-  const botArchive = resolve(runDir, `dsh-bot-${version}.tgz`);
+  const botArchive = process.env.DSH_BOT_E2E_PACKAGE ?? resolve(runDir, `dsh-bot-${version}.tgz`);
   const source = await prepareIm(runDir);
   await command('pnpm', ['-C',source,'pack','--pack-destination',runDir], 'pack-im-locked');
   await command('dsh', ['--profile',profile,'--from-default-profile','web','--dump-config'], 'initialize');
