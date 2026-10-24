@@ -31,3 +31,8 @@
 
 ## 核心原则（用户，2026-10-20）
 DSH 原生已有的能力优先复用，不自建重复实现。设计前先盘点原生能力；只有原生确实无法满足且无法通过包装桥接时才自研，并在设计文档写明理由。
+
+## Codex 模型（用户规则 t39u，2026-10-24 起）
+- 规划/设计 run：`-c model=gpt-6-astra -c model_reasoning_effort=high`
+- 实现/返工/打包 run：`-c model=gpt-6.1-sol -c model_reasoning_effort=high`
+- 不再使用 ultra；每次 run 用 -c 指定，不改全局 config（slug 来自 ~/.codex/models_cache.json）。
