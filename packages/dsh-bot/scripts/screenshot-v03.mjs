@@ -134,6 +134,8 @@ async function capture(url) {
         }
         Object.assign(matrix.find(row => row.language === language && row.theme === theme && row.screen === screen), { status: 'PASS', file, sha256: sha256(await readFile(path)), reason: undefined });
       };
+      // Fixture turns reorder bots by recent activity; pin the seeded bot in per-bot selectors.
+      const pickAssistant = async () => { for (const s of await bots.locator('select:visible').all()) { if (await s.locator('option', { hasText: 'Assistant (assistant)' }).count()) await s.selectOption({ label: 'Assistant (assistant)' }); } };
       await bots.getByText('Assistant', { exact: true }).first().waitFor();
       const fixture = JSON.parse(await readFile(resolve(workDir, 'sidebar-main-identity.json')));
       for (const fixtureRow of fixture.rows) {
@@ -154,15 +156,17 @@ async function capture(url) {
       for (const [key, screen] of [['connectors.connectors', 'connectors'], ['notifications.notifications', 'notifications'], ['team.title', 'collaboration'], ['routine.title', 'routines'], ['im.title', 'im']]) {
         await bots.getByRole('tab', { name: t[key], exact: screen !== 'notifications' }).click();
         const panel = bots.locator('[role=tabpanel]:visible');
+        await pickAssistant();
         if (screen === 'collaboration') await panel.getByText(/Review research summary · v/).first().waitFor();
         await shot(screen);
       }
       await bots.getByRole('tab', { name: t['manage.memoryTools'], exact: true }).click();
+      await pickAssistant();
       await bots.getByText('Prefers clear, concise research summaries.', { exact: true }).waitFor();
       await shot('memory-records');
-      await bots.getByRole('tab', { name: t['manage.transfer'], exact: true }).click();
+      await bots.getByRole('tab', { name: t['manage.transfer'], exact: true }).click(); await pickAssistant();
       await shot('transfer');
-      await bots.getByRole('tab', { name: t['manage.graph'], exact: true }).click();
+      await bots.getByRole('tab', { name: t['manage.graph'], exact: true }).click(); await pickAssistant();
       await bots.getByRole('button', { name: t['graph.read'], exact: true }).waitFor();
       await shot('memory-backend');
       await bots.getByRole('tab', { name: t['groups.title'], exact: true }).click();
@@ -212,7 +216,7 @@ async function capture(url) {
       Object.assign(narrowChecks.find(row => row.language === language && row.theme === theme && row.surface === 'group'), { status: 'PASS', reason: undefined });
       await bots.getByRole('tab', { name: t['manage.title'], exact: true }).first().click();
       await bots.getByRole('tab', { name: t['manage.memoryTools'], exact: true }).click();
-      await bots.getByRole('tab', { name: t['manage.transfer'], exact: true }).click();
+      await bots.getByRole('tab', { name: t['manage.transfer'], exact: true }).click(); await pickAssistant();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Narrow management overflow');
       await page.screenshot({ path: resolve(outputDir, `${language}-${theme}-narrow-management.png`), fullPage: true });
       Object.assign(narrowChecks.find(row => row.language === language && row.theme === theme && row.surface === 'management'), { status: 'PASS', reason: undefined });

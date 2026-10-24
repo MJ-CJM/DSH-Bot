@@ -1,0 +1,632 @@
+{
+  "fixtureStatus": "PASS",
+  "profile": "screenshots-v03-1792871699212-22770",
+  "installedAudit": {
+    "profile": "screenshots-v03-1792871699212-22770",
+    "version": "0.3.1",
+    "files": 270,
+    "artifactSha256": "eec5e01097c6f1cd8543d55e8ce4b7df7fd6ff318f544b27ac04e16ca7f2b627",
+    "status": "PASS"
+  },
+  "artifact": {
+    "sha256": "eec5e01097c6f1cd8543d55e8ce4b7df7fd6ff318f544b27ac04e16ca7f2b627",
+    "path": ".dsh-dev/screenshots-v03/2026-10-24T19-54-55.668Z-22770/dsh-bot-0.3.1.tgz"
+  },
+  "aliases": [],
+  "themeEvidence": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bot-editor",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    }
+  ],
+  "sidebarEvidence": [
+    {
+      "language": "en",
+      "theme": "light",
+      "sessionId": "session-0cfb4b66-af95-4089-89e0-240657230436",
+      "title": "Assistant",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "sessionId": "session-2712e269-7b6b-4269-883a-995529b1485e",
+      "title": "Research Assistant",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "sessionId": "session-4039136d-a8ca-4a8d-900e-f4f0c9824d14",
+      "title": "Reviewer",
+      "blank": false
+    }
+  ],
+  "scrollEvidence": [],
+  "status": "FAIL",
+  "phase": "capture",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v03/2026-10-24T19-54-55.668Z-22770",
+  "workDir": "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-54-55.668Z-22770",
+  "realModelRequests": 0,
+  "modelRequests": 6,
+  "commands": [
+    {
+      "tool": "pnpm",
+      "args": [
+        "-F",
+        "dsh-bot",
+        "build"
+      ],
+      "label": "build",
+      "code": 0
+    },
+    {
+      "tool": "pnpm",
+      "args": [
+        "-C",
+        "packages/dsh-bot",
+        "pack",
+        "--pack-destination",
+        "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-54-55.668Z-22770"
+      ],
+      "label": "pack",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792871699212-22770",
+        "--from-default-profile",
+        "web",
+        "--dump-config"
+      ],
+      "label": "initialize",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "plugin",
+        "--profile",
+        "screenshots-v03-1792871699212-22770",
+        "add",
+        "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-54-55.668Z-22770/dsh-bot-0.3.1.tgz"
+      ],
+      "label": "install",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792871699212-22770",
+        "--no-open",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0"
+      ],
+      "label": "host",
+      "code": 0
+    }
+  ],
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "status": "PASS",
+      "file": "en-light-bots.png",
+      "sha256": "9b328aacb9d22660b4b51b76848252da133fb1224a4ddfd86c7f22154d0667d3"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "PASS",
+      "file": "en-light-bot-editor.png",
+      "sha256": "b4612e66cdd777a4bfefc012b90aa4a795fdda91467fcb3441025fa0ed273273"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "PASS",
+      "file": "en-light-connectors.png",
+      "sha256": "1af6d4f1f05a4613b3590a7729a784809ec90f1e461965ac1154d9a9266a91c9"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "PASS",
+      "file": "en-light-notifications.png",
+      "sha256": "1304d9548cda8b40852fd78bac6c2f2e3449f868b0cd6b1f2113c656d622cf93"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "status": "PASS",
+      "file": "en-light-management.png",
+      "sha256": "cd136a62fc75ee6cd81a39af21cc9168c1545dcac0f73d38cce08e995ad488de"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "capture: TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be "
+    }
+  ],
+  "narrowChecks": [
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    }
+  ],
+  "pageErrors": [],
+  "failure": "TimeoutError: locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be visible\n"
+}
