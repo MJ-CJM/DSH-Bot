@@ -11,10 +11,10 @@ describe('U04/U05 public slot UI', () => {
   it.each(['en','zh'] as const)('%s exposes an explicit unsupported state and disabled IM actions', async language => {
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })], language); const t = (language === 'en' ? en : zh).ui;
     try {
-      await click(button(app.container, t['team.title']));
+      await click(button(app.container, t['manage.title'])); await click(button(app.container, t['team.title']));
       await vi.waitFor(() => expect(app.container.textContent).toContain(t['team.unsupported']));
       expect(app.remote.collaboration.ensure).not.toHaveBeenCalled();
-      await click(button(app.container, t['im.title']));
+      await click(button(app.container, t['manage.title'])); await click(button(app.container, t['im.title']));
       expect(button(app.container, t['im.bind']).disabled).toBe(true); expect(button(app.container, t['im.send']).disabled).toBe(true);
       expect(app.container.textContent).toContain(t['im.gateHint']);
     } finally { await app.dispose(); }
@@ -23,7 +23,7 @@ describe('U04/U05 public slot UI', () => {
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })], language, remote => { remote.data.board = { supported: true, reason: 'not-linked', members: [], tasks: [] }; });
     const t = (language === 'en' ? en : zh).ui;
     try {
-      await click(button(app.container, t['team.title']));
+      await click(button(app.container, t['manage.title'])); await click(button(app.container, t['team.title']));
       app.remote.collaboration.ensure.mockImplementation(async () => {
         app.remote.data.board = { supported: true, link, members: [{ id: 'main-alpha', name: 'lead', role: 'lead', status: 'inactive' }], tasks: [task] }; return { ok: true, value: link };
       });

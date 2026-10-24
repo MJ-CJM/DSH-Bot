@@ -3,8 +3,15 @@ import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-
 import { z } from 'zod';
 import { dshBotRemoteSpec } from './shared/remote-contract.js';
 export type {
-  DshBotActivityMethods, DshBotActivityRemoteMethods, DshBotRemoteMethods,
-  ActivityRecord, ActivitySession, ActivityListResult, BotChange, BotHome, BotsWorkspace,
+  DshBotActivityMethods,
+  DshBotActivityRemoteMethods,
+  DshBotRemoteMethods,
+  ActivityRecord,
+  ActivitySession,
+  ActivityListResult,
+  BotChange,
+  BotHome,
+  BotsWorkspace,
 } from './shared/remote-contract.js';
 export { ACTIVITY_HIDDEN_PREVIEW, isHiddenActivityPreview, type BotActivity } from './shared/activity.js';
 

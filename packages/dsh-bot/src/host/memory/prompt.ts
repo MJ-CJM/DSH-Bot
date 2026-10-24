@@ -12,17 +12,25 @@ const memoryLine = (record: MemoryRecord, content = record.content, truncated = 
 export function buildMemoryPrompt(records: readonly MemoryRecord[], maxInjectChars: number): string {
   const budget = parseInput(budgetSchema, maxInjectChars);
   if (records.length === 0 || budget === 0) return '';
-  const ordered = [...records].sort((a, b) => Number(b.pinned) - Number(a.pinned)
-    || b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const ordered = [...records].sort(
+    (a, b) =>
+      Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
   const text = [header, ...ordered.map((record) => memoryLine(record))].join('\n');
   if (text.length <= budget) return text;
   const lines: string[] = [];
-  const render = (entries: string[]) => [header, ...entries,
-    ...(entries.length < records.length ? [omittedLine(records.length - entries.length)] : []),
-  ].join('\n');
+  const render = (entries: string[]) =>
+    [
+      header,
+      ...entries,
+      ...(entries.length < records.length ? [omittedLine(records.length - entries.length)] : []),
+    ].join('\n');
   for (const record of ordered) {
     const line = memoryLine(record);
-    if (render([...lines, line]).length <= budget) { lines.push(line); continue; }
+    if (render([...lines, line]).length <= budget) {
+      lines.push(line);
+      continue;
+    }
     // Only a pin that cannot fit even on its own may be shortened. Serialize
     // the shortened content anew: no half JSON escapes, quotes or emoji.
     if (!record.pinned || `${header}\n${line}`.length <= budget) continue;
@@ -33,8 +41,10 @@ export function buildMemoryPrompt(records: readonly MemoryRecord[], maxInjectCha
     while (low <= high) {
       const middle = Math.floor((low + high) / 2);
       const candidate = memoryLine(record, `${points.slice(0, middle).join('')}…`, true);
-      if (render([...lines, candidate]).length <= budget) { best = candidate; low = middle + 1; }
-      else high = middle - 1;
+      if (render([...lines, candidate]).length <= budget) {
+        best = candidate;
+        low = middle + 1;
+      } else high = middle - 1;
     }
     if (best) lines.push(best);
   }

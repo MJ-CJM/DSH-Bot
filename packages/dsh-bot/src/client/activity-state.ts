@@ -23,16 +23,31 @@ export function createActivityCatalog(ctx: Context, options: BotCatalogOptions =
     if (!service) throw { code: 'bot/unavailable', message: '' };
     return service;
   };
-  const catalog = createPollingCatalog<ActivityPayload>(ctx, { sessions: [], bots: [] }, async () => {
-    // rc.2 checks the exact argument count: this is deliberately zero arguments.
-    const result = await remote().list();
-    if (!result.ok) throw result.error;
-    return result.value;
-  }, options);
-  ctx.effect(() => () => { active = false; pendingReads.clear(); }, 'dsh-bot: activity actions');
+  const catalog = createPollingCatalog<ActivityPayload>(
+    ctx,
+    { sessions: [], bots: [] },
+    async () => {
+      // rc.2 checks the exact argument count: this is deliberately zero arguments.
+      const result = await remote().list();
+      if (!result.ok) throw result.error;
+      return result.value;
+    },
+    options,
+  );
+  ctx.effect(
+    () => () => {
+      active = false;
+      pendingReads.clear();
+    },
+    'dsh-bot: activity actions',
+  );
   return {
     ...catalog,
-    dispose() { active = false; pendingReads.clear(); catalog.dispose(); },
+    dispose() {
+      active = false;
+      pendingReads.clear();
+      catalog.dispose();
+    },
     markRead(sessionId) {
       if (!active) return Promise.resolve();
       const pending = pendingReads.get(sessionId);
@@ -45,7 +60,11 @@ export function createActivityCatalog(ctx: Context, options: BotCatalogOptions =
         if (active) await catalog.refresh();
       })();
       pendingReads.set(sessionId, operation);
-      void operation.finally(() => { if (pendingReads.get(sessionId) === operation) pendingReads.delete(sessionId); }).catch(() => {});
+      void operation
+        .finally(() => {
+          if (pendingReads.get(sessionId) === operation) pendingReads.delete(sessionId);
+        })
+        .catch(() => {});
       return operation;
     },
   };

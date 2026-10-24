@@ -49,7 +49,7 @@ describe('U08 real public slots / Remote-double group UI', () => {
       await click(members[0] as HTMLInputElement); await click(members[1] as HTMLInputElement); await click(field(form,t['groups.historyConsent']));
       app.remote.groups.create.mockImplementation(async input => { expect(input.members).toEqual(bots.map(b => ({botId:b.id,botCreatedAt:b.createdAt}))); app.remote.data.groups = [summary()]; app.remote.data.groupView = view(); return {ok:true,value:view().group}; });
       await act(async () => { form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); }); await vi.waitFor(() => expect(app.container.textContent).toContain('Historic reply'));
-      const draft = field(app.container,t['groups.message']); await fill(draft,'@Same name is text only'); expect(button(app.container,t['groups.send']).disabled).toBe(true);
+      const draft = field(app.container,t['groups.message']); await fill(draft,'@Same name is text only'); await click(button(app.container,t['groups.send'])); expect(app.remote.groups.send).not.toHaveBeenCalled(); expect(app.container.textContent).toContain(t['groups.ambiguousMention']);
       await act(async () => { draft.dispatchEvent(new KeyboardEvent('keydown',{key:'@',bubbles:true})); });
       const picker = app.container.querySelector('fieldset'); if (!picker) throw new Error();
       const recipients = picker.querySelectorAll<HTMLInputElement>('input'); await click(recipients[1] as HTMLInputElement);
@@ -70,6 +70,33 @@ describe('U08 real public slots / Remote-double group UI', () => {
       await act(async () => accept({ok:true,value:groupTurnSchema.parse({id:'turn:ack',group:{groupId:'group:one',groupCreatedAt:1},operationId:request?.operationId,requestDigest:'h',inputMessageId:'input',createdAt:1,updatedAt:1,revision:1,schemaVersion:1,membershipRevision:1,orderedMemberIds:['member:beta'],mode:'mention',contextThroughSeq:1,state:'accepted'})}));
       expect((draft as HTMLTextAreaElement).value).toBe('New draft typed during send');
 
+    } finally { await app.dispose(); }
+  });
+  it.each(['en', 'zh'] as const)('%s resolves typed names and reports unknown mentions without sending', async language => {
+    const named = [bot({ id: 'alpha', name: '研究员' }), bot({ id: 'beta', name: 'Research Assistant' })];
+    const app = await mountClient(named, language, configure);
+    const t = (language === 'en' ? en : zh).ui;
+    try {
+      await click(button(app.container, t['groups.title']));
+      await vi.waitFor(() => expect(app.container.textContent).toContain('Historic reply'));
+      const draft = field(app.container, t['groups.message']);
+      for (const [text, id] of [['@研究员 请分析', 'member:alpha'], ['@research ASSISTANT please help', 'member:beta']]) {
+        await fill(draft, text as string);
+        app.remote.groups.send.mockResolvedValue({ ok: false, error: new RemoteError('p34/recovery-needed', '', {}) });
+        await click(button(app.container, t['groups.send']));
+        expect(app.remote.groups.send.mock.calls.at(-1)?.[1].memberIds).toEqual([id]);
+      }
+      const calls = app.remote.groups.send.mock.calls.length;
+      await fill(draft, '@missing Please help');
+      await click(button(app.container, t['groups.send']));
+      expect(app.remote.groups.send).toHaveBeenCalledTimes(calls);
+      expect(app.container.textContent).toContain(t['groups.unknownMention']);
+      expect(draft.value).toBe('@missing Please help');
+      await fill(draft, '@研究员 @missing Please help');
+      await click(button(app.container, t['groups.send']));
+      expect(app.remote.groups.send.mock.calls.at(-1)?.[1].memberIds).toEqual(['member:alpha']);
+      expect(app.container.textContent).toContain(t['groups.unknownMention']);
+      expect(app.container.querySelector('[data-group-session-leading]')).toBeNull();
     } finally { await app.dispose(); }
   });
   it('navigates from the native root header to the exact group and persists only visible read receipts', async () => {

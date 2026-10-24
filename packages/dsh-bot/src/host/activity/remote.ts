@@ -4,7 +4,9 @@ import type { DshBotActivityMethods, ActivityListResult, ActivitySession } from 
 import type {} from '../registry.js';
 
 declare module '@deepseek-ai/cordis' {
-  interface Context { dshBotActivity: DshBotActivityRemote }
+  interface Context {
+    dshBotActivity: DshBotActivityRemote;
+  }
 }
 
 /** Shares the registry's store and drain queue; no separate domain handle. */
@@ -16,7 +18,9 @@ export class DshBotActivityRemote extends TypertRemoteService implements DshBotA
   }
 
   @Remote
-  async list(): Promise<ActivityListResult> { return this.ctx.dshBots.listActivity(); }
+  async list(): Promise<ActivityListResult> {
+    return this.ctx.dshBots.listActivity();
+  }
 
   @Remote
   async markRead(sessionId: string): Promise<ActivitySession> {

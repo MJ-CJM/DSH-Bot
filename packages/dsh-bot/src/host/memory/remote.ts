@@ -1,9 +1,15 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import {
-  type DshBotMemoryMethods, type MemoryRemoteListInput, type MemoryRemotePatch,
-  type MemoryRemoteSaveInput, type MemoryRemoteSearchInput,
-  memoryRemoteListSchema, memoryRemotePatchSchema, memoryRemoteSaveSchema, memoryRemoteSearchSchema,
+  type DshBotMemoryMethods,
+  type MemoryRemoteListInput,
+  type MemoryRemotePatch,
+  type MemoryRemoteSaveInput,
+  type MemoryRemoteSearchInput,
+  memoryRemoteListSchema,
+  memoryRemotePatchSchema,
+  memoryRemoteSaveSchema,
+  memoryRemoteSearchSchema,
 } from '../../shared/remote-contract.js';
 import type { MemoryRecord, MemorySaveResult } from '../../shared/schema.js';
 import { parseInput } from '../errors.js';
@@ -11,7 +17,9 @@ import type {} from '../registry.js';
 import { rejectMemorySecrets } from './secrets.js';
 
 declare module '@deepseek-ai/cordis' {
-  interface Context { dshBotMemory: DshBotMemoryRemote }
+  interface Context {
+    dshBotMemory: DshBotMemoryRemote;
+  }
 }
 
 /** The registry owns all storage and queue lifetimes; this service only adapts UI calls. */

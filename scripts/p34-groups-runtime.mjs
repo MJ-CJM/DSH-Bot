@@ -68,7 +68,7 @@ try {
       '- id: agent-default-model','  config:','    provider: deepseek-official','    model: deepseek-flash','    reasoningEffort: off',
       '- id: llm-deepseek','  config:','    apiKeyEnv: P34_MODEL_KEY',`    baseURL: ${JSON.stringify(`${mock.baseURL}/v1`)}`,'    thinking: disabled','    reasoningEffort: off','    maxTokens: 128',
       ...['llm-deepseek-account','llm-pi-ai','session-title-llm','llm-retry','session-log-deepseek','session-telemetry-otel','desktop-product-telemetry'].flatMap(id => [`- id: ${id}`,'  disabled: true']),
-      '- insert:','    - id: p34-groups-probes',`      name: ${JSON.stringify(resolve(root,'packages/dsh-bot/tests/p34-groups-profile.mjs'))}`,'      config:',`        outputDir: ${JSON.stringify(runDir)}`,`        phase: ${phase}`, `        mcpAlphaUrl: ${JSON.stringify(mcpAlpha.url)}`, `        mcpBetaUrl: ${JSON.stringify(mcpBeta.url)}`,
+      '- insert:','    - id: p34-groups-probes',`      name: ${JSON.stringify(resolve(root,'packages/dsh-bot/tests/integration-groups-profile.mjs'))}`,'      config:',`        outputDir: ${JSON.stringify(runDir)}`,`        phase: ${phase}`, `        mcpAlphaUrl: ${JSON.stringify(mcpAlpha.url)}`, `        mcpBetaUrl: ${JSON.stringify(mcpBeta.url)}`,
     ].join('\n');
     await writeFile(resolve(home,'profiles',profile,'cordis.patch.yml'), `${patch}\n`);
     await command('dsh', ['--profile',profile,'--dump-config'], `${phase}-dump`);

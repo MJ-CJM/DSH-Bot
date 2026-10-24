@@ -7,7 +7,7 @@ import type { BotCatalogEntry } from './state.js';
 import { createActivityPreview } from '../shared/activity-preview.js';
 
 export function previewText(preview: string | undefined, t: PropsLocale<'dsh-bot'>['t']): string {
-  return isHiddenActivityPreview(preview) ? t('activity.hidden') : preview ?? '';
+  return isHiddenActivityPreview(preview) ? t('activity.hidden') : (preview ?? '');
 }
 
 export function relativeTime(at: number, locale: string, now = Date.now()): string {
@@ -15,16 +15,31 @@ export function relativeTime(at: number, locale: string, now = Date.now()): stri
   const seconds = Math.min(0, Math.round((at - now) / 1_000));
   const format = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'short' });
   if (seconds > -60) return format.format(0, 'second');
-  for (const [unit, size] of [['year', 31_536_000], ['month', 2_592_000], ['day', 86_400], ['hour', 3_600], ['minute', 60]] as const) {
+  for (const [unit, size] of [
+    ['year', 31_536_000],
+    ['month', 2_592_000],
+    ['day', 86_400],
+    ['hour', 3_600],
+    ['minute', 60],
+  ] as const) {
     if (Math.abs(seconds) >= size) return format.format(Math.ceil(seconds / size), unit);
   }
   return format.format(0, 'second');
 }
 
-export function sortBotEntries(entries: readonly BotCatalogEntry[], activities: readonly BotActivity[], locale: string): BotCatalogEntry[] {
+export function sortBotEntries(
+  entries: readonly BotCatalogEntry[],
+  activities: readonly BotActivity[],
+  locale: string,
+): BotCatalogEntry[] {
   const times = new Map(activities.map((item) => [item.botId, item.lastActivityAt]));
-  return [...entries].sort((a, b) => (times.get(b.bot.id) ?? 0) - (times.get(a.bot.id) ?? 0)
-    || a.bot.name.localeCompare(b.bot.name, locale) || a.bot.createdAt - b.bot.createdAt || a.bot.id.localeCompare(b.bot.id));
+  return [...entries].sort(
+    (a, b) =>
+      (times.get(b.bot.id) ?? 0) - (times.get(a.bot.id) ?? 0) ||
+      a.bot.name.localeCompare(b.bot.name, locale) ||
+      a.bot.createdAt - b.bot.createdAt ||
+      a.bot.id.localeCompare(b.bot.id),
+  );
 }
 
 export interface SessionRow {
@@ -51,13 +66,22 @@ export function sessionTitle(session: Pick<SessionSummary, 'title'>, activity?: 
   return '';
 }
 
-interface WorkspaceLabel { path: string; title: string }
+interface WorkspaceLabel {
+  path: string;
+  title: string;
+}
 
 /** The public Host catalog owns membership/preset identity and live running
  * state. Blank sessions stay out of history even after their preset resolves.
  * Activity only enriches those rows; a retained projection is not a row. */
-export function botSessionRows(botId: string, entries: readonly BotCatalogEntry[], sessions: SessionListState,
-  activities: readonly ActivitySession[], archived: readonly SessionId[] = [], workspaces: readonly WorkspaceLabel[] = []): SessionRow[] {
+export function botSessionRows(
+  botId: string,
+  entries: readonly BotCatalogEntry[],
+  sessions: SessionListState,
+  activities: readonly ActivitySession[],
+  archived: readonly SessionId[] = [],
+  workspaces: readonly WorkspaceLabel[] = [],
+): SessionRow[] {
   const status = entries.find((entry) => entry.bot.id === botId)?.status;
   const presetId = status?.presetId;
   if (!presetId || !status?.mainSessionId) return [];
@@ -66,14 +90,34 @@ export function botSessionRows(botId: string, entries: readonly BotCatalogEntry[
   const current = Object.values(sessions.byId).filter((session) => (session.retainedBy?.mainView ?? 0) > 0);
   const currentPath = current.length === 1 ? current[0]?.cwd : undefined;
   const knownContext = workspaces.some((workspace) => workspace.path === currentPath);
-  return sessions.ids.flatMap((id): SessionRow[] => {
-    const session = sessions.byId[id];
-    if (!session || id !== status.mainSessionId || session.parentId || session.origin === 'subagent' || hidden.has(id) || session.projectionValues?.agentPreset !== presetId) return [];
-    const activity = summaries.get(id);
-    const workspaceTitle = knownContext && session.cwd !== currentPath
-      ? workspaces.find((workspace) => workspace.path === session.cwd)?.title.trim() : undefined;
-    return [{ id, title: sessionTitle(session, activity), preview: activity?.lastMessage.preview ?? '',
-      ...(workspaceTitle ? { workspaceTitle } : {}),
-      updatedAt: Math.max(session.updatedAt, activity?.updatedAt ?? 0), unread: activity?.unread ?? false, running: session.running }];
-  }).sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  return sessions.ids
+    .flatMap((id): SessionRow[] => {
+      const session = sessions.byId[id];
+      if (
+        !session ||
+        id !== status.mainSessionId ||
+        session.parentId ||
+        session.origin === 'subagent' ||
+        hidden.has(id) ||
+        session.projectionValues?.agentPreset !== presetId
+      )
+        return [];
+      const activity = summaries.get(id);
+      const workspaceTitle =
+        knownContext && session.cwd !== currentPath
+          ? workspaces.find((workspace) => workspace.path === session.cwd)?.title.trim()
+          : undefined;
+      return [
+        {
+          id,
+          title: sessionTitle(session, activity),
+          preview: activity?.lastMessage.preview ?? '',
+          ...(workspaceTitle ? { workspaceTitle } : {}),
+          updatedAt: Math.max(session.updatedAt, activity?.updatedAt ?? 0),
+          unread: activity?.unread ?? false,
+          running: session.running,
+        },
+      ];
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
 }

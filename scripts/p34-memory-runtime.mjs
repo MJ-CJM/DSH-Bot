@@ -171,7 +171,7 @@ try {
       ].flatMap((id) => [`- id: ${id}`, '  disabled: true']),
       '- insert:',
       '    - id: p34-memory-probes',
-      `      name: ${JSON.stringify(resolve(root, 'packages/dsh-bot/tests/p34-memory-profile.mjs'))}`,
+      `      name: ${JSON.stringify(resolve(root, 'packages/dsh-bot/tests/integration-memory-profile.mjs'))}`,
       '      config:',
       `        outputDir: ${JSON.stringify(runDir)}`,
       `        phase: ${phase}`,

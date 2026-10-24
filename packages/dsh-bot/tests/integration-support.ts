@@ -1,4 +1,4 @@
-import { need } from '../src/host/p34/common.js';
+import { need } from '../src/host/common/operations.js';
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,12 +13,12 @@ import * as storageJson from '@deepseek-ai/dsh-storage-json';
 import ToolRuntime from '@deepseek-ai/dsh-tools';
 import ApprovalService from '@deepseek-ai/dsh-user-approval';
 import { botCreateSchema, botSchema } from '../src/shared/schema.js';
-import { openP34Stores } from '../src/host/p34/store.js';
+import { openIntegrationStores } from '../src/host/common/integration-stores.js';
 import { Notifications, type NotificationPort } from '../src/host/notifications/service.js';
 import { Connectors } from '../src/host/connectors/service.js';
 export const alpha = { botId: 'alpha', botCreatedAt: 1 };
 export const beta = { botId: 'beta', botCreatedAt: 1 };
-export async function withP34(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<void>, port?: NotificationPort, options: { maxRecords?: number; retentionDays?: number } = {}) {
+export async function withIntegrations(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<void>, port?: NotificationPort, options: { maxRecords?: number; retentionDays?: number } = {}) {
   const home = fileURLToPath(new URL('../../../.dsh-dev/p34-u02-03/', import.meta.url)); await mkdir(home, { recursive: true });
   const root = await mkdtemp(join(home, 'unit-')); const ctx = new Context(); let fixture: Awaited<ReturnType<typeof setup>> | undefined;
   try { fixture = await setup(ctx, root, port, options); await test(fixture); }
@@ -30,7 +30,7 @@ async function setup(ctx: Context, root: string, port?: NotificationPort, option
   await ctx.plugin(ToolRuntime, { mode: 'native' }).await(); await ctx.plugin(ApprovalService, { policy: 'ask' }).await();
   const bots = new Map(['alpha', 'beta'].map(id => [id, botSchema.parse({ ...botCreateSchema.parse({ id, name: id }), createdAt: 1, updatedAt: 1, schemaVersion: 1 })]));
   const registry = { async get(id: string) { const b = bots.get(id); if (!b) throw new Error('not-found'); return structuredClone(b); }, presetBot(id: string) { return need(bots.get(id)); } } as Context['dshBots'];
-  const stores = await openP34Stores(ctx);
+  const stores = await openIntegrationStores(ctx);
   const clock = { at: Date.parse('2026-10-24T12:00:00Z') };
   let changes = 0;
   const notifications = new Notifications(ctx, stores, registry, { sendTimeoutMs: 1000, dailyLimit: 20, cooldownSec: 60, maxRecords: options.maxRecords ?? 1000, retentionDays: options.retentionDays ?? 30 }, () => changes++, port, () => clock.at);

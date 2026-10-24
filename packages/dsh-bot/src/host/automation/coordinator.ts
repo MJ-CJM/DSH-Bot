@@ -11,7 +11,9 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     dshBotDelivery: MainSessionDelivery;
     dshBotAutomationStores: Awaited<ReturnType<typeof openAutomationStores>>;
-    dshBotSubmitter: { submit(request: RunRequest): ReturnType<Awaited<ReturnType<typeof openAutomationStores>>['runs']['enqueue']> };
+    dshBotSubmitter: {
+      submit(request: RunRequest): ReturnType<Awaited<ReturnType<typeof openAutomationStores>>['runs']['enqueue']>;
+    };
   }
 }
 /** Explicit requests only: no clock, queue driver, quota, catch-up or Host lease. */
@@ -21,11 +23,14 @@ export async function startAutomation(ctx: Context, bots: DshBotRegistry) {
     return { bot, presetId: `${bots.config.presetIdPrefix}${bot.id}` };
   };
   let delivery: MainSessionDelivery | undefined;
-  let stopped = false; const admissions = new Set<Promise<unknown>>();
+  let stopped = false;
+  const admissions = new Set<Promise<unknown>>();
   const native = new NativeSchedules(ctx, bots);
   const close = async () => {
-    stopped = true; await Promise.allSettled([...admissions]);
-    await delivery?.close(); await native.close();
+    stopped = true;
+    await Promise.allSettled([...admissions]);
+    await delivery?.close();
+    await native.close();
   };
   const stores = await openAutomationStores(ctx, { resolveBot, beforeClose: close });
   try {
@@ -34,12 +39,21 @@ export async function startAutomation(ctx: Context, bots: DshBotRegistry) {
     const submit = (request: RunRequest) => {
       if (stopped) return Promise.reject(new AutomationError('automation/unavailable', 'Executions are closing'));
       const pending = sender.submit(request);
-      admissions.add(pending); void pending.finally(() => admissions.delete(pending)).catch(() => {}); return pending;
+      admissions.add(pending);
+      void pending.finally(() => admissions.delete(pending)).catch(() => {});
+      return pending;
     };
-    ctx.provide('dshBotDelivery', delivery); ctx.provide('dshBotAutomationStores', stores); ctx.provide('dshBotSubmitter', { submit });
+    ctx.provide('dshBotDelivery', delivery);
+    ctx.provide('dshBotAutomationStores', stores);
+    ctx.provide('dshBotSubmitter', { submit });
     registerAutomationGuard(ctx, stores.runs);
     await native.start();
-    new NativeScheduleRemote(ctx, native, submit); new RunRemote(ctx, stores.runs);
+    new NativeScheduleRemote(ctx, native, submit);
+    new RunRemote(ctx, stores.runs);
     return { delivery, stores, native, close };
-  } catch (error) { await close(); await stores.close(); throw error; }
+  } catch (error) {
+    await close();
+    await stores.close();
+    throw error;
+  }
 }

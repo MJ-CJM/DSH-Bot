@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { botExportSchema, workspaceRequestSchema } from '../src/shared/workspace.js';
 import { memoryEntity, verifyMemoryEntity } from '../src/host/reference-memory/service.js';
-import { connectorInputSchema } from '../src/shared/p34.js';
+import { connectorInputSchema } from '../src/shared/integrations.js';
 import { memorySchema } from '../src/shared/schema.js';
 const bot = { botId: 'alpha', botCreatedAt: 123 };
 const record = memorySchema.parse({

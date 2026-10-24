@@ -9,8 +9,16 @@ const unwrap = <T,>(r: RemoteResult<T>): T => {
   return r.value;
 };
 type Locale = PropsLocale<'dsh-bot'>;
-import type { GraphStatus, CopyReceipt, graphSchema } from '../../shared/reference-memory.js';
-export function GraphPanel({ bot, actions, t }: { bot: BotRecord; actions: WorkspaceActions } & Locale) {
+import type { graphSchema } from '../../shared/reference-memory.js';
+import { CopyView } from './MemoryCopySteps.js';
+import { GraphTools } from './GraphTools.js';
+const inactiveSubscription = () => () => {};
+export function GraphPanel({
+  bot,
+  actions,
+  active = true,
+  t,
+}: { bot: BotRecord; actions: WorkspaceActions; active?: boolean } & Locale) {
   const [catalog, setCatalog] = useState<ReturnType<WorkspaceActions['createGraph']>>();
   useEffect(() => {
     const c = actions.createGraph({
@@ -21,28 +29,30 @@ export function GraphPanel({ bot, actions, t }: { bot: BotRecord; actions: Works
     return c.dispose;
   }, [actions, bot.id, bot.createdAt]);
   return catalog ? (
-    <GraphView bot={bot} actions={actions} catalog={catalog} t={t} />
+    <GraphView active={active} bot={bot} actions={actions} catalog={catalog} t={t} />
   ) : (
     <p role="status">{t('memory.loading')}</p>
   );
 }
 function GraphView({
+  active,
   bot,
   actions,
   catalog,
   t,
 }: {
+  active: boolean;
   bot: BotRecord;
   actions: WorkspaceActions;
   catalog: ReturnType<WorkspaceActions['createGraph']>;
 } & Locale) {
-  const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot),
+  const snapshot = useSyncExternalStore(
+      active ? catalog.subscribe : inactiveSubscription,
+      catalog.getSnapshot,
+      catalog.getSnapshot,
+    ),
     status = snapshot.status;
   const [graph, setGraph] = useState<z.output<typeof graphSchema>>();
-  const [from, setFrom] = useState(''),
-    [to, setTo] = useState(''),
-    [relationType, setRelationType] = useState('');
-  const [confirmTool, setConfirmTool] = useState<string>();
   const [copyId, setCopyId] = useState<string>(),
     [name, setName] = useState(''),
     [observation, setObservation] = useState(''),
@@ -187,141 +197,16 @@ function GraphView({
           ))}
         </ul>
       )}
-      <details>
-        <summary>{t('graph.advanced')}</summary>
-        <p>{t('graph.advancedHint')}</p>
-        <label>
-          {t('graph.from')}
-          <input
-            value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
-              setConfirmTool(undefined);
-            }}
-          />
-        </label>
-        <label>
-          {t('graph.to')}
-          <input
-            value={to}
-            onChange={(e) => {
-              setTo(e.target.value);
-              setConfirmTool(undefined);
-            }}
-          />
-        </label>
-        <label>
-          {t('graph.relation')}
-          <input
-            value={relationType}
-            onChange={(e) => {
-              setRelationType(e.target.value);
-              setConfirmTool(undefined);
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          disabled={busy || status?.state !== 'ready' || !from || !to || !relationType}
-          onClick={() => {
-            void perform({
-              action: 'tool',
-              bot: key,
-              call: {
-                tool: 'create_relations',
-                arguments: { relations: [{ from, to, relationType }] },
-              },
-            });
-          }}
-        >
-          {t('graph.addRelation')}
-        </button>
-        <ul>
-          {graph?.relations.map((r) => (
-            <li key={JSON.stringify([r.from, r.to, r.relationType])}>
-              {r.from} → {r.to} · {r.relationType}
-            </li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          disabled={
-            busy ||
-            status?.state !== 'ready' ||
-            !name ||
-            !observation ||
-            graph?.entities.find((e) => e.name === name)?.entityType === 'dsh-bot-memory-v1'
-          }
-          onClick={() => {
-            void perform({
-              action: 'tool',
-              bot: key,
-              call: {
-                tool: 'add_observations',
-                arguments: {
-                  observations: [{ entityName: name, observations: [observation] }],
-                },
-              },
-            });
-          }}
-        >
-          {t('graph.appendObservation')}
-        </button>
-        <label>
-          <input
-            type="checkbox"
-            checked={confirmTool === JSON.stringify([name, observation, from, to, relationType])}
-            onChange={(e) =>
-              setConfirmTool(e.target.checked ? JSON.stringify([name, observation, from, to, relationType]) : undefined)
-            }
-          />
-          {t('graph.confirmTool')}
-        </label>
-        <button
-          type="button"
-          disabled={
-            busy ||
-            status?.state !== 'ready' ||
-            !name ||
-            confirmTool !== JSON.stringify([name, observation, from, to, relationType])
-          }
-          onClick={() => {
-            void perform({
-              action: 'tool',
-              bot: key,
-              call: {
-                tool: 'delete_entities',
-                arguments: { entityNames: [name] },
-              },
-            });
-          }}
-        >
-          {t('graph.deleteEntity')}
-        </button>
-        <button
-          type="button"
-          disabled={
-            busy ||
-            status?.state !== 'ready' ||
-            !from ||
-            !to ||
-            !relationType ||
-            confirmTool !== JSON.stringify([name, observation, from, to, relationType])
-          }
-          onClick={() => {
-            void perform({
-              action: 'tool',
-              bot: key,
-              call: {
-                tool: 'delete_relations',
-                arguments: { relations: [{ from, to, relationType }] },
-              },
-            });
-          }}
-        >
-          {t('graph.deleteRelation')}
-        </button>
-      </details>
+      <GraphTools
+        graph={graph}
+        status={status}
+        busy={busy}
+        perform={perform}
+        name={name}
+        observation={observation}
+        botKey={key}
+        t={t}
+      />
       <h3>{t('graph.copy')}</h3>
       <button
         type="button"
@@ -384,59 +269,6 @@ function GraphView({
         />
       )}
       {(error || snapshot.error) && <p role="alert">{t('graph.failed')}</p>}
-    </section>
-  );
-}
-function CopyView({
-  copy,
-  status,
-  busy,
-  stage,
-  commit,
-  rollback,
-  t,
-}: {
-  copy: CopyReceipt;
-  status?: GraphStatus;
-  busy: boolean;
-  stage(): void;
-  commit(): void;
-  rollback(): void;
-} & Locale) {
-  return (
-    <section aria-label={t('graph.copy')}>
-      <p>{t(`graph.phase-${copy.phase}`)}</p>
-      <p>
-        {t('graph.file')}: {copy.targetFileIdentity}.jsonl
-      </p>
-      <p>
-        {t('graph.verifiedCount', {
-          count: copy.records.filter((r) => r.status === 'verified').length,
-          total: copy.records.length,
-        })}
-      </p>
-      <ul>
-        {copy.records.map((r) => (
-          <li key={r.memoryId}>
-            {r.memoryId} · {t(`graph.record-${r.status}`)}
-          </li>
-        ))}
-      </ul>
-      <button type="button" disabled={busy || !['preview', 'staging', 'failed'].includes(copy.phase)} onClick={stage}>
-        {t('graph.stage')}
-      </button>
-      <button type="button" disabled={busy || copy.phase !== 'verified'} onClick={commit}>
-        {t('graph.commit')}
-      </button>
-      <button
-        type="button"
-        disabled={
-          busy || copy.phase === 'rolled-back' || (copy.phase === 'committed' && status?.binding?.importId !== copy.id)
-        }
-        onClick={rollback}
-      >
-        {t('graph.rollback')}
-      </button>
     </section>
   );
 }

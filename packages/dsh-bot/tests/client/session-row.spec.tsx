@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { GroupSessionRowInjected } from '../../src/client/components/GroupSessionRow.js';
 import type { StoredEntry } from '@deepseek-ai/dsh-client-ui-slots';
 import { type ComponentType, act, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -56,7 +57,7 @@ async function mountRows(app: TestClient, ids: string[], language: 'en' | 'zh' =
   let mounted = true;
   function Entry({ entry, id }: { entry: StoredEntry; id: string }) {
     const Component = entry.component as ComponentType<SessionBotRowProps>;
-    const injected = entry.inject?.() as SessionBotRowInjected | undefined;
+    const injected = entry.inject?.() as SessionBotRowInjected & GroupSessionRowInjected | undefined;
     const useCatalog: SessionBotRowProps['useCatalog'] = (selector) => {
       if (!injected) throw new Error('Missing Bot catalog injection');
       return selector(useSyncExternalStore(injected.hooks.catalog.subscribe, injected.hooks.catalog.getSnapshot));
@@ -65,7 +66,8 @@ async function mountRows(app: TestClient, ids: string[], language: 'en' | 'zh' =
       if (!injected) throw new Error('Missing Bot activity injection');
       return selector(useSyncExternalStore(injected.hooks.activity.subscribe, injected.hooks.activity.getSnapshot));
     };
-    return <Component useCatalog={useCatalog} useActivity={useActivity}
+    const useGroups = (selector: (value: ReturnType<GroupSessionRowInjected['hooks']['groups']['getSnapshot']>) => unknown) => { if (!injected) throw new Error('Missing groups'); return selector(useSyncExternalStore(injected.hooks.groups.subscribe, injected.hooks.groups.getSnapshot)); };
+    return <Component {...{ useGroups }} useCatalog={useCatalog} useActivity={useActivity}
       sessionId={id as SessionBotRowProps['sessionId']} t={translate(language)} />;
   }
   const renderSeat = (seat: RowSeat, id: string) => <span data-slot={seat} style={{ display: 'contents' }}>
@@ -101,6 +103,19 @@ async function setup(language: 'en' | 'zh' = 'en', built = false, count = 1) {
   await app.unmountPage();
   return { app, ids };
 }
+
+it.each(['en', 'zh'] as const)('%s decorates exact group roots with a whale, without relabelling worker sessions as Bot mains', async language => {
+ const app = await mountClient([bot()], language, remote => {
+  remote.data.groups = [{ group: { id: 'group:row', operationId: 'op', createDigest: 'hash', createdAt: 1, updatedAt: 1, schemaVersion: 1, name: 'Research group', rootSessionId: 'group-root-row', rootPresetId: 'dsh-bot-group-root', cwd: '/synthetic', mode: 'mention', membershipRevision: 1, revision: 1, archived: false, state: 'ready' }, members: [], unavailableMemberIds: [], running: false, unread: false, readRevision: 0 }];
+ });
+ cleanups.push(app.dispose);
+ const { container } = await mountRows(app, ['group-root-row', 'native-worker'], language, true);
+ await vi.waitFor(() => expect(container.querySelector('[data-group-session-leading="group:row"] svg')).toBeTruthy());
+ expect(container.querySelector('[data-group-session-leading]')?.getAttribute('aria-label')).toContain('Research group');
+ expect(container.querySelector('[data-test-row="native-worker"]')?.textContent).toBe('');
+ expect(container.querySelector('[data-bot-session-leading]')).toBeNull();
+ expect(container.querySelector('[data-group-session-hover]')?.textContent).toContain('Research group');
+});
 
 describe('Bot identity in public native session row seats', () => {
   it('renders a 16px colored whale and keeps the row decoration non-interactive', async () => {
@@ -202,10 +217,10 @@ describe('Bot identity in public native session row seats', () => {
     cleanups.push(async () => { releaseSchedule(); });
     const leading = app.core.entries('sidebar.session.row.leading');
     expect(leading.map((entry) => [entry.options.id, entry.options.order])).toEqual([
-      ['dsh-bot-avatar', 0], ['schedule-mark', 10],
+      ['dsh-bot-group', -1], ['dsh-bot-avatar', 0], ['schedule-mark', 10],
     ]);
-    expect(leading[0]?.component).toBe(SessionBotLeading);
-    expect(app.core.entries('sidebar.session.row.hover')[0]?.component).toBe(SessionBotHover);
+    expect(leading.find(entry => entry.options.id === 'dsh-bot-avatar')?.component).toBe(SessionBotLeading);
+    expect(app.core.entries('sidebar.session.row.hover').find(entry => entry.options.id === 'dsh-bot-identity')?.component).toBe(SessionBotHover);
     const { container } = await mountRows(app, ids);
     const decoration = container.querySelector('[data-bot-session-leading]');
     expect(decoration?.nextElementSibling?.hasAttribute('data-test-schedule')).toBe(true);

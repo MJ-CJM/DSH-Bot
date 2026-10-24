@@ -30,12 +30,13 @@ export async function captureP34(url, outputDir, env) {
       await dismissFirstRunOverlays(page, () => {}, 'p34-first-open');
       await page.getByRole('button', { name: 'Bots', exact: true }).click();
       const bots = page.locator('[data-bots-page]');
+      await bots.getByRole('tab', { name: 'Management', exact: true }).first().click();
       await bots.getByRole('tab', { name: 'Connectors', exact: true }).click();
       await bots.getByText('Credential reference', { exact: true }).waitFor();
       await page.screenshot({ path: resolve(outputDir, `${theme}-connectors.png`), fullPage: true }); shots.push(`${theme}-connectors.png`);
       await bots.getByRole('tab', { name: /Notifications/ }).click();
       await bots.getByText('P34_PRODUCT_REPORT', { exact: true }).waitFor();
-      assert.equal(await bots.getByRole('button', { name: 'System notifications: current host unsupported' }).isDisabled(), true);
+      await bots.getByText('System notifications: current host unsupported', { exact: true }).waitFor();
       await page.screenshot({ path: resolve(outputDir, `${theme}-notifications.png`), fullPage: true }); shots.push(`${theme}-notifications.png`);
       await context.close();
     }

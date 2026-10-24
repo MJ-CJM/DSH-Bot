@@ -7,36 +7,66 @@ import { DshBotError, type DshBotErrorCode, parseInput } from './errors.js';
 import { validateDefaultCwd } from './home.js';
 import { botIdSchema, memoryIdSchema } from '../shared/ids.js';
 import {
-  activityListOptionsSchema, activityRecordSchema, activitySessionIdSchema, isActivityUnread,
+  activityListOptionsSchema,
+  activityRecordSchema,
+  activitySessionIdSchema,
+  isActivityUnread,
 } from '../shared/activity.js';
 import type { ActivityListOptions, ActivityListResult, ActivityRecord, ActivitySession } from '../shared/activity.js';
 import { createActivityPreview } from './activity/preview.js';
 import {
-  avatarSchema, botRecordFields, botRegistryStateSchema, botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, memoryAddSchema,
-  memoryListOptionsSchema, memoryPatchSchema, memorySchema, normalizeBotPatch, normalizeMemoryContent, timestampSchema,
+  avatarSchema,
+  botRecordFields,
+  botRegistryStateSchema,
+  botCreateSchema,
+  botPatchSchema,
+  botRemoveOptionsSchema,
+  botSchema,
+  memoryAddSchema,
+  memoryListOptionsSchema,
+  memoryPatchSchema,
+  memorySchema,
+  normalizeBotPatch,
+  normalizeMemoryContent,
+  timestampSchema,
 } from '../shared/schema.js';
 import type {
-  BotCreateInput, BotPatch, BotRecord, BotRemoveOptions, MemoryAddInput, MemoryCursor,
-  MemoryListOptions, MemoryPatch, MemoryRecord, MemorySaveResult,
+  BotCreateInput,
+  BotPatch,
+  BotRecord,
+  BotRemoveOptions,
+  MemoryAddInput,
+  MemoryCursor,
+  MemoryListOptions,
+  MemoryPatch,
+  MemoryRecord,
+  MemorySaveResult,
 } from '../shared/schema.js';
 
 // Only the legacy avatar field is permissive at the storage read boundary.
 // Preserve its bytes on disk; public records and all new writes remain strict.
-const storedBotSchema = botRecordFields.extend({ avatar: z.unknown().optional() })
+const storedBotSchema = botRecordFields
+  .extend({ avatar: z.unknown().optional() })
   .refine((record) => record.updatedAt >= record.createdAt, 'updatedAt precedes createdAt');
 type StoredBot = z.output<typeof storedBotSchema>;
 function publicBot(record: StoredBot): BotRecord {
   const { avatar, ...fields } = record;
   return botSchema.parse({ ...fields, ...(avatarSchema.safeParse(avatar).success ? { avatar } : {}) });
 }
-const invalidAvatar = (record: StoredBot) => record.avatar !== undefined && !avatarSchema.safeParse(record.avatar).success;
+const invalidAvatar = (record: StoredBot) =>
+  record.avatar !== undefined && !avatarSchema.safeParse(record.avatar).success;
 
 const storedActivitySchema = activityRecordSchema.extend({ lastEventSeq: z.number().int().nonnegative().optional() });
 type StoredActivity = z.output<typeof storedActivitySchema>;
 export const botDomain = defineDomain({
-  name: 'dsh_bot', version: 1,
-  tables: { bots: domainTable(storedBotSchema), memories: domainTable(memorySchema),
-    registry_state: domainTable(botRegistryStateSchema), activities: domainTable(storedActivitySchema) },
+  name: 'dsh_bot',
+  version: 1,
+  tables: {
+    bots: domainTable(storedBotSchema),
+    memories: domainTable(memorySchema),
+    registry_state: domainTable(botRegistryStateSchema),
+    activities: domainTable(storedActivitySchema),
+  },
 });
 type BotDomain = Domain<typeof botDomain>;
 
@@ -58,17 +88,28 @@ function failure(error: unknown, missing: DshBotErrorCode = 'bot/not-found'): Ds
   return new DshBotError(code, error instanceof Error ? error.message : String(error), { cause: error });
 }
 function read<T>(operation: () => T): T {
-  try { return operation(); } catch (error) { throw failure(error); }
+  try {
+    return operation();
+  } catch (error) {
+    throw failure(error);
+  }
 }
 async function write<T>(domain: BotDomain, operation: () => Promise<T>, missing?: DshBotErrorCode): Promise<T> {
   const state = writer(domain);
   if (state.closing) throw failure(new DomainError('closed', 'Bot stores are closing'));
-  const pending = state.tail.then(() => { state.assertOwner?.(); return operation(); });
+  const pending = state.tail.then(() => {
+    state.assertOwner?.();
+    return operation();
+  });
   state.tail = pending.catch(() => {});
-  try { return await pending; } catch (error) { throw failure(error, missing); }
+  try {
+    return await pending;
+  } catch (error) {
+    throw failure(error, missing);
+  }
 }
 const nextTimestamp = (previous: number) => Math.max(Date.now(), previous + 1);
-const compareId = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+const compareId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const missingBot = (id: string) => new DshBotError('bot/not-found', `Bot '${id}' was not found`);
 const missingMemory = () => new DshBotError('memory/not-found', 'Memory was not found for this bot');
 
@@ -77,7 +118,7 @@ async function deleteBotMemories(domain: BotDomain, botId: string): Promise<numb
   const table = domain.table('memories');
   let removed = 0;
   for (const [id, record] of table.entries()) {
-    if (record.botId === botId && await table.delete(id)) removed++;
+    if (record.botId === botId && (await table.delete(id))) removed++;
   }
   return removed;
 }
@@ -128,8 +169,11 @@ export class BotStore {
   }
 
   list(): BotRecord[] {
-    return read(() => [...this.domain.table('bots').entries()].map(([, value]) => publicBot(value))
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || compareId(a.id, b.id)));
+    return read(() =>
+      [...this.domain.table('bots').entries()]
+        .map(([, value]) => publicBot(value))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || compareId(a.id, b.id)),
+    );
   }
 
   get(id: string): BotRecord {
@@ -142,7 +186,9 @@ export class BotStore {
   }
 
   avatarWarnings(): string[] {
-    return read(() => [...this.domain.table('bots').entries()].filter(([, row]) => invalidAvatar(row)).map(([, row]) => row.id));
+    return read(() =>
+      [...this.domain.table('bots').entries()].filter(([, row]) => invalidAvatar(row)).map(([, row]) => row.id),
+    );
   }
 
   async create(input: BotCreateInput, createdAt = Date.now()): Promise<BotRecord> {
@@ -163,16 +209,23 @@ export class BotStore {
     const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
     await validateDefaultCwd(fields.defaultCwd);
     const expected = parseInput(timestampSchema.optional(), expectedUpdatedAt);
-    return write(this.domain, async () => publicBot(await this.domain.table('bots').update(key, (current) => {
-      // Check at the domain's write slot, never against a pre-queue snapshot.
-      if (expected !== undefined && current.updatedAt !== expected) {
-        throw new DshBotError('bot/conflict', `Bot '${key}' has changed; reload before updating`);
-      }
-      if (invalidAvatar(current) && !('avatar' in fields)) {
-        throw new DshBotError('bot/invalid', 'Stored avatar is unsupported; explicitly replace or clear the avatar before updating.');
-      }
-      return parseInput(botSchema, { ...current, ...fields, updatedAt: nextTimestamp(current.updatedAt) });
-    })));
+    return write(this.domain, async () =>
+      publicBot(
+        await this.domain.table('bots').update(key, (current) => {
+          // Check at the domain's write slot, never against a pre-queue snapshot.
+          if (expected !== undefined && current.updatedAt !== expected) {
+            throw new DshBotError('bot/conflict', `Bot '${key}' has changed; reload before updating`);
+          }
+          if (invalidAvatar(current) && !('avatar' in fields)) {
+            throw new DshBotError(
+              'bot/invalid',
+              'Stored avatar is unsupported; explicitly replace or clear the avatar before updating.',
+            );
+          }
+          return parseInput(botSchema, { ...current, ...fields, updatedAt: nextTimestamp(current.updatedAt) });
+        }),
+      ),
+    );
   }
 
   /** Delete dependent data first so failed cleanup leaves the Bot available for retry. */
@@ -184,7 +237,7 @@ export class BotStore {
       if (deleteMemories) await deleteBotMemories(this.domain, key);
       // Activity is never retained, including when the user keeps memories.
       await deleteBotActivities(this.domain, key);
-      if (!await this.domain.table('bots').delete(key)) throw missingBot(key);
+      if (!(await this.domain.table('bots').delete(key))) throw missingBot(key);
     });
   }
 }
@@ -194,7 +247,12 @@ export interface ActivityStoreOptions {
   activityMaxSessionsTotal?: number;
 }
 export interface ActivityRecordInput {
-  sessionId: string; botId: string; role: 'user' | 'assistant'; text: string; at: number; title?: string;
+  sessionId: string;
+  botId: string;
+  role: 'user' | 'assistant';
+  text: string;
+  at: number;
+  title?: string;
   /** First actual human message (or screened summary) from a public projection,
    * never a later message inferred from a row that lacks this metadata. */
   firstUserText?: string;
@@ -208,15 +266,19 @@ function activityRecord(record: StoredActivity): ActivityRecord {
   // Deliberate allowlist: neither lastEventSeq nor future storage-only fields
   // can escape through list, record or either markRead return branch.
   return {
-    sessionId: record.sessionId, botId: record.botId, updatedAt: record.updatedAt,
+    sessionId: record.sessionId,
+    botId: record.botId,
+    updatedAt: record.updatedAt,
     lastMessage: { role: record.lastMessage.role, preview: record.lastMessage.preview, at: record.lastMessage.at },
     ...(record.title === undefined ? {} : { title: record.title }),
     ...(record.firstUserPreview === undefined ? {} : { firstUserPreview: record.firstUserPreview }),
     ...(record.lastReadAt === undefined ? {} : { lastReadAt: record.lastReadAt }),
   };
 }
-const publicActivity = (record: StoredActivity): ActivitySession =>
-  ({ ...activityRecord(record), unread: isActivityUnread(record) });
+const publicActivity = (record: StoredActivity): ActivitySession => ({
+  ...activityRecord(record),
+  unread: isActivityUnread(record),
+});
 
 /** Stores only completed-message summaries. The event adapter owns completion
  * coalescing; all writes share the Bot/Memory domain queue and delete boundary.
@@ -225,7 +287,10 @@ export class ActivityStore {
   private readonly perBot: number;
   private readonly total: number;
 
-  constructor(private readonly domain: BotDomain, options: ActivityStoreOptions = {}) {
+  constructor(
+    private readonly domain: BotDomain,
+    options: ActivityStoreOptions = {},
+  ) {
     const cap = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
     this.perBot = parseInput(cap, options.activityMaxSessionsPerBot ?? 50);
     this.total = parseInput(cap, options.activityMaxSessionsTotal ?? 1000);
@@ -234,19 +299,29 @@ export class ActivityStore {
   list(options: ActivityListOptions = {}): ActivityListResult {
     const filter = parseInput(activityListOptionsSchema, options);
     try {
-      const bots = [...this.domain.table('bots').entries()].map(([, bot]) => bot)
+      const bots = [...this.domain.table('bots').entries()]
+        .map(([, bot]) => bot)
         .filter((bot) => filter.botId === undefined || bot.id === filter.botId)
         .sort((a, b) => compareId(a.id, b.id));
       const owners = new Set(bots.map((bot) => bot.id));
-      const sessions = [...this.domain.table('activities').entries()].map(([, record]) => record)
-        .filter((record) => owners.has(record.botId)).sort(activityOrder).map(publicActivity);
-      return { sessions, bots: bots.map((bot) => {
-        const owned = sessions.filter((record) => record.botId === bot.id);
-        const latest = owned[0];
-        return { botId: bot.id, lastActivityAt: latest?.updatedAt ?? 0,
-          unreadCount: owned.filter((record) => record.unread).length,
-          ...(latest ? { latest: { sessionId: latest.sessionId, ...latest.lastMessage } } : {}) };
-      }) };
+      const sessions = [...this.domain.table('activities').entries()]
+        .map(([, record]) => record)
+        .filter((record) => owners.has(record.botId))
+        .sort(activityOrder)
+        .map(publicActivity);
+      return {
+        sessions,
+        bots: bots.map((bot) => {
+          const owned = sessions.filter((record) => record.botId === bot.id);
+          const latest = owned[0];
+          return {
+            botId: bot.id,
+            lastActivityAt: latest?.updatedAt ?? 0,
+            unreadCount: owned.filter((record) => record.unread).length,
+            ...(latest ? { latest: { sessionId: latest.sessionId, ...latest.lastMessage } } : {}),
+          };
+        }),
+      };
     } catch (error) {
       const wrapped = failure(error);
       if (wrapped.code === 'store/unavailable') return { sessions: [], bots: [] };
@@ -256,12 +331,17 @@ export class ActivityStore {
 
   async record(input: ActivityRecordInput): Promise<ActivityRecord | undefined> {
     // Do not pass raw text/title to validation errors or the persistence layer.
-    if (typeof input.text !== 'string' || (input.title !== undefined && typeof input.title !== 'string')
-      || (input.firstUserText !== undefined && typeof input.firstUserText !== 'string')) {
+    if (
+      typeof input.text !== 'string' ||
+      (input.title !== undefined && typeof input.title !== 'string') ||
+      (input.firstUserText !== undefined && typeof input.firstUserText !== 'string')
+    ) {
       throw new DshBotError('bot/invalid', 'Activity text and title must be strings');
     }
     const fields = parseInput(activityRecordSchema, {
-      sessionId: input.sessionId, botId: input.botId, updatedAt: input.at,
+      sessionId: input.sessionId,
+      botId: input.botId,
+      updatedAt: input.at,
       lastMessage: { role: input.role, preview: createActivityPreview(input.text), at: input.at },
       ...(input.title === undefined ? {} : { title: createActivityPreview(input.title) }),
     });
@@ -276,21 +356,34 @@ export class ActivityStore {
       const previous = table.get(fields.sessionId);
       if (previous && previous.botId !== fields.botId) return;
       if (previous) {
-        const stale = seq !== undefined && previous.lastEventSeq !== undefined ? seq <= previous.lastEventSeq
-          : previous.updatedAt > fields.updatedAt
-            || (previous.updatedAt === fields.updatedAt && previous.lastMessage.role === fields.lastMessage.role
-              && previous.lastMessage.preview === fields.lastMessage.preview);
+        const stale =
+          seq !== undefined && previous.lastEventSeq !== undefined
+            ? seq <= previous.lastEventSeq
+            : previous.updatedAt > fields.updatedAt ||
+              (previous.updatedAt === fields.updatedAt &&
+                previous.lastMessage.role === fields.lastMessage.role &&
+                previous.lastMessage.preview === fields.lastMessage.preview);
         if (stale) return activityRecord(previous);
       }
       // Public event times have millisecond resolution. Logical advancement
       // preserves completion order and read->reply unread status within one ms.
-      const at = Math.max(fields.lastMessage.at, previous ? previous.lastMessage.at + 1 : 0,
-        previous?.lastReadAt === undefined ? 0 : previous.lastReadAt + 1);
-      const record = parseInput(storedActivitySchema, { ...previous, ...fields,
-        updatedAt: at, lastMessage: { ...fields.lastMessage, at },
-        ...(previous?.firstUserPreview !== undefined ? { firstUserPreview: previous.firstUserPreview }
-          : firstUserPreview !== undefined ? { firstUserPreview } : {}),
-        ...(seq === undefined ? {} : { lastEventSeq: seq }) });
+      const at = Math.max(
+        fields.lastMessage.at,
+        previous ? previous.lastMessage.at + 1 : 0,
+        previous?.lastReadAt === undefined ? 0 : previous.lastReadAt + 1,
+      );
+      const record = parseInput(storedActivitySchema, {
+        ...previous,
+        ...fields,
+        updatedAt: at,
+        lastMessage: { ...fields.lastMessage, at },
+        ...(previous?.firstUserPreview !== undefined
+          ? { firstUserPreview: previous.firstUserPreview }
+          : firstUserPreview !== undefined
+            ? { firstUserPreview }
+            : {}),
+        ...(seq === undefined ? {} : { lastEventSeq: seq }),
+      });
       // Evict before adding so even partial backend failures cannot exceed caps.
       const retained = await this.pruneRows(record);
       if (!retained) return;
@@ -301,30 +394,37 @@ export class ActivityStore {
 
   async markRead(sessionId: string): Promise<ActivitySession> {
     const key = parseInput(activitySessionIdSchema, sessionId);
-    return write(this.domain, async () => {
-      const table = this.domain.table('activities');
-      const previous = table.get(key);
-      if (!previous || !this.domain.table('bots').get(previous.botId)) {
-        throw new DshBotError('activity/not-found', 'Bot session activity was not found');
-      }
-      // Marking read does not change recency or eviction order. Clock rollback
-      // never makes a read timestamp go backwards; same-clock retries do no I/O.
-      const now = Math.max(Date.now(), previous.lastMessage.at, previous.lastReadAt ?? 0);
-      if (previous.lastReadAt === now) return publicActivity(previous);
-      const record = parseInput(storedActivitySchema, { ...previous, lastReadAt: now });
-      await table.put(key, record);
-      return publicActivity(record);
-    }, 'activity/not-found');
+    return write(
+      this.domain,
+      async () => {
+        const table = this.domain.table('activities');
+        const previous = table.get(key);
+        if (!previous || !this.domain.table('bots').get(previous.botId)) {
+          throw new DshBotError('activity/not-found', 'Bot session activity was not found');
+        }
+        // Marking read does not change recency or eviction order. Clock rollback
+        // never makes a read timestamp go backwards; same-clock retries do no I/O.
+        const now = Math.max(Date.now(), previous.lastMessage.at, previous.lastReadAt ?? 0);
+        if (previous.lastReadAt === now) return publicActivity(previous);
+        const record = parseInput(storedActivitySchema, { ...previous, lastReadAt: now });
+        await table.put(key, record);
+        return publicActivity(record);
+      },
+      'activity/not-found',
+    );
   }
 
   /** Apply changed caps after reopening, without rewriting retained summaries. */
   async prune(): Promise<void> {
-    await write(this.domain, async () => { await this.pruneRows(); });
+    await write(this.domain, async () => {
+      await this.pruneRows();
+    });
   }
 
   private async pruneRows(incoming?: StoredActivity): Promise<boolean> {
     const table = this.domain.table('activities');
-    const rows = [...table.entries()].map(([, record]) => record)
+    const rows = [...table.entries()]
+      .map(([, record]) => record)
       .filter((record) => record.sessionId !== incoming?.sessionId);
     if (incoming) rows.push(incoming);
     rows.sort(activityOrder);
@@ -353,17 +453,28 @@ export interface MemorySearch {
 }
 // Custom predicates get a shallow frozen view, never mutable storage references.
 function searchView(record: MemoryRecord): MemorySearchRecord {
-  return Object.freeze({ ...record, tags: Object.freeze([...record.tags]),
-    source: record.source === undefined ? undefined : Object.freeze({ ...record.source }) });
+  return Object.freeze({
+    ...record,
+    tags: Object.freeze([...record.tags]),
+    source: record.source === undefined ? undefined : Object.freeze({ ...record.source }),
+  });
 }
 const normalize = (value: string) => value.normalize('NFKC').toLowerCase();
 export function tokenizeMemoryQuery(query: string): string[] {
-  const words = normalize(query).replace(/(\p{Script=Han}+)/gu, ' $1 ').match(/[\p{L}\p{N}]+/gu) ?? [];
-  return [...new Set(words.flatMap((word) => {
-    const chars = [...word];
-    return /^\p{Script=Han}+$/u.test(word) && chars.length > 1
-      ? chars.slice(0, -1).map((char, index) => char + chars[index + 1]) : [word];
-  }))];
+  const words =
+    normalize(query)
+      .replace(/(\p{Script=Han}+)/gu, ' $1 ')
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
+  return [
+    ...new Set(
+      words.flatMap((word) => {
+        const chars = [...word];
+        return /^\p{Script=Han}+$/u.test(word) && chars.length > 1
+          ? chars.slice(0, -1).map((char, index) => char + chars[index + 1])
+          : [word];
+      }),
+    ),
+  ];
 }
 export const lexicalMemorySearch: MemorySearch = {
   matches: (record, query) => {
@@ -376,7 +487,10 @@ function compareMemory(a: MemoryCursor, b: MemoryCursor): number {
 }
 
 export class MemoryStore {
-  constructor(private readonly domain: BotDomain, private readonly search: MemorySearch = lexicalMemorySearch) {}
+  constructor(
+    private readonly domain: BotDomain,
+    private readonly search: MemorySearch = lexicalMemorySearch,
+  ) {}
 
   async add(input: MemoryAddInput): Promise<MemoryRecord> {
     return (await this.persist(input, false)).record;
@@ -388,8 +502,13 @@ export class MemoryStore {
     return { id: record.id, deduplicated };
   }
 
-  private async persist(input: MemoryAddInput, deduplicate: boolean, signal?: AbortSignal): Promise<{
-    record: MemoryRecord; deduplicated: boolean;
+  private async persist(
+    input: MemoryAddInput,
+    deduplicate: boolean,
+    signal?: AbortSignal,
+  ): Promise<{
+    record: MemoryRecord;
+    deduplicated: boolean;
   }> {
     const fields = parseInput(memoryAddSchema, input);
     return write(this.domain, async () => {
@@ -398,12 +517,15 @@ export class MemoryStore {
       const table = this.domain.table('memories');
       if (deduplicate) {
         const normalized = normalizeMemoryContent(fields.content);
-        const existing = [...table.entries()].map(([, record]) => record)
+        const existing = [...table.entries()]
+          .map(([, record]) => record)
           .filter((record) => record.botId === fields.botId && normalizeMemoryContent(record.content) === normalized)
           .sort((a, b) => a.createdAt - b.createdAt || compareId(a.id, b.id))[0];
         if (existing) {
-          const record = parseInput(memorySchema, { ...existing,
-            tags: [...new Set([...existing.tags, ...fields.tags])], pinned: existing.pinned || fields.pinned,
+          const record = parseInput(memorySchema, {
+            ...existing,
+            tags: [...new Set([...existing.tags, ...fields.tags])],
+            pinned: existing.pinned || fields.pinned,
             updatedAt: nextTimestamp(existing.updatedAt),
           });
           await table.put(record.id, record);
@@ -423,19 +545,30 @@ export class MemoryStore {
     const owner = parseInput(botIdSchema, botId);
     const key = parseInput(memoryIdSchema, id);
     const fields = parseInput(memoryPatchSchema, patch);
-    return write(this.domain, async () => structuredClone(await this.domain.table('memories').update(key, (current) => {
-      if (current.botId !== owner) throw missingMemory();
-      return parseInput(memorySchema, { ...current, ...fields, updatedAt: nextTimestamp(current.updatedAt) });
-    })), 'memory/not-found');
+    return write(
+      this.domain,
+      async () =>
+        structuredClone(
+          await this.domain.table('memories').update(key, (current) => {
+            if (current.botId !== owner) throw missingMemory();
+            return parseInput(memorySchema, { ...current, ...fields, updatedAt: nextTimestamp(current.updatedAt) });
+          }),
+        ),
+      'memory/not-found',
+    );
   }
 
   async remove(botId: string, id: string): Promise<void> {
     const owner = parseInput(botIdSchema, botId);
     const key = parseInput(memoryIdSchema, id);
-    return write(this.domain, async () => {
-      const table = this.domain.table('memories');
-      if (table.get(key)?.botId !== owner || !await table.delete(key)) throw missingMemory();
-    }, 'memory/not-found');
+    return write(
+      this.domain,
+      async () => {
+        const table = this.domain.table('memories');
+        if (table.get(key)?.botId !== owner || !(await table.delete(key))) throw missingMemory();
+      },
+      'memory/not-found',
+    );
   }
 
   /** Count all rows owned by a Bot without allocating/cloning a result page. */
@@ -454,15 +587,22 @@ export class MemoryStore {
   listByBot(botId: string, options: MemoryListOptions): MemoryRecord[] {
     const owner = parseInput(botIdSchema, botId);
     const filter = parseInput(memoryListOptionsSchema, options);
-    return read(() => [...this.domain.table('memories').entries()]
-      .filter(([, record]) => record.botId === owner)
-      .map(([, record]) => record)
-      .filter((record) => (filter.tag === undefined || record.tags.includes(filter.tag))
-        && (filter.pinned === undefined || record.pinned === filter.pinned)
-        && (filter.before === undefined || compareMemory(record, filter.before) > 0)
-        && (filter.query === undefined || this.search.matches(
-          this.search === lexicalMemorySearch ? record : searchView(record), filter.query)))
-      .sort(compareMemory).slice(0, filter.limit).map((record) => structuredClone(record)));
+    return read(() =>
+      [...this.domain.table('memories').entries()]
+        .filter(([, record]) => record.botId === owner)
+        .map(([, record]) => record)
+        .filter(
+          (record) =>
+            (filter.tag === undefined || record.tags.includes(filter.tag)) &&
+            (filter.pinned === undefined || record.pinned === filter.pinned) &&
+            (filter.before === undefined || compareMemory(record, filter.before) > 0) &&
+            (filter.query === undefined ||
+              this.search.matches(this.search === lexicalMemorySearch ? record : searchView(record), filter.query)),
+        )
+        .sort(compareMemory)
+        .slice(0, filter.limit)
+        .map((record) => structuredClone(record)),
+    );
   }
 
   /** Serialized with adds/removes through either Store; not a cross-table transaction. */
@@ -473,8 +613,14 @@ export class MemoryStore {
 }
 
 /** Call once in the owning Host context (inject storageDomain); share the stores. */
-export async function openBotStores(ctx: Context, options: ActivityStoreOptions & { beforeClose?: () => Promise<void>; assertOwner?: () => void } = {}): Promise<{
-  bots: BotStore; memories: MemoryStore; activities: ActivityStore; close: () => Promise<void>;
+export async function openBotStores(
+  ctx: Context,
+  options: ActivityStoreOptions & { beforeClose?: () => Promise<void>; assertOwner?: () => void } = {},
+): Promise<{
+  bots: BotStore;
+  memories: MemoryStore;
+  activities: ActivityStore;
+  close: () => Promise<void>;
 }> {
   let stores!: { bots: BotStore; memories: MemoryStore; activities: ActivityStore };
   let closing: Promise<void> | undefined;
@@ -487,7 +633,10 @@ export async function openBotStores(ctx: Context, options: ActivityStoreOptions 
         const activities = new ActivityStore(domain, options);
         await activities.prune();
         stores = { bots: new BotStore(domain), memories: new MemoryStore(domain), activities };
-      } catch (error) { await domain.close(); throw error; }
+      } catch (error) {
+        await domain.close();
+        throw error;
+      }
       const closeDomain = async () => {
         // Cordis may dispose sibling effects concurrently. The registry owns a
         // wider queue than these stores, and must drain it before we reject writes.
@@ -495,12 +644,24 @@ export async function openBotStores(ctx: Context, options: ActivityStoreOptions 
         const state = writer(domain);
         state.closing = true;
         await state.tail;
-        try { await domain.close(); } catch (error) { throw failure(error); }
+        try {
+          await domain.close();
+        } catch (error) {
+          throw failure(error);
+        }
       };
-      return () => closing ??= closeDomain();
+      return () => (closing ??= closeDomain());
     });
     await release;
     // Cordis skips repeat disposer calls; still await the original teardown.
-    return { ...stores, close: async () => { await release(); await closing; } };
-  } catch (error) { throw failure(error); }
+    return {
+      ...stores,
+      close: async () => {
+        await release();
+        await closing;
+      },
+    };
+  } catch (error) {
+    throw failure(error);
+  }
 }

@@ -8,11 +8,18 @@ export interface ChatLauncherActions {
 }
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
 /** Every surface opens the Host-owned main; no alternate-workspace creation path. */
-export function useChatLauncher({ onStart }: ChatLauncherActions & {
-  workspaces: WorkspaceSnapshot; t: PropsLocale<'dsh-bot'>['t'];
+export function useChatLauncher({
+  onStart,
+}: ChatLauncherActions & {
+  workspaces: WorkspaceSnapshot;
+  t: PropsLocale<'dsh-bot'>['t'];
 }) {
   const lifetime = useRef<AbortController>();
-  useEffect(() => { lifetime.current = new AbortController(); return () => lifetime.current?.abort(); }, []);
-  const start = (id: string) => lifetime.current?.signal.aborted ? Promise.resolve() : onStart(id, lifetime.current?.signal);
+  useEffect(() => {
+    lifetime.current = new AbortController();
+    return () => lifetime.current?.abort();
+  }, []);
+  const start = (id: string) =>
+    lifetime.current?.signal.aborted ? Promise.resolve() : onStart(id, lifetime.current?.signal);
   return { start, startInWorkspace: start, dialog: null };
 }

@@ -5,8 +5,15 @@ import { botIdSchema, memoryIdSchema } from './ids.js';
 import { activityListResultSchema, activitySessionIdSchema, activitySessionSchema } from './activity.js';
 export type { ActivityRecord, ActivitySession, ActivityListResult } from './activity.js';
 import {
-  absoluteDirectorySchema, botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema,
-  memoryAddSchema, memoryListOptionsSchema, memoryPatchSchema, memorySchema,
+  absoluteDirectorySchema,
+  botCreateSchema,
+  botPatchSchema,
+  botRemoveOptionsSchema,
+  botSchema,
+  memoryAddSchema,
+  memoryListOptionsSchema,
+  memoryPatchSchema,
+  memorySchema,
 } from './schema.js';
 
 export const botStatusSchema = z.strictObject({
@@ -25,13 +32,16 @@ export const botsWorkspaceSchema = z.strictObject({ workspaceId: z.string().min(
 export type BotsWorkspace = z.output<typeof botsWorkspaceSchema>;
 // Process-local invalidation only: consumers always re-read authoritative data.
 // No persisted revision, user text, paths or credential-shaped payloads travel here.
-export const botChangeSchema = z.strictObject({ revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) });
+export const botChangeSchema = z.strictObject({
+  revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+});
 export type BotChange = z.output<typeof botChangeSchema>;
 
 // UI may choose the Bot, never the persisted identity or provenance of a memory.
 export const memoryRemoteSaveSchema = memoryAddSchema.omit({ botId: true, source: true });
 export const memoryRemotePatchSchema = memoryPatchSchema.omit({ source: true });
-export const memoryRemoteListSchema = memoryListOptionsSchema.omit({ query: true })
+export const memoryRemoteListSchema = memoryListOptionsSchema
+  .omit({ query: true })
   .extend({ limit: memoryListOptionsSchema.shape.limit.optional() });
 export const memoryRemoteSearchSchema = memoryRemoteListSchema.extend({ query: z.string() });
 export type MemoryRemoteSaveInput = z.input<typeof memoryRemoteSaveSchema>;
@@ -39,13 +49,19 @@ export type MemoryRemotePatch = z.input<typeof memoryRemotePatchSchema>;
 export type MemoryRemoteListInput = z.input<typeof memoryRemoteListSchema>;
 export type MemoryRemoteSearchInput = z.input<typeof memoryRemoteSearchSchema>;
 
-type ParameterInput<Parameter> = Parameter extends { readonly codec: { readonly create: () => infer Schema extends z.ZodType } }
-  ? z.input<Schema> : never;
+type ParameterInput<Parameter> = Parameter extends {
+  readonly codec: { readonly create: () => infer Schema extends z.ZodType };
+}
+  ? z.input<Schema>
+  : never;
 type RequiredParameters<Parameters extends readonly unknown[]> = {
   -readonly [Index in keyof Parameters]: ParameterInput<Parameters[Index]>;
 };
 /** Optional final wire parameters remain optional in the business call signature. */
-type MethodParameters<Parameters extends readonly unknown[]> = Parameters extends readonly [...infer Required, infer Last]
+type MethodParameters<Parameters extends readonly unknown[]> = Parameters extends readonly [
+  ...infer Required,
+  infer Last,
+]
   ? Last extends { readonly acceptsUndefined: true }
     ? [...RequiredParameters<Required>, options?: Exclude<ParameterInput<Last>, undefined>]
     : RequiredParameters<Parameters>
@@ -53,14 +69,21 @@ type MethodParameters<Parameters extends readonly unknown[]> = Parameters extend
 
 /** Signatures are derived from the same ordered schema tuples used by the codec. */
 type HostMethods<Namespace extends string> = {
-  [Endpoint in keyof typeof dshBotRemoteSpec.methods as typeof dshBotRemoteSpec.methods[Endpoint] extends
-    { readonly implementation: infer Implementation extends string }
-    ? Endpoint extends `${Namespace}/${string}` ? Implementation : never
-    : Endpoint extends `${Namespace}/${infer Method}` ? Method : never]:
-    typeof dshBotRemoteSpec.methods[Endpoint] extends { readonly mode: 'stream' }
-      ? (signal: AbortSignal) => AsyncIterable<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>
-      : (...args: MethodParameters<typeof dshBotRemoteSpec.methods[Endpoint]['parameters']>) =>
-        Promise<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>;
+  [Endpoint in keyof typeof dshBotRemoteSpec.methods as (typeof dshBotRemoteSpec.methods)[Endpoint] extends {
+    readonly implementation: infer Implementation extends string;
+  }
+    ? Endpoint extends `${Namespace}/${string}`
+      ? Implementation
+      : never
+    : Endpoint extends `${Namespace}/${infer Method}`
+      ? Method
+      : never]: (typeof dshBotRemoteSpec.methods)[Endpoint] extends { readonly mode: 'stream' }
+    ? (
+        signal: AbortSignal,
+      ) => AsyncIterable<z.output<ReturnType<(typeof dshBotRemoteSpec.methods)[Endpoint]['result']['create']>>>
+    : (
+        ...args: MethodParameters<(typeof dshBotRemoteSpec.methods)[Endpoint]['parameters']>
+      ) => Promise<z.output<ReturnType<(typeof dshBotRemoteSpec.methods)[Endpoint]['result']['create']>>>;
 };
 export type DshBotMethods = HostMethods<'dshBot'>;
 export type DshBotMemoryMethods = HostMethods<'dshBot.memory'>;
@@ -69,11 +92,18 @@ export type DshBotActivityMethods = HostMethods<'dshBot.activity'>;
 type RemoteMethods<Namespace extends string> = {
   // rc.2's Gateway enforces the descriptor arity even for acceptsUndefined.
   // Call delete(id, undefined) when using the Host's default removal options.
-  [Endpoint in keyof typeof dshBotRemoteSpec.methods as Endpoint extends `${Namespace}/${infer Method}` ? Method : never]:
-    typeof dshBotRemoteSpec.methods[Endpoint] extends { readonly mode: 'stream' }
-      ? (signal?: AbortSignal) => RemoteStreamHandle<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>, never>
-      : (...args: RequiredParameters<typeof dshBotRemoteSpec.methods[Endpoint]['parameters']>) =>
-        Promise<RemoteResult<z.output<ReturnType<typeof dshBotRemoteSpec.methods[Endpoint]['result']['create']>>>>;
+  [Endpoint in keyof typeof dshBotRemoteSpec.methods as Endpoint extends `${Namespace}/${infer Method}`
+    ? Method
+    : never]: (typeof dshBotRemoteSpec.methods)[Endpoint] extends { readonly mode: 'stream' }
+    ? (
+        signal?: AbortSignal,
+      ) => RemoteStreamHandle<
+        z.output<ReturnType<(typeof dshBotRemoteSpec.methods)[Endpoint]['result']['create']>>,
+        never
+      >
+    : (
+        ...args: RequiredParameters<(typeof dshBotRemoteSpec.methods)[Endpoint]['parameters']>
+      ) => Promise<RemoteResult<z.output<ReturnType<(typeof dshBotRemoteSpec.methods)[Endpoint]['result']['create']>>>>;
 };
 export type DshBotMemoryRemoteMethods = RemoteMethods<'dshBot.memory'>;
 export type DshBotActivityRemoteMethods = RemoteMethods<'dshBot.activity'>;
@@ -113,12 +143,16 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 }
 
 const codec = <Schema extends z.ZodType>(type: string, schema: Schema) => ({
-  mode: 'strict' as const, typeSymbol: `dsh-bot#${type}`, create: () => schema,
+  mode: 'strict' as const,
+  typeSymbol: `dsh-bot#${type}`,
+  create: () => schema,
 });
 // rc.2 only invokes explicit result encode/decode hooks; mode/create alone
 // describe a parser but do not validate the Host response or Client wire value.
 const activityResultCodec = <Schema extends z.ZodType>(type: string, schema: Schema) => ({
-  ...codec(type, schema), encode: (value: unknown) => schema.parse(value), decode: (value: unknown) => schema.parse(value),
+  ...codec(type, schema),
+  encode: (value: unknown) => schema.parse(value),
+  decode: (value: unknown) => schema.parse(value),
 });
 const parameter = <Schema extends z.ZodType>(name: string, type: string, schema: Schema) => {
   const value = codec(type, schema);
@@ -138,25 +172,39 @@ export const dshBotRemoteSpec = {
   package: 'dsh-bot',
   methods: {
     'dshBot/watch': {
-      ...owner, mode: 'stream', parameters: [], cancellation: { parameter: 'signal' },
+      ...owner,
+      mode: 'stream',
+      parameters: [],
+      cancellation: { parameter: 'signal' },
       result: activityResultCodec('BotChange', botChangeSchema),
     },
     // Zero parameters deliberately support activity.list() on rc.2, whose
     // Client enforces exact arity even for optional descriptor parameters.
     'dshBot.activity/list': {
-      ...activityOwner, parameters: [], result: activityResultCodec('ActivityListResult', activityListResultSchema),
+      ...activityOwner,
+      parameters: [],
+      result: activityResultCodec('ActivityListResult', activityListResultSchema),
     },
     'dshBot.activity/markRead': {
-      ...activityOwner, parameters: [parameter('sessionId', 'ActivitySessionId', activitySessionIdSchema)],
+      ...activityOwner,
+      parameters: [parameter('sessionId', 'ActivitySessionId', activitySessionIdSchema)],
       result: activityResultCodec('ActivitySession', activitySessionSchema),
     },
     'dshBot/list': { ...owner, parameters: [], result: codec('BotRecord[]', z.array(botSchema)) },
     'dshBot/catalogInfo': { ...owner, parameters: [], result: codec('CatalogInfo', catalogInfoSchema) },
     'dshBot/status': { ...owner, parameters: [], result: codec('BotStatus[]', z.array(botStatusSchema)) },
     'dshBot/get': { ...owner, parameters: [id], result: bot },
-    'dshBot/openConversation': { ...owner, parameters: [botId], result: activityResultCodec('MainSession', z.strictObject({ sessionId: z.string().min(1) })) },
+    'dshBot/openConversation': {
+      ...owner,
+      parameters: [botId],
+      result: activityResultCodec('MainSession', z.strictObject({ sessionId: z.string().min(1) })),
+    },
     'dshBot/ensureHome': { ...owner, parameters: [botId], result: activityResultCodec('BotHome', botHomeSchema) },
-    'dshBot/ensureBotsWorkspace': { ...owner, parameters: [], result: activityResultCodec('BotsWorkspace', botsWorkspaceSchema) },
+    'dshBot/ensureBotsWorkspace': {
+      ...owner,
+      parameters: [],
+      result: activityResultCodec('BotsWorkspace', botsWorkspaceSchema),
+    },
     'dshBot/create': { ...owner, parameters: [parameter('input', 'BotCreateInput', botCreateSchema)], result: bot },
     'dshBot/update': { ...owner, parameters: [id, parameter('patch', 'BotPatch', botPatchSchema)], result: bot },
     'dshBot/duplicate': { ...owner, parameters: [id, parameter('newId', 'BotId', botIdSchema)], result: bot },
@@ -164,29 +212,45 @@ export const dshBotRemoteSpec = {
     'dshBot/delete': {
       ...owner,
       implementation: 'remove',
-      parameters: [id, {
-        ...parameter('options', 'BotRemoveOptions | undefined', botRemoveOptionsSchema.optional()),
-        acceptsUndefined: true,
-      }],
+      parameters: [
+        id,
+        {
+          ...parameter('options', 'BotRemoveOptions | undefined', botRemoveOptionsSchema.optional()),
+          acceptsUndefined: true,
+        },
+      ],
       result: codec('void', z.void()),
     },
     'dshBot.memory/list': {
-      ...memoryOwner, parameters: [botId, parameter('options', 'MemoryRemoteListInput', memoryRemoteListSchema)], result: memories,
+      ...memoryOwner,
+      parameters: [botId, parameter('options', 'MemoryRemoteListInput', memoryRemoteListSchema)],
+      result: memories,
     },
     'dshBot.memory/search': {
-      ...memoryOwner, parameters: [botId, parameter('input', 'MemoryRemoteSearchInput', memoryRemoteSearchSchema)], result: memories,
+      ...memoryOwner,
+      parameters: [botId, parameter('input', 'MemoryRemoteSearchInput', memoryRemoteSearchSchema)],
+      result: memories,
     },
     'dshBot.memory/save': {
-      ...memoryOwner, parameters: [botId, parameter('input', 'MemoryRemoteSaveInput', memoryRemoteSaveSchema)],
+      ...memoryOwner,
+      parameters: [botId, parameter('input', 'MemoryRemoteSaveInput', memoryRemoteSaveSchema)],
       result: codec('MemorySaveResult', z.strictObject({ id: memoryIdSchema, deduplicated: z.boolean() })),
     },
     'dshBot.memory/update': {
-      ...memoryOwner, parameters: [botId, memoryId, parameter('patch', 'MemoryRemotePatch', memoryRemotePatchSchema)],
+      ...memoryOwner,
+      parameters: [botId, memoryId, parameter('patch', 'MemoryRemotePatch', memoryRemotePatchSchema)],
       result: codec('MemoryRecord', memorySchema),
     },
     'dshBot.memory/delete': {
-      ...memoryOwner, implementation: 'remove', parameters: [botId, memoryId], result: codec('void', z.void()),
+      ...memoryOwner,
+      implementation: 'remove',
+      parameters: [botId, memoryId],
+      result: codec('void', z.void()),
     },
-    'dshBot.memory/count': { ...memoryOwner, parameters: [botId], result: codec('MemoryCount', z.number().int().nonnegative()) },
+    'dshBot.memory/count': {
+      ...memoryOwner,
+      parameters: [botId],
+      result: codec('MemoryCount', z.number().int().nonnegative()),
+    },
   },
 } as const satisfies TypertRemoteSpec;

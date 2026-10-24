@@ -218,7 +218,7 @@ P1 契约增加 openConversation 和可选 status.mainSessionId，共 20 个端�
 
 `dsh_bot_groups` v1 保存群/生日成员/turn/delivery/read_state，正文只在原生 user/message 中。输入为 user 来源，回文为 `dsh-bot-group` producer，含当时的发言身份/鲸鱼快照、childSessionId 与 stopReason。回文保留原始 ContentBlock，群 renderer/context 当前只展示文字并明示非文字需查看子会话。所有成功投递与轮流指针均在根 flush=true 后确认。
 
-@ token 使用 memberId；纯文本 @ 不路由。准入时保存成员顺序、Bot revision、上下文截止 seq 与 operationId 摘要。每群串行 worker；后续输入可以排队。上下文只包括固定截止线前的群记录与本轮已 flush 的前序回复，不带 Bot 私聊 transcript；按字节去掉较早完整消息并提示截断。失败/部分/取消/未知各有回执，不默认重试不明副作用。重启把不确定的执行回执标 recovery_needed/unknown。
+@ 在 Host 契约中始终使用 memberId；Client 将输入框中的 `@名称` / `@BotId` 按当前有效成员快照解析成 memberId。支持中文、含空格名称、NFKC 和大小写归一化，并优先匹配完整长名称。重名需结构化选择器消歧；未匹配的 @ 显示提示并保留正文，有有效目标或轮流路由时继续发送，没有可路由目标时保留草稿并提示，不发无效 Remote 请求。准入时保存成员顺序、Bot revision、上下文截止 seq 与 operationId 摘要。每群串行 worker；后续输入可以排队。上下文只包括固定截止线前的群记录与本轮已 flush 的前序回复，不带 Bot 私聊 transcript；按字节去掉较早完整消息并提示截断。失败/部分/取消/未知各有回执，不默认重试不明副作用。重启把不确定的执行回执标 recovery_needed/unknown。
 
 取消、超时、成员移除及卸载会 abort 并立即启动 activation.dispose，先排空 child/worker，再 flush/dispose owned root、注销 preset 和关闭领域。Controller 抢先拥有 root 则拒绝路由，只允许从公开日志读取历史；不取得或销毁裸 Agent。retained preset 代际继续保护 Controller 根，缺失 preset 不 fallback standard。
 
@@ -229,10 +229,21 @@ Client 在 Bots 页增加群列表和专用 composer，使用公开 main/header 
 
 ## U09–U11：管理传输和主对话参考图谱
 
-管理工作区沿用现有 Bots/群/连接器/通知/IM/Teams/原生定时入口；新增记忆、传输及最近 50 条显式执行统计。条目记忆仍归 MemoryStore。Bot JSON 只携带可迁移编辑字段、禁用的连接器纯引用、无目标的渠道类型和可选记忆/文本技能；不携带配置目录、凭据、会话或预授权；文本中仍含可识别绝对文件路径或凭据签名则拒绝传输，不静默改写正文。导入预览保存在独立 `dsh_bot_workspace` v1，确认后新建 Bot 或经既有服务批量新增/合并记忆；无跨存储事务，部分失败保留 receipt，不能自动覆盖重试。
+Bots 一级导航只有 Bots、群聊、管理。管理分区提供记忆/传输、连接器、通知、原生定时、协作和 IM；记忆区另含条目/参考图谱/传输步骤及最近 50 条显式执行统计。打开过的分区用稳定 DOM 保留非秘密草稿；未打开的分区延迟挂载，相同轮询快照不发布更新。隐藏图谱页取消读订阅，切回时复用已有快照；凭据密码在提交、失败和离开连接器分区时清空。条目记忆仍归 MemoryStore。Bot JSON 只携带可迁移编辑字段、禁用的连接器纯引用、无目标的渠道类型和可选记忆/文本技能；不携带配置目录、凭据、会话或预授权；文本中仍含可识别绝对文件路径或凭据签名则拒绝传输，不静默改写正文。导入预览保存在独立 `dsh_bot_workspace` v1，确认后新建 Bot 或经既有服务批量新增/合并记忆；无跨存储事务，部分失败保留 receipt，不能自动覆盖重试。
 
 `dsh_bot_reference_memory` v1 只管理 binding/显式复制清单。默认 internal；显式启用 internal+reference-graph 后，唯一主 Agent 空闲时由 native MCP 挂载本地精确锁版 server。图谱位于 `<DSH_HOME>/dsh-bot/memory/<BotKey hash>/<fileIdentity>.jsonl`。同进程 writer lease + Agent scoped guard/around wrapper 串行所有图谱调用；Agent/Host effect 关闭先停准入、排空、await child dispose，最后释放 writer。native reconnect 关闭，断线后显式重试。群/委派 worker 没有该 client，继续使用条目记忆；不承诺跨 Host 或外部进程并发安全。图谱/传输 sidecar 启动失败只关闭该领域，其他管理入口继续启动。
 
 复制链为 preview → staging → verified → committed，另有 failed/rolled-back。预览保存旧 binding、源 digest、完整 MemoryRecord snapshot 与稳定 entity name；只在独立 staging 文件里通过原生工具幂等写 envelope，再 read_graph 验证每项全部元数据。串行工具入口不绕过原生审批。提交在 MemoryStore 原队列里复核源与目标，再写唯一 binding 指针，条目表不变；清单写入中断可从已提交 binding 对账重试。取消 abort 正在暂存的操作并恢复旧 client；回退恢复旧 pointer，保留两份文件。图谱自然实体/关系不会复制到新条目副本；UI 明示其保留在旧文件中。流程不提供反向导入、reference-only 或后台双写。
 
 证据及限制见 [U09–U11 验收](acceptance/P34-U09-11.md)。
+
+
+## P34 审查返工：领域模块与兼容边界（2026-10-24）
+
+- `shared/identity.ts`、`connectors.ts`、`notifications.ts` 定义身份与各领域 schema，`integrations.ts` 只组合 catalog；Client 对应 `integrations-state.ts`、`ConnectorsPanel` / `ConnectorEditor` / `CredentialEditor` / `NotificationsPanel`，locale 使用领域 namespace。Host 的通用队列/错误位于 `common/operations.ts`，存储组合位于 `common/integration-stores.ts`，连接器和通知的 Remote 分别归属各自目录。
+- 兼容保留 `dsh-bot/p34` Remote contribution/typeSymbol、`dshBotP34` service id、`p34/*` 错误码，以及既有所有 Domain 名称、表、schemaVersion 和 operation digest。它们是已有协议/数据身份，文件改名不触发数据重写；`OperationError` 仍生成原错误值。没有新增依赖或升级发布版本。
+- `ReferenceMemory` 是薄请求入口，继承链按职责分为 `MemoryCopyWorkflow`（复制状态机）、`ReferenceBackend`（主会话选择与后端状态）、`ReferenceWriter`（MCP client/串行调用/关闭）；`model.ts` 集中 domain、writer lease 和完整读回校验。保持同一 `control` 队列、同一 writer Map 及关闭顺序，原 `service.ts` 继续 re-export 验证 helper/domain。所有这些单文件均小于 300 行。
+- 图谱 UI 分为后端概览、`GraphTools` 和 `MemoryCopySteps`，导入 UI 的预览收据拆到 `TransferPreview`。单向复制说明明确“不会同步回写、不删除源”；暂存前显示条目数并要求用户确认，确认绑定 copyId/sourceDigest/count。提交和回退仍使用原 Host 契约。
+- 群的 `prepareDelivery`、`deliver`、`recordDeliveryResult` 将身份复核、原生 worker 生命周期、持久回执分开，仍在根 flush=true 且成功时推进 nextMemberId。公开 sidebar leading/hover slots 根据 exact 群根 SessionId 显示鲸鱼及群名称；成员 worker 保持原生 subagent，Bot 列表仍只显示唯一 mainSessionId。
+
+静态、DOM、完整首次/冷 Host 与浏览器证据分开列于 [返工验收](acceptance/P34-rework.md)。截图统一入口为 `packages/dsh-bot/scripts/screenshot-v03.mjs`，只使用仓库 `.dsh-dev`、全新 profile 和 loopback mock，输出中英×亮暗共 40 个目标至 `docs/screenshots/v03/<run>/`；沙箱内 Chromium 受 MachPort 权限阻断，真实截图与窄屏验收仍为 FAIL（环境）。

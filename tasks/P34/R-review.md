@@ -11,3 +11,9 @@ model gpt-6.1-sol / high。完成后跑 strict、lint、scripts/pnpm check、全
 7. 群会话列表/群头像：群聊在侧栏应与 Bot 主会话可区分（鲸鱼群头像），且每个 Bot 仍只有一个主会话 —— 群成员调用不得给 Bot 新增可见会话；补断言。
 ## 截图
 8. 写 `packages/dsh-bot/scripts/screenshot-v03.mjs`：亮/暗两套，覆盖 Bots 列表、连接器、通知、协作任务板、群聊创建+成员管理、群会话(含@和轮流)、管理界面、记忆后端。输出 `docs/screenshots/v03/`。沙箱内 Chromium 失败就标 FAIL(环境)，编排者会在沙箱外重跑。
+## U09-11
+9. 文件过大：`host/reference-memory/service.ts` 700 行、`client/components/ReferenceMemoryPanel.tsx` 442 行、`BotTransferPanel.tsx` 218 行。按职责拆分（复制向导状态机 / MCP 后端适配 / 读回校验；UI 拆成步骤组件），单文件 ≤300 行，不改行为，测试全保持。
+10. `BotsPage.tsx` 已有 23 行 >160 字符、管理/连接器/通知/协作/群/记忆入口堆在一页：改为管理页内 tab 或分区导航，Bots 列表保持简洁；切换不得引起闪烁（沿用智能轮询，数据不变不重绘）。
+11. 记忆复制向导是单向的：UI 明确写出“单向复制，不会同步回写/不删除源”，执行前显示条目数确认。
+## 收尾
+- 全部完成后更新 `docs/architecture.md` 和对应 acceptance 报告，写 `docs/acceptance/P34-rework.md` 逐条说明 1-11 的处理结果。

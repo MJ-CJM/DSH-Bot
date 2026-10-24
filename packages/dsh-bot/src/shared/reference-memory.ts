@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { botKeySchema, p34Id } from './p34.js';
+import { botKeySchema, resourceId } from './integrations.js';
 import { memorySchema } from './schema.js';
 export const REFERENCE_VERSION = '2026.7.4';
 export const REFERENCE_SOURCE = '6dd0a683e198783e30feabf7abaf42f925bd18b1';
@@ -106,11 +106,11 @@ export const graphBindingSchema = z.strictObject({
   fileIdentity: z.string().regex(/^[a-f0-9]{64}$/),
   scope: z.literal('main-only'),
   revision: z.number().int().positive(),
-  importId: p34Id.optional(),
+  importId: resourceId.optional(),
 });
 export type GraphBinding = z.output<typeof graphBindingSchema>;
 export const copyReceiptSchema = z.strictObject({
-  id: p34Id,
+  id: resourceId,
   bot: botKeySchema,
   sourceDigest: z.string(),
   targetFileIdentity: z.string(),
@@ -169,24 +169,24 @@ export const graphRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({
     action: z.literal('stage'),
     bot: botKeySchema,
-    copyId: p34Id,
+    copyId: resourceId,
   }),
   z.strictObject({
     action: z.literal('commit'),
     bot: botKeySchema,
-    copyId: p34Id,
+    copyId: resourceId,
     confirmed: z.literal(true),
   }),
   z.strictObject({
     action: z.literal('rollback'),
     bot: botKeySchema,
-    copyId: p34Id,
+    copyId: resourceId,
     confirmed: z.literal(true),
   }),
   z.strictObject({
     action: z.literal('cancel'),
     bot: botKeySchema,
-    copyId: p34Id,
+    copyId: resourceId,
     confirmed: z.literal(true),
   }),
 ]);

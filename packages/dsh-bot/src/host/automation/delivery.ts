@@ -10,7 +10,11 @@ import { AutomationError } from './errors.js';
 export class MainSessionDelivery {
   private readonly active = new Map<string, Promise<RunRecord>>();
   private stopped = false;
-  constructor(private readonly ctx: Context, private readonly bots: DshBotRegistry, private readonly runs: RunService) {}
+  constructor(
+    private readonly ctx: Context,
+    private readonly bots: DshBotRegistry,
+    private readonly runs: RunService,
+  ) {}
   async submit(request: RunRequest): Promise<RunRecord> {
     if (this.stopped) throw new AutomationError('automation/unavailable', 'Delivery is closing');
     const run = await this.runs.enqueue(request);
@@ -33,17 +37,32 @@ export class MainSessionDelivery {
       if (current.createdAt !== run.botCreatedAt) throw new Error('Bot identity changed');
       run = await this.runs.transition(id, 'running', run.revision, { sessionId: main.sessionId, step: 'submitting' });
       submitted = true;
-      const receipt = await this.ctx.sessionController.prompt({ sessionId: main.sessionId as SessionId,
-        requestId: run.requestId as SessionRequestId, mode: 'queue', content: [{ type: 'text', text: run.snapshot.prompt }],
-        clientTimeZone: run.snapshot.timeZone }, new AbortController().signal);
+      const receipt = await this.ctx.sessionController.prompt(
+        {
+          sessionId: main.sessionId as SessionId,
+          requestId: run.requestId as SessionRequestId,
+          mode: 'queue',
+          content: [{ type: 'text', text: run.snapshot.prompt }],
+          clientTimeZone: run.snapshot.timeZone,
+        },
+        new AbortController().signal,
+      );
       if (!receipt.accepted) throw new Error('Prompt refused');
       // Delivered is explicitly NOT model completion. Never stop a user's shared session on unload/error.
       return await this.runs.transition(id, 'delivered', run.revision, {}, true);
     } catch {
       run = this.runs.get(id);
-      return this.runs.transition(id, submitted ? 'recovery_needed' : 'failed', run.revision,
-        { errorCode: submitted ? 'delivery/unconfirmed' : 'delivery/not-submitted' }, !submitted);
+      return this.runs.transition(
+        id,
+        submitted ? 'recovery_needed' : 'failed',
+        run.revision,
+        { errorCode: submitted ? 'delivery/unconfirmed' : 'delivery/not-submitted' },
+        !submitted,
+      );
     }
   }
-  async close() { this.stopped = true; await Promise.allSettled([...this.active.values()]); }
+  async close() {
+    this.stopped = true;
+    await Promise.allSettled([...this.active.values()]);
+  }
 }

@@ -7,10 +7,27 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import Schema from '@deepseek-ai/schemastery';
 import { botIdSchema } from '../shared/ids.js';
-import { botChangeSchema, botsWorkspaceSchema, type CatalogInfo, type BotStatus, type BotChange, type BotHome, type BotsWorkspace, type DshBotMethods } from '../shared/remote-contract.js';
 import {
-  type BotCreateInput, type BotPatch, type BotRecord, type BotRemoveOptions, MEMORY_LIST_MAX_LIMIT,
-  botCreateSchema, botPatchSchema, botRemoveOptionsSchema, botSchema, normalizeBotPatch,
+  botChangeSchema,
+  botsWorkspaceSchema,
+  type CatalogInfo,
+  type BotStatus,
+  type BotChange,
+  type BotHome,
+  type BotsWorkspace,
+  type DshBotMethods,
+} from '../shared/remote-contract.js';
+import {
+  type BotCreateInput,
+  type BotPatch,
+  type BotRecord,
+  type BotRemoveOptions,
+  MEMORY_LIST_MAX_LIMIT,
+  botCreateSchema,
+  botPatchSchema,
+  botRemoveOptionsSchema,
+  botSchema,
+  normalizeBotPatch,
 } from '../shared/schema.js';
 import { DshBotError, parseInput } from './errors.js';
 import { BotHomes, validateDefaultCwd } from './home.js';
@@ -50,10 +67,11 @@ export interface Config {
   activityMaxSessionsPerBot: number;
   activityMaxSessionsTotal: number;
 }
-const activityLimit = (name: string, fallback: number) => Schema.transform(Schema.number(), (value) => {
-  if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${name} must be a positive safe integer`);
-  return value;
-}).default(fallback);
+const activityLimit = (name: string, fallback: number) =>
+  Schema.transform(Schema.number(), (value) => {
+    if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${name} must be a positive safe integer`);
+    return value;
+  }).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
   referenceMemoryTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
   referenceMemoryMaxFileBytes: Schema.number().min(1024).max(67108864).step(1).default(8388608),
@@ -73,22 +91,27 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
   seedExamples: Schema.boolean().default(true),
   enableBotManageInStandard: Schema.boolean().default(false),
   botManagePersonaPreviewChars: Schema.transform(Schema.number(), (value) => {
-    if (!Number.isSafeInteger(value) || value < 1) throw new TypeError('botManagePersonaPreviewChars must be a positive safe integer');
+    if (!Number.isSafeInteger(value) || value < 1)
+      throw new TypeError('botManagePersonaPreviewChars must be a positive safe integer');
     return value;
   }).default(200),
-  presetIdPrefix: Schema.string().pattern(/^[a-z][a-z0-9-]*$/).default('bot-'),
+  presetIdPrefix: Schema.string()
+    .pattern(/^[a-z][a-z0-9-]*$/)
+    .default('bot-'),
   presetOrder: Schema.transform(Schema.number(), (value) => {
     if (!Number.isFinite(value)) throw new TypeError('presetOrder must be finite');
     return value;
   }).default(50),
   dataDir: Schema.string().pattern(/\S/).default('$DSH_HOME/dsh-bot'),
   maxInjectChars: Schema.transform(Schema.number(), (value) => {
-    if (!Number.isSafeInteger(value) || value < 0) throw new TypeError('maxInjectChars must be a nonnegative safe integer');
+    if (!Number.isSafeInteger(value) || value < 0)
+      throw new TypeError('maxInjectChars must be a nonnegative safe integer');
     return value;
   }).default(4000),
   memorySectionOrder: Schema.transform(Schema.number(), (value) => {
     // rc.2: persona prefix = 0, the first tool policy (PTC_ONLY) = 800.
-    if (!Number.isFinite(value) || value <= 0 || value >= 800) throw new TypeError('memorySectionOrder must be between 0 and 800');
+    if (!Number.isFinite(value) || value <= 0 || value >= 800)
+      throw new TypeError('memorySectionOrder must be between 0 and 800');
     return value;
   }).default(100),
   memoryListLimit: Schema.transform(Schema.number(), (value) => {
@@ -104,15 +127,27 @@ export interface BotChanged {
   action: 'create' | 'update' | 'duplicate' | 'remove';
 }
 declare module '@deepseek-ai/cordis' {
-  interface Context { dshBots: DshBotRegistry }
-  interface Events { 'dsh-bot/changed'(change: BotChanged): void }
+  interface Context {
+    dshBots: DshBotRegistry;
+  }
+  interface Events {
+    'dsh-bot/changed'(change: BotChanged): void;
+  }
 }
 
 const examples: readonly BotCreateInput[] = [
-  { id: 'assistant', name: '通用助手', description: '协助处理日常问题与任务。',
-    persona: { prefix: '你是一位认真、友善的通用助手。请用清晰的中文回答问题，说明不确定之处，并提供可执行的建议。' } },
-  { id: 'researcher', name: '研究员', description: '查证信息、分析资料并整理研究结论。',
-    persona: { prefix: '你是一位严谨的研究员。请区分事实、推断与假设，核实来源，以中文整理证据、分析方法和局限。' } },
+  {
+    id: 'assistant',
+    name: '通用助手',
+    description: '协助处理日常问题与任务。',
+    persona: { prefix: '你是一位认真、友善的通用助手。请用清晰的中文回答问题，说明不确定之处，并提供可执行的建议。' },
+  },
+  {
+    id: 'researcher',
+    name: '研究员',
+    description: '查证信息、分析资料并整理研究结论。',
+    persona: { prefix: '你是一位严谨的研究员。请区分事实、推断与假设，核实来源，以中文整理证据、分析方法和局限。' },
+  },
 ];
 
 type Lease = { definition: PresetDefinition; bot: BotRecord; dispose: () => Promise<void> };
@@ -121,7 +156,7 @@ function sameBotConfig(left: BotRecord, right: BotRecord): boolean {
   const { createdAt: _rc, updatedAt: _ru, ...r } = right;
   return isDeepStrictEqual(l, r);
 }
-const messageOf = (error: unknown) => error instanceof Error ? error.message : String(error);
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export class DshBotRegistry extends TypertRemoteService implements DshBotMethods {
   static inject = ['storageDomain', 'agentPresets'];
@@ -149,8 +184,12 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   private releaseResources?: () => Promise<void>;
   private closeTask?: Promise<void>;
 
-  constructor(ctx: Context, config: Config, start: () => Promise<void> = async () => {},
-    private readonly assertOwner: () => void = () => {}) {
+  constructor(
+    ctx: Context,
+    config: Config,
+    start: () => Promise<void> = async () => {},
+    private readonly assertOwner: () => void = () => {},
+  ) {
     super(ctx, 'dshBots', { namespace: 'dshBot' });
     this.watchOwner = ctx;
     const parsed = Config(config);
@@ -169,13 +208,18 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     });
     // Publish the service before Loader settlement. Never join the Loader from
     // its own teardown; once initialization starts, all resources are joined.
-    ctx.effect(() => () => {
-      this.stopping = true;
-      if (this.started) return this.ready;
-    }, 'dsh-bot: startup guard');
+    ctx.effect(
+      () => () => {
+        this.stopping = true;
+        if (this.started) return this.ready;
+      },
+      'dsh-bot: startup guard',
+    );
   }
 
-  async [Service.init](): Promise<void> { await this.ready; }
+  async [Service.init](): Promise<void> {
+    await this.ready;
+  }
 
   async waitUntilReady(): Promise<void> {
     await this.ready;
@@ -194,8 +238,12 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
 
   private assertReady(): void {
     if (!this.initialized || this.stopping) {
-      throw new DshBotError('bot/unavailable', this.startupError
-        ? `Bot registry startup failed: ${this.startupError}` : 'Bot registry is not ready or is stopping');
+      throw new DshBotError(
+        'bot/unavailable',
+        this.startupError
+          ? `Bot registry startup failed: ${this.startupError}`
+          : 'Bot registry is not ready or is stopping',
+      );
     }
   }
 
@@ -204,16 +252,25 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     // preset leases and domain. Updating a lease never moves it to an agent scope.
     await this.ctx.effect(async () => {
       let shutdownTask: Promise<void> | undefined;
-      const shutdown = () => shutdownTask ??= (async () => {
-        this.stopping = true;
-        await this.tail;
-        const errors: unknown[] = [];
-        for (const lease of [...this.leases.values()].reverse()) {
-          try { await this.release(lease); } catch (error) { errors.push(error); }
-        }
-        try { await this.stores?.close(); } catch (error) { errors.push(error); }
-        if (errors.length) throw new AggregateError(errors, 'DSH Bot registry cleanup failed');
-      })();
+      const shutdown = () =>
+        (shutdownTask ??= (async () => {
+          this.stopping = true;
+          await this.tail;
+          const errors: unknown[] = [];
+          for (const lease of [...this.leases.values()].reverse()) {
+            try {
+              await this.release(lease);
+            } catch (error) {
+              errors.push(error);
+            }
+          }
+          try {
+            await this.stores?.close();
+          } catch (error) {
+            errors.push(error);
+          }
+          if (errors.length) throw new AggregateError(errors, 'DSH Bot registry cleanup failed');
+        })());
       this.releaseResources = shutdown;
       try {
         this.stores = await openBotStores(this.ctx, {
@@ -227,17 +284,22 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
         });
         // Workspace storage may be temporarily unavailable. Bot management and
         // preset registration still work, while the launch Remote can retry.
-        try { await this.ensureWorkspace(); }
-        catch (error) { this.ctx.logger.warn(`[dsh-bot] Bots workspace startup failed: ${messageOf(error)}`); }
-        for (const id of this.stores.bots.avatarWarnings()) this.ctx.logger.warn(`[dsh-bot] avatar/invalid bot=${id}: unsupported saved avatar hidden; replace or clear explicitly`);
+        try {
+          await this.ensureWorkspace();
+        } catch (error) {
+          this.ctx.logger.warn(`[dsh-bot] Bots workspace startup failed: ${messageOf(error)}`);
+        }
+        for (const id of this.stores.bots.avatarWarnings())
+          this.ctx.logger.warn(
+            `[dsh-bot] avatar/invalid bot=${id}: unsupported saved avatar hidden; replace or clear explicitly`,
+          );
         if (this.config.seedExamples) await this.stores.bots.seedExamples(examples);
         for (const bot of this.stores.bots.list()) {
           this.creationTime = Math.max(this.creationTime, bot.createdAt);
           try {
             await ensureBotSkillsDirectory(bot.id, this.config);
             await this.acquire(await composeBotPreset(bot, this.ctx, this.config), bot);
-          }
-          catch (error) {
+          } catch (error) {
             this.diagnostics.set(bot.id, messageOf(error));
             this.ctx.logger.error(`[dsh-bot] preset startup failed bot=${bot.id}: ${messageOf(error)}`);
           }
@@ -245,7 +307,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
         this.ctx.logger.info(`[dsh-bot] registered ${this.leases.size} presets: ${[...this.leases.keys()].join(', ')}`);
       } catch (error) {
         this.failed = true;
-        try { await shutdown(); } catch (cleanup) {
+        try {
+          await shutdown();
+        } catch (cleanup) {
           throw new AggregateError([error, cleanup], 'DSH Bot registry startup and cleanup failed');
         }
         throw error;
@@ -276,13 +340,20 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const roster = new Map((await this.ctx.agentPresets.list()).map((row) => [row.id, row]));
       for (const [id, lease] of this.leases) {
         const wanted = expected.get(id);
-        if (!wanted || !roster.has(id) || roster.get(id)?.broken !== undefined
-          || !isDeepStrictEqual(lease.definition, wanted.definition) || !sameBotConfig(lease.bot, wanted.bot)) await this.release(lease);
+        if (
+          !wanted ||
+          !roster.has(id) ||
+          roster.get(id)?.broken !== undefined ||
+          !isDeepStrictEqual(lease.definition, wanted.definition) ||
+          !sameBotConfig(lease.bot, wanted.bot)
+        )
+          await this.release(lease);
       }
       for (const [id, { bot, definition }] of expected) {
         if (!this.leases.has(id)) {
-          try { await this.acquire(definition, bot); }
-          catch (error) {
+          try {
+            await this.acquire(definition, bot);
+          } catch (error) {
             this.diagnostics.set(bot.id, messageOf(error));
             this.ctx.logger.error(`[dsh-bot] reconcile failed bot=${bot.id}: ${messageOf(error)}`);
             throw error;
@@ -305,22 +376,39 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     const bots = this.stores.bots.list();
     const templateErrors = new Map<string, string>();
     for (const template of new Set(bots.map((bot) => bot.template))) {
-      try { await this.ctx.agentPresets.readDocument(template); }
-      catch (error) { templateErrors.set(template, `Cannot read template '${template}': ${messageOf(error)}`); }
+      try {
+        await this.ctx.agentPresets.readDocument(template);
+      } catch (error) {
+        templateErrors.set(template, `Cannot read template '${template}': ${messageOf(error)}`);
+      }
     }
     const avatarWarnings = new Set(this.stores.bots.avatarWarnings());
     return bots.map((bot): BotStatus => {
       const presetId = `${this.config.presetIdPrefix}${bot.id}`;
-      const identity = { id: bot.id, presetId, ...(avatarWarnings.has(bot.id) ? { warnings: ['avatar/invalid' as const] } : {}) };
+      const identity = {
+        id: bot.id,
+        presetId,
+        ...(avatarWarnings.has(bot.id) ? { warnings: ['avatar/invalid' as const] } : {}),
+      };
       const row = roster.get(presetId);
       const templateError = templateErrors.get(bot.template);
       if (templateError) return { ...identity, preset: { state: 'broken', reason: templateError } };
-      if (!row) return { ...identity, preset: {
-        state: 'missing', reason: this.diagnostics.get(bot.id) ?? `Preset '${presetId}' is not registered`,
-      } };
+      if (!row)
+        return {
+          ...identity,
+          preset: {
+            state: 'missing',
+            reason: this.diagnostics.get(bot.id) ?? `Preset '${presetId}' is not registered`,
+          },
+        };
       const lease = this.leases.get(presetId);
-      const reason = row.broken ?? (!lease ? 'Preset id is owned by another registration'
-        : !sameBotConfig(lease.bot, bot) ? 'Preset differs from the stored Bot' : undefined);
+      const reason =
+        row.broken ??
+        (!lease
+          ? 'Preset id is owned by another registration'
+          : !sameBotConfig(lease.bot, bot)
+            ? 'Preset differs from the stored Bot'
+            : undefined);
       return { ...identity, preset: reason === undefined ? { state: 'ok' } : { state: 'broken', reason } };
     });
   }
@@ -345,10 +433,16 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   memoryFor(botId: string): BotMemoryService {
     this.assertReady();
     const key = parseInput(botIdSchema, botId);
-    return new BotMemoryService(this.stores.memories, key, (operation) => this.enqueue(() => {
-      this.stores.bots.get(key);
-      return operation();
-    }), this.config.memoryListLimit);
+    return new BotMemoryService(
+      this.stores.memories,
+      key,
+      (operation) =>
+        this.enqueue(() => {
+          this.stores.bots.get(key);
+          return operation();
+        }),
+      this.config.memoryListLimit,
+    );
   }
 
   /** Host-only completion sink. The same queue drains before domain shutdown
@@ -367,15 +461,23 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const mainSessions = this.mainSessions;
       if (!mainSessions) return data;
       const bots = await this.list();
-      const mains = await Promise.all(bots.map(async bot => ({ bot, main: await mainSessions.find(bot.id) })));
-      const sessions = data.sessions.filter(row => mains.some(({ bot, main }) => bot.id === row.botId && main?.sessionId === row.sessionId));
-      return { sessions, bots: bots.map(bot => {
-        const latest = sessions.find(row => row.botId === bot.id);
-        return { botId: bot.id, lastActivityAt: latest?.updatedAt ?? 0, unreadCount: latest?.unread ? 1 : 0,
-          ...(latest ? { latest: { ...latest.lastMessage, sessionId: latest.sessionId } } : {}) };
-      }) };
-    }
-    catch (error) {
+      const mains = await Promise.all(bots.map(async (bot) => ({ bot, main: await mainSessions.find(bot.id) })));
+      const sessions = data.sessions.filter((row) =>
+        mains.some(({ bot, main }) => bot.id === row.botId && main?.sessionId === row.sessionId),
+      );
+      return {
+        sessions,
+        bots: bots.map((bot) => {
+          const latest = sessions.find((row) => row.botId === bot.id);
+          return {
+            botId: bot.id,
+            lastActivityAt: latest?.updatedAt ?? 0,
+            unreadCount: latest?.unread ? 1 : 0,
+            ...(latest ? { latest: { ...latest.lastMessage, sessionId: latest.sessionId } } : {}),
+          };
+        }),
+      };
+    } catch (error) {
       if (error instanceof DshBotError && (error.code === 'store/unavailable' || error.code === 'bot/unavailable')) {
         return { sessions: [], bots: [] };
       }
@@ -385,13 +487,14 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
 
   async markActivityRead(sessionId: string): Promise<ActivitySession> {
     const key = parseInput(activitySessionIdSchema, sessionId);
-    try { return await this.enqueue(async () => {
-      const previous = this.stores.activities.list();
-      const result = await this.stores.activities.markRead(key);
-      if (!isDeepStrictEqual(previous, this.stores.activities.list())) this.invalidate();
-      return result;
-    }); }
-    catch (error) {
+    try {
+      return await this.enqueue(async () => {
+        const previous = this.stores.activities.list();
+        const result = await this.stores.activities.markRead(key);
+        if (!isDeepStrictEqual(previous, this.stores.activities.list())) this.invalidate();
+        return result;
+      });
+    } catch (error) {
       if (error instanceof DshBotError && error.code === 'bot/unavailable') {
         throw new DshBotError('store/unavailable', 'Activity store is unavailable', { cause: error });
       }
@@ -405,10 +508,15 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const dispose = await this.ctx.agentPresets.register(definition);
       this.leases.set(definition.id, { definition, bot: structuredClone(bot), dispose });
       const row = (await this.ctx.agentPresets.list()).find((row) => row.id === definition.id);
-      if (!row || row.broken !== undefined) throw new Error(row?.broken ?? `Preset '${definition.id}' missing after registration`);
+      if (!row || row.broken !== undefined)
+        throw new Error(row?.broken ?? `Preset '${definition.id}' missing after registration`);
     } catch (error) {
-      throw new DshBotError('bot/preset-failed', `Preset '${definition.id}' failed: ${messageOf(error)}`, { cause: error });
-    } finally { this.activating.delete(bot.id); }
+      throw new DshBotError('bot/preset-failed', `Preset '${definition.id}' failed: ${messageOf(error)}`, {
+        cause: error,
+      });
+    } finally {
+      this.activating.delete(bot.id);
+    }
   }
 
   private async transition<T>(id: string, candidate: BotRecord | undefined, commit: () => Promise<T>): Promise<T> {
@@ -417,12 +525,17 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     const definition = candidate ? await composeBotPreset(candidate, this.ctx, this.config) : undefined;
     if (candidate) await ensureBotSkillsDirectory(candidate.id, this.config);
     const previous = this.leases.get(presetId);
-    const previousBroken = previous && (await this.ctx.agentPresets.list()).find((row) => row.id === presetId)?.broken !== undefined;
+    const previousBroken =
+      previous && (await this.ctx.agentPresets.list()).find((row) => row.id === presetId)?.broken !== undefined;
     // An unregister rejection has unknown side effects; do not claim recovery.
     if (previous) {
-      try { await this.release(previous); } catch (error) {
+      try {
+        await this.release(previous);
+      } catch (error) {
         this.failed = true;
-        throw new DshBotError('bot/rollback-failed', `Cannot retire '${presetId}': ${messageOf(error)}`, { cause: error });
+        throw new DshBotError('bot/rollback-failed', `Cannot retire '${presetId}': ${messageOf(error)}`, {
+          cause: error,
+        });
       }
     }
     try {
@@ -435,8 +548,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
         const failed = this.leases.get(presetId);
         if (failed) await this.release(failed);
         if (previous) {
-          try { await this.acquire(previous.definition, previous.bot); }
-          catch (restore) {
+          try {
+            await this.acquire(previous.definition, previous.bot);
+          } catch (restore) {
             // A previously broken startup definition remains editable/deletable.
             if (!previousBroken || !this.leases.has(presetId)) throw restore;
             this.diagnostics.set(id, messageOf(restore));
@@ -444,8 +558,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
         }
       } catch (rollback) {
         this.failed = true;
-        throw new DshBotError('bot/rollback-failed',
-          `${messageOf(error)}; rollback failed: ${messageOf(rollback)}`, { cause: new AggregateError([error, rollback]) });
+        throw new DshBotError('bot/rollback-failed', `${messageOf(error)}; rollback failed: ${messageOf(rollback)}`, {
+          cause: new AggregateError([error, rollback]),
+        });
       }
       throw error;
     }
@@ -476,17 +591,32 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     let stopped = false;
     let pending = true;
     let wake: (() => void) | undefined;
-    const changed = () => { pending = true; wake?.(); };
+    const changed = () => {
+      pending = true;
+      wake?.();
+    };
     const release = this.watchOwner.effect(() => {
       this.changeListeners.add(changed);
-      return () => { this.changeListeners.delete(changed); stopped = true; wake?.(); };
+      return () => {
+        this.changeListeners.delete(changed);
+        stopped = true;
+        wake?.();
+      };
     }, 'dsh-bot: change stream');
-    const abort = () => { release(); };
+    const abort = () => {
+      release();
+    };
     signal.addEventListener('abort', abort, { once: true });
     try {
       while (!stopped && !signal.aborted) {
-        if (pending) { pending = false; yield botChangeSchema.parse({ revision: this.changeRevision }); continue; }
-        await new Promise<void>((resolve) => { wake = resolve; });
+        if (pending) {
+          pending = false;
+          yield botChangeSchema.parse({ revision: this.changeRevision });
+          continue;
+        }
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
         wake = undefined;
       }
     } finally {
@@ -496,7 +626,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   }
 
   @Remote
-  async list(): Promise<BotRecord[]> { return this.enqueue(() => this.stores.bots.list()); }
+  async list(): Promise<BotRecord[]> {
+    return this.enqueue(() => this.stores.bots.list());
+  }
 
   @Remote
   async catalogInfo(): Promise<CatalogInfo> {
@@ -508,10 +640,12 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     const rows = await this.enqueue(() => this.statusRows());
     const mainSessions = this.mainSessions;
     if (!mainSessions) return rows;
-    return Promise.all(rows.map(async row => {
-      const main = await mainSessions.find(row.id);
-      return { ...row, ...(main ? { mainSessionId: main.sessionId } : {}) };
-    }));
+    return Promise.all(
+      rows.map(async (row) => {
+        const main = await mainSessions.find(row.id);
+        return { ...row, ...(main ? { mainSessionId: main.sessionId } : {}) };
+      }),
+    );
   }
 
   @Remote
@@ -522,15 +656,20 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     const graph = this.ctx.get('dshBotReferenceMemory');
     if (graph) {
       const bot = await this.get(botId);
-      try { await graph.apply({ botId: bot.id, botCreatedAt: bot.createdAt }); }
-      catch { this.ctx.logger.warn('[dsh-bot] reference graph unavailable; internal memory remains active'); }
+      try {
+        await graph.apply({ botId: bot.id, botCreatedAt: bot.createdAt });
+      } catch {
+        this.ctx.logger.warn('[dsh-bot] reference graph unavailable; internal memory remains active');
+      }
     }
     this.invalidate();
     return result;
   }
 
   @Remote
-  async get(id: string): Promise<BotRecord> { return this.enqueue(() => this.stores.bots.get(id)); }
+  async get(id: string): Promise<BotRecord> {
+    return this.enqueue(() => this.stores.bots.get(id));
+  }
 
   @Remote
   async ensureHome(botId: string): Promise<BotHome> {
@@ -551,19 +690,23 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const { path } = await this.homes.ensureRoot();
       // Resolve the authoritative path on every request: a saved id can have
       // been deleted, and an existing user-named workspace must retain its name.
-      const workspace = await registry.resolveByPath(path) ?? await registry.create(path, 'Bots');
+      const workspace = (await registry.resolveByPath(path)) ?? (await registry.create(path, 'Bots'));
       if (this.stores.bots.botsWorkspaceId() !== workspace.id) await this.stores.bots.saveBotsWorkspaceId(workspace.id);
       // Never attach historical activity here. Native deletion deliberately
       // removed its membership; archive state and old private-home cwd survive.
       return botsWorkspaceSchema.parse({ workspaceId: workspace.id, path: workspace.path });
     } catch (error) {
       if (error instanceof DshBotError) throw error;
-      throw new DshBotError('bot/unavailable', `Cannot ensure the shared Bots workspace: ${messageOf(error)}`, { cause: error });
+      throw new DshBotError('bot/unavailable', `Cannot ensure the shared Bots workspace: ${messageOf(error)}`, {
+        cause: error,
+      });
     }
   }
 
   @Remote
-  async ensureBotsWorkspace(): Promise<BotsWorkspace> { return this.enqueue(() => this.ensureWorkspace()); }
+  async ensureBotsWorkspace(): Promise<BotsWorkspace> {
+    return this.enqueue(() => this.ensureWorkspace());
+  }
 
   private async createRecord(input: BotCreateInput, action: 'create' | 'duplicate'): Promise<BotRecord> {
     const fields = parseInput(botCreateSchema, input);
@@ -576,7 +719,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     const candidate = parseInput(botSchema, { ...fields, createdAt: now, updatedAt: now, schemaVersion: 1 });
     // The generation snapshot and stored identity must share their creation
     // time even when preset activation crosses a millisecond boundary.
-    const record = await this.transition(fields.id, candidate, () => this.stores.bots.create(fields, candidate.createdAt));
+    const record = await this.transition(fields.id, candidate, () =>
+      this.stores.bots.create(fields, candidate.createdAt),
+    );
     this.changed(record.id, action);
     return record;
   }
@@ -593,7 +738,9 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const previous = this.stores.bots.get(id);
       const candidate = parseInput(botSchema, { ...previous, ...fields });
       await validateDefaultCwd(candidate.defaultCwd);
-      const record = await this.transition(id, candidate, () => this.stores.bots.update(id, fields, previous.updatedAt));
+      const record = await this.transition(id, candidate, () =>
+        this.stores.bots.update(id, fields, previous.updatedAt),
+      );
       this.changed(id, 'update');
       return record;
     }, true);
@@ -605,9 +752,20 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
   async duplicate(id: string, newId: string): Promise<BotRecord> {
     return this.enqueue(async () => {
       const original = this.stores.bots.get(id);
-      const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, schemaVersion: _schemaVersion, ...fields } = original;
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        schemaVersion: _schemaVersion,
+        ...fields
+      } = original;
       const duplicate = await this.createRecord({ ...fields, id: newId }, 'duplicate');
-      await this.ctx.get('dshBotConnectors')?.copyDisabled({ botId: original.id, botCreatedAt: original.createdAt }, { botId: duplicate.id, botCreatedAt: duplicate.createdAt });
+      await this.ctx
+        .get('dshBotConnectors')
+        ?.copyDisabled(
+          { botId: original.id, botCreatedAt: original.createdAt },
+          { botId: duplicate.id, botCreatedAt: duplicate.createdAt },
+        );
       return duplicate;
     }, true);
   }
@@ -621,10 +779,14 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
       const removeHome = fields.deleteHome ? await this.homes.prepareRemoval(key) : undefined;
       await this.transition(key, undefined, () => this.stores.bots.remove(key, fields));
       this.changed(key, 'remove');
-      try { await removeHome?.(); }
-      catch (error) {
-        throw new DshBotError('bot/home-cleanup-failed',
-          'Bot was deleted, but its private home cleanup failed; its remaining private files may need manual cleanup', { cause: error });
+      try {
+        await removeHome?.();
+      } catch (error) {
+        throw new DshBotError(
+          'bot/home-cleanup-failed',
+          'Bot was deleted, but its private home cleanup failed; its remaining private files may need manual cleanup',
+          { cause: error },
+        );
       }
     }, true);
   }

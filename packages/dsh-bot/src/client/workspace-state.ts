@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { BotKey } from '../shared/p34.js';
+import type { BotKey } from '../shared/integrations.js';
 import { graphResultSchema, type GraphStatus } from '../shared/reference-memory.js';
 import type { ReferenceMemoryMethods, WorkspaceMethods } from '../shared/workspace-contract.js';
 import { createPollingCatalog, type PollingCatalog, type BotCatalogOptions } from './state.js';

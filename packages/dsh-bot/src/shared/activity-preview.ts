@@ -18,13 +18,24 @@ export function createActivityPreview(text: string): string {
     // Intraword underscores are ordinary text (identifiers, paths, etc.).
     .replace(/(?<![\p{L}\p{N}_])(_{1,2})(?=\S)([\s\S]*?\S)\1(?![\p{L}\p{N}_])/gu, '$2')
     .replace(/`+([^`]+)`+/gu, '$1')
-    .replace(/&(?:amp|lt|gt|quot|apos|nbsp);/gu, (entity) => ({
-      '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&nbsp;': ' ',
-    })[entity] ?? entity)
+    .replace(
+      /&(?:amp|lt|gt|quot|apos|nbsp);/gu,
+      (entity) =>
+        ({
+          '&amp;': '&',
+          '&lt;': '<',
+          '&gt;': '>',
+          '&quot;': '"',
+          '&apos;': "'",
+          '&nbsp;': ' ',
+        })[entity] ?? entity,
+    )
     .replace(/\p{Cc}/gu, ' ')
-    .replace(/\s+/gu, ' ').trim();
+    .replace(/\s+/gu, ' ')
+    .trim();
   if (hasCredential(plain)) return ACTIVITY_HIDDEN_PREVIEW;
   const points = [...plain];
-  return points.length <= ACTIVITY_PREVIEW_MAX_CHARS ? plain
+  return points.length <= ACTIVITY_PREVIEW_MAX_CHARS
+    ? plain
     : `${points.slice(0, ACTIVITY_PREVIEW_MAX_CHARS - 1).join('')}…`;
 }

@@ -7,7 +7,10 @@ import { botChangeSchema, type BotChange, type DshBotRemoteMethods } from '../sh
  * Every generation's opening triggers an authoritative refetch, so neither a
  * disconnected interval nor a coalesced burst needs a durable event cursor.
  */
-export function createChangeStream(ctx: Context, changed: () => void): {
+export function createChangeStream(
+  ctx: Context,
+  changed: () => void,
+): {
   start(): void;
   stop(): Promise<void>;
 } {
@@ -22,7 +25,13 @@ export function createChangeStream(ctx: Context, changed: () => void): {
     previous.handle.dispose();
     await previous.done;
   };
-  ctx.effect(() => async () => { disposed = true; await stop(); }, 'dsh-bot: Client change stream');
+  ctx.effect(
+    () => async () => {
+      disposed = true;
+      await stop();
+    },
+    'dsh-bot: Client change stream',
+  );
   return {
     stop,
     start() {
@@ -32,8 +41,11 @@ export function createChangeStream(ctx: Context, changed: () => void): {
       if (!remote?.watch) return;
       const abort = new AbortController();
       let handle: RemoteStreamHandle<BotChange, never>;
-      try { handle = remote.watch(abort.signal); }
-      catch { return; }
+      try {
+        handle = remote.watch(abort.signal);
+      } catch {
+        return;
+      }
       const run: Run = { abort, handle, done: Promise.resolve() };
       current = run;
       run.done = (async () => {

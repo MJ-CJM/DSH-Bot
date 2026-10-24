@@ -1,18 +1,18 @@
-import { openP34Stores } from '../src/host/p34/store.js';
-import { need } from '../src/host/p34/common.js';
+import { openIntegrationStores } from '../src/host/common/integration-stores.js';
+import { need } from '../src/host/common/operations.js';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
 import { randomUUID } from 'node:crypto';
 import { ToolCallId } from '@deepseek-ai/dsh-llm';
 import { describe, expect, it, vi } from 'vitest';
 import { quietAt, localTime, Notifications, type NotificationPort } from '../src/host/notifications/service.js';
 import { registerNotifyTool } from '../src/host/notifications/tool.js';
-import { notificationSchema } from '../src/shared/p34.js';
-import { alpha, beta, policy, withP34 } from './p34-support.js';
+import { notificationSchema } from '../src/shared/integrations.js';
+import { alpha, beta, policy, withIntegrations } from './integration-support.js';
 const port = () => ({ describe: vi.fn(async () => ({ targetDigest: 'fingerprint-one', label: 'Synthetic target' })), send: vi.fn<NotificationPort['send']>(async () => ({ state: 'accepted', platformMessageId: 'msg-one' })) });
 const input = (operationId: string = randomUUID()) => ({ operationId, policyId: 'policy', text: 'Synthetic report' });
 const source = { kind: 'tool' as const, id: 'source' };
 describe('P34 persistent notification admission (real JSON domain; fake platform and controlled clock)', () => {
-  it('preserves in-app notifications independently of external limits and never wakes a model', async () => withP34(async f => {
+  it('preserves in-app notifications independently of external limits and never wakes a model', async () => withIntegrations(async f => {
     await f.notifications.savePolicy(policy('policy', 'in-app', { dailyLimit: 0, quietHours: { start: '00:00', end: '00:00' } }), 0, false);
     const r = await f.notifications.record(alpha, input('local'), source);
     expect((await f.notifications.deliver(r.id)).state).toBe('recorded');
@@ -23,7 +23,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
   }));
   it('serializes quota reservations, deduplicates operationId and holds unknown quota across reopen', async () => {
     const p = port(); p.send.mockRejectedValue(new Error('disconnect AFTER send'));
-    await withP34(async f => {
+    await withIntegrations(async f => {
       const saved = await f.notifications.savePolicy(policy('policy', 'im', { dailyLimit: 1 }), 0, false);
       const records = await Promise.all(['one', 'two'].map(id => f.notifications.record(alpha, input(id), source)));
       const results = await Promise.all(records.map(r => f.notifications.deliver(r.id, saved.scopeDigest)));
@@ -37,13 +37,13 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
     }, p);
   });
   it('recovers sending as unknown and approval as cancelled, with no automatic resend', async () => {
-    const p = port(); await withP34(async f => {
+    const p = port(); await withIntegrations(async f => {
       await f.notifications.savePolicy(policy(), 0, false);
       const one = await f.notifications.record(alpha, input('sending'), source); const two = await f.notifications.record(alpha, input('waiting'), source);
       await f.stores.notifications.table('intents').put(one.id, notificationSchema.parse({ ...one, state: 'sending', reservation: { at: f.clock.at, day: '2026-10-24' } }));
       await f.notifications.waiting(two.id);
       await f.notifications.close(); await f.connectors.close(); await f.stores.close();
-      const stores = await openP34Stores(f.ctx); const n = new Notifications(f.ctx, stores, f.registry, f.notifications.options, () => {}, p, () => f.clock.at);
+      const stores = await openIntegrationStores(f.ctx); const n = new Notifications(f.ctx, stores, f.registry, f.notifications.options, () => {}, p, () => f.clock.at);
       await n.recover();
       expect(n.get(one.id)).toMatchObject({ state: 'unknown', reasonCode: 'recovery-needed' });
       expect(n.get(two.id).state).toBe('cancelled'); expect(p.send).not.toHaveBeenCalled();
@@ -51,7 +51,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
     }, p);
   });
   it('rejects changed scope, fingerprint, Bot birthday and unconfirmed preapproval', async () => {
-    const p = port(); await withP34(async f => {
+    const p = port(); await withIntegrations(async f => {
       await expect(f.notifications.savePolicy(policy('pre', 'im', { authorization: { mode: 'preapproved' } }), 0, false)).rejects.toMatchObject({ code: 'p34/approval-denied' });
       const saved = await f.notifications.savePolicy(policy(), 0, false); const one = await f.notifications.record(alpha, input('changed'), source);
       await f.notifications.savePolicy(policy('policy', 'im', { dailyLimit: 2 }), 1, false);
@@ -71,7 +71,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
     expect(quietAt(Date.now(), { ...config, quietHours: { start: '00:00', end: '00:00' } })).toBe(true);
     for (const at of ['2026-11-01T08:30:00Z', '2026-11-01T09:30:00Z']) expect(localTime(Date.parse(at), config.timezone)).toEqual({ day: '2026-11-01', time: '01:30' });
     expect(localTime(Date.parse('2026-03-08T10:00:00Z'), config.timezone).time).toBe('03:00');
-    const p = port(); await withP34(async f => {
+    const p = port(); await withIntegrations(async f => {
       f.clock.at = Date.parse('2026-10-24T06:59:00Z');
       const saved = await f.notifications.savePolicy(policy('policy', 'im', { dailyLimit: 1, timezone: config.timezone }), 0, false);
       for (const [id, offset] of [['before', 0], ['after', 60000], ['over', 0]] as const) {
@@ -82,7 +82,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
     }, p);
   });
   it('uses cooldown reservations including failed sends and keeps dedup tombstones after content retention', async () => {
-    const p = port(); p.send.mockResolvedValue({ state: 'failed' }); await withP34(async f => {
+    const p = port(); p.send.mockResolvedValue({ state: 'failed' }); await withIntegrations(async f => {
       const saved = await f.notifications.savePolicy(policy('policy', 'im', { cooldownSec: 60 }), 0, false);
       for (const id of ['first', 'cool']) { const r = await f.notifications.record(alpha, input(id), source); await f.notifications.deliver(r.id, saved.scopeDigest); }
       expect(f.notifications.get('cool').reasonCode).toBe('cooldown');
@@ -93,7 +93,7 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
   });
   it('bounds a stuck platform send, records unknown and keeps the reservation', async () => {
     const p = port(); p.send.mockImplementation(async request => new Promise((_accept, reject) => request.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })));
-    await withP34(async f => {
+    await withIntegrations(async f => {
       const saved = await f.notifications.savePolicy(policy('policy', 'im', { dailyLimit: 1 }), 0, false);
       const r = await f.notifications.record(alpha, input('timeout'), source);
       expect((await f.notifications.deliver(r.id, saved.scopeDigest)).state).toBe('unknown');
@@ -104,25 +104,25 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
   });
   it('Host shutdown cancels an in-flight adapter call without sending a second attempt', async () => {
     const p = port(); p.send.mockImplementation(async request => new Promise((_accept, reject) => request.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })));
-    await withP34(async f => {
+    await withIntegrations(async f => {
       const saved = await f.notifications.savePolicy(policy(), 0, false); const r = await f.notifications.record(alpha, input('close'), source);
       const request = f.notifications.deliver(r.id, saved.scopeDigest); await vi.waitFor(() => expect(p.send).toHaveBeenCalledOnce());
       await f.notifications.close(); expect((await request).state).toBe('unknown');
       await expect(f.notifications.record(alpha, input('late'), source)).rejects.toMatchObject({ code: 'p34/unavailable' });
     }, p);
   });
-  it('refuses IM without adapter while local policies remain usable', async () => withP34(async f => {
+  it('refuses IM without adapter while local policies remain usable', async () => withIntegrations(async f => {
     await expect(f.notifications.savePolicy(policy(), 0, false)).rejects.toMatchObject({ code: 'p34/unsupported' });
     expect((await f.notifications.savePolicy(policy('policy', 'im', { enabled: false }), 0, false)).enabled).toBe(false);
     expect(f.notifications.supported()).toBe(false);
   }));
 });
 describe('bot_notify with real native ToolRuntime and ApprovalService, Agent event fixture', () => {
-  async function execute(f: Parameters<Parameters<typeof withP34>[0]>[0], agent: ReturnType<typeof f.createAgent>['agent'], id = randomUUID()) {
+  async function execute(f: Parameters<Parameters<typeof withIntegrations>[0]>[0], agent: ReturnType<typeof f.createAgent>['agent'], id = randomUUID()) {
     return f.ctx.tools.execute({ agent, name: 'bot_notify', arguments: { policyId: 'policy', text: 'Specific text' }, callId: ToolCallId(id), signal: new AbortController().signal });
   }
   it('denied native ask sends nothing, leaves local cancelled record and bilingual approval audit', async () => {
-    const p = port(); await withP34(async f => {
+    const p = port(); await withIntegrations(async f => {
       await f.notifications.savePolicy(policy(), 0, false); const a = f.createAgent(); registerNotifyTool(a.agent, alpha, f.notifications);
       const approval: unknown[] = []; f.ctx.on('approval/request', async request => { approval.push(request.displayReason); return 'rejected'; });
       expect((await execute(f, a.agent)).isError).toBe(true);
@@ -132,7 +132,7 @@ describe('bot_notify with real native ToolRuntime and ApprovalService, Agent eve
     }, p);
   });
   it('allows approved call exactly once and rejects a policy edit during approval', async () => {
-    const p = port(); await withP34(async f => {
+    const p = port(); await withIntegrations(async f => {
       await f.notifications.savePolicy(policy(), 0, false); const a = f.createAgent(); registerNotifyTool(a.agent, alpha, f.notifications);
       f.ctx.on('approval/request', async () => 'allowed-once');
       const callId = randomUUID(); expect((await execute(f, a.agent, callId)).isError).toBe(false); await execute(f, a.agent, callId); expect(p.send).toHaveBeenCalledOnce();
@@ -141,7 +141,7 @@ describe('bot_notify with real native ToolRuntime and ApprovalService, Agent eve
     }, p);
   });
   it('native never policy refuses ask on a subagent without borrowing a root session', async () => {
-    const p = port(); await withP34(async f => {
+    const p = port(); await withIntegrations(async f => {
       await f.notifications.savePolicy(policy(), 0, false); const a = f.createAgent('native-never-child'); registerNotifyTool(a.agent, alpha, f.notifications);
       setApprovalPolicy(a.agent.session, 'never');
       expect((await execute(f, a.agent)).isError).toBe(true); expect(p.send).not.toHaveBeenCalled();

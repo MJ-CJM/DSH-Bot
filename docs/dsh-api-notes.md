@@ -1,5 +1,12 @@
 # DSH API 核实记录
 
+## P34 审查返工（2026-10-24）
+
+没有新增 DSH API 或依赖。既有公开 `sidebar.session.row.leading` / `hover` slot 新增 exact 群根身份贡献，与 Bot/原生 schedule 的贡献并存并随 effect 注销；52 文件 / 667 测试验证挂载、卸载及鲸鱼/群名。输入式 @ 只在 Client 解析为既有 memberIds，Host codec/准入/CAS 不放宽。保留旧 Remote contribution/service/typeSymbol/错误码及所有 v1 存储身份，领域文件和 locale 改名不需要数据迁移。
+
+Reference Memory 仅按写入适配器、后端状态、复制状态机和读回校验拆文件。真实 tarball 的首次/冷 Host 再验通过：连接器/通知 2 次、群 9 次、记忆 3 次 loopback 请求，真实模型各 0；群根模型请求 0，新增原生 session/list 断言每 Bot 只有一个可见主会话。截图脚本种子独立 Host 通过，2 次 loopback；亮暗和窄屏在 Chromium MachPort 启动阶段 FAIL（环境），没有 PNG。具体收据、命令和 1–11 项结果见 [返工验收](acceptance/P34-rework.md)。
+
+
 ## U09–U11：管理工作区、Reference Memory 并存与单向复制（2026-10-24）
 
 实现、命令、逐项结果和浏览器失败见 [U09–U11 验收](acceptance/P34-U09-11.md)。原 MemoryStore、`memory_*` 和一次性注入快照保持权威；无 reference-only、反向导入或后台双写。版本仍为 0.2.2 开发包，U12 才统一打 0.3.0。

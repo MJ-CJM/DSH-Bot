@@ -5,7 +5,7 @@ import { WORKSPACE_REMOTE } from '../../shared/workspace-contract.js';
 import type { WorkspaceMethods, ReferenceMemoryMethods } from '../../shared/workspace-contract.js';
 import type { WorkspaceManagement } from './service.js';
 import type { ReferenceMemory } from '../reference-memory/service.js';
-import { P34Error } from '../p34/common.js';
+import { OperationError } from '../common/operations.js';
 export const WORKSPACE_HOST = {
   package: 'dsh-bot/workspace',
   face: 'host',
@@ -23,7 +23,7 @@ export class WorkspaceRemote extends TypertRemoteService {
     super(ctx, 'dshBotWorkspaceRemote', { namespace: 'dshBot.workspace' });
   }
   @Remote async request(input: Parameters<WorkspaceMethods['request']>[0]) {
-    if (!this.management) throw new P34Error('unavailable');
+    if (!this.management) throw new OperationError('unavailable');
     return this.management.request(input);
   }
 }
@@ -37,7 +37,7 @@ export class ReferenceMemoryRemote extends TypertRemoteService {
     });
   }
   @Remote async request(input: Parameters<ReferenceMemoryMethods['request']>[0]) {
-    if (!this.memory) throw new P34Error('unavailable');
+    if (!this.memory) throw new OperationError('unavailable');
     return this.memory.request(input);
   }
 }

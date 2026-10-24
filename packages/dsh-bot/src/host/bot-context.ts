@@ -22,7 +22,11 @@ import { BOT_DELEGATE_TOOL_NAME, registerDelegateTool } from './delegate/tool.js
 // Compatibility only: do not pass retired local tools to native restrict(),
 // which rejects unknown names. Keep unrelated unknown names strict.
 const RETIRED_ROUTINE_TOOL_NAMES: readonly string[] = [
-  'routine_create', 'routine_list', 'routine_update', 'routine_delete', 'routine_run_now',
+  'routine_create',
+  'routine_list',
+  'routine_update',
+  'routine_delete',
+  'routine_run_now',
 ];
 
 export const name = 'dsh-bot-context';
@@ -61,13 +65,23 @@ export function apply(ctx: Context, config: Config): void {
   const deniedMemory = new Set(bot.tools.deny.filter((name) => MEMORY_TOOL_NAMES.includes(name)));
   const denyBotManage = bot.tools.deny.includes(BOT_MANAGE_TOOL_NAME);
   if (!denyBotManage) registerBotPresetManage(ctx, botId);
-  const deny = bot.tools.deny.filter((name) => !deniedMemory.has(name) && name !== BOT_MANAGE_TOOL_NAME && name !== BOT_DELEGATE_TOOL_NAME && name !== 'bot_notify' && !RETIRED_ROUTINE_TOOL_NAMES.includes(name));
-  const model = bot.model ? {
-    provider: bot.model.provider,
-    model: bot.model.model,
-    ...(bot.model.reasoningEffort === undefined
-      ? {} : { reasoningEffort: ReasoningEffortId(bot.model.reasoningEffort) }),
-  } : undefined;
+  const deny = bot.tools.deny.filter(
+    (name) =>
+      !deniedMemory.has(name) &&
+      name !== BOT_MANAGE_TOOL_NAME &&
+      name !== BOT_DELEGATE_TOOL_NAME &&
+      name !== 'bot_notify' &&
+      !RETIRED_ROUTINE_TOOL_NAMES.includes(name),
+  );
+  const model = bot.model
+    ? {
+        provider: bot.model.provider,
+        model: bot.model.model,
+        ...(bot.model.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: ReasoningEffortId(bot.model.reasoningEffort) }),
+      }
+    : undefined;
   const binding = Object.freeze({ botId, botCreatedAt: bot.createdAt });
 
   const shouldUseBotModel = (agent: Agent) => {
@@ -84,9 +98,11 @@ export function apply(ctx: Context, config: Config): void {
         throw new Error(`Model '${model.model}' is not advertised by provider '${model.provider}'`);
       }
     } catch (cause) {
-      throw new DshBotError('bot/preset-failed',
+      throw new DshBotError(
+        'bot/preset-failed',
         `Bot '${botId}' model '${model.provider}/${model.model}' is unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
-        { cause });
+        { cause },
+      );
     }
   };
 
@@ -102,7 +118,8 @@ export function apply(ctx: Context, config: Config): void {
       // Compute once, before registration. Neither saves nor later assemblies
       // replace the cached system prefix of this live Agent.
       const memoryText = memory
-        ? buildMemoryPrompt(await memory.snapshot(memoryPolicy.injectLimit), maxInjectChars) : '';
+        ? buildMemoryPrompt(await memory.snapshot(memoryPolicy.injectLimit), maxInjectChars)
+        : '';
       let homeText = 'Private directory unavailable; use the current workspace under native permissions and approval.';
       try {
         const { path } = await ctx.dshBots.ensureHome(botId);
@@ -128,53 +145,87 @@ export function apply(ctx: Context, config: Config): void {
           bindings.delete(agent);
           const errors: unknown[] = [];
           for (const release of releases.splice(0).reverse()) {
-            try { release(); } catch (error) { errors.push(error); }
+            try {
+              release();
+            } catch (error) {
+              errors.push(error);
+            }
           }
           if (errors.length) throw new AggregateError(errors, 'Bot agent cleanup failed');
         };
         try {
           // Do not silently ignore unknown, same-layer or reserved tool names.
           if (deny.length) releases.push(agent.ctx.tools.restrict({ deny }));
-          releases.push(agent.ctx.systemPrompt.section({
-            name: 'dsh-bot:home', order: memorySectionOrder, text: homeText, interpolate: false,
-          }));
+          releases.push(
+            agent.ctx.systemPrompt.section({
+              name: 'dsh-bot:home',
+              order: memorySectionOrder,
+              text: homeText,
+              interpolate: false,
+            }),
+          );
           if (memory) {
             // restrict() only hides inherited tools in rc.2. Omit denied local
             // definitions so schema lookup and dispatch agree for memory tools.
             for (const tool of createMemoryTools(memory, agent)) {
               if (!deniedMemory.has(tool.name)) releases.push(agent.ctx.tools.register(tool));
             }
-            if (memoryText) releases.push(agent.ctx.systemPrompt.section({
-              name: 'dsh-bot:memory', order: memorySectionOrder, text: memoryText, interpolate: false,
-            }));
+            if (memoryText)
+              releases.push(
+                agent.ctx.systemPrompt.section({
+                  name: 'dsh-bot:memory',
+                  order: memorySectionOrder,
+                  text: memoryText,
+                  interpolate: false,
+                }),
+              );
           }
           bindings.set(agent, binding);
-          releases.push(agent.ctx.systemPrompt.section({
-            name: 'dsh-bot:schedule', order: memorySectionOrder,
-            text: en.tools['schedule.guidance'], interpolate: false,
-          }));
+          releases.push(
+            agent.ctx.systemPrompt.section({
+              name: 'dsh-bot:schedule',
+              order: memorySectionOrder,
+              text: en.tools['schedule.guidance'],
+              interpolate: false,
+            }),
+          );
           if (!bot.tools.deny.includes(BOT_DELEGATE_TOOL_NAME)) releases.push(registerDelegateTool(agent));
           if (model) {
             // Only alter route variables, never text/tools or other assembly
             // fields. Session history and explicit selection remain authoritative.
             let useBotModel = false;
-            releases.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-              useBotModel = false;
-              const selected = shouldUseBotModel(agent);
-              if (selected) await validateModel();
-              const assembled = await next();
-              useBotModel = selected && !stopped;
-              if (!useBotModel) return assembled;
-              return { ...assembled, variables: { ...assembled.variables, provider: model.provider, model: model.model } };
-            }, { prepend: true }));
-            releases.push(agent.ctx.on('agent/request', async (_payload, next) => {
-              const resolved = await next();
-              if (!useBotModel) return resolved;
-              await validateModel();
-              if (stopped) return resolved;
-              const { reasoningEffort: _inheritedEffort, ...rest } = resolved;
-              return { ...rest, ...model };
-            }, { prepend: true }));
+            releases.push(
+              agent.ctx.on(
+                'system-prompt/assemble',
+                async (_assembly, _context, next) => {
+                  useBotModel = false;
+                  const selected = shouldUseBotModel(agent);
+                  if (selected) await validateModel();
+                  const assembled = await next();
+                  useBotModel = selected && !stopped;
+                  if (!useBotModel) return assembled;
+                  return {
+                    ...assembled,
+                    variables: { ...assembled.variables, provider: model.provider, model: model.model },
+                  };
+                },
+                { prepend: true },
+              ),
+            );
+            releases.push(
+              agent.ctx.on(
+                'agent/request',
+                async (_payload, next) => {
+                  const resolved = await next();
+                  if (!useBotModel) return resolved;
+                  await validateModel();
+                  if (stopped) return resolved;
+                  const { reasoningEffort: _inheritedEffort, ...rest } = resolved;
+                  return { ...rest, ...model };
+                },
+                { prepend: true },
+              ),
+            );
           }
           return cleanup;
         } catch (error) {
@@ -183,12 +234,20 @@ export function apply(ctx: Context, config: Config): void {
         }
       }, `dsh-bot: agent ${botId}`);
       const notifications = agent.ctx.get('dshBotNotifications');
-      const releaseNotify = notifications && !bot.tools.deny.includes('bot_notify') ? registerNotifyTool(agent, binding, notifications) : undefined;
+      const releaseNotify =
+        notifications && !bot.tools.deny.includes('bot_notify')
+          ? registerNotifyTool(agent, binding, notifications)
+          : undefined;
       const connectors = agent.ctx.get('dshBotConnectors');
       let starting: Promise<(() => Promise<void>) | undefined> | undefined;
       let closing: Promise<void> | undefined;
       const cleanup = () => {
-        closing ??= (async () => { dispose(); releaseNotify?.(); const releaseConnector = await starting; await releaseConnector?.(); })();
+        closing ??= (async () => {
+          dispose();
+          releaseNotify?.();
+          const releaseConnector = await starting;
+          await releaseConnector?.();
+        })();
         return closing;
       };
       // Publish cleanup before the asynchronous MCP start. A preset can unload
@@ -198,14 +257,21 @@ export function apply(ctx: Context, config: Config): void {
       try {
         await starting;
         if (stopped) throw new DshBotError('bot/unavailable', 'Bot context is unloading');
-      } catch (error) { await cleanup(); throw error; }
+      } catch (error) {
+        await cleanup();
+        throw error;
+      }
     });
     return async () => {
       stopped = true;
       offCreated();
       const errors: unknown[] = [];
       for (const dispose of [...agents.values()]) {
-        try { await dispose(); } catch (error) { errors.push(error); }
+        try {
+          await dispose();
+        } catch (error) {
+          errors.push(error);
+        }
       }
       agents.clear();
       if (errors.length) throw new AggregateError(errors, 'Bot preset cleanup failed');

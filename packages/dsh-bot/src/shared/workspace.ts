@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import { botCreateSchema, memoryAddSchema } from './schema.js';
 import { botIdSchema } from './ids.js';
-import { botKeySchema, p34Id } from './p34.js';
+import { botKeySchema, resourceId } from './integrations.js';
 import { hasCredential } from './secrets.js';
 
 function hasLocalPath(value: unknown): boolean {
-  if (typeof value === 'string') return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(value)
-    || /\/(?:Users|home|private|Volumes|tmp|var|opt|Applications|usr|etc|root|mnt)\/|[A-Za-z]:[\\/]/u.test(value);
+  if (typeof value === 'string')
+    return (
+      /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(value) ||
+      /\/(?:Users|home|private|Volumes|tmp|var|opt|Applications|usr|etc|root|mnt)\/|[A-Za-z]:[\\/]/u.test(value)
+    );
   if (Array.isArray(value)) return value.some(hasLocalPath);
   return value !== null && typeof value === 'object' && Object.values(value).some(hasLocalPath);
 }
@@ -40,7 +43,7 @@ export const botExportSchema = z
     bot: portableBotSchema,
     skillsManifest: z.array(skillFileSchema).max(128).default([]),
     connectorTemplates: z
-      .array(z.strictObject({ connectorId: p34Id, enabled: z.literal(false) }))
+      .array(z.strictObject({ connectorId: resourceId, enabled: z.literal(false) }))
       .max(128)
       .default([]),
     channelTemplates: z
@@ -77,13 +80,13 @@ export const workspaceSummarySchema = z.strictObject({
   unknown: z.number().int().nonnegative(),
 });
 export const importPreviewSchema = z.strictObject({
-  id: p34Id,
+  id: resourceId,
   newId: botIdSchema,
   digest: z.string(),
   files: z.array(z.string()),
   memories: z.number().int().nonnegative(),
-  connectorRefs: z.array(p34Id),
-  missingConnectorRefs: z.array(p34Id),
+  connectorRefs: z.array(resourceId),
+  missingConnectorRefs: z.array(resourceId),
   conflict: z.boolean(),
   phase: z.enum(['preview', 'applying', 'committed', 'failed']),
   createdBot: botKeySchema.optional(),
@@ -109,10 +112,10 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
     bot: botKeySchema,
     document: botExportSchema,
   }),
-  z.strictObject({ action: z.literal('inspect'), previewId: p34Id }),
+  z.strictObject({ action: z.literal('inspect'), previewId: resourceId }),
   z.strictObject({
     action: z.literal('import'),
-    previewId: p34Id,
+    previewId: resourceId,
     confirmed: z.literal(true),
   }),
 ]);

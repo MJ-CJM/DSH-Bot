@@ -22,6 +22,7 @@ export async function captureCollaboration(url, outputDir, env) {
       const context = await browser.newContext({ colorScheme: theme, locale: 'en-US', viewport: { width: 1360, height: 1000 }, reducedMotion: 'reduce' });
       const page = await context.newPage(); await installOverlayHandler(page,() => {}); await page.goto(url,{waitUntil:'domcontentloaded'}); await dismissFirstRunOverlays(page,() => {},'collaboration-first');
       await page.getByRole('button',{name:'Bots',exact:true}).click(); const bots = page.locator('[data-bots-page]');
+      await bots.getByRole('tab', { name: 'Management', exact: true }).first().click();
       await bots.getByRole('tab',{name:'Collaboration',exact:true}).click();
       await bots.getByText(/CAS blocker/).waitFor();
       await page.screenshot({path:resolve(outputDir,`${theme}-team-board.png`),fullPage:true}); shots.push(`${theme}-team-board.png`);

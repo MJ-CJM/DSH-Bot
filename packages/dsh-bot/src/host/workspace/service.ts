@@ -11,12 +11,12 @@ import {
   workspaceResultSchema,
   type BotExport,
 } from '../../shared/workspace.js';
-import type { BotKey } from '../../shared/p34.js';
+import type { BotKey } from '../../shared/integrations.js';
 import type { DshBotRegistry } from '../registry.js';
 import type { Connectors } from '../connectors/service.js';
 import { botSkillsDirectory } from '../composer.js';
 import { checkedFile, contained, safeDirectory } from '../reference-memory/files.js';
-import { digest, need, P34Error, parse, Serial } from '../p34/common.js';
+import { digest, need, OperationError, parse, Serial } from '../common/operations.js';
 
 const previewRowSchema = z.strictObject({
   preview: importPreviewSchema,
@@ -38,7 +38,7 @@ export class WorkspaceManagement {
   ) {}
   private async bot(key: BotKey) {
     const bot = await this.registry.get(key.botId);
-    if (bot.createdAt !== key.botCreatedAt) throw new P34Error('conflict');
+    if (bot.createdAt !== key.botCreatedAt) throw new OperationError('conflict');
     return bot;
   }
   private async files(botId: string) {
@@ -49,7 +49,7 @@ export class WorkspaceManagement {
     const walk = async (dir: string, prefix: string) => {
       for (const entry of await readdir(dir, { withFileTypes: true })) {
         const path = `${prefix}${entry.name}`;
-        if (entry.isSymbolicLink()) throw new P34Error('invalid');
+        if (entry.isSymbolicLink()) throw new OperationError('invalid');
         const full = contained(root, path);
         if (entry.isDirectory()) {
           await safeDirectory(full, false);
@@ -57,9 +57,9 @@ export class WorkspaceManagement {
         } else {
           const content = need(await checkedFile(full, 262144));
           size += Buffer.byteLength(content);
-          if (size > 1048576 || files.length >= 128) throw new P34Error('invalid');
+          if (size > 1048576 || files.length >= 128) throw new OperationError('invalid');
           // Text skills only; reject binary instead of silently corrupting an archive.
-          if (content.includes('\0') || content.includes('\ufffd')) throw new P34Error('unsupported');
+          if (content.includes('\0') || content.includes('\ufffd')) throw new OperationError('unsupported');
           files.push({ path, content });
         }
       }
@@ -150,7 +150,7 @@ export class WorkspaceManagement {
             enabled: false,
           })),
         });
-        if ((await this.bot(r.bot)).updatedAt !== bot.updatedAt) throw new P34Error('conflict');
+        if ((await this.bot(r.bot)).updatedAt !== bot.updatedAt) throw new OperationError('conflict');
         return workspaceResultSchema.parse({ kind: 'export', document });
       }
       if (r.action === 'preview' || r.action === 'previewMemories') {
@@ -192,7 +192,7 @@ export class WorkspaceManagement {
         row.preview.phase !== 'preview' ||
         (row.preview.scope === 'bot' && (await this.conflict(row.preview.newId, row.document)))
       )
-        throw new P34Error('conflict');
+        throw new OperationError('conflict');
       row.preview.phase = 'applying';
       await this.domain.table('previews').put(row.preview.id, row);
       if (row.preview.scope === 'memories') {
@@ -203,13 +203,13 @@ export class WorkspaceManagement {
               digest(records.sort((a, b) => a.id.localeCompare(b.id))) !== row.preview.targetDigest ||
               this.registry.presetBot(row.preview.newId).createdAt !== row.preview.targetBot?.botCreatedAt
             )
-              throw new P34Error('conflict');
+              throw new OperationError('conflict');
           });
           row.preview.phase = 'committed';
         } catch {
           row.preview.phase = 'failed';
           await this.domain.table('previews').put(row.preview.id, row);
-          throw new P34Error('recovery-needed');
+          throw new OperationError('recovery-needed');
         }
         await this.domain.table('previews').put(row.preview.id, row);
         return workspaceResultSchema.parse({
@@ -262,7 +262,7 @@ export class WorkspaceManagement {
         row.preview.phase = 'failed';
         await this.domain.table('previews').put(row.preview.id, row);
         if (!row.preview.createdBot) for (const file of createdFiles) await unlink(file);
-        throw new P34Error('recovery-needed');
+        throw new OperationError('recovery-needed');
       }
     });
   }

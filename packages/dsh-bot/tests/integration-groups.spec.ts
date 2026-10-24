@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { Session, type SessionId } from '@deepseek-ai/dsh-session';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent';
-import { withP34, alpha, beta } from './p34-support.js';
+import { withIntegrations, alpha, beta } from './integration-support.js';
 import { Config } from '../lib/host/registry.js';
 import { Groups, groupsDomain } from '../src/host/groups/service.js';
 import { groupContext, routeMembers } from '../src/host/groups/routing.js';
 import { groupKey, GROUP_ROOT_PRESET, type GroupMessage, type GroupRecord } from '../src/shared/groups.js';
 import { groupsSpec } from '../src/shared/groups-contract.js';
-async function fixture(f: Parameters<Parameters<typeof withP34>[0]>[0]) {
+async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0]) {
   const roots = new Map<string, AgentHandle>(); const persisted = new Map<string, AgentHandle>(); const sequence: string[] = [];
   const config = Config({ dataDir: f.root, seedExamples: false, groupRoundTimeoutMs: 1000 });
   Object.assign(f.registry, { config, status: async () => [...f.bots.keys()].map(id => ({ id, presetId: `bot-${id}`, preset: { state: 'ok' } })) });
@@ -47,7 +47,7 @@ async function fixture(f: Parameters<Parameters<typeof withP34>[0]>[0]) {
     async reopen() { await groups.close(); domain = await f.ctx.storageDomain.open(groupsDomain); groups = new Groups(f.ctx, f.registry, domain, () => {}); await groups.start(); }, close: () => groups.close() };
 }
 describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
-  it('deduplicates create before native side effects and enforces birthday/CAS/member identity', () => withP34(async f => {
+  it('deduplicates create before native side effects and enforces birthday/CAS/member identity', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const [g, again] = await Promise.all([s.createGroup(), s.createGroup()]); expect(g.id).toBe(again.id); expect(s.create).toHaveBeenCalledTimes(1);
       await expect(s.groups.create({ operationId: 'create-1', name: 'changed', mode: 'mention', members: [alpha,beta], historyConfirmed: true })).rejects.toMatchObject({ code: 'p34/conflict' });
@@ -58,7 +58,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       expect((await s.groups.view(groupKey(g))).members.filter(m => m.enabled).map(m => m.bot.botId)).toEqual(['beta','alpha']);
     } finally { await s.close(); }
   }));
-  it('uses each preset in deterministic order, forwards actual output, persists context IDs and deduplicates sends', () => withP34(async f => {
+  it('uses each preset in deterministic order, forwards actual output, persists context IDs and deduplicates sends', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); const members = (await s.groups.view(groupKey(g))).members;
       const input = { operationId: 'send-1', text: 'question', memberIds: members.map(m => m.id).reverse(), expectedMembershipRevision: 1 };
@@ -74,7 +74,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await s.reopen(); const cold = await s.groups.view(groupKey(g)); expect(cold.unread).toBe(false); expect(cold.messages).toEqual(v.messages); expect(s.create).toHaveBeenCalledTimes(1);
     } finally { await s.close(); }
   }));
-  it('rejects unknown and text-only mentions; duplicate names and a new birthday do not route by display name', () => withP34(async f => {
+  it('rejects unknown and text-only mentions; duplicate names and a new birthday do not route by display name', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); const members = (await s.groups.view(groupKey(g))).members;
       for (const memberIds of [[], ['unknown'], [members[0]?.id, members[0]?.id]]) await expect(s.groups.send(groupKey(g), { operationId: `bad-${JSON.stringify(memberIds)}`, text: '@Same name', memberIds, expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'p34/invalid' });
@@ -82,7 +82,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await expect(s.groups.send(groupKey(g), { operationId: 'bad-birthday', text: 'q', memberIds: [members[1]?.id], expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'p34/conflict' }); expect(s.start).not.toHaveBeenCalled();
     } finally { await s.close(); }
   }));
-  it('cancels an active member and pending targets, preserves queued input cutoff and drains child before root/preset', () => withP34(async f => {
+  it('cancels an active member and pending targets, preserves queued input cutoff and drains child before root/preset', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); s.setBehavior('hold'); const members = (await s.groups.view(groupKey(g))).members;
       await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: members.map(m => m.id), expectedMembershipRevision: 1 });
@@ -95,7 +95,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await s.close(); expect(s.sequence.indexOf('child-dispose')).toBeLessThan(s.sequence.indexOf('root-dispose')); expect(s.sequence.indexOf('root-dispose')).toBeLessThan(s.sequence.indexOf('preset-dispose'));
     } finally { await s.close(); }
   }));
-  it('removing a member aborts its running delivery and never expands the admitted snapshot', () => withP34(async f => {
+  it('removing a member aborts its running delivery and never expands the admitted snapshot', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); s.setBehavior('hold'); const members = (await s.groups.view(groupKey(g))).members;
       await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: [members[0]?.id], expectedMembershipRevision: 1 });
@@ -105,14 +105,41 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await s.settle(g); expect(s.calls[0]?.signal.aborted).toBe(true); expect(s.calls).toHaveLength(1);
     } finally { await s.close(); }
   }));
-  it.each(['partial','throw'] as const)('does not classify %s as success or advance round pointer', behavior => withP34(async f => {
+  it.each(['partial','throw'] as const)('does not classify %s as success or advance round pointer', behavior => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); s.setBehavior(behavior); const m = (await s.groups.view(groupKey(g))).members[0];
       await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 });
       const v = await s.settle(g); expect(v.turns[0]?.state).toBe('partial'); expect(v.deliveries[0]?.state).toBe('failed'); expect(v.group.nextMemberId).toBe(g.nextMemberId); expect(JSON.stringify(v)).not.toContain('sensitive-native-error');
     } finally { await s.close(); }
   }));
-  it('marks uncertain append/flush recovery-needed and never silently retries after restart', () => withP34(async f => {
+  it.each(['partial', 'throw', 'hold'] as const)('round-robin %s keeps the pointer until a successful persisted reply', behavior => withIntegrations(async f => {
+    const s = await fixture(f);
+    try {
+      const initial = await s.createGroup();
+      const g = await s.groups.edit(groupKey(initial), { name: initial.name, mode: 'round-robin', members: [alpha, beta], expectedRevision: initial.revision, expectedMembershipRevision: 1, historyConfirmed: true });
+      s.setBehavior(behavior);
+      const input = { operationId: 'round-fail', text: 'question', expectedMembershipRevision: g.membershipRevision };
+      await s.groups.send(groupKey(g), input);
+      if (behavior === 'hold') {
+        await vi.waitFor(() => expect(s.calls).toHaveLength(1));
+        const turn = (await s.groups.view(groupKey(g))).turns[0];
+        if (!turn) throw new Error('Missing turn');
+        await s.groups.cancel(groupKey(g), turn.id, turn.revision);
+      }
+      const failed = await s.settle(g);
+      expect(failed.group.nextMemberId).toBe(g.nextMemberId);
+      s.setBehavior('success');
+      await s.groups.send(groupKey(g), { ...input, operationId: 'round-success' });
+      const success = await s.settle(g);
+      const turn = success.turns.find(t => t.operationId === 'round-success');
+      expect(turn?.orderedMemberIds).toEqual([g.nextMemberId]);
+      expect(success.group.nextMemberId).toBe(success.members[1]?.id);
+      // Native workers use startActivation; only the independent group root was created.
+      expect(s.create).toHaveBeenCalledTimes(1);
+      expect(s.start.mock.calls.every(([request]) => request.request.agentPreset === 'bot-alpha')).toBe(true);
+    } finally { await s.close(); }
+  }));
+  it('marks uncertain append/flush recovery-needed and never silently retries after restart', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); const m = (await s.groups.view(groupKey(g))).members[0]; s.flush.mockResolvedValueOnce(false);
       const input = { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 };
@@ -120,7 +147,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await s.reopen(); const t = await s.groups.send(groupKey(g), input); expect(t.state).toBe('recovery_needed'); expect(s.calls).toHaveLength(0);
     } finally { await s.close(); }
   }));
-  it('reconciles persisted running receipts to unknown after restart, without spawning again', () => withP34(async f => {
+  it('reconciles persisted running receipts to unknown after restart, without spawning again', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); const m = (await s.groups.view(groupKey(g))).members[0];
       const input = {operationId:'uncertain',text:'uncertain effect',memberIds:[m?.id],expectedMembershipRevision:1};
@@ -130,13 +157,13 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await s.groups.send(groupKey(g),input); expect(s.calls).toHaveLength(calls);
     } finally { await s.close(); }
   }));
-  it('drains a running child on unload even when only its disposer settles the result', () => withP34(async f => {
+  it('drains a running child on unload even when only its disposer settles the result', () => withIntegrations(async f => {
     const s = await fixture(f); const g = await s.createGroup(); const m = (await s.groups.view(groupKey(g))).members[0]; s.setBehavior('hold');
     await s.groups.send(groupKey(g),{operationId:'close-active',text:'work',memberIds:[m?.id],expectedMembershipRevision:1});
     await vi.waitFor(() => expect(s.calls).toHaveLength(1)); await s.close();
     expect(s.sequence.indexOf('child-dispose')).toBeLessThan(s.sequence.indexOf('root-dispose')); expect(s.groups.lifecycle()).toMatchObject({phase:'closed',ownedRoots:0,workers:0,activations:0});
   }));
-  it('times out a held child and rejects new routes after archive', () => withP34(async f => {
+  it('times out a held child and rejects new routes after archive', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); s.setBehavior('hold'); const m = (await s.groups.view(groupKey(g))).members[0];
       await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 });

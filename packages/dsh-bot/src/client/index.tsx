@@ -1,3 +1,4 @@
+import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
 import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
 import { createWorkspaceActions } from './workspace-state.js';
 import { GROUPS_REMOTE } from '../shared/groups-contract.js';
@@ -5,8 +6,8 @@ import { createGroupActions } from './groups-state.js';
 import { GroupSessionBadge } from './components/GroupSessionBadge.js';
 import { COLLABORATION_REMOTE } from '../shared/collaboration-contract.js';
 import { createCollaborationActions } from './collaboration-state.js';
-import { P34_REMOTE } from '../shared/p34-contract.js';
-import { createP34Actions } from './p34-state.js';
+import { INTEGRATIONS_REMOTE } from '../shared/integrations-contract.js';
+import { createIntegrationActions } from './integrations-state.js';
 import NATIVE_SCHEDULE_REMOTE from '@deepseek-ai/dsh-schedule/remote';
 import { AUTOMATION_REMOTE } from '../shared/automation-contract.js';
 import { createRoutineActions } from './automation-state.js';
@@ -67,21 +68,26 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const config = Config(options);
   await ctx.effect(async () => await ctx.remote.$mount(TYPERT_REMOTE), 'dsh-bot: Remote contribution');
   // Standard Web already mounts this public namespace; slim clients may not.
-  if (!ctx.get('remote.schedule')) await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SCHEDULE_REMOTE), 'dsh-bot: native schedule Remote');
+  if (!ctx.get('remote.schedule'))
+    await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SCHEDULE_REMOTE), 'dsh-bot: native schedule Remote');
   await ctx.effect(async () => await ctx.remote.$mount(AUTOMATION_REMOTE), 'dsh-bot: automation Remote');
-  await ctx.effect(async () => await ctx.remote.$mount(P34_REMOTE), 'dsh-bot: P34 Remote');
+  await ctx.effect(async () => await ctx.remote.$mount(INTEGRATIONS_REMOTE), 'dsh-bot: integration Remote');
   await ctx.effect(async () => await ctx.remote.$mount(COLLABORATION_REMOTE), 'dsh-bot: collaboration Remote');
   await ctx.effect(async () => await ctx.remote.$mount(GROUPS_REMOTE), 'dsh-bot: groups Remote');
   await ctx.effect(async () => await ctx.remote.$mount(WORKSPACE_REMOTE), 'dsh-bot: workspace Remote');
-  ctx.effect(() => ctx.locale.register(namespace, {
-    en: en.ui,
-    zh: zh.ui,
-  }), 'dsh-bot: dictionaries');
+  ctx.effect(
+    () =>
+      ctx.locale.register(namespace, {
+        en: en.ui,
+        zh: zh.ui,
+      }),
+    'dsh-bot: dictionaries',
+  );
   const t = ctx.locale.bind(namespace);
   const catalog = createBotCatalog(ctx, config);
   const activity = createActivityCatalog(ctx, config);
   const routines = createRoutineActions(ctx, config);
-  const p34 = createP34Actions(ctx, config);
+  const integrations = createIntegrationActions(ctx, config);
   const collaboration = createCollaborationActions(ctx, config);
   const groups = createGroupActions(ctx, config);
   const management = createWorkspaceActions(ctx, config);
@@ -93,7 +99,12 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   // Client memory only: shared by page/sidebar, cleared on plugin unload.
   const preferredWorkspace = '';
   let active = true;
-  ctx.effect(() => () => { active = false; }, 'dsh-bot: action lifetime');
+  ctx.effect(
+    () => () => {
+      active = false;
+    },
+    'dsh-bot: action lifetime',
+  );
   const remote = (): DshBotRemoteMethods => {
     const service = ctx.get('remote.dshBot');
     if (!active || !service) throw new Error(t('errors.unavailable'));
@@ -116,12 +127,15 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     // A successful commit must not reuse a read begun before that commit.
     await Promise.all([catalog.refresh(), activity.refresh()]);
   };
-  const refresh = async () => { await Promise.all([catalog.refresh(), activity.refresh()]); };
+  const refresh = async () => {
+    await Promise.all([catalog.refresh(), activity.refresh()]);
+  };
   const openSession = async (id: string, beforeOpen?: (id: SessionId) => void, signal?: AbortSignal) => {
     if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
-    try { await activity.markRead(id); }
-    catch {
+    try {
+      await activity.markRead(id);
+    } catch {
       // Read receipts are best effort. Do not leak transport/payload details
       // and do not block the primary action when the receipt cannot be saved.
       if (active) console.warn(t('activity.readFailed'));
@@ -141,16 +155,33 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     if (active) await refresh();
   };
   // Compatibility for existing injected callers: every launch resolves the same Host-owned main.
-  const startBotInWorkspace = (id: string, _workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) =>
-    startBot(id, signal, beforeOpen);
+  const startBotInWorkspace = (
+    id: string,
+    _workspaceId: string,
+    signal?: AbortSignal,
+    beforeOpen?: (id: SessionId) => void,
+  ) => startBot(id, signal, beforeOpen);
   const page: BotsPageInjected = {
-    routines, p34, collaboration, groups, management,
-    hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },
+    routines,
+    integrations,
+    collaboration,
+    groups,
+    management,
+    hooks: {
+      catalog,
+      activity,
+      sessionCatalog: sessions.list,
+      workspaceCatalog: ctx.workspaces.list,
+      botDetail: detail,
+    },
     onOpenSession: (id, signal) => openSession(id, undefined, signal),
     onDetailConsumed: detail.consume,
     onCountMemories: async (id) => unwrap(await memoryRemote().count(id)),
     createMemoryPanel: (id) => {
-      const memory = createMemoryCatalog(ctx, id, { pollIntervalMs: catalog.getSnapshot().pollIntervalMs, pageSize: config.memoryPageSize });
+      const memory = createMemoryCatalog(ctx, id, {
+        pollIntervalMs: catalog.getSnapshot().pollIntervalMs,
+        pageSize: config.memoryPageSize,
+      });
       memories.add(memory);
       const write = async (operation: () => Promise<RemoteResult<unknown>>) => {
         unwrap(await operation());
@@ -158,7 +189,10 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       };
       return {
         catalog: memory,
-        dispose: () => { memories.delete(memory); memory.dispose(); },
+        dispose: () => {
+          memories.delete(memory);
+          memory.dispose();
+        },
         onSave: (input) => write(() => memoryRemote().save(id, input)),
         onUpdate: (memoryId, patch) => write(() => memoryRemote().update(id, memoryId, patch)),
         onRemove: (memoryId) => write(() => memoryRemote().delete(id, memoryId)),
@@ -172,7 +206,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       catalog.setPollIntervalMs(interval);
       activity.setPollIntervalMs(interval);
       routines.catalog.setPollIntervalMs(interval);
-      p34.catalog.setPollIntervalMs(interval);
+      integrations.catalog.setPollIntervalMs(interval);
       collaboration.im.setPollIntervalMs(interval);
       groups.catalog.setPollIntervalMs(interval);
       for (const memory of memories) memory.setPollIntervalMs(interval);
@@ -183,57 +217,190 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onDelete: (id, deleteMemories, deleteHome) => mutate(() => remote().delete(id, { deleteMemories, deleteHome })),
     onEnsureHome: async (id) => unwrap(await remote().ensureHome(id)).path,
     onEnsureBotsWorkspace: async () => unwrap(await remote().ensureBotsWorkspace()).path,
-    onPickDirectory: typeof ctx.uiWorkspace.pickDirectory === 'function' ? () => ctx.uiWorkspace.pickDirectory() : undefined,
-    onStart: startBot, onStartInWorkspace: startBotInWorkspace,
+    onPickDirectory:
+      typeof ctx.uiWorkspace.pickDirectory === 'function' ? () => ctx.uiWorkspace.pickDirectory() : undefined,
+    onStart: startBot,
+    onStartInWorkspace: startBotInWorkspace,
   };
-  registerBotsRightTab(ctx, {
-    hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list },
-    onOpenSession: (id, signal) => openSession(id, undefined, signal),
-    onStart: startBot, onStartInWorkspace: startBotInWorkspace, getPreferredWorkspace: page.getPreferredWorkspace,
-    onRefresh: refresh,
-    onManage: () => { if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId); },
-  }, { open: openSession, start: startBot, startInWorkspace: startBotInWorkspace });
-  ctx.effect(() => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-    name: 'conversation.session.header.utilities', id: 'dsh-bot', locale: namespace,
-    inject: () => ({ hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity }, onMarkRead: activity.markRead, onOpenBot: (id: string) => {
-      if (!active) return;
-      detail.open(id);
-      ctx.layout.selectPanel('dsh-bot' as MainPanelId);
-    } }),
-  }, SessionBotBadge)), 'dsh-bot: session badge');
-  ctx.effect(() => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-    name: 'conversation.session.header.utilities', id: 'dsh-bot-group', locale: namespace,
-    inject: () => ({ hooks: { groups: groups.catalog }, onOpenGroup: (id: string) => { if (active) { groups.select(id); ctx.layout.selectPanel('dsh-bot' as MainPanelId); } } }),
-  }, GroupSessionBadge)), 'dsh-bot: group session navigation');
+  registerBotsRightTab(
+    ctx,
+    {
+      hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list },
+      onOpenSession: (id, signal) => openSession(id, undefined, signal),
+      onStart: startBot,
+      onStartInWorkspace: startBotInWorkspace,
+      getPreferredWorkspace: page.getPreferredWorkspace,
+      onRefresh: refresh,
+      onManage: () => {
+        if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+      },
+    },
+    { open: openSession, start: startBot, startInWorkspace: startBotInWorkspace },
+  );
+  ctx.effect(
+    () =>
+      ctx.slots.inject('conversation.session.header.utilities', () =>
+        ctx.slots.register(
+          {
+            name: 'conversation.session.header.utilities',
+            id: 'dsh-bot',
+            locale: namespace,
+            inject: () => ({
+              hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity },
+              onMarkRead: activity.markRead,
+              onOpenBot: (id: string) => {
+                if (!active) return;
+                detail.open(id);
+                ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+              },
+            }),
+          },
+          SessionBotBadge,
+        ),
+      ),
+    'dsh-bot: session badge',
+  );
+  ctx.effect(
+    () =>
+      ctx.slots.inject('conversation.session.header.utilities', () =>
+        ctx.slots.register(
+          {
+            name: 'conversation.session.header.utilities',
+            id: 'dsh-bot-group',
+            locale: namespace,
+            inject: () => ({
+              hooks: { groups: groups.catalog },
+              onOpenGroup: (id: string) => {
+                if (active) {
+                  groups.select(id);
+                  ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+                }
+              },
+            }),
+          },
+          GroupSessionBadge,
+        ),
+      ),
+    'dsh-bot: group session navigation',
+  );
+  for (const [slot, component] of [
+    ['sidebar.session.row.leading', GroupSessionLeading],
+    ['sidebar.session.row.hover', GroupSessionHover],
+  ] as const) {
+    ctx.effect(
+      () =>
+        ctx.slots.inject(slot, () =>
+          ctx.slots.register(
+            {
+              name: slot,
+              id: 'dsh-bot-group',
+              order: -1,
+              locale: namespace,
+              inject: () => ({ hooks: { groups: groups.catalog } }),
+            },
+            component,
+          ),
+        ),
+      'dsh-bot: group row identity',
+    );
+  }
   const row = (): SessionBotRowInjected => ({
     hooks: { catalog, activity },
   });
   // All visible rows share these catalogs and at most one timer per catalog.
   // Active leases keep externally edited/deleted Bot identities up to date.
-  ctx.effect(() => ctx.slots.inject('sidebar.session.row.leading', () => ctx.slots.register({
-    name: 'sidebar.session.row.leading', id: 'dsh-bot-avatar', order: 0, locale: namespace, inject: row,
-  }, SessionBotLeading)), 'dsh-bot: session row avatar');
-  ctx.effect(() => ctx.slots.inject('sidebar.session.row.hover', () => ctx.slots.register({
-    name: 'sidebar.session.row.hover', id: 'dsh-bot-identity', order: 0, locale: namespace, inject: row,
-  }, SessionBotHover)), 'dsh-bot: session row identity');
-  ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
-    name: 'main', key: 'dsh-bot', locale: namespace, inject: () => page,
-  }, BotsPage)), 'dsh-bot: main page');
-  ctx.effect(() => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-    name: 'sidebar.panellist', id: 'dsh-bot', order: 20, locale: namespace,
-    label: () => t('bots.title'),
-  }, BotsIcon)), 'dsh-bot: sidebar entry');
-  ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-    name: 'sidebar.footer.action', id: 'dsh-bot-sessions', order: 20, locale: namespace,
-    inject: (): BotSessionsSidebarInjected => ({
-      hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity, workspaceCatalog: ctx.workspaces.list },
-      sessionLimit: config.sidebarSessionLimit,
-      onStart: page.onStart,
-      onStartInWorkspace: page.onStartInWorkspace,
-      getPreferredWorkspace: page.getPreferredWorkspace,
-      onRefresh: refresh,
-      onOpenSession: openSession,
-      onManage: () => { if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId); },
-    }),
-  }, BotSessionsSidebar)), 'dsh-bot: sidebar conversations');
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.session.row.leading', () =>
+        ctx.slots.register(
+          {
+            name: 'sidebar.session.row.leading',
+            id: 'dsh-bot-avatar',
+            order: 0,
+            locale: namespace,
+            inject: row,
+          },
+          SessionBotLeading,
+        ),
+      ),
+    'dsh-bot: session row avatar',
+  );
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.session.row.hover', () =>
+        ctx.slots.register(
+          {
+            name: 'sidebar.session.row.hover',
+            id: 'dsh-bot-identity',
+            order: 0,
+            locale: namespace,
+            inject: row,
+          },
+          SessionBotHover,
+        ),
+      ),
+    'dsh-bot: session row identity',
+  );
+  ctx.effect(
+    () =>
+      ctx.slots.inject('main', () =>
+        ctx.slots.register(
+          {
+            name: 'main',
+            key: 'dsh-bot',
+            locale: namespace,
+            inject: () => page,
+          },
+          BotsPage,
+        ),
+      ),
+    'dsh-bot: main page',
+  );
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.panellist', () =>
+        ctx.slots.register(
+          {
+            name: 'sidebar.panellist',
+            id: 'dsh-bot',
+            order: 20,
+            locale: namespace,
+            label: () => t('bots.title'),
+          },
+          BotsIcon,
+        ),
+      ),
+    'dsh-bot: sidebar entry',
+  );
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.footer.action', () =>
+        ctx.slots.register(
+          {
+            name: 'sidebar.footer.action',
+            id: 'dsh-bot-sessions',
+            order: 20,
+            locale: namespace,
+            inject: (): BotSessionsSidebarInjected => ({
+              hooks: {
+                catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe },
+                activity,
+                workspaceCatalog: ctx.workspaces.list,
+              },
+              sessionLimit: config.sidebarSessionLimit,
+              onStart: page.onStart,
+              onStartInWorkspace: page.onStartInWorkspace,
+              getPreferredWorkspace: page.getPreferredWorkspace,
+              onRefresh: refresh,
+              onOpenSession: openSession,
+              onManage: () => {
+                if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+              },
+            }),
+          },
+          BotSessionsSidebar,
+        ),
+      ),
+    'dsh-bot: sidebar conversations',
+  );
 }

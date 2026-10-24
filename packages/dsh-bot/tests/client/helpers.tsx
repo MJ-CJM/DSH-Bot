@@ -3,8 +3,8 @@ import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import type { GroupView, GroupSummary } from '../../src/shared/groups.js';
 import type { CollaborationMethods } from '../../src/shared/collaboration-contract.js';
 import { IM_PIN, type TeamBoard } from '../../src/shared/collaboration.js';
-import type { P34Methods } from '../../src/shared/p34-contract.js';
-import { EMPTY_P34 } from '../../src/client/p34-state.js';
+import type { IntegrationMethods } from '../../src/shared/integrations-contract.js';
+import { EMPTY_INTEGRATIONS } from '../../src/client/integrations-state.js';
 import type { BotsPageInjected } from '../../src/client/pages/BotsPage.js';
 import type { AutomationRemoteMethods } from '../../src/shared/automation-contract.js';
 import type { RunRecord } from '../../src/shared/automation.js';
@@ -36,7 +36,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { groups: [] as GroupSummary[], groupView: undefined as GroupView | undefined, board: { supported: false, reason: 'native-service-missing', members: [], tasks: [] } as TeamBoard, p34: structuredClone(EMPTY_P34), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { groups: [] as GroupSummary[], groupView: undefined as GroupView | undefined, board: { supported: false, reason: 'native-service-missing', members: [], tasks: [] } as TeamBoard, integrations: structuredClone(EMPTY_INTEGRATIONS), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -144,14 +144,14 @@ export function remoteDouble(initial: BotRecord[] = []) {
   };
   const automation = { status: vi.fn<AutomationRemoteMethods<'dshBot.automation'>['status']>(async () => ({ ok: true, value: { state: 'ready' } })) };
   const connectors = {
-    catalog: vi.fn<P34Methods<'dshBot.connectors'>['catalog']>(async () => ({ ok: true, value: data.p34 })),
-    saveDefinition: vi.fn<P34Methods<'dshBot.connectors'>['saveDefinition']>(),
-    saveAssignment: vi.fn<P34Methods<'dshBot.connectors'>['saveAssignment']>(),
-    applyIdle: vi.fn<P34Methods<'dshBot.connectors'>['applyIdle']>(),
-    importLegacy: vi.fn<P34Methods<'dshBot.connectors'>['importLegacy']>(),
+    catalog: vi.fn<IntegrationMethods<'dshBot.connectors'>['catalog']>(async () => ({ ok: true, value: data.integrations })),
+    saveDefinition: vi.fn<IntegrationMethods<'dshBot.connectors'>['saveDefinition']>(),
+    saveAssignment: vi.fn<IntegrationMethods<'dshBot.connectors'>['saveAssignment']>(),
+    applyIdle: vi.fn<IntegrationMethods<'dshBot.connectors'>['applyIdle']>(),
+    importLegacy: vi.fn<IntegrationMethods<'dshBot.connectors'>['importLegacy']>(),
   };
   const notifications = {
-    savePolicy: vi.fn<P34Methods<'dshBot.notifications'>['savePolicy']>(), markRead: vi.fn<P34Methods<'dshBot.notifications'>['markRead']>(), test: vi.fn<P34Methods<'dshBot.notifications'>['test']>(),
+    savePolicy: vi.fn<IntegrationMethods<'dshBot.notifications'>['savePolicy']>(), markRead: vi.fn<IntegrationMethods<'dshBot.notifications'>['markRead']>(), test: vi.fn<IntegrationMethods<'dshBot.notifications'>['test']>(),
   };
   const collaboration = {
     board: vi.fn<CollaborationMethods['board']>(async () => ({ ok: true, value: data.board })),
@@ -489,7 +489,7 @@ export async function mountClient(
 }
 
 export function button(container: ParentNode, text: string): HTMLButtonElement {
-  const element = [...container.querySelectorAll('button')].find((item) => item.textContent?.trim() === text || item.getAttribute('aria-label') === text);
+  const element = [...container.querySelectorAll('button')].find((item) => !item.closest('[hidden]') && (item.textContent?.trim() === text || item.getAttribute('aria-label') === text));
   if (!element) throw new Error(`Button ${JSON.stringify(text)} not found in ${container.textContent}`);
   return element;
 }
@@ -499,7 +499,7 @@ export async function click(element: HTMLElement) {
 }
 
 export function field(container: ParentNode, label: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
-  const labelElement = [...container.querySelectorAll('label')].find((item) => item.textContent?.trim().startsWith(label));
+  const labelElement = [...container.querySelectorAll('label')].find((item) => !item.closest('[hidden]') && item.textContent?.trim().startsWith(label));
   const control = labelElement?.control;
   if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
     throw new Error(`Field ${JSON.stringify(label)} not found in ${container.textContent}`);
@@ -518,7 +518,7 @@ export async function fill(control: HTMLInputElement | HTMLTextAreaElement | HTM
 }
 
 export async function submit(container: ParentNode) {
-  const form = container.querySelector('form');
+  const form = [...container.querySelectorAll('form')].find(form => !form.closest('[hidden]'));
   if (!form) throw new Error('No form is mounted');
   await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
 }

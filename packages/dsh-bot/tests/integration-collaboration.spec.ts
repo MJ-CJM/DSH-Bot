@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { withP34, alpha } from './p34-support.js';
+import { withIntegrations, alpha } from './integration-support.js';
 import { Collaboration, collaborationDomain } from '../src/host/collaboration/service.js';
 import { getBotBinding } from '../src/host/bot-context.js';
 import { collaborationSpec } from '../src/shared/collaboration-contract.js';
 import type { SessionId } from '@deepseek-ai/dsh-session';
 vi.mock('../src/host/bot-context.js', () => ({ getBotBinding: vi.fn() }));
-async function setup(f: Parameters<Parameters<typeof withP34>[0]>[0]) {
+async function setup(f: Parameters<Parameters<typeof withIntegrations>[0]>[0]) {
   const { agent } = f.createAgent('main-alpha');
   vi.mocked(getBotBinding).mockReturnValue(alpha);
   const open = vi.fn(async () => ({ sessionId: agent.id }));
@@ -26,14 +26,14 @@ async function setup(f: Parameters<Parameters<typeof withP34>[0]>[0]) {
     disable() { off?.(); off = undefined; }, async close() { await collaboration.close(); off?.(); } };
 }
 describe('U05 identity links and public native-service boundary (Agent/Controller fixtures)', () => {
-  it('does not create a main Session during reads or while the optional native service is absent', () => withP34(async f => {
+  it('does not create a main Session during reads or while the optional native service is absent', () => withIntegrations(async f => {
     const s = await setup(f); try {
       expect(await s.current.board(alpha)).toMatchObject({ supported: false, reason: 'native-service-missing' });
       await expect(s.current.ensure(alpha, 0)).rejects.toMatchObject({ code: 'p34/unavailable' }); expect(s.open).not.toHaveBeenCalled();
       s.enable(); expect(await s.current.board(alpha)).toMatchObject({ supported: true, reason: 'not-linked' }); expect(s.open).not.toHaveBeenCalled();
     } finally { await s.close(); }
   }));
-  it('persists only the native link, uses CAS for creation and reopens without duplicating the main', () => withP34(async f => {
+  it('persists only the native link, uses CAS for creation and reopens without duplicating the main', () => withIntegrations(async f => {
     const s = await setup(f); s.enable(); try {
       const raced = await Promise.allSettled([s.current.ensure(alpha, 0), s.current.ensure(alpha, 0)]);
       expect(raced.filter(r => r.status === 'fulfilled')).toHaveLength(1); expect(s.open).toHaveBeenCalledTimes(1);
@@ -42,7 +42,7 @@ describe('U05 identity links and public native-service boundary (Agent/Controlle
       s.disable(); expect(await s.current.board(alpha)).toMatchObject({ supported: false });
     } finally { await s.close(); }
   }));
-  it('rejects stale birthdays, changed main mappings and a forged live Bot binding', () => withP34(async f => {
+  it('rejects stale birthdays, changed main mappings and a forged live Bot binding', () => withIntegrations(async f => {
     const s = await setup(f); s.enable(); try {
       await s.current.ensure(alpha, 0);
       vi.mocked(getBotBinding).mockReturnValue({ botId: 'beta', botCreatedAt: 1 });
@@ -54,7 +54,7 @@ describe('U05 identity links and public native-service boundary (Agent/Controlle
       await expect(s.current.ensure({ ...alpha, botCreatedAt: 2 }, 0)).rejects.toMatchObject({ code: 'p34/conflict' });
     } finally { await s.close(); }
   }));
-  it('checks identity again after asynchronous native resolve and never calls a stale Agent', () => withP34(async f => {
+  it('checks identity again after asynchronous native resolve and never calls a stale Agent', () => withIntegrations(async f => {
     const s = await setup(f); s.enable(); try {
       await s.current.ensure(alpha, 0);
       s.resolve.mockImplementation(async () => { const bot = f.bots.get('alpha'); if (!bot) throw new Error('No fixture Bot'); f.bots.set('alpha', { ...bot, createdAt: 2 }); return { agent: s.agent }; });
@@ -62,7 +62,7 @@ describe('U05 identity links and public native-service boundary (Agent/Controlle
       expect(s.native.updateTask).not.toHaveBeenCalled();
     } finally { await s.close(); }
   }));
-  it('maps native conflicts safely, preserves uncertain flush outcomes and rejects calls after close', () => withP34(async f => {
+  it('maps native conflicts safely, preserves uncertain flush outcomes and rejects calls after close', () => withIntegrations(async f => {
     const s = await setup(f); s.enable(); try {
       await s.current.ensure(alpha, 0);
       s.native.updateTask.mockRejectedValueOnce(Object.assign(new Error('sensitive native failure'), { code: 'TEAM_TASK_STALE_REVISION' }));

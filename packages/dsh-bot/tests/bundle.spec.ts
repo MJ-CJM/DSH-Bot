@@ -249,7 +249,7 @@ describe('built bundle contract', () => {
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);
-      expect(releases.sort()).toEqual([...resources, 'conversation.session.header.utilities'].sort());
+      expect(releases.sort()).toEqual([...resources, 'conversation.session.header.utilities', 'sidebar.session.row.leading', 'sidebar.session.row.hover'].sort());
     } finally {
       await ctx.fiber.dispose();
     }

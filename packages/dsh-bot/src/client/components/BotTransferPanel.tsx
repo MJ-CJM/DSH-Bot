@@ -1,3 +1,4 @@
+import { TransferPreview } from './TransferPreview.js';
 import { useEffect, useRef, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
@@ -154,56 +155,34 @@ export function TransferPanel({ bot, actions, t }: { bot?: BotRecord; actions: W
         {t('manage.preview')}
       </button>
       {review && (
-        <section aria-label={t('manage.preview')}>
-          <p>
-            {review.newId} · {t(review.phase === 'failed' ? 'manage.failedPhase' : `manage.${review.phase}`)}
-          </p>
-          <p>{t('manage.memoryCount', { count: review.memories })}</p>
-          <ul>
-            {review.files.map((path) => (
-              <li key={path}>{path}</li>
-            ))}
-          </ul>
-          <p>{t('manage.refsDisabled')}</p>
-          <ul>
-            {review.connectorRefs.map((ref) => (
-              <li key={ref}>
-                {ref}
-                {review.missingConnectorRefs.includes(ref) ? ` · ${t('manage.unmapped')}` : ''}
-              </li>
-            ))}
-          </ul>
-          {review.conflict && <p role="alert">{t('manage.conflict')}</p>}
-          <button
-            type="button"
-            disabled={busy || review.conflict || review.phase !== 'preview'}
-            onClick={() => {
-              void perform(async () => {
-                try {
-                  const r = unwrap(
-                    await actions.workspace({
-                      action: 'import',
-                      previewId: review.id,
-                      confirmed: true,
-                    }),
-                  );
-                  if (alive.current) setPreview(r);
-                } catch (error) {
-                  const r = unwrap(
-                    await actions.workspace({
-                      action: 'inspect',
-                      previewId: review.id,
-                    }),
-                  );
-                  if (alive.current) setPreview(r);
-                  throw error;
-                }
-              });
-            }}
-          >
-            {t(review.scope === 'memories' ? 'manage.confirmMemories' : 'manage.confirmImport')}
-          </button>
-        </section>
+        <TransferPreview
+          review={review}
+          busy={busy}
+          t={t}
+          confirm={() => {
+            void perform(async () => {
+              try {
+                const r = unwrap(
+                  await actions.workspace({
+                    action: 'import',
+                    previewId: review.id,
+                    confirmed: true,
+                  }),
+                );
+                if (alive.current) setPreview(r);
+              } catch (error) {
+                const r = unwrap(
+                  await actions.workspace({
+                    action: 'inspect',
+                    previewId: review.id,
+                  }),
+                );
+                if (alive.current) setPreview(r);
+                throw error;
+              }
+            });
+          }}
+        />
       )}
       {error && <p role="alert">{t('manage.failed')}</p>}
     </div>

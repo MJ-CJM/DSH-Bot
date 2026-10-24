@@ -68,7 +68,7 @@ try {
       '- id: llm-deepseek','  config:','    apiKeyEnv: P34_MODEL_KEY',`    baseURL: ${JSON.stringify(`${mock.baseURL}/v1`)}`,'    thinking: disabled','    reasoningEffort: off','    maxTokens: 128',
       ...['llm-deepseek-account','llm-pi-ai','session-title-llm','llm-retry','session-log-deepseek','session-telemetry-otel','desktop-product-telemetry'].flatMap(id => [`- id: ${id}`,'  disabled: true']),
       '- id: xmanrui-dsh-im','  config:',`    dshHome: ${JSON.stringify(resolve(runDir,'im-home'))}`,
-      '- insert:','    - id: p34-collaboration-probes',`      name: ${JSON.stringify(resolve(root,'packages/dsh-bot/tests/p34-collaboration-profile.mjs'))}`,'      config:',`        outputDir: ${JSON.stringify(runDir)}`,`        phase: ${phase}`,
+      '- insert:','    - id: p34-collaboration-probes',`      name: ${JSON.stringify(resolve(root,'packages/dsh-bot/tests/integration-collaboration-profile.mjs'))}`,'      config:',`        outputDir: ${JSON.stringify(runDir)}`,`        phase: ${phase}`,
     ].join('\n');
     await writeFile(resolve(home,'profiles',profile,'cordis.patch.yml'), `${patch}\n`);
     await command('dsh', ['--profile',profile,'--dump-config'], `${phase}-dump`);

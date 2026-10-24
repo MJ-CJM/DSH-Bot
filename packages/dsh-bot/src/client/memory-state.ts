@@ -16,7 +16,9 @@ export interface MemoryCatalog extends Omit<PollingCatalog<MemoryPage>, 'reset' 
   nextPage(): void;
   firstPage(): void;
 }
-export interface MemoryCatalogOptions extends BotCatalogOptions { pageSize?: number }
+export interface MemoryCatalogOptions extends BotCatalogOptions {
+  pageSize?: number;
+}
 
 /** Same epoch, visibility/reset, polling and owner lifetime as the Bot catalog. */
 export function createMemoryCatalog(ctx: Context, botId: string, options: MemoryCatalogOptions = {}): MemoryCatalog {
@@ -25,23 +27,36 @@ export function createMemoryCatalog(ctx: Context, botId: string, options: Memory
   let query = '';
   let before: MemoryCursor | undefined;
   const empty = (): MemoryPage => ({ records: [], query, before, hasNext: false, total: undefined });
-  const catalog = createPollingCatalog(ctx, empty(), async () => {
-    // Capture the requested page before the first await; old responses cannot change it.
-    const requestedQuery = query;
-    const requestedBefore = before;
-    const memory = ctx.get('remote.dshBot.memory') as DshBotRemoteMethods['memory'] | undefined;
-    if (!memory) throw { code: 'bot/unavailable', message: '' };
-    const input = { limit: pageSize + 1, before: requestedBefore };
-    const [rows, count] = await Promise.all([
-      requestedQuery ? memory.search(botId, { ...input, query: requestedQuery }) : memory.list(botId, input),
-      memory.count(botId),
-    ]);
-    if (!rows.ok) throw rows.error;
-    if (!count.ok) throw count.error;
-    return { records: rows.value.slice(0, pageSize), query: requestedQuery, before: requestedBefore,
-      hasNext: rows.value.length > pageSize, total: count.value };
-  }, options);
-  const move = () => { catalog.reset(empty()); void catalog.refresh(); };
+  const catalog = createPollingCatalog(
+    ctx,
+    empty(),
+    async () => {
+      // Capture the requested page before the first await; old responses cannot change it.
+      const requestedQuery = query;
+      const requestedBefore = before;
+      const memory = ctx.get('remote.dshBot.memory') as DshBotRemoteMethods['memory'] | undefined;
+      if (!memory) throw { code: 'bot/unavailable', message: '' };
+      const input = { limit: pageSize + 1, before: requestedBefore };
+      const [rows, count] = await Promise.all([
+        requestedQuery ? memory.search(botId, { ...input, query: requestedQuery }) : memory.list(botId, input),
+        memory.count(botId),
+      ]);
+      if (!rows.ok) throw rows.error;
+      if (!count.ok) throw count.error;
+      return {
+        records: rows.value.slice(0, pageSize),
+        query: requestedQuery,
+        before: requestedBefore,
+        hasNext: rows.value.length > pageSize,
+        total: count.value,
+      };
+    },
+    options,
+  );
+  const move = () => {
+    catalog.reset(empty());
+    void catalog.refresh();
+  };
   return {
     ...catalog,
     setQuery(value) {
@@ -49,7 +64,10 @@ export function createMemoryCatalog(ctx: Context, botId: string, options: Memory
       before = undefined;
       move();
     },
-    firstPage() { before = undefined; move(); },
+    firstPage() {
+      before = undefined;
+      move();
+    },
     nextPage() {
       const state = catalog.getSnapshot();
       const last = state.records.at(-1);

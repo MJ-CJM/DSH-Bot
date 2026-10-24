@@ -7,6 +7,7 @@ import zh from '../../locale/zh.json';
 import { botExportSchema, importPreviewSchema } from '../../src/shared/workspace.js';
 import {
   graphBindingSchema,
+  copyReceiptSchema,
   REFERENCE_SOURCE,
   REFERENCE_VERSION,
   type GraphStatus,
@@ -101,6 +102,38 @@ describe('built Client management workspace', () => {
       }
     },
   );
+  it.each(['en', 'zh'] as const)('%s requires the preview entry count before one-way copy writes', async language => {
+    const key = { botId: 'alpha', botCreatedAt: 1 };
+    const copy = copyReceiptSchema.parse({ id: 'copy:one', bot: key, sourceDigest: 'a'.repeat(64), bindingRevision: 0, targetFileIdentity: 'b'.repeat(64), previousFileIdentity: 'c'.repeat(64), phase: 'preview', records: [{ memoryId: 'memory:one', digest: 'd'.repeat(64), targetEntityName: 'entry-one', status: 'pending' }], startedAt: 1 });
+    const status: GraphStatus = { bot: key, state: 'internal', toolCount: 0, writer: false, copies: [copy] };
+    const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })], language, remote => {
+      remote.referenceMemory.request.mockImplementation(async input => ({ ok: true, value: { status, ...(input.action === 'preview' ? { copy } : {}) } }));
+    }, {}, loadBuiltClient());
+    const t = (language === 'en' ? en : zh).ui;
+    try {
+      await click(button(app.container, t['manage.title']));
+      await click(button(app.container, t['manage.graph']));
+      await click(button(app.container, t['manage.preview']));
+      await vi.waitFor(() => expect(app.container.textContent).toContain(t['graph.stage']));
+      expect(app.container.textContent).toContain(t['graph.copyHint']);
+      const stage = button(app.container, t['graph.stage']);
+      expect(stage.disabled).toBe(true);
+      expect(app.remote.referenceMemory.request.mock.calls.some(([request]) => request.action === 'stage')).toBe(false);
+      await click(field(app.container, t['graph.confirmCount'].replace('{count}', '1')));
+      expect(stage.disabled).toBe(false);
+      await click(stage);
+      expect(app.remote.referenceMemory.request).toHaveBeenCalledWith({ action: 'stage', bot: key, copyId: copy.id });
+      const draft = field(app.container, t['graph.observation']);
+      await fill(draft, 'Keep this graph draft on tab switch');
+      await click(button(app.container, t['manage.transfer']));
+      const reads = app.remote.referenceMemory.request.mock.calls.length;
+      await act(async () => { await app.ctx.emit('connection/reset'); });
+      expect(app.remote.referenceMemory.request).toHaveBeenCalledTimes(reads);
+      await click(button(app.container, t['manage.graph']));
+      expect(field(app.container, t['graph.observation'])).toBe(draft);
+      expect(draft.value).toBe('Keep this graph draft on tab switch');
+    } finally { await app.dispose(); }
+  });
   it('previews an import before confirmation and invalidates confirmation when the document or destination changes', async () => {
     const preview = importPreviewSchema.parse({
       id: 'preview:test',

@@ -1,0 +1,353 @@
+{
+  "fixtureStatus": "PASS",
+  "status": "FAIL",
+  "phase": "capture",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v03/2026-10-24T18-59-07.858Z-20652",
+  "workDir": "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T18-59-07.858Z-20652",
+  "realModelRequests": 0,
+  "modelRequests": 2,
+  "commands": [
+    {
+      "tool": "pnpm",
+      "args": [
+        "-F",
+        "dsh-bot",
+        "build"
+      ],
+      "label": "build",
+      "code": 0
+    },
+    {
+      "tool": "pnpm",
+      "args": [
+        "-C",
+        "packages/dsh-bot",
+        "pack",
+        "--pack-destination",
+        "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T18-59-07.858Z-20652"
+      ],
+      "label": "pack",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792868351177-20652",
+        "--from-default-profile",
+        "web",
+        "--dump-config"
+      ],
+      "label": "initialize",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "plugin",
+        "--profile",
+        "screenshots-v03-1792868351177-20652",
+        "add",
+        "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T18-59-07.858Z-20652/dsh-bot-0.2.2.tgz"
+      ],
+      "label": "install",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792868351177-20652",
+        "--no-open",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0"
+      ],
+      "label": "host",
+      "code": 0
+    }
+  ],
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    }
+  ]
+}

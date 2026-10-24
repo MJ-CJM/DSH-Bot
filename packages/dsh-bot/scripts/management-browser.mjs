@@ -60,7 +60,7 @@ export async function captureManagement(url, outputDir, env) {
         const bots = page.locator('[data-bots-page]');
         await bots.getByRole('tab', { name: t['manage.title'], exact: true }).click();
         const management = bots.getByRole('region', {
-          name: t['manage.title'],
+          name: t['manage.memoryTools'],
           exact: true,
         });
         await management.getByRole('tab', { name: t['manage.graph'], exact: true }).click();

@@ -62,7 +62,14 @@ export function apply(ctx, config) {
         assert.ok(final.deliveries.some(d => d.contextTruncated));
         assert.deepEqual((await Promise.all(['alpha','beta','gamma'].map(id => ctx.dshBots.openConversation(id)))).map(m => m.sessionId),mainIds);
         assert.deepEqual(mains.map(m => ctx.sessionTitle.get(ctx.agents.get(m.sessionId).session).title),mainTitles);
-        await save('main-identity',{mainIds,mainTitles,groupOperationsPreservedIdsAndTitles:true});
+        const sessionList = await ctx.sessionController.list({});
+        const statuses = await ctx.dshBots.status();
+        for (const status of statuses) {
+          const visible = sessionList.items.filter(row => !row.parentSessionId && row.origin !== 'subagent' && row.projections?.values?.agentPreset === status.presetId);
+          assert.equal(visible.length, 1, `One visible main for ${status.id}`);
+          assert.equal(visible[0].sessionId, status.mainSessionId);
+        }
+        await save('main-identity',{mainIds,mainTitles,groupOperationsPreservedIdsAndTitles:true,oneVisibleMainPerBot:true,groupWorkersAreNativeChildren:true});
         // Rename/delete a Bot and remove its member: history retains the original speaker snapshot.
         const alpha = await ctx.dshBots.get('alpha'); await ctx.dshBots.update('alpha',{name:'Renamed alpha'},alpha.updatedAt);
         latest = final.group; group = await invoke('edit',{group:groupKey,input:{name:latest.name,mode:'round-robin',members:[keys.alpha,keys.gamma],expectedRevision:latest.revision,expectedMembershipRevision:latest.membershipRevision,historyConfirmed:true}});

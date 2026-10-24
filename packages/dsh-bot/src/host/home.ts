@@ -6,8 +6,12 @@ import { botIdSchema } from '../shared/ids.js';
 import { DshBotError, parseInput } from './errors.js';
 
 const ownerSchema = z.strictObject({
-  owner: z.literal('dsh-bot'), version: z.literal(1), botId: botIdSchema,
-  path: z.string(), dev: z.string(), ino: z.string(),
+  owner: z.literal('dsh-bot'),
+  version: z.literal(1),
+  botId: botIdSchema,
+  path: z.string(),
+  dev: z.string(),
+  ino: z.string(),
 });
 type Owner = z.output<typeof ownerSchema>;
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
@@ -16,7 +20,8 @@ const invalidHome = (message: string) => new DshBotError('bot/invalid', `Private
 /** A user-selected cwd is only validated, never created, chmod'ed or deleted. */
 export async function validateDefaultCwd(path: string | undefined): Promise<void> {
   if (path === undefined) return;
-  if (!isAbsolute(path) || path.includes('\0')) throw new DshBotError('bot/invalid', 'defaultCwd must be an existing absolute directory');
+  if (!isAbsolute(path) || path.includes('\0'))
+    throw new DshBotError('bot/invalid', 'defaultCwd must be an existing absolute directory');
   try {
     if (!(await stat(path)).isDirectory()) throw new Error('Not a directory');
   } catch (error) {
@@ -34,13 +39,21 @@ export class BotHomes {
 
   private async directory(path: string, root: string, create: boolean): Promise<boolean> {
     if (create) {
-      try { await mkdir(path, { mode: 0o700 }); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+      try {
+        await mkdir(path, { mode: 0o700 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
     }
     let info: Stats;
-    try { info = await lstat(path); }
-    catch (error) { if (!create && missing(error)) return false; throw error; }
-    if (!info.isDirectory() || info.isSymbolicLink()) throw invalidHome('directory components must not be symlinks or files');
+    try {
+      info = await lstat(path);
+    } catch (error) {
+      if (!create && missing(error)) return false;
+      throw error;
+    }
+    if (!info.isDirectory() || info.isSymbolicLink())
+      throw invalidHome('directory components must not be symlinks or files');
     const canonical = await realpath(path);
     const suffix = relative(root, canonical);
     if (canonical !== path || suffix === '' || suffix === '..' || suffix.startsWith(`..${sep}`) || isAbsolute(suffix)) {
@@ -52,12 +65,16 @@ export class BotHomes {
   private async botsRoot(create: boolean) {
     if (create) await mkdir(this.dshHome, { recursive: true, mode: 0o700 });
     let root: string;
-    try { root = await realpath(this.dshHome); }
-    catch (error) { if (!create && missing(error)) return undefined; throw error; }
+    try {
+      root = await realpath(this.dshHome);
+    } catch (error) {
+      if (!create && missing(error)) return undefined;
+      throw error;
+    }
     let parent = root;
     for (const component of ['dsh-bot', 'bots']) {
       parent = join(parent, component);
-      if (!await this.directory(parent, root, create)) return undefined;
+      if (!(await this.directory(parent, root, create))) return undefined;
     }
     return { root, path: parent };
   }
@@ -80,13 +97,20 @@ export class BotHomes {
     const root = await this.botsRoot(create);
     if (!root) return undefined;
     const parent = join(root.path, id);
-    if (!await this.directory(parent, root.root, create)) return undefined;
+    if (!(await this.directory(parent, root.root, create))) return undefined;
     return { root: root.root, home: join(parent, 'home'), marker: join(parent, '.home-owner.json') };
   }
 
   private async identity(path: string, botId: string): Promise<Owner> {
     const info = await lstat(path, { bigint: true });
-    return { owner: 'dsh-bot', version: 1, botId, path: await realpath(path), dev: String(info.dev), ino: String(info.ino) };
+    return {
+      owner: 'dsh-bot',
+      version: 1,
+      botId,
+      path: await realpath(path),
+      dev: String(info.dev),
+      ino: String(info.ino),
+    };
   }
 
   private async readOwner(marker: string): Promise<Owner> {
@@ -96,16 +120,30 @@ export class BotHomes {
     try {
       if (!(await handle.stat()).isFile()) throw invalidHome('ownership marker is not a file');
       return ownerSchema.parse(JSON.parse(await handle.readFile('utf8')));
-    } finally { await handle.close(); }
+    } finally {
+      await handle.close();
+    }
   }
 
   private async owned(paths: NonNullable<Awaited<ReturnType<BotHomes['paths']>>>, botId: string): Promise<Owner> {
     await this.directory(paths.home, paths.root, false);
     const expected = await this.identity(paths.home, botId);
     let saved: Owner;
-    try { saved = await this.readOwner(paths.marker); }
-    catch (error) { throw new DshBotError('bot/invalid', 'Private home ownership cannot be verified; existing directory was preserved', { cause: error }); }
-    if (saved.botId !== expected.botId || saved.path !== expected.path || saved.dev !== expected.dev || saved.ino !== expected.ino) {
+    try {
+      saved = await this.readOwner(paths.marker);
+    } catch (error) {
+      throw new DshBotError(
+        'bot/invalid',
+        'Private home ownership cannot be verified; existing directory was preserved',
+        { cause: error },
+      );
+    }
+    if (
+      saved.botId !== expected.botId ||
+      saved.path !== expected.path ||
+      saved.dev !== expected.dev ||
+      saved.ino !== expected.ino
+    ) {
       throw invalidHome('directory was replaced or is not owned by this Bot');
     }
     return expected;
@@ -116,13 +154,20 @@ export class BotHomes {
       const paths = await this.paths(botId, true);
       if (!paths) throw invalidHome('root is unavailable');
       let created = false;
-      try { await mkdir(paths.home, { mode: 0o700 }); created = true; }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+      try {
+        await mkdir(paths.home, { mode: 0o700 });
+        created = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
       await this.directory(paths.home, paths.root, false);
       if (created) {
         const marker = await open(paths.marker, 'wx', 0o600);
-        try { await marker.writeFile(JSON.stringify(await this.identity(paths.home, botId)), 'utf8'); }
-        finally { await marker.close(); }
+        try {
+          await marker.writeFile(JSON.stringify(await this.identity(paths.home, botId)), 'utf8');
+        } finally {
+          await marker.close();
+        }
       }
       await this.owned(paths, botId);
       await chmod(paths.home, 0o700);
@@ -137,21 +182,23 @@ export class BotHomes {
    * an absent home is a no-op, and unowned paths are never adopted or deleted. */
   async prepareRemoval(botId: string): Promise<() => Promise<void>> {
     const paths = await this.paths(botId, false);
-    if (!paths || !await this.directory(paths.home, paths.root, false)) return async () => {};
+    if (!paths || !(await this.directory(paths.home, paths.root, false))) return async () => {};
     const expected = await this.owned(paths, botId);
     return async () => {
       const current = await this.paths(botId, false);
       if (!current || current.home !== paths.home) throw invalidHome('directory changed before removal');
       const actual = await this.owned(current, botId);
-      if (actual.dev !== expected.dev || actual.ino !== expected.ino) throw invalidHome('directory changed before removal');
+      if (actual.dev !== expected.dev || actual.ino !== expected.ino)
+        throw invalidHome('directory changed before removal');
       // rm does not traverse child symlinks. Only the exact owned home is
       // recursive; siblings (skills, marker and user defaultCwd) are excluded.
       await rm(current.home, { recursive: true });
       await unlink(current.marker);
       // Only an empty Bot parent may disappear. Never recursively remove it:
       // sibling skills/user files and every other Bot must survive.
-      try { await rmdir(dirname(current.home)); }
-      catch (error) {
+      try {
+        await rmdir(dirname(current.home));
+      } catch (error) {
         if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
       }
     };
