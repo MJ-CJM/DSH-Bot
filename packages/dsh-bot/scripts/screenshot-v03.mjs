@@ -27,6 +27,8 @@ const screenshots = ['bots', 'bot-editor', 'connectors', 'notifications', 'colla
 const aliases = [];
 let profile, artifactAudit, installedAudit;
 const themeEvidence = [];
+const sidebarEvidence = [];
+const scrollEvidence = [];
 for (const language of ['en', 'zh']) for (const theme of ['light', 'dark']) {
   for (const screen of screenshots) {
     matrix.push({ language, theme, screen, status: 'FAIL', reason: 'not run' });
@@ -115,6 +117,9 @@ async function capture(url) {
       await page.getByRole('button', { name: 'Bots', exact: true }).click();
       const bots = page.locator('[data-bots-page]');
       const shot = async screen => {
+        // Actionability/focus may scroll the outer Bots page to its composer.
+        // Capture from the page header; the log has its own reachable scrollbar.
+        await bots.locator('h1').evaluate(heading => heading.scrollIntoView({ block: 'start' }));
         const file = `${language}-${theme}-${screen}.png`;
         const path = resolve(outputDir, file);
         const bodyTheme = await page.locator('body').evaluate(body => ({ color: getComputedStyle(body).color, background: getComputedStyle(body).backgroundColor }));
@@ -130,6 +135,14 @@ async function capture(url) {
         Object.assign(matrix.find(row => row.language === language && row.theme === theme && row.screen === screen), { status: 'PASS', file, sha256: sha256(await readFile(path)), reason: undefined });
       };
       await bots.getByText('Assistant', { exact: true }).first().waitFor();
+      const fixture = JSON.parse(await readFile(resolve(workDir, 'sidebar-main-identity.json')));
+      for (const fixtureRow of fixture.rows) {
+        const row = page.locator(`[role="treeitem"][data-row-key="session:${fixtureRow.sessionId}"]`);
+        await row.waitFor();
+        await row.getByText(fixtureRow.title, { exact: true }).waitFor();
+        assert.ok(!/New Session|新会话/i.test(await row.innerText()), 'Fixture must not leave blank main rows');
+        sidebarEvidence.push({ language, theme, sessionId: fixtureRow.sessionId, title: fixtureRow.title, blank: false });
+      }
       await shot('bots');
       await bots.getByRole('button', { name: t['bots.create'], exact: true }).click();
       const editor = page.getByRole('dialog');
@@ -141,7 +154,7 @@ async function capture(url) {
       for (const [key, screen] of [['connectors.connectors', 'connectors'], ['notifications.notifications', 'notifications'], ['team.title', 'collaboration'], ['routine.title', 'routines'], ['im.title', 'im']]) {
         await bots.getByRole('tab', { name: t[key], exact: screen !== 'notifications' }).click();
         const panel = bots.locator('[role=tabpanel]:visible');
-        if (screen === 'collaboration') await panel.getByText('Review research summary', { exact: false }).first().waitFor();
+        if (screen === 'collaboration') await panel.getByText(/Review research summary · v/).first().waitFor();
         await shot(screen);
       }
       await bots.getByRole('tab', { name: t['manage.memoryTools'], exact: true }).click();
@@ -169,6 +182,20 @@ async function capture(url) {
       const beforeMention = await group.locator('[data-group-message]').count();
       await group.getByRole('button', { name: t['groups.send'], exact: true }).click();
       await group.locator('[data-group-message]').nth(beforeMention + 1).waitFor();
+      const log = group.getByRole('log');
+      const scroll = await log.evaluate(element => {
+        const top = element.scrollTop;
+        element.scrollTop = element.scrollHeight;
+        const bottom = element.scrollTop;
+        element.scrollTop = 0;
+        const start = element.scrollTop;
+        const style = getComputedStyle(element);
+        element.scrollTop = top;
+        return { height: element.clientHeight, fullHeight: element.scrollHeight, bottom, start, overflowY: style.overflowY, position: style.position };
+      });
+      assert.ok(scroll.height > 0 && scroll.overflowY === 'auto' && scroll.start === 0);
+      assert.ok(scroll.fullHeight <= scroll.height || scroll.bottom > 0, 'All messages must be reachable by scrolling');
+      scrollEvidence.push({ language, theme, ...scroll });
       await shot('group-mention');
       await composer.fill('Continue with the next member in round-robin order.');
       const beforeRound = await group.locator('[data-group-message]').count();
@@ -229,7 +256,7 @@ try {
   for (const child of children) child.kill('SIGKILL');
   await browser?.close();
   await mock?.close();
-  const result = { fixtureStatus, profile, installedAudit, artifact: artifactAudit ? { sha256: artifactAudit.sha256, path: artifactAudit.artifact } : undefined, aliases, themeEvidence, status: !failure && matrix.every(row => row.status === 'PASS') && narrowChecks.every(row => row.status === 'PASS') ? 'PASS' : 'FAIL', phase, outputDir, workDir, realModelRequests: 0, modelRequests: mock?.requests.length ?? 0, commands, matrix, narrowChecks, pageErrors, ...(failure ? { failure } : {}) };
+  const result = { fixtureStatus, profile, installedAudit, artifact: artifactAudit ? { sha256: artifactAudit.sha256, path: artifactAudit.artifact } : undefined, aliases, themeEvidence, sidebarEvidence, scrollEvidence, status: !failure && matrix.every(row => row.status === 'PASS') && narrowChecks.every(row => row.status === 'PASS') ? 'PASS' : 'FAIL', phase, outputDir, workDir, realModelRequests: 0, modelRequests: mock?.requests.length ?? 0, commands, matrix, narrowChecks, pageErrors, ...(failure ? { failure } : {}) };
   await mkdir(resolve(home, 'p34-u12-13'), { recursive: true });
   await writeFile(resolve(home, 'p34-u12-13/latest-screenshots.txt'), `${outputDir}\n`);
   await writeFile(resolve(outputDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);

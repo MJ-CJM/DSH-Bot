@@ -79,7 +79,7 @@ export function ManagementWorkspace({
               t={t}
             />
           ) : (
-            <button type="button" role="tab" key={key} aria-selected={tab === key} onClick={() => setTab(key)}>
+            <button className={styles.button} type="button" role="tab" key={key} aria-selected={tab === key} onClick={() => setTab(key)}>
               {t(labels[key])}
             </button>
           ),

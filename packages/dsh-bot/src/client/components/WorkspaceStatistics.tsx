@@ -8,6 +8,7 @@ const unwrap = <T,>(r: RemoteResult<T>): T => {
   return r.value;
 };
 type Locale = PropsLocale<'dsh-bot'>;
+import styles from '../styles/integrations.module.css';
 import type { workspaceSummarySchema } from '../../shared/workspace.js';
 export function Statistics({ actions, t }: { actions: WorkspaceActions } & Locale) {
   const [value, setValue] = useState<z.output<typeof workspaceSummarySchema>>(),
@@ -34,10 +35,10 @@ export function Statistics({ actions, t }: { actions: WorkspaceActions } & Local
     };
   }, [refresh]);
   return (
-    <section aria-label={t('manage.statistics')}>
+    <section className={styles.statistics} aria-label={t('manage.statistics')}>
       <h3>{t('manage.statistics')}</h3>
       <p>{t('manage.sampleHint')}</p>
-      <dl>
+      <dl className={styles.statGrid}>
         {(['accepted', 'completed', 'failed', 'unknown'] as const).map((key) => (
           <div key={key}>
             <dt>{t(`manage.stat-${key}`)}</dt>

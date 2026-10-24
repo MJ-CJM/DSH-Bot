@@ -6,10 +6,11 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { auditInstalled, command, sha256 } from './p34-artifact.mjs';
 
-/** Reopen synthetic data written by the actual retained 0.2.2 package, never user data. */
-export async function checkUpgrade(root, runDir, env, artifact, audit) {
+/** Reopen synthetic data written by the actual retained previous package, never user data. */
+export async function checkUpgrade(root, runDir, env, artifact, audit, oldVersion = '0.2.2') {
   await mkdir(runDir, { recursive: true });
-  const oldArtifact = resolve(root, 'dist/dsh-bot-0.2.2.tgz');
+  assert.ok(['0.2.2', '0.3.0'].includes(oldVersion));
+  const oldArtifact = resolve(root, `dist/dsh-bot-${oldVersion}.tgz`);
   const require = createRequire(resolve(root, 'packages/dsh-bot/package.json'));
   const { startMockLlmServer } = await import(require.resolve('@deepseek-ai/dsh-llm-mock-server'));
   const mock = await startMockLlmServer({ host: '127.0.0.1', port: 0, sequence: ['success'] });
@@ -22,7 +23,7 @@ export async function checkUpgrade(root, runDir, env, artifact, audit) {
   };
   try {
     const old = await command('/usr/bin/tar', ['-xOf', oldArtifact, 'package/package.json']);
-    assert.equal(old.code, 0); assert.equal(JSON.parse(old.output).version, '0.2.2');
+    assert.equal(old.code, 0); assert.equal(JSON.parse(old.output).version, oldVersion);
     await cli(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
     for (const phase of ['old', 'new']) {
       await cli(['plugin', '--profile', profile, 'add', phase === 'old' ? oldArtifact : artifact], `${phase}-install`);
@@ -36,7 +37,7 @@ export async function checkUpgrade(root, runDir, env, artifact, audit) {
         '- id: llm-deepseek', '  config:', '    apiKeyEnv: UPGRADE_MOCK_KEY', `    baseURL: ${JSON.stringify(`${mock.baseURL}/v1`)}`, '    thinking: disabled', '    reasoningEffort: off',
         ...['llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry', 'session-log-deepseek', 'session-telemetry-otel', 'desktop-product-telemetry'].flatMap(id => [`- id: ${id}`, '  disabled: true']),
         '- insert:', '    - id: release-upgrade-probe', `      name: ${JSON.stringify(resolve(root, 'packages/dsh-bot/tests/release-upgrade-host.mjs'))}`,
-        '      config:', `        outputDir: ${JSON.stringify(runDir)}`, `        phase: ${phase}`,
+        '      config:', `        outputDir: ${JSON.stringify(runDir)}`, `        phase: ${phase}`, `        oldVersion: ${oldVersion}`,
       ];
       await writeFile(resolve(env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch.join('\n')}\n`);
       const child = spawn(resolve(root, 'scripts/dsh'), ['--profile', profile, '--no-open', '--host', '127.0.0.1', '--port', '0'],
@@ -57,7 +58,7 @@ export async function checkUpgrade(root, runDir, env, artifact, audit) {
       }
     }
     assert.equal(mock.requests.length, 0);
-    const result = { status: 'PASS', profile, oldVersion: '0.2.2', newVersion: '0.3.0',
+    const result = { status: 'PASS', profile, oldVersion, newVersion: audit.version,
       oldArtifactSha256: sha256(await readFile(oldArtifact)), artifactSha256: audit.sha256,
       botMemoryAndMainSessionUnchanged: true, modelRequests: 0, realModelRequests: 0 };
     await writeFile(resolve(runDir, 'result.json'), JSON.stringify(result, null, 2));

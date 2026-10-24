@@ -1,5 +1,13 @@
 # DSH API 核实记录
 
+## P34 r3：0.3.1 UI 与 fixture（2026-10-24）
+
+产品未增加 DSH API、依赖或 Remote 方法，存储领域/版本与兼容范围不变。UI 使用现有公开主题 alias；轮次展开偏好仅存在 Client 插件生命周期内，由 effect 清理，不写 Host 或 localStorage。
+
+本轮只读 rc.2 核实 `packages/api/session-controller/src/list.ts:50-58` 的 blank 投影仅在 `turn/start` 变为 false；`packages/client/ui-workspace/src/client/rows/Rows.tsx:47-50` 对 blank 行显示本地化 New Session，忽略已存在的标题。因此旧 v03 fixture 仅打开未发言的三个 Bot 主会话会显示一个“新会话”，并非未执行 Bot 标题固定，也非 Team 额外创建主会话。fixture 改为通过既有公开 `sessionController.prompt` 完成 loopback mock 轮次，逐个校验 accepted、真实 assistant/turn-end、flush、列表 blank=false 及标题不变；不伪造事件或修改原生投影。
+
+`release-upgrade-host` 用既有公开 `ctx.get` 兼容读取旧包没有的新服务。0.3.0 升级路径另比较群/成员、禁用连接器、通知策略与 Inbox；0.2.2 路径保留原 Bot、记忆和主会话比较。当前运行收据、全部检查结果、失败重试和视觉 NOT_RUN 见 [r3 验收](acceptance/P34-rework-r3.md)。
+
 ## U12–U13：0.3.0 交付与市场 fixture（2026-10-24）
 
 产品 API、Remote、持久身份和宿主兼容范围不变。新增公开开发工具入口 `@deepseek-ai/dsh-plugin-market-index@0.2.1-rc.2` 根的 `parseMarketIndex` / `marketInstallTarget`，只用于 scripts/p34-market.mjs，不进入 Host/Client，也不需 runtime peer。依据只读 rc.2 `packages/util/plugin-market-index/src/{index,types}.ts`；format=1、秒级时间戳、exact semver、Git 40hex commit/相对 path，以及 npm spec/registry 由原生函数验证和生成。private generator 不运行。

@@ -386,7 +386,7 @@
     "groups.message": "Group message",
     "groups.pick": "@ Choose members",
     "groups.targets": "Recipients for this turn",
-    "groups.routingHint": "Text @ does not route messages. Confirm recipients in the picker. Round robin sends to one member; Start a round runs each in order. Sending again after a failure creates a new visible attempt and may repeat tool effects.",
+    "groups.routingHint": "Type @member name or choose recipients. Names ignore case; use the picker for duplicate names. Round robin sends to one member; Start a round runs each in order. Retrying after a failure may repeat tool effects.",
     "groups.send": "Send",
     "groups.round": "Start a round (all)",
     "groups.failureHint": "Did not complete successfully. Use the main conversation for actions requiring approval.",
@@ -584,6 +584,8 @@
     "groups.ambiguousMention": "Several members share this name. Choose the intended member.",
     "graph.confirmCount": "Confirm copying {count} entries",
     "row.group": "Group: {name}",
-    "manage.memoryTools": "Memory & transfer"
+    "manage.memoryTools": "Memory & transfer",
+    "groups.chooseMention": "Please use @ to choose a member.",
+    "groups.turnSummary": "{count} members · {state}"
   }
 }

@@ -648,3 +648,23 @@
   gap: 8px;
   margin-bottom: 16px;
 }
+
+.managementTabs > button {
+  appearance: none;
+  font: inherit;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  min-width: 0;
+  max-width: 100%;
+}
+.managementTabs > button[aria-selected="true"] {
+  color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.managementTabs > button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.managementTabs > button:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }

@@ -19,6 +19,8 @@ export interface GroupActions {
   createView(key: GroupKey): PollingCatalog<{ view?: GroupView }>;
   selection: PollingCatalog<{ selectedId?: string }>;
   select(id: string): void;
+  /** Client-session preferences, released with the plugin effect. */
+  turnExpansion: Map<string, boolean>;
 }
 export function createGroupActions(ctx: Context, options: BotCatalogOptions): GroupActions {
   const remote = (): GroupMethods => {
@@ -26,9 +28,12 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
     if (!service) throw new Error('Groups unavailable');
     return service;
   };
+  const turnExpansion = new Map<string, boolean>();
+  ctx.effect(() => () => turnExpansion.clear(), 'dsh-bot: group expansion preferences');
   let selectedId: string | undefined;
   const selection = createPollingCatalog<{ selectedId?: string }>(ctx, {}, async () => ({ selectedId }), options);
   return {
+    turnExpansion,
     remote,
     selection,
     select(id) {

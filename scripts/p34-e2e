@@ -22,10 +22,11 @@ Object.assign(env, { DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1',
   TMPDIR: resolve(runDir, 'tmp'), XDG_STATE_HOME: resolve(runDir, 'state'),
   pnpm_config_store_dir: resolve(home, 'pnpm-store'), pnpm_config_cache_dir: resolve(home, 'pnpm-cache') });
 await mkdir(env.TMPDIR, { recursive: true });
-const artifact = resolve(root, 'dist/dsh-bot-0.3.0.tgz');
+const version = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version;
+const artifact = resolve(root, `dist/dsh-bot-${version}.tgz`);
 const summary = { status: 'FAIL', runDir, realModelRequests: 0, modelRequests: 0,
   scope: 'One exact tgz; independent fresh profiles for domain fault scenarios; browser status separate.',
-  checks: [], scenarios: [], browser: { status: 'FAIL', reason: 'not run' },
+  checks: [], scenarios: [], browser: { status: 'FAIL', reason: process.argv.includes('--host-only') ? 'NOT_RUN; screenshots delegated to orchestrator by R-review-r3' : 'not run' },
   imTransport: { status: 'FAIL', reason: 'U01 consumer gate unverified; safe disabled state tested.' },
   desktop: { status: 'FAIL', reason: 'NOT_RUN; no public OS notification API or Desktop mutation authorized.' } };
 const save = () => writeFile(resolve(runDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
@@ -48,7 +49,7 @@ await check('pack_and_byte_audit', async () => {
   await execute(resolve(root, 'scripts/pnpm'), ['pack:plugin'], 'pack');
   audit = await auditArtifact(root, artifact, runDir);
   await writeFile(resolve(root, 'dist/artifact-manifest.json'), `${JSON.stringify(audit, (key, value) => key === 'packedRoot' ? undefined : value, 2)}\n`);
-  await writeFile(resolve(root, 'dist/dsh-bot-0.3.0.tgz.sha256'), `${audit.sha256}  dsh-bot-0.3.0.tgz\n`);
+  await writeFile(resolve(root, `dist/dsh-bot-${version}.tgz.sha256`), `${audit.sha256}  dsh-bot-${version}.tgz\n`);
   return { sha256: audit.sha256, files: audit.files.length };
 });
 await check('market_parser_and_mock_installer', async () => {
@@ -129,12 +130,13 @@ await check('cli_remove_reinstall_persistent_data_and_host', async () => {
   }
   return { evidence: 'reinstalled-host.json', storedFilesPreserved: before.length };
 });
-await check('upgrade_022_to_030', async () => {
+for (const oldVersion of ['0.2.2', '0.3.0']) await check(`upgrade_${oldVersion}_to_${version}`, async () => {
   assert.ok(audit);
-  await checkUpgrade(root, resolve(runDir, 'upgrade'), env, artifact, audit);
-  return { evidence: 'upgrade/result.json' };
+  const dir = `upgrade-${oldVersion}`;
+  await checkUpgrade(root, resolve(runDir, dir), env, artifact, audit, oldVersion);
+  return { evidence: `${dir}/result.json` };
 });
-await check('screenshot_fixture_and_matrix', async () => {
+if (!process.argv.includes('--host-only')) await check('screenshot_fixture_and_matrix', async () => {
   assert.ok(audit);
   const execution = await command(process.execPath, [resolve(root, 'scripts/screenshot.mjs'), '--v03'],
     { cwd: root, env: { ...env, DSH_BOT_E2E_PACKAGE: artifact } });

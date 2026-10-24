@@ -39,7 +39,7 @@ export async function auditArtifact(root, artifact, runDir) {
   const packedRoot = resolve(unpacked, 'package');
   const manifest = JSON.parse(await readFile(resolve(packedRoot, 'package.json')));
   assert.equal(manifest.name, 'dsh-bot');
-  assert.equal(manifest.version, '0.3.0');
+  assert.equal(manifest.version, JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version);
   assert.equal(manifest.engines.dsh, '>=0.2.1-rc.2 <0.3.0');
   assert.equal(manifest.license, 'UNLICENSED');
   for (const [name, version] of Object.entries(manifest.devDependencies)) {
@@ -73,7 +73,7 @@ export async function auditArtifact(root, artifact, runDir) {
   assert.equal(git.code, 0);
   const bytes = await readFile(artifact);
   const result = { name: manifest.name, version: manifest.version, dshPin: '0.2.1-rc.2',
-    engines: manifest.engines, gitHead: git.output.trim(), workingTree: 'U12/U13 changes not committed',
+    engines: manifest.engines, gitHead: git.output.trim(), workingTree: 'Release changes not committed',
     artifact: relative(root, artifact), sha256: sha256(bytes), bytes: bytes.length, files: audit,
     buildCommands: ['scripts/pnpm check', 'scripts/pnpm pack:plugin'], published: false };
   await writeFile(resolve(runDir, 'artifact-manifest.json'), `${JSON.stringify(result, null, 2)}\n`);
@@ -85,5 +85,5 @@ export async function auditInstalled(home, profile, artifact) {
   for (const { file, sha256: expected } of artifact.files) {
     assert.equal(sha256(await readFile(resolve(installedRoot, file))), expected, `Installed mismatch: ${file}`);
   }
-  return { profile, version: '0.3.0', files: artifact.files.length, artifactSha256: artifact.sha256, status: 'PASS' };
+  return { profile, version: artifact.version, files: artifact.files.length, artifactSha256: artifact.sha256, status: 'PASS' };
 }

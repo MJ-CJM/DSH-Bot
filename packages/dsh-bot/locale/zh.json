@@ -386,7 +386,7 @@
     "groups.message": "群消息输入",
     "groups.pick": "@ 选择成员",
     "groups.targets": "本轮接收成员",
-    "groups.routingHint": "文字中的 @ 不会触发路由。用选择器确认成员；轮流模式默认一位，“开始一轮”按顺序各发一次。失败后重新发送会创建新的可见尝试，可能重复工具副作用。",
+    "groups.routingHint": "输入 @成员名 或用选择器确认成员；名称不区分大小写，重名时请用选择器。轮流模式默认一位，“开始一轮”按顺序各发一次。失败后重新发送可能重复工具副作用。",
     "groups.send": "发送",
     "groups.round": "开始一轮（全部）",
     "groups.failureHint": "未成功完成；需审批的操作请在主对话执行。",
@@ -584,6 +584,8 @@
     "groups.ambiguousMention": "群内有重名成员，请选择要提及的成员。",
     "graph.confirmCount": "确认复制 {count} 条记忆",
     "row.group": "群聊：{name}",
-    "manage.memoryTools": "记忆与导入导出"
+    "manage.memoryTools": "记忆与导入导出",
+    "groups.chooseMention": "请用 @ 选择成员",
+    "groups.turnSummary": "{count} 位成员 · {state}"
   }
 }

@@ -1,3 +1,4 @@
+import { GroupTimeline } from './GroupTimeline.js';
 import { resolveGroupMentions } from '../group-mentions.js';
 import { WhaleGlyph } from './WhaleGlyph.js';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -15,7 +16,11 @@ export function GroupsPanel({
   bots,
   onOpenSession,
   t,
-}: { actions: GroupActions; bots: BotRecord[]; onOpenSession(id: string): Promise<void> } & Localized) {
+}: {
+  actions: GroupActions;
+  bots: BotRecord[];
+  onOpenSession(id: string): Promise<void>;
+} & Localized) {
   const list = useSyncExternalStore(
     actions.catalog.subscribe,
     actions.catalog.getSnapshot,
@@ -28,6 +33,9 @@ export function GroupsPanel({
   );
   const [selected, setSelected] = useState<string>();
   const [creating, setCreating] = useState(false);
+  const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(actions.turnExpansion),
+  );
   const active = list.groups.find((g) => g.group.id === (selected ?? requested.selectedId)) ?? list.groups[0];
   useEffect(() => {
     if (requested.selectedId) {
@@ -103,6 +111,11 @@ export function GroupsPanel({
           ) : active ? (
             <GroupConversation
               key={`${active.group.id}:${active.group.createdAt}`}
+              expandedTurns={expandedTurns}
+              onExpandTurn={(id, expanded) => {
+                actions.turnExpansion.set(id, expanded);
+                setExpandedTurns((old) => ({ ...old, [id]: expanded }));
+              }}
               summary={active}
               actions={actions}
               bots={bots}
@@ -138,12 +151,17 @@ function GroupEditor({
 } & Localized) {
   const [name, setName] = useState(initial?.group.name ?? '');
   const [mode, setMode] = useState(initial?.group.mode ?? 'mention');
-  const [members, setMembers] = useState(() => initial?.members.filter((m) => m.enabled).map((m) => m.bot) ?? []);
+  const [members, setMembers] = useState(
+    () => initial?.members.filter((m) => m.enabled).map((m) => m.bot) ?? [],
+  );
   const [cwd, setCwd] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-  const intent = useRef({ operationId: `create:${crypto.randomUUID()}`, signature: '' });
+  const intent = useRef({
+    operationId: `create:${crypto.randomUUID()}`,
+    signature: '',
+  });
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -164,7 +182,13 @@ function GroupEditor({
         if (busy || !confirmed || members.length < 2) return;
         setBusy(true);
         setError(false);
-        const input = { name, mode, members, ...(cwd ? { cwd } : {}), historyConfirmed: true as const };
+        const input = {
+          name,
+          mode,
+          members,
+          ...(cwd ? { cwd } : {}),
+          historyConfirmed: true as const,
+        };
         const signature = JSON.stringify(input);
         if (intent.current.signature && intent.current.signature !== signature)
           intent.current.operationId = `create:${crypto.randomUUID()}`;
@@ -219,8 +243,9 @@ function GroupEditor({
       <ol>
         {members.map((k, i) => (
           <li key={`${k.botId}:${k.botCreatedAt}`}>
-            {bots.find((b) => b.id === k.botId && b.createdAt === k.botCreatedAt)?.name ?? t('groups.unavailable')} (
-            {k.botId})
+            {bots.find((b) => b.id === k.botId && b.createdAt === k.botCreatedAt)?.name ??
+              t('groups.unavailable')}{' '}
+            ({k.botId})
             <button
               type="button"
               aria-label={`${t('groups.removeMember')} ${k.botId}`}
@@ -245,7 +270,12 @@ function GroupEditor({
       </ol>
       <p>{t('groups.capabilities')}</p>
       <label>
-        <input type="checkbox" required checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+        <input
+          type="checkbox"
+          required
+          checked={confirmed}
+          onChange={(e) => setConfirmed(e.target.checked)}
+        />
         {t('groups.historyConsent')}
       </label>
       <div className={styles.bar}>
@@ -260,12 +290,16 @@ function GroupEditor({
   );
 }
 function GroupConversation({
+  expandedTurns,
+  onExpandTurn,
   summary,
   actions,
   bots,
   onOpenSession,
   t,
 }: {
+  expandedTurns: Record<string, boolean>;
+  onExpandTurn(id: string, expanded: boolean): void;
   summary: GroupSummary;
   actions: GroupActions;
   bots: BotRecord[];
@@ -302,10 +336,12 @@ function GroupConversation({
   const [hasOlder, setHasOlder] = useState<boolean>();
   const operation = useRef<{ signature: string; request: GroupSend }>();
   const composer = useRef<HTMLTextAreaElement>(null);
-  const timeline = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLFieldSetElement>(null);
   useEffect(() => {
-    if (picker) pickerRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus();
+    if (picker)
+      pickerRef.current
+        ?.querySelector<HTMLInputElement>('input:not(:disabled)')
+        ?.focus({ preventScroll: true });
   }, [picker]);
   const alive = useRef(true);
   const lock = useRef(false);
@@ -330,21 +366,21 @@ function GroupConversation({
       if (alive.current) setBusy(false);
     }
   };
+  const mentionTargets = (view?.members ?? [])
+    .filter((m) => m.enabled && m.removedAt === undefined && !view?.unavailableMemberIds.includes(m.id))
+    .map((m) => ({
+      id: m.id,
+      botId: m.bot.botId,
+      name: bots.find((b) => b.id === m.bot.botId && b.createdAt === m.bot.botCreatedAt)?.name ?? m.bot.botId,
+    }));
+  const resolveMentions = (text: string) => resolveGroupMentions(text, mentionTargets, mentions);
+  const resolvedMentions = resolveMentions(draft);
+  const typedMentions = resolveGroupMentions(draft, mentionTargets).memberIds;
   const submit = (round: boolean) => {
     if (!view || !draft.trim()) return;
-    const resolved = resolveGroupMentions(
-      draft,
-      view.members
-        .filter((m) => m.enabled && m.removedAt === undefined)
-        .map((m) => ({
-          id: m.id,
-          botId: m.bot.botId,
-          name: bots.find((b) => b.id === m.bot.botId && b.createdAt === m.bot.botCreatedAt)?.name ?? m.bot.botId,
-        })),
-      mentions,
-    );
+    const resolved = resolveMentions(draft);
     setMentionIssues(resolved.issues);
-    // Unmatched text remains ordinary group text. Valid recipients and round-robin can still proceed.
+    if (resolved.issues.length) return;
     if (!round && view.group.mode === 'mention' && !resolved.memberIds.length) return;
     const base = {
       expectedMembershipRevision: view.group.membershipRevision,
@@ -352,24 +388,32 @@ function GroupConversation({
       memberIds: round ? [] : resolved.memberIds,
       round,
     };
-    const signature = JSON.stringify({ text: base.text, memberIds: base.memberIds, round: base.round });
+    const signature = JSON.stringify({
+      text: base.text,
+      memberIds: base.memberIds,
+      round: base.round,
+    });
     if (operation.current?.signature !== signature)
-      operation.current = { signature, request: { ...base, operationId: `send:${crypto.randomUUID()}` } };
+      operation.current = {
+        signature,
+        request: { ...base, operationId: `send:${crypto.randomUUID()}` },
+      };
     const pending = operation.current;
+    const selectedAtSend = [...mentions];
     void perform(async () => {
       unwrapGroup(await actions.remote().send(groupKey(view.group), pending.request));
       if (alive.current) {
         setDraft((current) => (current === pending.request.text ? '' : current));
-        setMentions((current) =>
-          JSON.stringify(current) === JSON.stringify(pending.request.memberIds) ? [] : current,
-        );
+        setMentions((current) => (JSON.stringify(current) === JSON.stringify(selectedAtSend) ? [] : current));
         operation.current = undefined;
       }
     });
   };
   if (!view)
     return (
-      <p role={snapshot.error ? 'alert' : 'status'}>{t(snapshot.error ? 'groups.disconnected' : 'groups.loading')}</p>
+      <p role={snapshot.error ? 'alert' : 'status'}>
+        {t(snapshot.error ? 'groups.disconnected' : 'groups.loading')}
+      </p>
     );
   const members = view.members.filter((m) => m.enabled && m.removedAt === undefined);
   const lookup = (memberId: string) => {
@@ -399,7 +443,9 @@ function GroupConversation({
           {t('groups.archive')}
         </button>
       </div>
-      {(error || snapshot.error) && <p role="alert">{t(error ? 'groups.conflict' : 'groups.disconnected')}</p>}
+      {(error || snapshot.error) && (
+        <p role="alert">{t(error ? 'groups.conflict' : 'groups.disconnected')}</p>
+      )}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       <section className={styles.members} aria-label={t('groups.members')}>
         {members.map((m) => {
@@ -452,79 +498,21 @@ function GroupConversation({
           {t('groups.older')}
         </button>
       )}
-      <div ref={timeline} className={styles.timeline} role="log" aria-label={t('groups.timeline')} aria-live="polite">
-        {messages.map((m) => (
-          <div key={m.id} className={styles.message} data-group-message={m.id}>
-            <div className={styles.bar}>
-              {m.speaker && (
-                <BotAvatar
-                  bot={{
-                    id: m.speaker.bot.botId,
-                    avatar: m.speaker.avatar,
-                    avatarColor: m.speaker.avatarColor,
-                    avatarVariant: m.speaker.avatarVariant,
-                  }}
-                  size={32}
-                  label={m.speaker.name}
-                />
-              )}
-              <strong>{m.speaker?.name ?? t('groups.you')}</strong>
-              {m.speaker && (
-                <small>
-                  {m.speaker.bot.botId} · {m.speaker.bot.botCreatedAt}
-                </small>
-              )}
-              <time dateTime={new Date(m.at).toISOString()}>{new Date(m.at).toLocaleTimeString()}</time>
-            </div>
-            <p>{m.text}</p>
-            {m.hasNonText && <p>{t('groups.nonText')}</p>}
-            {m.stopReason && m.stopReason !== 'completed' && (
-              <p role="status">
-                {t('groups.partial')} · {m.stopReason}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-      <section aria-label={t('groups.turns')}>
-        {view.turns.map((turn) => (
-          <div key={turn.id} className={styles.turn}>
-            <span>{t(`groups.${turn.state}`)}</span>
-            {['accepted', 'running'].includes(turn.state) && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  void perform(async () =>
-                    unwrapGroup(await actions.remote().cancel(groupKey(view.group), turn.id, turn.revision)),
-                  );
-                }}
-              >
-                {t('groups.cancelTurn')}
-              </button>
-            )}
-            {view.deliveries
-              .filter((d) => d.turnId === turn.id)
-              .map((d) => (
-                <div key={d.id}>
-                  {lookup(d.memberId)?.name ?? d.bot.botId} · {t(`groups.${d.state}`)}{' '}
-                  {d.reasonCode ? t('groups.failureHint') : ''}
-                  {d.contextTruncated && <span>{t('groups.truncated')}</span>}
-                  {d.childSessionId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void onOpenSession(d.childSessionId ?? '');
-                      }}
-                    >
-                      {t('groups.child')}
-                    </button>
-                  )}
-                </div>
-              ))}
-          </div>
-        ))}
-      </section>
+      <GroupTimeline
+        view={view}
+        messages={messages}
+        lookup={lookup}
+        expanded={expandedTurns}
+        onExpand={onExpandTurn}
+        busy={busy}
+        onCancel={(turn) => {
+          void perform(async () =>
+            unwrapGroup(await actions.remote().cancel(groupKey(view.group), turn.id, turn.revision)),
+          );
+        }}
+        onOpenSession={onOpenSession}
+        t={t}
+      />
       <form
         className={styles.composer}
         onSubmit={(e) => {
@@ -542,12 +530,9 @@ function GroupConversation({
               setMentionIssues([]);
             }}
             onKeyDown={(e) => {
-              if (e.key === '@') {
-                setPicker(true);
-              }
               if (e.key === 'Escape') {
                 setPicker(false);
-                composer.current?.focus();
+                composer.current?.focus({ preventScroll: true });
               }
             }}
           />
@@ -556,11 +541,19 @@ function GroupConversation({
           <button type="button" aria-expanded={picker} onClick={() => setPicker((v) => !v)}>
             {t('groups.pick')}
           </button>
-          {mentions.map((id) => (
-            <button key={id} type="button" onClick={() => setMentions((old) => old.filter((m) => m !== id))}>
-              @{lookup(id)?.name ?? id} ×
-            </button>
-          ))}
+          {resolvedMentions.memberIds.map((id) =>
+            typedMentions.includes(id) ? (
+              <span key={id}>@{lookup(id)?.name ?? id}</span>
+            ) : (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMentions((old) => old.filter((m) => m !== id))}
+              >
+                @{lookup(id)?.name ?? id} ×
+              </button>
+            ),
+          )}
         </div>
         {picker && (
           <fieldset
@@ -569,7 +562,7 @@ function GroupConversation({
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setPicker(false);
-                composer.current?.focus();
+                composer.current?.focus({ preventScroll: true });
               }
             }}
           >
@@ -578,11 +571,14 @@ function GroupConversation({
               <label key={m.id}>
                 <input
                   type="checkbox"
-                  checked={mentions.includes(m.id)}
-                  disabled={view.unavailableMemberIds.includes(m.id)}
-                  onChange={(e) =>
-                    setMentions((old) => (e.target.checked ? [...old, m.id] : old.filter((id) => id !== m.id)))
-                  }
+                  checked={resolvedMentions.memberIds.includes(m.id)}
+                  disabled={view.unavailableMemberIds.includes(m.id) || typedMentions.includes(m.id)}
+                  onChange={(e) => {
+                    setMentions((old) =>
+                      e.target.checked ? [...old, m.id] : old.filter((id) => id !== m.id),
+                    );
+                    setMentionIssues([]);
+                  }}
                 />
                 {lookup(m.id)?.name ?? t('groups.unavailable')} ({m.bot.botId} · {m.bot.botCreatedAt})
               </label>
@@ -591,16 +587,18 @@ function GroupConversation({
               type="button"
               onClick={() => {
                 setPicker(false);
-                composer.current?.focus();
+                composer.current?.focus({ preventScroll: true });
               }}
             >
               {t('groups.close')}
             </button>
           </fieldset>
         )}
+        {mentionIssues.length > 0 && <p role="alert">{t('groups.chooseMention')}</p>}
         {mentionIssues.map((issue) => (
           <p role="alert" key={issue.mention}>
-            @{issue.mention} · {t(issue.reason === 'ambiguous' ? 'groups.ambiguousMention' : 'groups.unknownMention')}
+            @{issue.mention} ·{' '}
+            {t(issue.reason === 'ambiguous' ? 'groups.ambiguousMention' : 'groups.unknownMention')}
           </p>
         ))}
         <p>{t('groups.routingHint')}</p>

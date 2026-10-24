@@ -8,7 +8,7 @@ export function resolveGroupMentions(text: string, targets: MentionTarget[], sel
   const normalize = (value: string) => value.normalize('NFKC').toLocaleLowerCase('und');
   const input = normalize(text);
   const aliases = targets.flatMap((target) =>
-    [target.name, target.botId].map((name) => ({ target, name: normalize(name) })),
+    [target.name, target.botId].filter((name) => name.trim()).map((name) => ({ target, name: normalize(name) })),
   );
   aliases.sort((a, b) => b.name.length - a.name.length);
   const memberIds = new Set(selected.filter((id) => targets.some((target) => target.id === id)));
@@ -28,7 +28,7 @@ export function resolveGroupMentions(text: string, targets: MentionTarget[], sel
       ).values(),
     ];
     const chosen = candidates.filter((target) => selected.includes(target.id));
-    if (candidates.length === 1 || chosen.length) {
+    if (candidates.length === 1 || (candidates.length > 1 && chosen.length === 1)) {
       for (const target of chosen.length ? chosen : candidates) memberIds.add(target.id);
     } else {
       issues.push({

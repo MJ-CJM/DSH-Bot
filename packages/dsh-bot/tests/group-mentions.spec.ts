@@ -14,16 +14,42 @@ describe('typed group mentions resolve against the current membership', () => {
     ['@Research Assistant。谢谢', ['member:space']],
     ['Email user@example.com', []],
   ])('resolves %s to stable membership IDs', (text, memberIds) => {
-    expect(resolveGroupMentions(text, targets)).toEqual({ memberIds, issues: [] });
+    expect(resolveGroupMentions(text, targets)).toEqual({
+      memberIds,
+      issues: [],
+    });
   });
   it('reports missing and duplicate names without silently selecting a recipient', () => {
-    expect(resolveGroupMentions('@missing hello', targets)).toMatchObject({ memberIds: [], issues: [{ reason: 'unknown' }] });
-    expect(resolveGroupMentions('@重名 Bot hello', targets)).toMatchObject({ memberIds: [], issues: [{ reason: 'ambiguous' }] });
-    expect(resolveGroupMentions('@重名 Bot hello', targets, ['member:duplicate2'])).toEqual({ memberIds: ['member:duplicate2'], issues: [] });
+    expect(resolveGroupMentions('@missing hello', targets)).toMatchObject({
+      memberIds: [],
+      issues: [{ reason: 'unknown' }],
+    });
+    expect(resolveGroupMentions('@重名 Bot hello', targets)).toMatchObject({
+      memberIds: [],
+      issues: [{ reason: 'ambiguous' }],
+    });
+    expect(resolveGroupMentions('@重名 Bot hello', targets, ['member:duplicate2'])).toEqual({
+      memberIds: ['member:duplicate2'],
+      issues: [],
+    });
+  });
+  it('does not disambiguate a duplicate name by selecting both candidates', () => {
+    expect(
+      resolveGroupMentions('@重名 Bot', targets, ['member:duplicate1', 'member:duplicate2']).issues,
+    ).toEqual([{ mention: '重名 bot', reason: 'ambiguous' }]);
+    expect(resolveGroupMentions('@missing @研究员', targets, ['member:space']).issues).toHaveLength(1);
+    expect(resolveGroupMentions('@ＲＥＳＥＡＲＣＨ Assistant', targets).memberIds).toEqual(['member:space']);
   });
   it('prefers a complete longer name and rejects stale targets', () => {
     const overlapping = [...targets, { id: 'short', name: 'Research', botId: 'short' }];
-    expect(resolveGroupMentions('@Research Assistant hello', overlapping).memberIds).toEqual(['member:space']);
-    expect(resolveGroupMentions('@研究员 hi', targets.filter(t => t.id !== 'member:cn')).issues).toHaveLength(1);
+    expect(resolveGroupMentions('@Research Assistant hello', overlapping).memberIds).toEqual([
+      'member:space',
+    ]);
+    expect(
+      resolveGroupMentions(
+        '@研究员 hi',
+        targets.filter((t) => t.id !== 'member:cn'),
+      ).issues,
+    ).toHaveLength(1);
   });
 });
