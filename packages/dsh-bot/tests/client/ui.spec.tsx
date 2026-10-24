@@ -386,7 +386,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     }));
     const patch = app.remote.methods.update.mock.calls[0]?.[1];
     expect(patch).not.toHaveProperty('id');
-    expect(patch).not.toHaveProperty('model');
+    expect(patch?.model).toEqual({ provider: 'provider', model: 'model' });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     expect(app.remote.data.records[0]).not.toHaveProperty('avatar');
     expect(app.remote.data.records[0]?.model).toEqual(original.model);

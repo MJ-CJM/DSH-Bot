@@ -10,7 +10,7 @@ const plain = z.string().max(2048).refine(s => !hasCredential(s) && !/[\r\n\0]|\
 const envKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 export const connectorInputSchema = z.strictObject({
   id: p34Id, label: plain.min(1).max(120), templateId: z.enum(['github', 'filesystem', 'browser', 'notion', 'custom']).default('custom'),
-  templateVersion: z.literal(1).default(1), serverName: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
+  templateVersion: z.literal(1).default(1), serverName: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/).refine(v => v !== 'bot_memory_graph'),
   transport: z.enum(['stdio', 'streamable-http']), command: plain.optional(), args: z.array(plain).max(64).default([]),
   url: z.string().max(2048).optional(),
   literalEnv: z.partialRecord(z.enum(['LANG', 'LC_ALL', 'TZ', 'NODE_ENV']), plain).default({}),

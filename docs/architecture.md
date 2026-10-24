@@ -225,3 +225,14 @@ P1 契约增加 openConversation 和可选 status.mainSessionId，共 20 个端�
 Client 在 Bots 页增加群列表和专用 composer，使用公开 main/header slots、同源严格 Remote 与现有 polling/epoch；后台读不重新挂载已有消息和草稿。独立 read_state CAS 保存未读位置，不改变群设置 revision。成员会使用其 Bot 的记忆快照、skills/home、连接器和原生权限，不构成私人记忆或文件的安全隔离。
 
 实际运行、变更文件、恢复边界与未完成的浏览器/物理崩溃/群内 ask 证据见 [U06–U08 验收](acceptance/P34-U06-08.md)。
+
+
+## U09–U11：管理传输和主对话参考图谱
+
+管理工作区沿用现有 Bots/群/连接器/通知/IM/Teams/原生定时入口；新增记忆、传输及最近 50 条显式执行统计。条目记忆仍归 MemoryStore。Bot JSON 只携带可迁移编辑字段、禁用的连接器纯引用、无目标的渠道类型和可选记忆/文本技能；不携带配置目录、凭据、会话或预授权；文本中仍含可识别绝对文件路径或凭据签名则拒绝传输，不静默改写正文。导入预览保存在独立 `dsh_bot_workspace` v1，确认后新建 Bot 或经既有服务批量新增/合并记忆；无跨存储事务，部分失败保留 receipt，不能自动覆盖重试。
+
+`dsh_bot_reference_memory` v1 只管理 binding/显式复制清单。默认 internal；显式启用 internal+reference-graph 后，唯一主 Agent 空闲时由 native MCP 挂载本地精确锁版 server。图谱位于 `<DSH_HOME>/dsh-bot/memory/<BotKey hash>/<fileIdentity>.jsonl`。同进程 writer lease + Agent scoped guard/around wrapper 串行所有图谱调用；Agent/Host effect 关闭先停准入、排空、await child dispose，最后释放 writer。native reconnect 关闭，断线后显式重试。群/委派 worker 没有该 client，继续使用条目记忆；不承诺跨 Host 或外部进程并发安全。图谱/传输 sidecar 启动失败只关闭该领域，其他管理入口继续启动。
+
+复制链为 preview → staging → verified → committed，另有 failed/rolled-back。预览保存旧 binding、源 digest、完整 MemoryRecord snapshot 与稳定 entity name；只在独立 staging 文件里通过原生工具幂等写 envelope，再 read_graph 验证每项全部元数据。串行工具入口不绕过原生审批。提交在 MemoryStore 原队列里复核源与目标，再写唯一 binding 指针，条目表不变；清单写入中断可从已提交 binding 对账重试。取消 abort 正在暂存的操作并恢复旧 client；回退恢复旧 pointer，保留两份文件。图谱自然实体/关系不会复制到新条目副本；UI 明示其保留在旧文件中。流程不提供反向导入、reference-only 或后台双写。
+
+证据及限制见 [U09–U11 验收](acceptance/P34-U09-11.md)。

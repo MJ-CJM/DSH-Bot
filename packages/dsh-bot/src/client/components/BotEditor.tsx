@@ -39,6 +39,13 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
   const [pickFailed, setPickFailed] = useState(false);
   const [description, setDescription] = useState(bot?.description ?? '');
   const [persona, setPersona] = useState(bot?.persona.prefix ?? '');
+  const [modelEnabled, setModelEnabled] = useState(Boolean(bot?.model));
+  const [provider, setProvider] = useState(bot?.model?.provider ?? '');
+  const [modelId, setModelId] = useState(bot?.model?.model ?? '');
+  const [reasoning, setReasoning] = useState(bot?.model?.reasoningEffort ?? '');
+  const [extraDirs, setExtraDirs] = useState(bot?.skills.extraDirs.join('\n') ?? '');
+  const [suffix, setSuffix] = useState(bot?.persona.suffix ?? '');
+  const [complete, setComplete] = useState(bot?.persona.complete ?? false);
   const [template, setTemplate] = useState<'standard' | 'minimal'>(bot?.template ?? 'standard');
   const [memory, setMemory] = useState(bot?.memory.enabled ?? true);
   const [injectLimit, setInjectLimit] = useState(String(bot?.memory.injectLimit ?? 20));
@@ -91,14 +98,16 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
       name, avatar: avatar ?? null, avatarColor: avatarColor ?? null, avatarVariant, description,
       defaultCwd: defaultCwd.trim() || null,
       // Patches replace a whole top-level field, so retain advanced persona flags.
-      persona: { ...bot?.persona, prefix: persona }, template,
+      persona: { prefix: persona, ...(suffix ? { suffix } : {}), ...(complete || bot?.persona.complete !== undefined ? { complete } : {}) }, template,
+      model: modelEnabled ? { provider: provider.trim(), model: modelId.trim(), ...(reasoning.trim() ? { reasoningEffort: reasoning.trim() } : {}) } : null,
+      skills: { extraDirs: [...new Set(extraDirs.split('\n').map(p => p.trim()).filter(Boolean))] },
       memory: { enabled: memory, injectLimit: injectLimit.trim() === '' ? Number.NaN : Number(injectLimit) },
       tools: { deny: [...new Set(deny.split(/[\n,]/u).map((item) => item.trim()).filter(Boolean))] },
     };
     const input = editing ? fields : {
-      ...fields, id, avatar, avatarColor, defaultCwd: defaultCwd.trim() || undefined,
+      ...fields, model: fields.model ?? undefined, id, avatar, avatarColor, defaultCwd: defaultCwd.trim() || undefined,
       ...(bot ? {
-        model: bot.model, skills: bot.skills,
+
         mcpServers: bot.mcpServers, channels: bot.channels, order: bot.order,
       } : {}),
     };
@@ -155,6 +164,19 @@ export function BotEditor({ bot, memoryPanel, avatarWarning, duplicate = false, 
                 <option value="minimal">{t('editor.templateMinimal')}</option>
               </select>
             </label>
+            <label className={styles.field}>{t('manage.personaSuffix')}<textarea rows={3} value={suffix} disabled={disabled} onChange={e => setSuffix(e.target.value)} /></label>
+            <label className={styles.checkboxField}><input type="checkbox" checked={complete} disabled={disabled} onChange={e => setComplete(e.target.checked)} />{t('manage.personaComplete')}</label>
+            <fieldset disabled={disabled}><legend>{t('manage.model')}</legend>
+              <p className={styles.hint}>{t('manage.modelHint')}</p>
+              <label className={styles.checkboxField}><input type="checkbox" checked={modelEnabled} onChange={e => setModelEnabled(e.target.checked)} />{t('manage.modelOverride')}</label>
+              {modelEnabled && <>
+                <label className={styles.field}>{t('manage.provider')}<input value={provider} onChange={e => setProvider(e.target.value)} /></label>
+                <label className={styles.field}>{t('manage.modelId')}<input value={modelId} onChange={e => setModelId(e.target.value)} /></label>
+                <label className={styles.field}>{t('manage.reasoning')}<input value={reasoning} onChange={e => setReasoning(e.target.value)} /></label>
+              </>}
+            </fieldset>
+            <label className={styles.field}>{t('manage.skillDirs')}<textarea rows={3} value={extraDirs} disabled={disabled} onChange={e => setExtraDirs(e.target.value)} /></label>
+            <p className={styles.hint}>{t('manage.skillHint')}</p>
             <section data-bot-default-cwd="" className={styles.cwdSection} aria-label={t('editor.defaultCwd')}>
               <p className={styles.hint}>{t('editor.cwdHint')}</p>
               <label className={styles.field}>{t('editor.defaultCwd')}

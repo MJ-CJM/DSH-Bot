@@ -1,3 +1,5 @@
+import { ManagementPanel } from '../components/ManagementPanel.js';
+import type { WorkspaceActions } from '../workspace-state.js';
 import { GroupsPanel } from '../components/GroupsPanel.js';
 import type { GroupActions } from '../groups-state.js';
 import { CollaborationPanel, ImPanel } from '../components/CollaborationPanel.js';
@@ -29,6 +31,7 @@ import styles from '../styles/bots.module.css';
 import css from '../styles/bots.module.css?inline';
 
 export interface BotsPageInjected extends ChatLauncherActions {
+  management?: WorkspaceActions;
   groups?: GroupActions;
   routines?: RoutineActions;
   p34?: P34Actions;
@@ -67,7 +70,7 @@ function detail(error: unknown): string {
   return typeof error === 'string' ? error : '';
 }
 
-export function BotsPage({ groups, routines, p34, collaboration, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotsPageProps) {
+export function BotsPage({ management, groups, routines, p34, collaboration, useCatalog, useActivity, useSessionCatalog, useWorkspaceCatalog, useBotDetail, onOpenSession, onDetailConsumed, onCountMemories, createMemoryPanel, onRefresh, onCreate, onUpdate, onDuplicate, onDelete, onStart, onEnsureHome, onEnsureBotsWorkspace, onPickDirectory, t }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
@@ -75,7 +78,7 @@ export function BotsPage({ groups, routines, p34, collaboration, useCatalog, use
   const workspaces = useWorkspaceCatalog((value) => value);
   const pageElement = useRef<HTMLElement>(null);
   const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
-  const [tab, setTab] = useState<'bots' | 'routines' | 'connectors' | 'notifications' | 'collaboration' | 'im' | 'groups'>('bots');
+  const [tab, setTab] = useState<'bots' | 'routines' | 'connectors' | 'notifications' | 'collaboration' | 'im' | 'groups' | 'management'>('bots');
   useEffect(() => {
     if (!groups) return;
     const update = () => { if (groups.selection.getSnapshot().selectedId) setTab('groups'); };
@@ -235,13 +238,15 @@ export function BotsPage({ groups, routines, p34, collaboration, useCatalog, use
                 disabled={busy || !snapshot.loaded || Boolean(snapshot.error)} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</Button>
             </div>
           </header>
-          {(routines || p34 || collaboration || groups) && <div role="tablist" aria-label={t('bots.title')} className={styles.actions}>
+          {(management || routines || p34 || collaboration || groups) && <div role="tablist" aria-label={t('bots.title')} className={styles.managementTabs}>
             <button type="button" role="tab" aria-selected={tab === 'bots'} className={styles.button} onClick={() => setTab('bots')}>{t('bots.title')}</button>
+            {management && <button type="button" role="tab" aria-selected={tab === 'management'} className={styles.button} onClick={() => setTab('management')}>{t('manage.title')}</button>}
             {groups && <button type="button" role="tab" aria-selected={tab === 'groups'} className={styles.button} onClick={() => setTab('groups')}>{t('groups.title')}</button>}
             {p34 && <><button type="button" role="tab" aria-selected={tab === 'connectors'} className={styles.button} onClick={() => setTab('connectors')}>{t('p34.connectors')}</button><NotificationTab actions={p34} selected={tab === 'notifications'} onSelect={() => setTab('notifications')} t={t} /></>}
             {collaboration && <><button type="button" role="tab" aria-selected={tab === 'collaboration'} className={styles.button} onClick={() => setTab('collaboration')}>{t('team.title')}</button><button type="button" role="tab" aria-selected={tab === 'im'} className={styles.button} onClick={() => setTab('im')}>{t('im.title')}</button></>}
             <button type="button" role="tab" aria-selected={tab === 'routines'} className={styles.button} onClick={() => setTab('routines')}>{t('routine.title')}</button>
           </div>}
+          {management && tab === 'management' && <ManagementPanel bots={entries.map(entry => entry.bot)} actions={management} createMemoryPanel={createMemoryPanel} t={t} />}
           {groups && tab === 'groups' && <GroupsPanel actions={groups} bots={entries.map(entry => entry.bot)} t={t} onOpenSession={onOpenSession} />}
           {collaboration && tab === 'collaboration' && <CollaborationPanel actions={collaboration} bots={entries.map(entry => entry.bot)} onOpenSession={onOpenSession} t={t} />}
           {collaboration && tab === 'im' && <ImPanel actions={collaboration} t={t} />}
@@ -350,6 +355,7 @@ export function BotsPage({ groups, routines, p34, collaboration, useCatalog, use
           </label>
           <p className={styles.warning}>{t(deleteHome ? 'delete.homeWarning' : 'delete.keepHome')}</p>
           <p className={styles.warning}>{t('delete.history')}</p>
+          <p className={styles.warning}>{t('manage.deleteImpact')}</p>
         </div>
         <footer className={styles.dialogFooter}>
           <button type="button" className={styles.button} disabled={busy} onClick={() => setDialog(undefined)}>{t('actions.cancel')}</button>

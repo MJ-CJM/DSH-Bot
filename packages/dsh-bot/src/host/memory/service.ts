@@ -68,6 +68,23 @@ export class BotMemoryService {
     return this.run(() => this.store.remove(this.botId, id), signal);
   }
 
+  /** Management batches use the same validation, deduplication and registry ownership queue. */
+  async saveBatch(inputs: MemorySaveInput[], check: (rows: MemoryRecord[]) => void): Promise<MemorySaveResult[]> {
+    const fields = inputs.map(input => { rejectModelSecrets(input); return parseInput(memorySaveInputSchema, input); });
+    return this.run(async () => {
+      const rows: MemoryRecord[] = []; let before: MemoryCursor | undefined;
+      while (true) {
+        const page = this.store.listByBot(this.botId, { limit: MEMORY_LIST_MAX_LIMIT, before }); rows.push(...page);
+        const last = page.at(-1); if (page.length < MEMORY_LIST_MAX_LIMIT || !last) break;
+        before = { id: last.id, pinned: last.pinned, updatedAt: last.updatedAt };
+      }
+      check(rows);
+      const results: MemorySaveResult[] = [];
+      for (const input of fields) results.push(await this.store.saveUnique({ ...input, botId: this.botId, source: { by: 'user', at: Date.now() } }));
+      return results;
+    });
+  }
+
   /** Cursor reads for management UI; model tools keep their narrower contracts. */
   async query(input: Omit<MemoryListOptions, 'limit'> & { limit?: number }, signal?: AbortSignal): Promise<MemoryRecord[]> {
     const fields = parseInput(memoryListOptionsSchema, { ...input, limit: input.limit ?? this.defaultListLimit });
@@ -89,6 +106,11 @@ export class BotMemoryService {
    * Synchronous cursor reads keep every page in the same point-in-time snapshot.
    */
   async snapshot(injectLimit: number): Promise<MemoryRecord[]> {
+    return this.withSnapshot(injectLimit, async rows => rows);
+  }
+
+  /** Hold the existing registry write queue while verifying and committing a copy receipt. */
+  async withSnapshot<T>(injectLimit: number, consume: (rows: MemoryRecord[]) => Promise<T>): Promise<T> {
     const limit = parseInput(injectLimitSchema, injectLimit);
     return this.run(() => {
       const collect = (pinned: boolean, count: number): MemoryRecord[] => {
@@ -104,7 +126,7 @@ export class BotMemoryService {
         }
         return records;
       };
-      return [...collect(true, Number.POSITIVE_INFINITY), ...collect(false, limit)];
+      return consume([...collect(true, Number.POSITIVE_INFINITY), ...collect(false, limit)]);
     });
   }
 

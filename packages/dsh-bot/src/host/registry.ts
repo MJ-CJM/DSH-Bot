@@ -24,6 +24,8 @@ import type { ActivityStore } from './store.js';
 import type { MainSessions } from './main-session.js';
 
 export interface Config {
+  referenceMemoryTimeoutMs: number;
+  referenceMemoryMaxFileBytes: number;
   groupMaxMembers: number;
   groupMaxTurns: number;
   groupMaxDepth: number;
@@ -53,6 +55,8 @@ const activityLimit = (name: string, fallback: number) => Schema.transform(Schem
   return value;
 }).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
+  referenceMemoryTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
+  referenceMemoryMaxFileBytes: Schema.number().min(1024).max(67108864).step(1).default(8388608),
   groupMaxMembers: Schema.number().min(2).max(16).step(1).default(8),
   groupMaxTurns: Schema.number().min(1).max(32).step(1).default(8),
   groupMaxDepth: Schema.number().min(1).max(8).step(1).default(1),
@@ -515,6 +519,12 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
     await this.waitUntilReady();
     if (!this.mainSessions) throw new DshBotError('bot/unavailable', 'Main sessions are starting');
     const result = await this.mainSessions.open(parseInput(botIdSchema, botId));
+    const graph = this.ctx.get('dshBotReferenceMemory');
+    if (graph) {
+      const bot = await this.get(botId);
+      try { await graph.apply({ botId: bot.id, botCreatedAt: bot.createdAt }); }
+      catch { this.ctx.logger.warn('[dsh-bot] reference graph unavailable; internal memory remains active'); }
+    }
     this.invalidate();
     return result;
   }

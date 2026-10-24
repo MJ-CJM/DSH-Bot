@@ -35,6 +35,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: 3.18.5
         version: 3.18.5
+      '@modelcontextprotocol/server-memory':
+        specifier: 2026.7.4
+        version: 2026.7.4(zod@4.4.3)
       js-yaml:
         specifier: 4.1.1
         version: 4.1.1

@@ -71,6 +71,7 @@
     "@deepseek-ai/dsh-session-title": ">=0.2.1-rc.2 <0.3.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/server-memory": "2026.7.4",
     "@deepseek-ai/cordis-plugin-include": "1.0.10",
     "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "3.18.5",

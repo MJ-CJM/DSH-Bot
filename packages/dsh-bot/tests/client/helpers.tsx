@@ -1,3 +1,4 @@
+import type { WorkspaceMethods, ReferenceMemoryMethods } from '../../src/shared/workspace-contract.js';
 import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import type { GroupView, GroupSummary } from '../../src/shared/groups.js';
 import type { CollaborationMethods } from '../../src/shared/collaboration-contract.js';
@@ -163,7 +164,9 @@ export function remoteDouble(initial: BotRecord[] = []) {
     create: vi.fn<GroupMethods['create']>(), edit: vi.fn<GroupMethods['edit']>(), send: vi.fn<GroupMethods['send']>(), cancel: vi.fn<GroupMethods['cancel']>(), archive: vi.fn<GroupMethods['archive']>(),
   };
   const im = { status: vi.fn(async () => ({ ok: true as const, value: { pin: IM_PIN, installed: false, contractDetected: false, inboundSupported: false as const, outboundSupported: false as const, reason: 'plugin-missing' as const } })) };
-  return { methods, data, routine, schedule, run, automation, connectors, notifications, collaboration, im, groups };
+  const workspaceManagement = { request: vi.fn<WorkspaceMethods['request']>() };
+  const referenceMemory = { request: vi.fn<ReferenceMemoryMethods['request']>(async input => ({ ok: true, value: { status: { bot: input.bot, state: 'internal', toolCount: 0, writer: false, copies: [] } } })) };
+  return { methods, data, routine, schedule, run, automation, connectors, notifications, collaboration, im, groups, workspaceManagement, referenceMemory };
 }
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
@@ -232,6 +235,10 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === 'dsh-bot/workspace') {
+      const releases = [ctx.provide('remote.dshBot.workspace', remote.workspaceManagement), ctx.provide('remote.dshBot.referenceMemory', remote.referenceMemory)];
+      return () => { for (const release of releases) release(); };
+    }
     if (contribution?.package === 'dsh-bot/groups') return ctx.provide('remote.dshBot.groups', remote.groups);
     if (contribution?.package === 'dsh-bot/collaboration') {
       const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];

@@ -1,4 +1,7 @@
 import { Groups, groupsDomain } from './groups/service.js';
+import { ReferenceMemory, referenceMemoryDomain } from './reference-memory/service.js';
+import { WorkspaceManagement, workspaceDomain } from './workspace/service.js';
+import { WorkspaceRemote, ReferenceMemoryRemote, WORKSPACE_HOST } from './workspace/remote.js';
 import { GroupsRemote, GROUPS_HOST } from './groups/remote.js';
 import { Collaboration, collaborationDomain } from './collaboration/service.js';
 import { CollaborationRemote, ImRemote, COLLABORATION_HOST } from './collaboration/remote.js';
@@ -34,6 +37,8 @@ export function apply(ctx: Context, config: Config): void {
   let p34: { close(): Promise<void> } | undefined;
   let collaboration: Collaboration | undefined;
   let groups: Groups | undefined;
+  let referenceMemory: ReferenceMemory | undefined;
+  let management: WorkspaceManagement | undefined;
   let stopping = false;
   const ready = registry.waitUntilReady().then(async () => {
     if (stopping) return;
@@ -62,6 +67,28 @@ export function apply(ctx: Context, config: Config): void {
     const mainSessions = new MainSessions(ctx, registry);
     await mainSessions.start();
     registry.mainSessions = mainSessions;
+    try {
+      await ctx.effect(async () => {
+        const domain = await ctx.storageDomain.open(referenceMemoryDomain);
+        try { referenceMemory = new ReferenceMemory(ctx, registry, domain, () => registry.invalidate()); }
+        catch (error) { await domain.close(); throw error; }
+        return () => referenceMemory?.close();
+      }, 'dsh-bot: reference memory');
+    } catch { ctx.logger.warn('[dsh-bot] reference memory unavailable; internal memory remains active'); }
+    try {
+      await ctx.effect(async () => {
+        const domain = await ctx.storageDomain.open(workspaceDomain);
+        management = new WorkspaceManagement(ctx, registry, connectors, domain);
+        return () => management?.close();
+      }, 'dsh-bot: management');
+    } catch { ctx.logger.warn('[dsh-bot] transfer store unavailable; other management entries remain active'); }
+    if (referenceMemory) {
+      ctx.effect(() => ctx.provide('dshBotReferenceMemory', referenceMemory as ReferenceMemory), 'dsh-bot: graph service');
+      ctx.effect(() => ctx.on('dsh-bot/changed', change => referenceMemory?.botChanged(change.id)), 'dsh-bot: graph identity');
+    }
+    if (management) ctx.effect(() => ctx.provide('dshBotWorkspace', management as WorkspaceManagement), 'dsh-bot: management service');
+    new WorkspaceRemote(ctx, management); new ReferenceMemoryRemote(ctx, referenceMemory);
+    await ctx.effect(() => ctx.typert.register(WORKSPACE_HOST), 'dsh-bot: workspace Remote');
     await ctx.effect(async () => {
       const domain = await ctx.storageDomain.open(collaborationDomain);
       collaboration = new Collaboration(ctx, registry, domain, () => registry.invalidate());
@@ -86,7 +113,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => async () => {
     stopping = true; status = { state: 'stopping' }; await ready;
     const errors: unknown[] = [];
-    for (const close of [() => groups?.close(), () => collaboration?.close(), () => p34?.close(), () => automation?.close(), () => automation?.stores.close(), () => registry.mainSessions?.close(), () => registry.close()]) {
+    for (const close of [() => referenceMemory?.close(), () => management?.close(), () => groups?.close(), () => collaboration?.close(), () => p34?.close(), () => automation?.close(), () => automation?.stores.close(), () => registry.mainSessions?.close(), () => registry.close()]) {
       try { await close(); } catch (error) { errors.push(error); }
     }
     if (errors.length) throw new AggregateError(errors, 'Bot runtime shutdown failed');

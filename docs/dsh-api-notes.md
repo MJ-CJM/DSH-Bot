@@ -1,5 +1,24 @@
 # DSH API 核实记录
 
+## U09–U11：管理工作区、Reference Memory 并存与单向复制（2026-10-24）
+
+实现、命令、逐项结果和浏览器失败见 [U09–U11 验收](acceptance/P34-U09-11.md)。原 MemoryStore、`memory_*` 和一次性注入快照保持权威；无 reference-only、反向导入或后台双写。版本仍为 0.2.2 开发包，U12 才统一打 0.3.0。
+
+| 公开入口 / 只读 rc.2 依据 | 正式组合与实测边界 |
+| --- | --- |
+| `dsh-mcp-client` 根 `Config/apply`，`packages/mcp/mcp-client/src/{index,connection}.ts` | 正式普通依赖锁定 `@modelcontextprotocol/server-memory@2026.7.4`，从包清单解析其公开 CLI executable；通过原生 stdio transport 挂 main Agent child，显式 `MEMORY_FILE_PATH`。只读上游 commit `6dd0a683e198783e30feabf7abaf42f925bd18b1` 是设计出处，不宣称 npm 发布文件与 commit 逐字一致。 |
+| `tools.guard`、scoped `tools/execute` around wrapper；`packages/core/tools/src/index.ts:153-165,327-352,1377` | 所有图谱模型/UI/复制调用同一 Bot 队列；执行前复核 owner、生日、取消、受管文件和凭据签名。主/子代理不共享图谱 client；保留代际使用同一主会话，换 client 先 await 旧 child dispose。原生 reconnect 关闭，断线调用失败后停止准入，显式 apply 才重建。 |
+| `ToolRuntime.execute/get/schemas`、`ToolCallId` 根出口 | UI 和复制走公开同进程输入及原生审批，返回解析 MCP content 的 JSON；不制造会话 assistant/tool 日志。公开 `get('run_code',agent)` 能见 PTC 时管理操作 unsupported，不调用 private `modeFor` 或伪造 parent token。检测 PTC 或其公开能力检查失败即停止 writer，图谱保持 unsupported；本轮验证关闭写入及切回 native 的恢复，不宣称已支持 PTC 图谱。 |
+| `Agent.runMaintenance`、`agents.get`、本包 `MainSessions.find/getBotBinding` | 仅 exact live 主 Agent 空闲时挂载；普通 spawn worker 使用该 Bot 的 internal memory，真实 mock 请求中无图谱工具。20 个并行原生图谱调用逐条读回；两个 Bot 文件隔离，所有捕获的自有 server process 清理完成，Bot 写入者重叠为 0。单后端一个活动 Host，不协调外部写进程。 |
+| `defineDomain/domainTable`、既有 MemoryStore 服务入口 | 新增 `dsh_bot_reference_memory` v1（bindings/copies）与 `dsh_bot_workspace` v1（previews）；保留全部旧表。复制快照/逐条清单只作显式操作恢复，不作双写镜像。commit 在现有 registry 队列内复核源 digest/生日和读回 envelope，再写 binding；跨文件/跨表不宣称原子事务。可恢复 binding 已写、清单未写的重试。 |
+| 既有 `BotMemoryService`/Store saveUnique | 批量内部记忆导入复用校验、凭据筛查和去重，预览目标 digest 后在原队列内新增/合并，生成新 ID/时间，不承诺恢复原身份。复制到图谱则完整保留 ID/kind/tags/pinned/source/timestamps/digest，原条目文件字节比较通过。 |
+| 公开 `main` slot、既有 credentials Remote、native schedule CRUD | 管理导航汇总既有功能，新增独立记忆/传输/统计视图；统计限最近 50 条显式执行，不读会话正文。新两个 namespace 使用同源严格 request/result encode/decode，Client await mount，资源随 effect 清理。亮暗/窄屏浏览器因 MachPort 权限仍 FAIL，正式 factory 的中英 DOM 与后台焦点/草稿测试不能替代截图。 |
+
+新增 Config：`referenceMemoryTimeoutMs=30000`（1000–120000），`referenceMemoryMaxFileBytes=8388608`（1024–67108864）。普通 server CLI dependency 不需共享服务实例，因此不加 peer；既有 Cordis/DSH 精确 dev 和兼容 peer 不变。受管文件按 BotKey hash/图谱 identity 生成，不接受 Client 任意路径；通用连接器保留图谱 namespace。技能传输仅支持 UTF-8 文本，128 文件/1 MiB，拒绝越界、symlink 和覆盖。
+
+真实首次/冷 Host、Gateway、原生 MCP、模型工具闭环、取消、半批续跑、源冲突、损坏文件与进程退出均有本轮收据；模型仅 3 次 loopback，真实请求 0。单独列出未运行的物理强杀提交窗口、PTC、真实桌面和最终 0.3.0 矩阵。
+
+
 ## U06–U08：独立群根、确定性路由与群聊 UI（2026-10-24）
 
 实施/命令/逐项证据见 [U06–U08 验收](acceptance/P34-U06-08.md)。正式包仍为 0.2.2 开发版本，U12 才统一改 0.3.0；本轮实际 tgz 安装、完整首次/冷 Web Host 与 Gateway 已运行。9 次 loopback 请求均为群成员，根及真实模型请求各 0；原生 prompt 旁路 blocked、Controller 所有权冲突与贡献卸载后 guard 仍在。浏览器 MachPort 权限失败，截图/窄屏为 FAIL；物理强杀窗口与群内真实 ask 拒绝另列 NOT_RUN。

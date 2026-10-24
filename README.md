@@ -47,6 +47,17 @@ DSH_HOME="<桌面实例原有 DSH_HOME 的绝对路径>" \
 
 ## 本地开发与验证
 
+P34 开发中的管理入口位于 Bots 页的“记忆与导入导出”：可管理条目记忆、导出 Bot JSON/本地 UTF-8 技能、预览后导入新 Bot 或批量新增/合并当前 Bot 记忆。导入连接器保持禁用；机器目录、凭据、渠道目标和授权需重新配置。技能包限制为 128 个文本文件、合计 1 MiB，拒绝覆盖及符号链接。
+
+可在同页显式启用 Reference Memory MCP（本地精确依赖 `2026.7.4`）。它与内部记忆并存，工具仅挂在 Bot 唯一主对话；先打开主对话，再于空闲时应用。复制流程为预览 → 暂存并读回校验 → 显式启用，保留完整元数据与原条目库；支持取消和回退，不支持反向导入或替换内部记忆。图谱文件受 Bot 生日隔离，单一 Host 持有写入者，普通委派/群 worker 继续使用内部 `memory_*`。详见 [U09–U11 验收](docs/acceptance/P34-U09-11.md)。
+
+```sh
+scripts/pnpm check
+DSH_HOME="$PWD/.dsh-dev" node scripts/p34-memory-runtime.mjs
+```
+
+后者安装本轮实际 tgz，验证原生 Host/Gateway、参考服务器、loopback 模型、冷恢复和清理，并单列浏览器结果；开发版仍为 0.2.2，最终 0.3.0 打包由 U12 负责。
+
 从仓库根目录执行，pnpm 统一用 `scripts/pnpm`，DSH CLI 统一用 `scripts/dsh`。包装脚本使用本机已有工具，无需全局安装；需要 DSH 时只使用仓库内隔离目录：
 
 ```sh

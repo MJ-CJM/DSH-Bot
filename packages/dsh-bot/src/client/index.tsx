@@ -1,3 +1,5 @@
+import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
+import { createWorkspaceActions } from './workspace-state.js';
 import { GROUPS_REMOTE } from '../shared/groups-contract.js';
 import { createGroupActions } from './groups-state.js';
 import { GroupSessionBadge } from './components/GroupSessionBadge.js';
@@ -70,6 +72,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   await ctx.effect(async () => await ctx.remote.$mount(P34_REMOTE), 'dsh-bot: P34 Remote');
   await ctx.effect(async () => await ctx.remote.$mount(COLLABORATION_REMOTE), 'dsh-bot: collaboration Remote');
   await ctx.effect(async () => await ctx.remote.$mount(GROUPS_REMOTE), 'dsh-bot: groups Remote');
+  await ctx.effect(async () => await ctx.remote.$mount(WORKSPACE_REMOTE), 'dsh-bot: workspace Remote');
   ctx.effect(() => ctx.locale.register(namespace, {
     en: en.ui,
     zh: zh.ui,
@@ -81,6 +84,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const p34 = createP34Actions(ctx, config);
   const collaboration = createCollaborationActions(ctx, config);
   const groups = createGroupActions(ctx, config);
+  const management = createWorkspaceActions(ctx, config);
   // Host and Client ambient Context declarations share a TS program here;
   // this entry runs only on the Client and uses its public service contract.
   const sessions = ctx.sessions as unknown as ISessions;
@@ -140,7 +144,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const startBotInWorkspace = (id: string, _workspaceId: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) =>
     startBot(id, signal, beforeOpen);
   const page: BotsPageInjected = {
-    routines, p34, collaboration, groups,
+    routines, p34, collaboration, groups, management,
     hooks: { catalog, activity, sessionCatalog: sessions.list, workspaceCatalog: ctx.workspaces.list, botDetail: detail },
     onOpenSession: (id, signal) => openSession(id, undefined, signal),
     onDetailConsumed: detail.consume,
