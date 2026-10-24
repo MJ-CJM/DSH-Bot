@@ -1,0 +1,22 @@
+.panel { color: var(--dsw-alias-label-primary); min-width: 0; padding: 1rem; }
+.panel button, .panel input, .panel textarea, .panel select { font: inherit; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l3); border-radius: .5rem; padding: .45rem; }
+.panel button { cursor: pointer; }
+.panel button:disabled { color: var(--dsw-alias-label-tertiary); cursor: default; }
+.panel :focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
+.panel button[aria-current="page"] { border-color: var(--dsw-alias-state-business-primary); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.layout { display: grid; grid-template-columns: minmax(9rem, 14rem) minmax(0, 1fr); gap: 1rem; margin-top: 1rem; }
+.list { display: flex; flex-direction: column; gap: .5rem; }
+.content, .conversation { min-width: 0; }
+.members { display: flex; gap: .75rem; overflow-x: auto; margin-block: 1rem; }
+.members > span { display: flex; flex-shrink: 0; align-items: center; gap: .4rem; }
+.timeline { max-height: 30rem; overflow: auto; overflow-anchor: none; }
+.message { border: 1px solid var(--dsw-alias-border-l3); border-radius: .8rem; padding: .7rem; margin-block: .5rem; }
+.message p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.message time, .message small { color: var(--dsw-alias-label-secondary); font-size: .8rem; }
+.editor, .composer, .picker { display: flex; flex-direction: column; gap: .6rem; min-width: 0; }
+.editor > label, .composer > label { display: flex; flex-direction: column; gap: .3rem; }
+.picker label, .editor fieldset label { display: flex; flex-direction: row; align-items: center; gap: .4rem; }
+.composer textarea { min-height: 6rem; resize: vertical; }
+.turn { padding: .5rem; border-bottom: 1px solid var(--dsw-alias-border-l3); }
+@media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } .list { flex-direction: row; overflow-x: auto; } .list > button { flex-shrink: 0; } .panel { padding: .5rem; } }

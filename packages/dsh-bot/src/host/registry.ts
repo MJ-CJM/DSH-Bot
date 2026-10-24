@@ -24,6 +24,11 @@ import type { ActivityStore } from './store.js';
 import type { MainSessions } from './main-session.js';
 
 export interface Config {
+  groupMaxMembers: number;
+  groupMaxTurns: number;
+  groupMaxDepth: number;
+  groupContextMaxBytes: number;
+  groupRoundTimeoutMs: number;
   connectorApplyTimeoutMs: number;
   notificationDailyLimit: number;
   notificationCooldownSec: number;
@@ -48,6 +53,11 @@ const activityLimit = (name: string, fallback: number) => Schema.transform(Schem
   return value;
 }).default(fallback);
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
+  groupMaxMembers: Schema.number().min(2).max(16).step(1).default(8),
+  groupMaxTurns: Schema.number().min(1).max(32).step(1).default(8),
+  groupMaxDepth: Schema.number().min(1).max(8).step(1).default(1),
+  groupContextMaxBytes: Schema.number().min(1024).max(262144).step(1).default(32768),
+  groupRoundTimeoutMs: Schema.number().min(1000).max(3600000).step(1).default(300000),
   connectorApplyTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
   notificationDailyLimit: Schema.number().min(0).max(1000).step(1).default(20),
   notificationCooldownSec: Schema.number().min(0).max(86400).step(1).default(60),

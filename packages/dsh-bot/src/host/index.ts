@@ -1,3 +1,5 @@
+import { Groups, groupsDomain } from './groups/service.js';
+import { GroupsRemote, GROUPS_HOST } from './groups/remote.js';
 import { Collaboration, collaborationDomain } from './collaboration/service.js';
 import { CollaborationRemote, ImRemote, COLLABORATION_HOST } from './collaboration/remote.js';
 import { openP34Stores } from './p34/store.js';
@@ -31,6 +33,7 @@ export function apply(ctx: Context, config: Config): void {
   if (registry.config.enableBotManageInStandard) registerStandardBotManage(ctx);
   let p34: { close(): Promise<void> } | undefined;
   let collaboration: Collaboration | undefined;
+  let groups: Groups | undefined;
   let stopping = false;
   const ready = registry.waitUntilReady().then(async () => {
     if (stopping) return;
@@ -67,13 +70,23 @@ export function apply(ctx: Context, config: Config): void {
     if (!collaboration) throw new Error('Collaboration startup failed');
     new CollaborationRemote(ctx, collaboration); new ImRemote(ctx);
     await ctx.effect(() => ctx.typert.register(COLLABORATION_HOST), 'dsh-bot: collaboration Remote');
+    await ctx.effect(async () => {
+      const domain = await ctx.storageDomain.open(groupsDomain);
+      groups = new Groups(ctx, registry, domain, () => registry.invalidate());
+      return () => groups?.close();
+    }, 'dsh-bot: groups');
+    if (!groups) throw new Error('Groups startup failed');
+    await groups.start();
+    ctx.effect(() => ctx.provide('dshBotGroups', groups as Groups), 'dsh-bot: groups service');
+    new GroupsRemote(ctx, groups);
+    await ctx.effect(() => ctx.typert.register(GROUPS_HOST), 'dsh-bot: groups Remote');
     automation = await startAutomation(ctx, registry);
     status = { state: 'ready' }; ctx.logger.info('[dsh-bot] loaded');
   }).catch(error => { status = { state: 'failed', reason: 'startup-failed' }; ctx.logger.error('[dsh-bot] startup failed', error); });
   ctx.effect(() => async () => {
     stopping = true; status = { state: 'stopping' }; await ready;
     const errors: unknown[] = [];
-    for (const close of [() => collaboration?.close(), () => p34?.close(), () => automation?.close(), () => automation?.stores.close(), () => registry.mainSessions?.close(), () => registry.close()]) {
+    for (const close of [() => groups?.close(), () => collaboration?.close(), () => p34?.close(), () => automation?.close(), () => automation?.stores.close(), () => registry.mainSessions?.close(), () => registry.close()]) {
       try { await close(); } catch (error) { errors.push(error); }
     }
     if (errors.length) throw new AggregateError(errors, 'Bot runtime shutdown failed');

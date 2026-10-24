@@ -1,3 +1,5 @@
+import type { GroupMethods } from '../../src/shared/groups-contract.js';
+import type { GroupView, GroupSummary } from '../../src/shared/groups.js';
 import type { CollaborationMethods } from '../../src/shared/collaboration-contract.js';
 import { IM_PIN, type TeamBoard } from '../../src/shared/collaboration.js';
 import type { P34Methods } from '../../src/shared/p34-contract.js';
@@ -33,7 +35,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { board: { supported: false, reason: 'native-service-missing', members: [], tasks: [] } as TeamBoard, p34: structuredClone(EMPTY_P34), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { groups: [] as GroupSummary[], groupView: undefined as GroupView | undefined, board: { supported: false, reason: 'native-service-missing', members: [], tasks: [] } as TeamBoard, p34: structuredClone(EMPTY_P34), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -154,8 +156,14 @@ export function remoteDouble(initial: BotRecord[] = []) {
     board: vi.fn<CollaborationMethods['board']>(async () => ({ ok: true, value: data.board })),
     ensure: vi.fn<CollaborationMethods['ensure']>(), createTask: vi.fn<CollaborationMethods['createTask']>(), updateTask: vi.fn<CollaborationMethods['updateTask']>(),
   };
+  const groups = {
+    markRead: vi.fn<GroupMethods['markRead']>(async () => ({ok:true,value:true})),
+    list: vi.fn<GroupMethods['list']>(async () => ({ ok: true, value: data.groups })),
+    view: vi.fn<GroupMethods['view']>(async () => { if (!data.groupView) throw new Error('No group fixture'); return { ok: true, value: data.groupView }; }),
+    create: vi.fn<GroupMethods['create']>(), edit: vi.fn<GroupMethods['edit']>(), send: vi.fn<GroupMethods['send']>(), cancel: vi.fn<GroupMethods['cancel']>(), archive: vi.fn<GroupMethods['archive']>(),
+  };
   const im = { status: vi.fn(async () => ({ ok: true as const, value: { pin: IM_PIN, installed: false, contractDetected: false, inboundSupported: false as const, outboundSupported: false as const, reason: 'plugin-missing' as const } })) };
-  return { methods, data, routine, schedule, run, automation, connectors, notifications, collaboration, im };
+  return { methods, data, routine, schedule, run, automation, connectors, notifications, collaboration, im, groups };
 }
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
@@ -224,6 +232,7 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === 'dsh-bot/groups') return ctx.provide('remote.dshBot.groups', remote.groups);
     if (contribution?.package === 'dsh-bot/collaboration') {
       const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];
       return () => { for (const release of releases) release(); };

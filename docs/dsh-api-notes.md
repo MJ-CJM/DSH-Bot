@@ -1,5 +1,23 @@
 # DSH API 核实记录
 
+## U06–U08：独立群根、确定性路由与群聊 UI（2026-10-24）
+
+实施/命令/逐项证据见 [U06–U08 验收](acceptance/P34-U06-08.md)。正式包仍为 0.2.2 开发版本，U12 才统一改 0.3.0；本轮实际 tgz 安装、完整首次/冷 Web Host 与 Gateway 已运行。9 次 loopback 请求均为群成员，根及真实模型请求各 0；原生 prompt 旁路 blocked、Controller 所有权冲突与贡献卸载后 guard 仍在。浏览器 MachPort 权限失败，截图/窄屏为 FAIL；物理强杀窗口与群内真实 ask 拒绝另列 NOT_RUN。
+
+| 公开入口 / 只读 rc.2 源码 | 正式组合与实测边界 |
+| --- | --- |
+| `dsh-agent` 根的 `agents.create/resume`、AgentHandle；`core/agent/src/index.ts:51-162` | 群服务持有真实 handle，setup await mount 后才发布；default route 来自公开 `agentDefaultModel.currentSelection()`。重复 resume/Controller 抢先占用 fail closed，不将裸 Agent 当 handle。default-model 新增精确 rc.2 dev，只有 type import。 |
+| `dsh-agent-preset-registry` 根 `register/mount`；`preset/agent-preset-registry/src/index.ts:81-100,276-289` | `dsh-bot-group-root` 独立 preset，guard 来自新增公开 `dsh-bot/group-root-guard` export。贡献 fiber 卸载，仍由 Controller 根 retain 的代际继续阻挡；所有 owned 根先 dispose 再注销 preset。 |
+| scoped `agent/pre-step`；`core/agent/src/runtime-types.ts:309-320` | 精确检查 root header preset 后 reject，其他 agent next；未挂 Bot.worker preset。首次/冷启动原生 prompt accepted 后 turn/end blocked，根 assistant 0。 |
+| `dsh-llm` 根 `createUserMessage`、`Session.append`、`sessions.flush` | 本地输入 source=user；回文 source=`dsh-bot-group`、user role，带群/turn/member/BotKey/生日/头像快照/child/stopReason。不伪造 assistant；完整 result.output blocks 保存于原生日志，群 renderer/context 只使用文字并标明非文字省略。成功回执/轮流指针在 flush=true 后确认。 |
+| `dsh-session-title` 根 `normalizeSessionTitle`；`session/session-title/src/normalize.ts:57-60`；Controller `rename` | 使用公开规范函数预检，保存 rename 接受的标题、固定监听并在命名中抑制重入。该包从 type-only 变为真实 runtime helper import，故新增兼容 peer；精确 dev 已存在。正常标题路径实际 Host 通过，其余控制字符处理复用原生实现。 |
+| `dsh-subagent` 根 `getProvider/startActivation`、`SubagentActivation.result/dispose`；`subagent/subagent/src/types.ts:118-182,252-277` | 检查 agentPreset/agentOptions/depthLimit 与不继承父上下文，独立 Bot preset、显式默认 route、ContentBlock[]、maxDepth、delivery=caller。三个实际 preset/persona、Bot.model/默认 fallback 与同名 MCP 工具隔离均通过。 |
+| 同包 signal/dispose 生命周期；`subagent/subagent/src/manager.ts:1094-1189` | **实际 stall 修正**：仅 abort 后等待 result 会阻塞清理；现在 abort 同时调用 disposer，且 final/close 共用 Promise。实际取消/卸载后 ownedRoots/workers/activations 均 0；fixture 另测 timeout、进行中移除、未知回执及不补跑，不能冒充全部完整 Host 故障试验。 |
+| `defineDomain/domainTable`、Typert `/remote-info` 与 Gateway | 独立 v1 sidecar groups/members/turns/deliveries/read_state，无正文账本。8 个严格 groups 端点显式同源贡献/Client mount，禁止任意 parent/Agent/preset/sessionId。读回执独立 CAS，避免读消息干扰群设置 revision。 |
+| 公开 `main` / `conversation.session.header.utilities` slots 与 hooks | Bots 页并列群聊入口；自有鲸鱼 renderer/composer、结构化 @、轮流/全轮、成员管理与原生根到群页的引导，复用 polling/epoch/effect。中英 DOM 保留节点/草稿/焦点/选区/滚动与错误旧内容通过；亮暗和窄屏真实浏览器未运行成功。 |
+
+完整 `scripts/pnpm check`：49 文件 / 620 测试、strict/build/lint PASS。原生 Team 与 IM 门禁不改，群不借 Team roster 冒充独立 Bot；未新增模型客户端、全局服务或真实平台发送。
+
 ## U04–U05：IM 依赖门禁与原生 Team 任务板（2026-10-24）
 
 执行范围和逐项 PASS/FAIL 见 [U04–U05 验收](acceptance/P34-U04-05.md)。按设计 §14：U04 依赖的 U01 consumer gate 未通过，正式包只提供可选服务/合同诊断与禁用 UI，不挂入站消费者、不连接通知端口、不开放 IM 绑定/发送 Remote。方法名/版本检测不代表已验证账号、安装 commit 或消费卸载行为。锁定 dsh-im 只在本仓库隔离 profile 打包安装，无真实平台账号。

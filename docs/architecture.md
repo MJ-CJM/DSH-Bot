@@ -210,3 +210,18 @@ P1 契约增加 openConversation 和可选 status.mainSessionId，共 20 个端�
 | 显式投递也复用原生主会话 | R05 删除剩余 RunExecutor；旧 Run/report 只兼容读取，新 manual 使用主会话投递回执，不恢复旧委派或回报。 |
 
 子会话走 DSH 原生子代理目录/导航；既有 Bots 最近普通会话列表继续排除 subagent，不把它当普通会话展示。本轮没有新增 UI 或亮暗主题修改。完整运行证据与限制见 [R03 验收](acceptance/P2-R03.md)。
+
+
+## P34 U06–U08：独立群会话
+
+群由 `Groups` 服务持有独立非 Bot root AgentHandle；`dsh-bot-group-root` preset 的 scoped pre-step guard 在模型前 reject。成员使用公开 native spawn/caller 运行各自 Bot preset，并显式提供当前宿主默认 route；Bot.model 仍由既有 bot-context override。群不复用 Bot 主会话或 Team teammate。
+
+`dsh_bot_groups` v1 保存群/生日成员/turn/delivery/read_state，正文只在原生 user/message 中。输入为 user 来源，回文为 `dsh-bot-group` producer，含当时的发言身份/鲸鱼快照、childSessionId 与 stopReason。回文保留原始 ContentBlock，群 renderer/context 当前只展示文字并明示非文字需查看子会话。所有成功投递与轮流指针均在根 flush=true 后确认。
+
+@ token 使用 memberId；纯文本 @ 不路由。准入时保存成员顺序、Bot revision、上下文截止 seq 与 operationId 摘要。每群串行 worker；后续输入可以排队。上下文只包括固定截止线前的群记录与本轮已 flush 的前序回复，不带 Bot 私聊 transcript；按字节去掉较早完整消息并提示截断。失败/部分/取消/未知各有回执，不默认重试不明副作用。重启把不确定的执行回执标 recovery_needed/unknown。
+
+取消、超时、成员移除及卸载会 abort 并立即启动 activation.dispose，先排空 child/worker，再 flush/dispose owned root、注销 preset 和关闭领域。Controller 抢先拥有 root 则拒绝路由，只允许从公开日志读取历史；不取得或销毁裸 Agent。retained preset 代际继续保护 Controller 根，缺失 preset 不 fallback standard。
+
+Client 在 Bots 页增加群列表和专用 composer，使用公开 main/header slots、同源严格 Remote 与现有 polling/epoch；后台读不重新挂载已有消息和草稿。独立 read_state CAS 保存未读位置，不改变群设置 revision。成员会使用其 Bot 的记忆快照、skills/home、连接器和原生权限，不构成私人记忆或文件的安全隔离。
+
+实际运行、变更文件、恢复边界与未完成的浏览器/物理崩溃/群内 ask 证据见 [U06–U08 验收](acceptance/P34-U06-08.md)。

@@ -280,7 +280,7 @@ describe('Session Bot badge with public session projection and the shared catalo
   it('registers the header slot, navigates to exact Bot details repeatedly, and disposes the contribution', async () => {
     const app = await mountClient([bot(), bot({ id: 'beta-bot', name: 'Beta Bot' })]);
     cleanups.push(app.dispose);
-    const entries = app.core.entries('conversation.session.header.utilities');
+    const entries = app.core.entries('conversation.session.header.utilities').filter(entry => entry.options.id === 'dsh-bot');
     expect(entries).toHaveLength(1);
     const entry = entries[0];
     expect(entry?.component).toBe(SessionBotBadge);
