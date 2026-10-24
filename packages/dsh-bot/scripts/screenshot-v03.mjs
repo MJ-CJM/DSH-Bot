@@ -141,7 +141,7 @@ async function capture(url) {
       for (const [key, screen] of [['connectors.connectors', 'connectors'], ['notifications.notifications', 'notifications'], ['team.title', 'collaboration'], ['routine.title', 'routines'], ['im.title', 'im']]) {
         await bots.getByRole('tab', { name: t[key], exact: screen !== 'notifications' }).click();
         const panel = bots.locator('[role=tabpanel]:visible');
-        if (screen === 'collaboration') await panel.getByText('Review research summary', { exact: false }).waitFor();
+        if (screen === 'collaboration') await panel.getByText('Review research summary', { exact: false }).first().waitFor();
         await shot(screen);
       }
       await bots.getByRole('tab', { name: t['manage.memoryTools'], exact: true }).click();
