@@ -2,7 +2,9 @@
 
 2026-10-24；任务 `tasks/P34/B04-06.md`，执行设计 §11/§14 及 B01–B03 审查意见。分支 `phase/p3-p4`，起始 HEAD `6c919405432967f7cedace7069d7cf8d22ec6910`。参考 DSH 精确 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`，只读且收尾干净。
 
-**产品实现、安装、升级和 Host 矩阵 PASS；真实 Client 浏览器截图 FAIL（环境）。** 最终主矩阵 `.dsh-dev/v032/1792906421330-48924/summary.json`：`runtimeStatus=PASS`、127 次 loopback 模型请求、真实模型 0；补充原生 Team 来源攻击验证 `.dsh-dev/b04-team-final/summary.json` 为 PASS、2 次 loopback、真实模型 0。合计 129 次 loopback、真实模型 0。总体 runner 按约定设置 exitCode=1 / status=FAIL，原因是浏览器项，不能写成全项通过。
+**§1–7 是修复前的历史收据，当前交付以 §8 为准。编排方随后在沙箱外确认旧 0.3.2 存在真实 Client 激活失败，不能将下述 Client 工厂测试或环境失败解读为产品激活通过。**
+
+修复前安装、升级和 Host 矩阵 PASS；本地真实 Client 浏览器截图 FAIL（环境）。 最终主矩阵 `.dsh-dev/v032/1792906421330-48924/summary.json`：`runtimeStatus=PASS`、127 次 loopback 模型请求、真实模型 0；补充原生 Team 来源攻击验证 `.dsh-dev/b04-team-final/summary.json` 为 PASS、2 次 loopback、真实模型 0。合计 129 次 loopback、真实模型 0。总体 runner 按约定设置 exitCode=1 / status=FAIL，原因是浏览器项，不能写成全项通过。
 
 ## 1. 改动与行为
 
@@ -157,3 +159,65 @@
 - 正式支持普通消息/interrupt/cold wake；PTC 内 bot_message 禁用，队友轮次 run_code 需原生审批，UI 有提示。浏览器/桌面实拍与完整 OS PTC backend 保留上述 FAIL，不伪造通过。无 commit/push 或全局/桌面升级。
 
 命令记录中，以 `tail` 展示日志的外层 shell 返回 0 只代表日志读取成功；整体验收状态以 runner 的 `status=FAIL / runtimeStatus=PASS` 为准，不能据外层 shell 结果宣称截图通过。
+
+## 8. V032 Client 阻断修复（2026-10-24）
+
+任务 `tasks/P34/V032-fix-client.md`；起始 HEAD `441dc548cc4f8824ace54b56aa12c190d00c742e`。本节取代前文对当前包可用性的判断，§1–7 保留为旧包历史收据。
+
+### 根因与修改
+
+原 B05 用 `ctx.get('uiConversation')` 探测可用性，再用 `ctx.uiConversation.events.register` 访问未声明依赖的 peer 服务。Cordis 会拒绝该属性访问；补充回归在修复前用实际发布的 Conversation Client 入口、独立 owner 插件及正式 `lib/client.js` 工厂复现 `cannot get property "uiConversation" without inject`。旧测试只在服务缺席或根 Context 提供服务时运行，未覆盖生产作用域。只读提取桌面安装包中的公开 Conversation Client 与 npm 对应入口逐字节一致，故本次定位不是将源码 API 推测冒充产品实测。
+
+正式实现用可选 `ctx.inject(['uiConversation'], scope => ...)`，通过公开 slot 声明等待 renderer 入口。嵌套事务 effect 先注册卡片 renderer，再注册 exclusive Definition；任一注册失败即回滚。服务/registry/slot 缺席时不阻塞主插件，保留现有原生文本与消息前缀。五种实际 Client 工厂回归均通过，并断言主插件 ACTIVE、所需 UI/Remote 资源保留、卸载后 Definition 和 slot 清空。测试仍用 slot/platform doubles；没有冒称浏览器或完整原生 renderer 通过。
+
+cold 检查改为：**全部非 blank 会话 ID 精确等于三 Bot 原主会话集合**，每个主会话仍必须 nonblank，workspace 内的非 blank 集合也相同。不能仅比较过滤后的数量，否则会漏掉主身份替换；也不应依赖截图点击去掩盖原生 provisional blank。额外业务会话仍被拒绝。可选 `B2B_NATIVE_BLANK_FIXTURE=1` 用公开 Controller API 在真实隔离 Host 中创建 standard blank 并 flush；最终 run 首次/冷 Host 都是 4 条会话，其中同一个 blank 和原三主会话保持不变，无消息重放。此为公开 API 故障复现夹具，不是浏览器创建证据。
+
+截图脚本移除 `globalThis` 临时变量，console/错误保存在每页局部作用域；任意场景失败都尽力保存脱敏 `debug.txt` / `debug.png`。加入页面 boot 错误断言及消息卡片激活收据；折叠按钮用 `button[aria-expanded]` 定位，避免展开后新增“状态”按钮造成 locator 歧义。导出 capture 模块不再自行回调 runner。根 `scripts/screenshot.mjs --v032` 显式执行 release + capture，等待 cold 完成后输出截图结论；截图失败返回 exit 1，消除了 import 不执行及循环等待问题。
+
+### 当前产物、命令与收据
+
+当前 `dist/dsh-bot-0.3.2.tgz`，315 个发布文件，SHA256：
+
+`1cad1685ae60deef5197a374d2213bb160cb5246eea4ad3e449035de050f986b`
+
+`dist/dsh-bot-0.3.2.tgz.sha256` 和 `dist/artifact-manifest.json` 同步更新。产物审计 `.dsh-dev/v032-fix-audit/artifact-manifest.json`；两次真实安装的 315 文件均与该 tgz 对账，收据分别为下表目录内 `installed-audit.json`。旧 0.3.1 保持原字节。
+
+| 执行命令 | 实际结果 |
+| --- | --- |
+| `scripts/pnpm -F dsh-bot test tests/bundle.spec.ts` | PASS；17 tests，含五种新激活/回退组合。修复前 peer-owned 场景先复现缺 inject 错误；开发中误读 Fiber 状态属性导致的断言失败已纠正，非产品失败。日志 `.dsh-dev/v032-fix-probe.log`。 |
+| `scripts/pnpm check` | PASS / exit 0；57 文件、721 tests，build / strict typecheck / lint。日志 `.dsh-dev/v032-fix-check.log`；当时临时 debug 字符串触发的 lint info 后已清理。 |
+| `scripts/pnpm pack:plugin` | PASS / exit 0；重新构建打包，日志 `.dsh-dev/v032-fix-pack.log`。 |
+| `auditArtifact` + `auditInstalled`（公开仓库工具 `scripts/p34-artifact.mjs`） | PASS；源码/包逐字节匹配、公开 exports/locale/依赖策略/发布 allowlist/机器路径检查，两个 profile 的已安装文件对账通过。 |
+| `DSH_HOME="$PWD/.dsh-dev" DSH_BOT_E2E_DIR="$PWD/.dsh-dev/v032-fix-runtime" node scripts/screenshot.mjs --v032` | 实际从根入口完成安装、首次/冷 Host，50 次 loopback、真实模型 0；Host PASS，浏览器 FAIL（环境）。首次执行尚未增加截图失败 exitCode 传播，故当时 CLI exit 0，不能解读为截图 PASS。 |
+| `DSH_HOME="$PWD/.dsh-dev" B2B_NATIVE_BLANK_FIXTURE=1 DSH_BOT_E2E_DIR="$PWD/.dsh-dev/v032-fix-cli-final" node scripts/screenshot.mjs --v032` | 最终 CLI exit 1，明确输出 `v032 screenshots: FAIL (environment)`；Host 首次/冷矩阵 PASS，额外持久 blank 回归 PASS，50 次 loopback、真实模型 0。`.dsh-dev/v032-fix-cli-final.log`；该 run 的 `summary.json` 只代表 Host PASS，`screenshots.json` 单独 FAIL。 |
+| `scripts/pnpm lint`；四个修改 `.mjs` 的 `node --check`；`git diff --check` | PASS；最终 lint 277 文件无诊断，日志 `.dsh-dev/v032-fix-lint-final.log`。 |
+
+两次 Host 回归合计 100 次 loopback 请求，真实模型请求 0。最终 blank 收据：`.dsh-dev/v032-fix-cli-final/first-provisional-blank.json`、`first-identity.json`、`cold-identity.json`、`cold-cold.json`；最后一份为恢复/无重放校验。每次仍验证审批、主映射、nativeRef/outgoingRef、自己的 MCP、interrupt 和清理，未扩大为重跑全部旧功能/三版本升级/九个强杀窗口。
+
+### 逐项验收
+
+| 任务项 | 结果 |
+| --- | --- |
+| 1. 根因、公开 API 修复及真实 Client 入口激活回归 | **PASS**；实际构建工厂 + peer-owned 公开 UiConversation 的五场景；原错误先复现，修复后 ACTIVE/资源/清理断言通过。完整浏览器激活另见末项。 |
+| 2. cold 主会话身份检查 | **PASS**；精确非 blank 集合；真实 tarball Host 首次/冷启动带同一个第四 blank 通过，主身份和业务记录不变。 |
+| 3. 临时 debug 清理 | **PASS**；没有 `globalThis`，局部诊断保留且 token 脱敏。浏览器无法启动，页面级 debug 分支本轮未实跑。 |
+| 4. 根截图入口 | **PASS**；显式 runner + capture，首次/冷都实际完成，失败 verdict 传到 CLI exit 1，无挂起。 |
+| 5. 重打包、SHA256、check、验收文档 | **PASS**；当前 hash/315 文件、721 tests、安装对账与本节。 |
+| 真实浏览器 Client 激活、亮暗中英宽窄屏 | **FAIL（环境）**；Chromium `chromiumSandbox: true` 启动阶段 SIGABRT / kill EPERM，未访问页面，16 场景无 PNG。最终 `docs/screenshots/v032/1792908392885-6343/result.json`；首次 `1792908329565-4543/result.json` 保留。不可将 Client 工厂测试或 Host PASS 当作真实页面激活证明。 |
+
+### 改动文件与遗留事项
+
+本次修改：
+
+- `packages/dsh-bot/src/client/messaging.tsx`
+- `packages/dsh-bot/tests/bundle.spec.ts`
+- `packages/dsh-bot/tests/b2b-release-profile.mjs`
+- `packages/dsh-bot/scripts/screenshot-v032.mjs`（在编排方已有 debug 修改上继续整理）
+- `scripts/b2b-runtime.mjs`
+- `scripts/screenshot.mjs`
+- `docs/dsh-api-notes.md`
+- `docs/acceptance/V032-bot-to-bot.md`
+- 产物：`dist/dsh-bot-0.3.2.tgz`、同名 `.sha256`、`dist/artifact-manifest.json`。
+- 两份新浏览器环境失败 JSON：`docs/screenshots/v032/1792908329565-4543/result.json`、`docs/screenshots/v032/1792908392885-6343/result.json`。
+
+起始 `pnpm-workspace.yaml` 的 `spikes/p34` 修改、`.codex/`、任务单及编排方三份截图目录均保留；无 commit/push、全局设置/桌面应用/`~/.dsh` 修改，参考 rc.2 树仍干净。没有依赖变更，本轮未重装依赖。剩余要求由编排方在允许 Chromium 启动的环境运行 `DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v032`，以新 tgz 核实实际 boot、卡片、侧栏、亮暗中英及窄屏；通过前保留浏览器 FAIL。

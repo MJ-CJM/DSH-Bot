@@ -261,6 +261,7 @@ try {
       `        outputDir: ${JSON.stringify(dir)}`,
       `        mockUrl: ${JSON.stringify(mockUrl)}`,
       `        phase: ${phase}`,
+      ...(kind === 'release' && process.env.B2B_NATIVE_BLANK_FIXTURE === '1' ? ['        nativeBlankFixture: true'] : []),
       `        window: ${JSON.stringify(process.env.B2B_CRASH_WINDOW ?? '')}`,
     ].join('\n');
     await writeFile(resolve(home, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);

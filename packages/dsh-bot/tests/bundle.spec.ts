@@ -201,7 +201,7 @@ describe('built bundle contract', () => {
     expect(() => host.Config({ enableBotManageInStandard: 'yes' } as never)).toThrow();
   });
 
-  it('awaits Remote mounting and releases its contribution, dictionaries and slot on unload', async () => {
+  it.each(['native', 'missing-service', 'missing-registry', 'missing-slot', 'registration-failure'] as const)('activates the built Client with a peer-owned Conversation service (%s) and releases resources', async (mode) => {
     const ctx = new Context();
     const active = new Set<string>();
     const releases: string[] = [];
@@ -218,7 +218,7 @@ describe('built bundle contract', () => {
       },
     } as unknown as Context['locale']);
     ctx.provide('slots', {
-      inject: (_name: string, callback: () => () => void) => callback(),
+      inject: (name: string, callback: () => () => void) => mode === 'missing-slot' && name === 'conversation.chat.node' ? () => {} : callback(),
       register: (options: { name: string }) => register(options.name),
     } as unknown as Context['slots']);
     ctx.provide('uiWorkspace', { openWorkspace: vi.fn() } as unknown as Context['uiWorkspace']);
@@ -236,6 +236,23 @@ describe('built bundle contract', () => {
         return async () => { dispose(); };
       },
     } as unknown as Context['remote']);
+    let conversation: typeof import('@deepseek-ai/dsh-client-ui-conversation/client') | undefined;
+    new Function('window', readFileSync(require.resolve('@deepseek-ai/dsh-client-ui-conversation/client'), 'utf8'))({
+      __ModuleLoader__: { load(entry: { factory: (load: (id: string) => unknown) => typeof conversation }) {
+        conversation = entry.factory(id => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives :
+          id === '@deepseek-ai/dsh-client-store' ? { notifySubscribers: (listeners: Set<() => void>) => { for (const listener of listeners) listener(); } } : require(id));
+      } },
+    });
+    if (!conversation) throw Error('Native Conversation factory did not load');
+    const api = conversation;
+    let assembly: InstanceType<typeof api.UiConversation> | undefined;
+    const owner = ctx.plugin({ apply(scope: Context) {
+      if (mode === 'missing-service') return;
+      if (mode === 'missing-registry') { scope.provide('uiConversation', {} as Context['uiConversation']); return; }
+      assembly = new api.UiConversation(scope, ctx.sessions as never);
+      if (mode === 'registration-failure') vi.spyOn(assembly.events, 'register').mockImplementation(() => { throw Error('Unsupported registry'); });
+    } });
+    await owner.await();
     let plugin: { inject: string[]; apply: (ctx: Context) => Promise<void> } | undefined;
     runInNewContext(readFileSync(require.resolve('dsh-bot/client'), 'utf8'), {
       window: { __ModuleLoader__: {
@@ -248,7 +265,9 @@ describe('built bundle contract', () => {
     try {
       const fork = ctx.plugin(plugin);
       await fork.await();
-      const resources = ['conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.schedule', 'remote.workspace', 'schedule.changed',
+      expect(fork.state).toBe(2);
+      expect(assembly?.events.entries().map(d => d.kind) ?? []).toEqual(mode === 'native' ? ['dsh-bot-message'] : []);
+      const resources = [...(mode === 'native' ? ['conversation.chat.node'] : []), 'conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.schedule', 'remote.workspace', 'schedule.changed',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'];
       expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([
@@ -264,7 +283,8 @@ describe('built bundle contract', () => {
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);
-      expect(releases.sort()).toEqual([...resources, 'conversation.session.header.utilities', 'sidebar.session.row.leading', 'sidebar.session.row.hover'].sort());
+      expect(assembly?.events.entries() ?? []).toEqual([]);
+      expect(releases.sort()).toEqual([...resources, ...(mode === 'registration-failure' ? ['conversation.chat.node'] : []), 'conversation.session.header.utilities', 'sidebar.session.row.leading', 'sidebar.session.row.hover'].sort());
     } finally {
       await ctx.fiber.dispose();
     }

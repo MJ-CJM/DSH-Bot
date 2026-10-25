@@ -10,7 +10,7 @@ export async function captureV032(url, workDir) {
   const outputDir = resolve('docs/screenshots/v032', `${Date.now()}-${process.pid}`);
   await mkdir(outputDir, { recursive: true });
   const matrix = ['en', 'zh'].flatMap(language => ['light', 'dark'].flatMap(theme => ['alpha', 'beta'].map(bot => ({ language, theme, bot, status: 'FAIL', reason: 'NOT_RUN' }))));
-  const result = { status: 'FAIL', fixtureStatus: 'PASS', outputDir, matrix, narrow: matrix.map(row => ({ ...row })), errors: [] };
+  const result = { status: 'FAIL', clientActivation: { status: 'FAIL', reason: 'NOT_RUN' }, fixtureStatus: 'PASS', outputDir, matrix, narrow: matrix.map(row => ({ ...row })), errors: [] };
   let browser;
   const originalTmp = process.env.TMPDIR;
   const browserTmp = resolve(workDir, 'browser-tmp'); await mkdir(browserTmp, { recursive: true });
@@ -26,18 +26,23 @@ export async function captureV032(url, workDir) {
     const ids = identity.mains.map(m => m.sessionId);
     for (const row of matrix) {
       const context = await browser.newContext({ colorScheme: row.theme, locale: row.language === 'en' ? 'en-US' : 'zh-CN', viewport: { width: 1360, height: 1000 }, reducedMotion: 'reduce' });
+      const page = await context.newPage(); page.setDefaultTimeout(15000);
+      const consoleLog = [];
       try {
-        const page = await context.newPage(); page.setDefaultTimeout(15000);
         page.on('pageerror', e => result.errors.push(String(e)));
+        page.on('console', m => consoleLog.push(`${m.type()}: ${m.text()}`));
         await installOverlayHandler(page, () => {});
         await page.goto(url, { waitUntil: 'domcontentloaded' }); await dismissFirstRunOverlays(page, () => {}, 'v032');
         const id = identity.mains[row.bot === 'alpha' ? 0 : 1].sessionId;
+        await page.locator(`[role="treeitem"][data-row-key="session:${id}"]`).waitFor({ timeout: 8000 });
+        assert.doesNotMatch(await page.locator('body').innerText(), /Failed to load plugins|web boot:.*did not activate/);
         await page.locator(`[role="treeitem"][data-row-key="session:${id}"]`).click();
         await page.locator(`[data-conversation-content][data-conversation-session="${id}"]`).waitFor();
         const visible = await page.locator('[role="treeitem"][data-row-key^="session:"]:visible').evaluateAll(els => els.map(el => ({ id: el.getAttribute('data-row-key').slice(8), text: el.textContent })));
         assert.deepEqual(visible.map(r=>r.id).sort(), [...ids].sort()); assert.ok(visible.every(r=>!/(New Session|新会话)/.test(r.text)));
-        const cards = page.locator('[data-bot-message]'); await cards.first().waitFor();
-        const summary = cards.first().getByRole('button'); await summary.focus();
+        const cards = page.locator('[data-bot-message]:visible'); await cards.first().waitFor();
+        result.clientActivation = { status: 'PASS', reason: 'Installed Client booted and rendered its message card' };
+        const summary = cards.first().locator('button[aria-expanded]'); await summary.focus();
         assert.equal(await summary.getAttribute('aria-expanded'), 'false');
         await page.keyboard.press('Enter'); assert.equal(await summary.getAttribute('aria-expanded'), 'true');
         await page.keyboard.press('Enter'); assert.equal(await summary.getAttribute('aria-expanded'), 'false');
@@ -51,6 +56,13 @@ export async function captureV032(url, workDir) {
         await page.screenshot({ path: resolve(outputDir, `${row.language}-${row.theme}-${row.bot}-narrow.png`), fullPage: true });
         const narrow = result.narrow.find(r => r.language === row.language && r.theme === row.theme && r.bot === row.bot);
         Object.assign(narrow, { status: 'PASS', reason: undefined }); row.status = 'PASS'; delete row.reason;
+      } catch (error) {
+        const rows = await page.locator('[role=treeitem]').evaluateAll(els => els.map(el => `${el.getAttribute('data-row-key')} ${el.textContent}`)).catch(() => []);
+        await Promise.allSettled([
+          page.screenshot({ path: resolve(workDir, 'debug.png') }),
+          writeFile(resolve(workDir, 'debug.txt'), [String(error), ...rows, ...consoleLog, `IDS ${ids.join(',')}`].join('\n').replace(/([?&]token=)[^\s&"'<>]+/g, '$1[redacted]')),
+        ]);
+        throw error;
       } finally { await context.close(); }
     }
     assert.equal(result.errors.length, 0); result.status = 'PASS';
@@ -58,8 +70,4 @@ export async function captureV032(url, workDir) {
     for (const row of [...result.matrix, ...result.narrow]) if (row.status !== 'PASS') row.reason = result.environment ? 'Chromium launch failed (environment)' : 'NOT_RUN after browser failure'; }
   finally { if (originalTmp === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = originalTmp; await browser?.close(); await writeFile(resolve(outputDir, 'result.json'), JSON.stringify(result, null, 2)); await writeFile(resolve(workDir, 'screenshots.json'), JSON.stringify(result, null, 2)); }
   return result;
-}
-if (process.argv.includes('--v032')) {
-  process.argv[2] = 'release'; process.env.B2B_SCREENSHOTS = '1';
-  await import('../../../scripts/b2b-runtime.mjs');
 }

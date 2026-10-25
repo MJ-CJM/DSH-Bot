@@ -57,9 +57,23 @@ export function MessageCard({ node, t, onShowStatus }: { node: ChatNode<'dsh-bot
   </article>;
 }
 export function registerMessaging(ctx: Context, onShowStatus?: (botId: string) => void) {
-  if (!ctx.get('uiConversation')) return;
-  ctx.effect(() => ctx.uiConversation.events.register(messageDefinition), 'dsh-bot: message definition');
-  ctx.effect(() => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
-    name: 'conversation.chat.node', key: 'dsh-bot-message', locale: 'dsh-bot',
-  }, (props: PropsRuntime<'conversation.chat.node', 'dsh-bot-message'> & PropsLocale<'dsh-bot'>) => <MessageCard {...props} onShowStatus={onShowStatus} />)), 'dsh-bot: message renderer');
+  ctx.inject(['uiConversation'], (scope) => {
+    // Optional registry/slot support must never prevent the Bots workspace from booting.
+    if (typeof scope.uiConversation.events?.register !== 'function') return;
+    scope.effect(() => scope.slots.inject('conversation.chat.node', () => {
+      try {
+        // Claim messages only while a renderer is installed. Cordis rolls back
+        // either registration if setup fails and owns both on slot/plugin unload.
+        return scope.effect(function* () {
+          yield scope.slots.register({
+            name: 'conversation.chat.node', key: 'dsh-bot-message', locale: 'dsh-bot',
+          }, (props: PropsRuntime<'conversation.chat.node', 'dsh-bot-message'> & PropsLocale<'dsh-bot'>) => <MessageCard {...props} onShowStatus={onShowStatus} />);
+          yield scope.uiConversation.events.register(messageDefinition);
+        }, 'dsh-bot: message card');
+      } catch {
+        console.warn('DSH-Bot: message card unavailable; retaining native rendering');
+        return () => {};
+      }
+    }), 'dsh-bot: message renderer');
+  });
 }

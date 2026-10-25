@@ -61,9 +61,13 @@ export function apply(ctx, config) {
       }));
       if (first) for (const a of agents) await prompt(a, 'B2B_INITIAL_TURN');
       const before = (await ctx.sessionController.list({}, abort.signal)).items;
-      assert.equal(before.length, 3); assert.ok(before.every((s) => !s.blank));
+      const mainIds = mains.map(m => m.sessionId).sort();
+      // Native browser navigation may persist a provisional blank session.
+      // Compare all business sessions, and independently require every main to be nonblank.
+      assert.deepEqual(before.filter(s => !s.blank).map(s => s.sessionId).sort(), mainIds);
+      assert.ok(mains.every(m => before.some(s => s.sessionId === m.sessionId && !s.blank)));
       const workspace = ctx.workspaceRegistry.list().find((w) => mains.every((m) => w.sessionIds.includes(m.sessionId)));
-      assert.deepEqual([...workspace.sessionIds].sort(), mains.map((m) => m.sessionId).sort());
+      assert.deepEqual(workspace.sessionIds.filter(id => before.some(s => s.sessionId === id && !s.blank)).sort(), mainIds);
       if (first) {
         const scenario = async (name, count) => {
           const old = service.store.rows().length, approvalCount = approvals.length;
@@ -150,6 +154,17 @@ export function apply(ctx, config) {
         assert.equal(service.store.get(cancelRow.envelope.id).delivery, 'canceled');
         assert.ok(!agents[2].inbox.nextTurn.some(m => m.id === cancelRow.nativeInput.id));
         await save('remote-cancel', { status: 'PASS', row: service.store.get(cancelRow.envelope.id) });
+        if (config.nativeBlankFixture) {
+          // Test-only equivalent of browser provisional creation through the public API.
+          const blank = await ctx.sessionController.create({ workspaceId: workspace.id, agentPreset: 'standard' });
+          const resolved = await ctx.sessionController.resolveAgent(blank.sessionId);
+          if ('error' in resolved) throw resolved.error;
+          assert.equal(await ctx.sessions.flush(resolved.agent.session), true);
+          const rows = (await ctx.sessionController.list({}, abort.signal)).items;
+          assert.ok(rows.some(s => s.sessionId === blank.sessionId && s.blank));
+          assert.equal(rows.length, 4);
+          await save('provisional-blank', { status: 'PASS', sessionId: blank.sessionId, source: 'public API fixture; not browser evidence' });
+        }
         await writeFile(resolve(config.outputDir, 'identity.json'), JSON.stringify({ mains, rows: service.store.rows(), pending }));
       } else {
         const identity = JSON.parse(await readFile(resolve(config.outputDir, 'identity.json')));
@@ -169,9 +184,9 @@ export function apply(ctx, config) {
         await save('lifecycle', { status: 'PASS', ...service.lifecycle(), records: old, nativeAgentsRetained: true });
       }
       const after = (await ctx.sessionController.list({}, abort.signal)).items;
-      assert.deepEqual(after.map((s) => s.sessionId).sort(), before.map((s) => s.sessionId).sort());
-      assert.deepEqual([...workspace.sessionIds].sort(), mains.map((m) => m.sessionId).sort());
-      await save('identity', { status: 'PASS', mains, rows: after, noAdditionalVisibleSessions: true });
+      assert.deepEqual(after.filter(s => !s.blank).map(s => s.sessionId).sort(), mainIds);
+      assert.deepEqual(workspace.sessionIds.filter(id => after.some(s => s.sessionId === id && !s.blank)).sort(), mainIds);
+      await save('identity', { status: 'PASS', mains, rows: after, noAdditionalBusinessSessions: true, nativeBlankSessionIds: after.filter(s => s.blank).map(s => s.sessionId) });
       await save('result', { status: 'PASS', calls, approvals }); console.log('B2B_DONE');
     })().catch(async (e) => { await save('failure', { error: String(e), stack: e.stack }); console.log('B2B_FAILED'); });
     return async () => { abort.abort(); for (const off of offs.reverse()) off(); await run; };

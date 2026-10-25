@@ -1,5 +1,13 @@
 # DSH API 核实记录
 
+## V032 Client 阻断修复（2026-10-24）
+
+`ctx.get(name)` 是 Cordis 的无 inject 探测入口，不授予后续 `ctx.name` 访问权。rc.2 Cordis 公开源码 `src/reflect.ts:135-166` 明确校验调用方 fiber 的服务依赖；`src/registry.ts` 的 `ctx.inject([...], callback)` 创建声明了依赖的子作用域。B05 原实现探测后直接读 `ctx.uiConversation.events`，在真实 peer 服务下抛出 `cannot get property "uiConversation" without inject`；此前根 Context service double 遮蔽了该故障。已用正式构建 Client 工厂及公开 npm Conversation Client 入口、peer-owned UiConversation 复现原错误，再验证修复。
+
+正式消息扩展改用可选 `ctx.inject(['uiConversation'], scope => ...)`，不扩大主插件必需服务。公开 `slots.inject('conversation.chat.node', ...)` 声明可用时，事务性 effect 先注册 renderer，再注册 exclusive Definition；slot 消失、服务/插件卸载同时释放二者。注册表或 slot 缺席、注册失败均保留原生文本渲染，不留下无 renderer 的独占 Definition。服务/注册失败回退是 Client 工厂回归证据，不能替代真实浏览器；本轮后者仍在 Chromium 启动阶段 FAIL（环境）。未新增依赖或 API 私有入口。
+
+cold 会话身份以全部非 blank 会话精确等于原三 Bot 主会话为准，原生日志/主映射仍逐条对账。额外原生 blank 不代表消息运输新建业务会话；可选 `B2B_NATIVE_BLANK_FIXTURE=1` 通过既有公开 `sessionController.create({workspaceId, agentPreset:'standard'})` 和 `sessions.flush` 构造持久 blank，用于 cold 回归，明确不是浏览器创建证据。当前产物和命令结果见 [验收 §8](acceptance/V032-bot-to-bot.md#8-v032-client-阻断修复2026-10-24)。
+
 ## P34 B04–B06：0.3.2 正式 Bot 消息（2026-10-24）
 
 正式工具、安全接入、Client 与发布材料见 [0.3.2 验收](acceptance/V032-bot-to-bot.md)。普通消息默认开启，`coldWake` / `interrupt` 走已验证的原生路径；`run_code` 内消息保持禁用，队友轮次的 `run_code` 与未知/高风险工具必须原生 ask。原生拒绝、取消、never 策略及下层 ask 说明均保留。IM/系统通知的旧限制不变。
