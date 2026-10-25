@@ -1,5 +1,27 @@
 # DSH API 核实记录
 
+
+## DP B1：公开维护、系统头部与最终请求入口（2026-10-25）
+
+本轮只接 spike 与等价拆分，不接产品记忆 v2；完整证据及三级结果见 [B1 spike](spikes/DP-B1.md)。
+参考 HEAD/tag 均为 `687f282e8625c6b8d11ff58211a90524be2e4317`，仅只读核实。
+
+| 公开入口 | 本轮核实与运行边界 |
+| --- | --- |
+| Agent.cancel / whenIdle / runMaintenance | 真实生产 Agent 上先取消并等待 idle，再维护；不在当前轮 hook 等待自身 idle。清理步骤最终 adapter 请求数为 0 |
+| Session.surface.nodes / append / deriveMessages / sessions.flush | surface 顺序可能非单调；replace 两端含首尾，sourceEventSeqs 必须列全。原生 SessionPersistence 读回与两进程冷重启另作验证，不把 JSON 快照当 flush 证明 |
+| system/message 首节点 | `packages/core/session/src/surface.ts:493-505` 仅允许 system/message 精确替换系统首节点；user replacement 不可包含它。直接 idle system append 虽过 Surface/flush，持久 reader 会拒绝 open turn/step 语法，见 `session-format-v3-to-v4/src/relationships.ts:87` |
+| 原生 system projector | 复用 `packages/core/agent-loop/src/agent.ts:409-442`，撤销静态 section 后在真实原生步骤重投影，最终 llm/stream 屏障保持关闭发送，随后 flush 与 cold 读回通过；不是发布级维护事务 |
+| systemPrompt.context({required:true,interpolate:false,text:provider}) | 真实同一步 retry 重新 refreshContext；pre-step 只执行一次。动态更新不会清掉旧历史。Unit 与 loopback Host 分层记录 |
+| LlmRuntime.prepareCall / PreparedLlmCall.stream / llm/stream | prepared 与 retry 均经过最终 waterfall；惰性 iterator 开始迭代时重新检查屏障。无 sessionId 的合成 summary 请求保守拒绝，不调用模型摘要 |
+| sessionQuery.readSurface / sessionPersistence.open(id,'read').read()/close() | 仅读取本次明确 allowlist 的三个合成主会话。surface 已清理，完整原始事件仍含 canary，不能宣称物理擦除 |
+| @deepseek-ai/dsh-compaction 根的 toolPairingBalancedBefore/After | 新增精确 rc.2 devDependency，供 spike 验证完整工具对；不调用 compactNow/compactRegion 或 summarizer。产品 runtime 没有新增 import，因此不加 peer |
+| LlmAdapter / llm.registerAdapter / listProviders | 仅测试 fixture：真实 provider 列表先断言为空，再注册 dp-loopback。完整 GenerateOptions 发到明确 127.0.0.1 端口；不构建生产 provider、不读凭据 |
+
+本轮前两级 PASS；第三级 **FAIL (P0 OPEN)**：合成 replay/完整热冷请求通过，真实 provider 专用编码、
+MCP 副本清理闭包、原始历史再读门禁和完整故障矩阵仍 NOT_RUN。后续 I14/I16/I17/I21 不能沿用最小切片结果关闭 P0。
+registry 的同一写队列/effect/租约/Remote decorators 与 MemoryPanel 的草稿/lifetime 保持原行为。
+
 ## V032 Client 阻断修复（2026-10-24）
 
 `ctx.get(name)` 是 Cordis 的无 inject 探测入口，不授予后续 `ctx.name` 访问权。rc.2 Cordis 公开源码 `src/reflect.ts:135-166` 明确校验调用方 fiber 的服务依赖；`src/registry.ts` 的 `ctx.inject([...], callback)` 创建声明了依赖的子作用域。B05 原实现探测后直接读 `ctx.uiConversation.events`，在真实 peer 服务下抛出 `cannot get property "uiConversation" without inject`；此前根 Context service double 遮蔽了该故障。已用正式构建 Client 工厂及公开 npm Conversation Client 入口、peer-owned UiConversation 复现原错误，再验证修复。
