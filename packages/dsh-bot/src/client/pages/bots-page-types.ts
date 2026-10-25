@@ -1,3 +1,4 @@
+import type { MessageActions } from '../components/MessageOverview.js';
 import type { WorkspaceActions } from '../workspace-state.js';
 import type { GroupActions } from '../groups-state.js';
 import type { CollaborationActions } from '../collaboration-state.js';
@@ -15,6 +16,7 @@ import type { BotCatalog } from '../state.js';
 import type { ChatLauncherActions } from '../chat-launcher.js';
 
 export interface BotsPageInjected extends ChatLauncherActions {
+  messages?: MessageActions;
   management?: WorkspaceActions;
   groups?: GroupActions;
   routines?: RoutineActions;

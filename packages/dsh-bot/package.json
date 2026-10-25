@@ -1,6 +1,6 @@
 {
   "name": "dsh-bot",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "description": "Your personal agent workspace for DeepSeek Harness. Create multiple personal agents, each with its own persona, long-term memory, tools and skills, working alongside you over time.",
   "exports": {
@@ -48,7 +48,8 @@
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-workspace",
         "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-sidebar-right"
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-chat"
       ]
     }
   },
@@ -137,7 +138,8 @@
     "@deepseek-ai/dsh-credentials": "0.2.1-rc.2",
     "@deepseek-ai/dsh-experimental-agent-team": "0.2.1-rc.2",
     "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-plugin-market-index": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-chat": "0.2.1-rc.2"
   },
   "license": "UNLICENSED",
   "repository": {

@@ -1,3 +1,5 @@
+import { MessagingRemote, MESSAGING_HOST } from './messaging/remote.js';
+import { MessagingSafety } from './messaging/safety.js';
 import { Messaging, messagingDomain } from './messaging/service.js';
 import { MessageStore } from './messaging/store.js';
 import { Groups, groupsDomain } from './groups/service.js';
@@ -33,6 +35,7 @@ export const inject = [
   'tools',
   'agents',
   'sessionController',
+  'sessionPersistence',
   'sessions',
   'workspaceRegistry',
   'subagents',
@@ -53,6 +56,9 @@ export function apply(ctx: Context, config: Config): void {
   let referenceMemory: ReferenceMemory | undefined;
   let management: WorkspaceManagement | undefined;
   let messaging: Messaging | undefined;
+  const safety = new MessagingSafety();
+  safety.active = registry.config.messagingEnabled;
+  ctx.effect(() => ctx.provide('dshBotMessagingSafety', safety), 'dsh-bot: safety adapter');
   let stopping = false;
   const ready = registry
     .waitUntilReady()
@@ -103,28 +109,28 @@ export function apply(ctx: Context, config: Config): void {
         try {
           await ctx.effect(async () => {
             const domain = await ctx.storageDomain.open(messagingDomain);
-            messaging = new Messaging(ctx, registry, new MessageStore(domain, registry.config));
+            messaging = new Messaging(ctx, registry, new MessageStore(domain, registry.config), safety, { processing: true, coldWake: true, interrupt: true });
+            const release = ctx.provide('dshBotMessaging', messaging);
             try {
               await messaging.start();
             } catch (error) {
+              release();
               await messaging.close();
               throw error;
             }
-            return () => messaging?.close();
+            return async () => { release(); await messaging?.close(); };
           }, 'dsh-bot: messaging');
-          if (messaging)
-            ctx.effect(
-              () => ctx.provide('dshBotMessaging', messaging as Messaging),
-              'dsh-bot: messaging service',
-            );
           ctx.logger.info(
-            '[dsh-bot] messaging transport ready; automatic processing awaits scoped safety adapter',
+            '[dsh-bot] messaging ready; nested run_code messaging disabled',
           );
         } catch {
           messaging = undefined;
+          safety.close();
           ctx.logger.warn('[dsh-bot] messaging store unavailable; existing Bot features remain active');
         }
       }
+      new MessagingRemote(ctx, messaging);
+      await ctx.effect(() => ctx.typert.register(MESSAGING_HOST), 'dsh-bot: messaging Remote');
       try {
         await ctx.effect(async () => {
           const domain = await ctx.storageDomain.open(referenceMemoryDomain);
@@ -196,6 +202,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(
     () => async () => {
       stopping = true;
+      safety.close();
       status = { state: 'stopping' };
       await ready;
       const errors: unknown[] = [];

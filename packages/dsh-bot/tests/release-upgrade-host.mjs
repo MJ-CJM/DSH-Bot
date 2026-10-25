@@ -20,7 +20,7 @@ export function apply(ctx, config) {
         await ctx.dshBots.memoryFor('upgrade-bot').save({ content: 'Keep this synthetic pinned preference.',
           kind: 'preference', tags: ['upgrade'], pinned: true }, { by: 'user', at: Date.now() });
       }
-      const modern = config.oldVersion === '0.3.0';
+      const modern = config.oldVersion !== '0.2.2';
       while (modern && !['dshBotGroups', 'dshBotConnectors', 'dshBotNotifications'].every(name => ctx.get(name))) {
         assert.ok(Date.now() < deadline, 'Modern services did not activate');
         await delay(25);

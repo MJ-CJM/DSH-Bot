@@ -28,7 +28,7 @@ export interface MessagingConfig {
 const integer = (min: number, max: number, fallback: number) =>
   Schema.number().min(min).max(max).step(1).default(fallback);
 export const messagingConfigFields = {
-  messagingEnabled: Schema.boolean().default(false),
+  messagingEnabled: Schema.boolean().default(true),
   messageRetryAttempts: integer(1, 10, 5),
   messageRetryDelaysMs: Schema.array(integer(100, 3600000, 1000))
     .min(1)

@@ -1,0 +1,67 @@
+{
+  "status": "FAIL",
+  "fixtureStatus": "PASS",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v032/1792905482527-19515",
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "bot": "alpha",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "bot": "beta",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "bot": "alpha",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "bot": "beta",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "bot": "alpha",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "bot": "beta",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "bot": "alpha",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "bot": "beta",
+      "status": "FAIL",
+      "reason": "NOT_RUN"
+    }
+  ],
+  "narrow": [],
+  "errors": [],
+  "failure": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --user-data-dir=/tmp/playwright_chromiumdev_profile-uOzqKw --remote-debugging-pipe --no-startup-window\n<launched> pid=20311\nCall log:\n  - <launching> /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --user-data-dir=/tmp/playwright_chromiumdev_profile-uOzqKw --remote-debugging-pipe --no-startup-window\n  - <launched> pid=20311\n  - [pid=20311] <gracefully close start>\n  - [pid=20311] <kill>\n  - [pid=20311] <will force kill>\n  - [pid=20311] exception while trying to kill process: Error: kill EPERM\n  - [pid=20311] <process did exit: exitCode=null, signal=SIGABRT>\n  - [pid=20311] starting temporary directories cleanup\n  - [pid=20311] finished temporary directories cleanup\n  - [pid=20311] <gracefully close end>\n",
+  "environment": true
+}

@@ -9,7 +9,7 @@ import { auditInstalled, command, sha256 } from './p34-artifact.mjs';
 /** Reopen synthetic data written by the actual retained previous package, never user data. */
 export async function checkUpgrade(root, runDir, env, artifact, audit, oldVersion = '0.2.2') {
   await mkdir(runDir, { recursive: true });
-  assert.ok(['0.2.2', '0.3.0'].includes(oldVersion));
+  assert.ok(['0.2.2', '0.3.0', '0.3.1'].includes(oldVersion));
   const oldArtifact = resolve(root, `dist/dsh-bot-${oldVersion}.tgz`);
   const require = createRequire(resolve(root, 'packages/dsh-bot/package.json'));
   const { startMockLlmServer } = await import(require.resolve('@deepseek-ai/dsh-llm-mock-server'));

@@ -1,3 +1,6 @@
+import { sharedPollingScheduler } from './polling-scheduler.js';
+import { MESSAGING_REMOTE, messageOverviewSchema } from '../shared/messaging-contract.js';
+import { registerMessaging } from './messaging.js';
 import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
 import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
 import { createWorkspaceActions } from './workspace-state.js';
@@ -84,6 +87,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     'dsh-bot: dictionaries',
   );
   const t = ctx.locale.bind(namespace);
+  await ctx.effect(async () => await ctx.remote.$mount(MESSAGING_REMOTE), 'dsh-bot: messaging Remote');
   const catalog = createBotCatalog(ctx, config);
   const activity = createActivityCatalog(ctx, config);
   const routines = createRoutineActions(ctx, config);
@@ -95,6 +99,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   // this entry runs only on the Client and uses its public service contract.
   const sessions = ctx.sessions as unknown as ISessions;
   const detail = createBotDetailSource(ctx);
+  registerMessaging(ctx, (botId) => { detail.open(botId); ctx.layout.selectPanel('dsh-bot' as MainPanelId); });
   const memories = new Set<MemoryCatalog>();
   // Client memory only: shared by page/sidebar, cleared on plugin unload.
   const preferredWorkspace = '';
@@ -162,6 +167,11 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     beforeOpen?: (id: SessionId) => void,
   ) => startBot(id, signal, beforeOpen);
   const page: BotsPageInjected = {
+    messages: { subscribe(refresh) { return ctx.effect(() => sharedPollingScheduler(ctx, config).register({ polling: true, refresh: async () => { await refresh(); return undefined; } }), 'dsh-bot: message overview'); }, async request(input) {
+      const remote = ctx.get('remote.dshBot.messaging');
+      if (!active || !remote) throw new Error(t('messages.disabled'));
+      return messageOverviewSchema.parse(unwrap(await remote.request(input)));
+    } },
     routines,
     integrations,
     collaboration,

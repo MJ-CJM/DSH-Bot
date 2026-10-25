@@ -1,3 +1,4 @@
+import { MessageOverviewPanel } from '../components/MessageOverview.js';
 import { RoutinePanel } from '../components/RoutinePanel.js';
 import { Button, IconEllipsisOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import { BotAvatar } from '../components/BotAvatar.js';
@@ -173,6 +174,7 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
                   t={t}
                 />
               )}
+              {page.messages && <MessageOverviewPanel botId={selected.bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}
               <BotSessionHistory page={page} model={model} />
             </article>
           )}

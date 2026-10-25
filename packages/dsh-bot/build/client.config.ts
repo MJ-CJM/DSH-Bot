@@ -19,7 +19,12 @@ const require = createRequire(import.meta.url);
 const schemaEntry = fileURLToPath(import.meta.resolve('@deepseek-ai/schemastery'));
 // This public helper is stateless and has no runtime imports. The protocol root
 // contains shared service state and is deliberately not an allowed dependency.
+const surfaceEntry = await realpath(require.resolve('@deepseek-ai/dsh-session/surface'));
 const bundledDependencies = new Set([
+  surfaceEntry,
+  await realpath(createRequire(surfaceEntry).resolve('@deepseek-ai/dsh-brand')),
+  await realpath(resolve(dirname(surfaceEntry), 'types.js')),
+  await realpath(resolve(dirname(surfaceEntry), 'known-event-types.js')),
   await realpath(require.resolve('@deepseek-ai/dsh-schedule/remote')),
   await realpath(require.resolve('@deepseek-ai/dsh-typert-protocol/remote-info')),
   // Independent Config validator (no shared resolver extensions); not a platform module.

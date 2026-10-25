@@ -1,5 +1,23 @@
 # DSH API 核实记录
 
+## P34 B04–B06：0.3.2 正式 Bot 消息（2026-10-24）
+
+正式工具、安全接入、Client 与发布材料见 [0.3.2 验收](acceptance/V032-bot-to-bot.md)。普通消息默认开启，`coldWake` / `interrupt` 走已验证的原生路径；`run_code` 内消息保持禁用，队友轮次的 `run_code` 与未知/高风险工具必须原生 ask。原生拒绝、取消、never 策略及下层 ask 说明均保留。IM/系统通知的旧限制不变。
+
+| 公开入口 / 只读 rc.2 出处 | 本轮接入及证据边界 |
+| --- | --- |
+| `ToolExecution.parent/rootCallId/callId/token`、`tools/pre-execute/guard/execute`；`packages/core/tools/src/index.ts:327-406,724-733,1360-1440` | exact live 主 Agent 工具，严格输入、sender/target 生日、revision、当前原生输入和 invocation 绑定；批准仅在原生真正 dispatch 后生成一次性 Host grant，消费前检查取消信号与工具生命周期，持久意图前再次检查信号。嵌套 parent 的 `bot_message` 硬拒绝。线程根保存批准时的 BotKey 名单，范围外新目标重新 ask；reply 路由仍由 Host 固定。真实模型未知工具批准/拒绝与目标自己的同名 MCP 另有 Host 收据。 |
+| `tools.presentAs('ptc')`、原生 `run_code`，`index.ts:980-1004` 与公开 `ptcRuntime/workingDirectory` provider seam | 测试运行真实 ToolRuntime、ApprovalService 和 run_code/SDK dispatcher；PTC runtime provider 是合成 seam，不运行 OS 程序。拒绝时 provider.run=0；批准后 nested bot_message body=0。不能把该结果称作完整 PTC 后端来源传播通过，受限回退继续生效。 |
+| `systemPrompt.context({required:true,interpolate:false})`；既有 registry 的同步 Store 快照 | 动态 `{id,name,description}` 目录、160 码点摘要、字节预算/不完整提示及同工具 list 分页；工具 deny 不暴露消息入口。工具动态读取已发布 service，避免主 Agent 早于运输服务 ready 时永久漏装。已有 complete persona API 组合证据仍见 B01，不把源码推导当新增完整桌面验证。 |
+| `agent/pre-step` payload.messages 与 await next() 后 decision.messages；`agent/src/runtime-types.ts:309-320`、`agent-loop/src/agent.ts:267-288` | native next 会附加 runtime-context。只移除 wake 后检查 length 不足以阻止空业务模型请求。正式 `withoutWakeControls` 用原始 claim + 过滤后的非 ambient 输入判断，wake-only 返回 reject，混合业务保留；守卫归 Agent effect，功能关闭/卸载仍过滤旧控制消息。物理强杀矩阵与原生 HTTP 请求数证明该边界。 |
+| 原生 `TurnEndReason.kind='interrupted'`；`session/src/types.ts:218-222`、`agent-loop/src/index.ts:875-900` | resume 会为崩溃的未闭合 turn 添加修复 closer，不能当作正常业务结束。evidence 单独记录 crashClosed，processing 保持 unknown，绝不自动重跑；实际 aborted 仍记录 interrupted。 |
+| `isAppendSurfaceEvent`，`@deepseek-ai/dsh-session/surface`；`ConversationNodeDefinition` / `ChatNode` / `conversation.chat.node` 公开出口 | 只独占严格通过 schema 的本包 append 来源；replacement、非法/未知/其他来源走原生保底。折叠、鲸鱼快照、正文 JSON 解码、状态导航和中英 locale；不导入私有 Chat helper/组件。Client source/registry/DOM 与真实 Chromium 截图结果分列，后者失败不冒充 renderer 实拍通过。 |
+| Typert 根与 `/remote-info`；既有 Session/Inbox/flush 与 JSON KvTable | 新增 `dsh-bot/messaging` / `dshBot.messaging/request`，同源严格 list/cancel/retry codec。最近 20 条只返回元数据；取消/重试在目标队列内 CAS，不转移固定主路由，不自动重试 unknown。真实 Gateway、tarball 安装、升级和 crash 矩阵见验收。 |
+
+未新增 Host runtime peer；ui-chat 只有精确 rc.2 dev 类型依赖和 Client bundle 依赖声明。公开 session surface guard 及其无状态依赖按精确路径纳入浏览器构建白名单，平台共享模块仍 external。既有领域/version、BotKey、主会话身份和宿主兼容范围不变；消息信封新增可选 `authorizedTargets`，缺少名单的旧记录不自动扩大下游范围。
+
+所有运输资源仍由 Host effect 管理；retained 最小来源守卫只依赖原生 Agent 日志和本包 schema，随 Agent effect 释放。停止时先拒准入/新唤醒并排空持久写，不 dispose Controller 的主 Agent。测试/探针/截图脚本不进入发布包；完整命令、实际请求数、升级和截图失败记录以验收报告为准。
+
 ## P34 B01–B03：Bot 间消息运输层（2026-10-24）
 
 新功能的 [API spike](spikes/B01-bot-message.md) 与 [逐项验收/接续](acceptance/P34-B01-03.md) 分开记录源码、JSON/Client 夹具和真实 Web Host。新增 `dsh_bot_messaging` v1，不修改既有领域、持久身份或宿主版本范围；未新增依赖或 runtime peer。使用的 runtime factory `createUserMessage`、`MessageId` 与 storage-domain 都已是正式共享 peer。

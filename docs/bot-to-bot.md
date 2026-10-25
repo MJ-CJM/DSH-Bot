@@ -327,3 +327,11 @@ interface MessageRecord {
 `resolveAgent` 的真实返回是 `{agent}|{error}`，`createUserMessage` 接受单一 `{source,content}` 对象，`list` 的 blank 在 row 顶层；实现以这些实测合同取代示意性调用。Host 运输层已接入可选独立领域，但默认不注册模型工具、不允许自动处理；B04 需接入原生审批/来源守卫后再开放 processing。0.3.2 版本仍按 §14.6 留给 B06。
 
 决策：基础消息运输继续交付，正式 UI、PTC 与完整卸载保护按各自任务接续。理由：普通路径已用真实工具/模型/强杀冷恢复证明；尚未证实的能力不借构建、夹具或旧收据冒充通过。
+
+## 16. B04–B06 交付决定（2026-10-24）
+
+正式实现与逐项收据见 [0.3.2 验收](acceptance/V032-bot-to-bot.md)。按 §14 的已授权决定，发布 0.3.2 单包，普通消息默认开启，取代 §12/§15 的阶段性默认关闭。新线程一次原生审批，根保存批准 BotKey 名单；仅名单内的下游只读协作及固定回复复用范围，interrupt 每次审批。PTC 内 `bot_message` 继续关闭，队友轮次的 run_code 原生 ask，不关闭普通互通。
+
+B03 单文件按 core、delivery、reply-routing、recovery、interrupt 拆分，每个均不超过 300 行。额外修正了完整 Host 发现的两个恢复问题：原生 await next 附加的 ambient context 不能给 wake-only 输入制造模型请求；原生冷恢复合成的 interrupted turn closer 不证明处理完成，须保留 unknown。不改 DSH 本体、不接管原生 AgentHandle，不新增模型循环或 schedule 轮询。
+
+正式 UI 只扩展自有 source 的 append 事件，原生其他消息保留；双方主会话有折叠鲸鱼卡片，Bot 详情提供往来/状态/既有会话导航及精确取消/安全重试。截图任务严格保留 Chromium 沙箱，环境启动失败时整项写 FAIL，不以 DOM 或源码替代实拍。IM/系统通知的原有未支持范围不在本次开启。

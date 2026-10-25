@@ -10,13 +10,15 @@ const root = process.cwd(),
   home = resolve(root, '.dsh-dev');
 assert.equal(process.env.DSH_HOME, home);
 const kind = process.argv[2] ?? 'spike';
-assert.ok(['spike', 'host'].includes(kind));
-const dir = resolve(home, 'b2b', `${kind}-${Date.now()}-${process.pid}`);
+assert.ok(['spike', 'host', 'release', 'window', 'lazy'].includes(kind));
+const dir = process.env.DSH_BOT_E2E_DIR ?? resolve(home, 'b2b', `${kind}-${Date.now()}-${process.pid}`);
 await mkdir(dir, { recursive: true });
 let script = [],
   count = 0,
   router = false;
-const routeCounts = { alpha: 0, beta: 0 };
+let routeCounts = { alpha: 0, beta: 0, gamma: 0 };
+let routeMode = 'roundtrip', effects = 0;
+const mcpCalls = [];
 const requests = [],
   children = new Set(),
   commands = [];
@@ -25,6 +27,16 @@ const server = createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw || '{}');
+    const mcp = req.url.match(/^\/mcp\/(alpha|beta)$/)?.[1];
+    if (mcp) {
+      if (req.method === 'GET') { res.writeHead(405).end(); return; }
+      if (body.id === undefined) { res.writeHead(202).end(); return; }
+      if (body.method === 'tools/call') mcpCalls.push({ owner: mcp, method: body.method, name: body.params?.name });
+      const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: mcp, version: '1' } } :
+        body.method === 'tools/list' ? { tools: [{ name: 'echo', description: 'Scoped loopback identity', inputSchema: { type: 'object', properties: {} } }] } :
+        body.method === 'tools/call' ? { content: [{ type: 'text', text: `MCP_${mcp}_ONLY` }] } : {};
+      res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result })); return;
+    }
     if (req.url === '/control') {
       script.push(...body);
       res.end('{}');
@@ -34,53 +46,41 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify(requests));
       return;
     }
+    if (req.url === '/effect') { effects++; res.end('{}'); return; }
     assert.match(req.url, /^\/v1\/messages$/);
     let action = script.shift() ?? { text: 'B2B_MOCK_OK' };
     if (action.route === false) {
       router = false;
       delete action.route;
-    } else if (action.route === true) {
+    } else if (action.route === true || typeof action.route === 'string') {
+      routeMode = action.route === true ? 'roundtrip' : action.route;
+      routeCounts = { alpha: 0, beta: 0, gamma: 0 };
       router = true;
       action = {};
     }
     if (router) {
       const wire = JSON.stringify(body),
-        owner = wire.includes('B2B_PERSONA_alpha') ? 'alpha' : 'beta';
+        owner = wire.includes('B2B_PERSONA_alpha') ? 'alpha' : wire.includes('B2B_PERSONA_beta') ? 'beta' : 'gamma';
       const n = ++routeCounts[owner];
-      if (owner === 'alpha' && n === 1)
-        action = {
-          tool: 'bot_message',
-          args: {
-            action: 'send',
-            to: 'beta',
-            content: 'B2B_QUESTION',
-            mode: 'ask',
-          },
-        };
-      else if (owner === 'beta' && n === 1) {
-        const texts = [];
-        const collect = (v) => {
-          if (typeof v === 'string') texts.push(v);
-          else if (Array.isArray(v)) v.forEach(collect);
-          else if (v && typeof v === 'object') Object.values(v).forEach(collect);
-        };
-        collect(body);
-        const ask = texts.join('\n').match(/replyTo="([^"]+)"/)?.[1];
-        assert.ok(ask);
-        action = {
-          tool: 'bot_message',
-          args: { action: 'reply', replyTo: ask, content: 'B2B_TARGET_ANSWER' },
-          delay: 250,
-        };
-      } else
-        action = {
-          text:
-            owner === 'alpha'
-              ? n === 2
-                ? 'B2B_A_QUEUED'
-                : 'B2B_A_TOLD_USER B2B_TARGET_ANSWER'
-              : 'B2B_B_REPLIED',
-        };
+      const texts = [];
+      const collect = (v) => { if (typeof v === 'string') texts.push(v); else if (Array.isArray(v)) v.forEach(collect); else if (v && typeof v === 'object') Object.values(v).forEach(collect); };
+      collect(body);
+      const ask = [...texts.join('\n').matchAll(/replyTo="([^"]+)"/g)].at(-1)?.[1];
+      const send = (to, mode = 'ask', content = 'B2B_QUESTION') => ({ tool: 'bot_message', args: { action: 'send', to, mode, content } });
+      const reply = () => { assert.ok(ask); return { tool: 'bot_message', args: { action: 'reply', replyTo: ask, content: `B2B_TARGET_ANSWER_${routeMode}` }, delay: 350 }; };
+      if (owner === 'alpha' && n === 1) action = send('beta', routeMode === 'notify' || routeMode === 'window-notify' || routeMode === 'window-claim' || (routeMode.startsWith('unsafe') || routeMode === 'mcp') ? 'notify' : 'ask');
+      else if (routeMode === 'chain' && owner === 'beta' && n === 1) action = send('gamma');
+      else if (routeMode === 'chain' && owner === 'gamma' && n === 1) action = reply();
+      else if (routeMode === 'chain' && owner === 'beta' && n === 3) action = reply();
+      else if (routeMode === 'loop' && owner === 'beta' && n === 1) action = send('alpha');
+      else if (routeMode === 'loop' && owner === 'beta' && n === 2) action = reply();
+      else if (routeMode === 'roundtrip' && owner === 'beta' && n === 1) action = reply();
+      else if (routeMode === 'window-claim' && owner === 'beta' && n === 1) action = { stall: true };
+      else if (routeMode === 'window-reply' && owner === 'beta' && n === 1) action = reply();
+      else if (routeMode === 'mcp' && owner === 'beta' && n === 1) action = { tool: 'mcp__same__echo', args: {} };
+      else if (routeMode.startsWith('unsafe') && owner === 'beta' && n === 1) action = { tool: 'b2b_effect', args: { text: routeMode === 'unsafe-deny' ? 'B2B_REJECT' : 'B2B_APPROVE' } };
+      else action = { text: owner === 'alpha' ? n === 2 ? 'B2B_A_QUEUED' : kind === 'host' ? 'B2B_A_TOLD_USER B2B_TARGET_ANSWER' : `B2B_TOLD_${routeMode}` : kind === 'host' ? 'B2B_B_REPLIED' : `B2B_DONE_${routeMode}` };
+
     }
     const r = { index: ++count, body, action, outcome: 'running' };
     requests.push(r);
@@ -186,12 +186,18 @@ async function command(args, name, live = false) {
       r(c);
     });
   });
-  for (const stream of [child.stdout, child.stderr]) stream.on('data', (c) => (output += c));
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (c) => { output += c; void writeFile(resolve(dir, `${name}-live.log`), output.replace(/([?&]token=)[^\s&"'<>]+/g, '$1[redacted]')); });
   const timer = setTimeout(() => child.kill('SIGKILL'), 120000);
   try {
     if (live) {
       const until = Date.now() + 100000;
       while (!closed && Date.now() < until && !/B2B_(DONE|FAILED)/.test(output)) await delay(50);
+      if (name === 'first-host' && output.includes('B2B_DONE') && process.env.B2B_SCREENSHOTS === '1') {
+        const url = output.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+)/)?.[1];
+        assert.ok(url);
+        const { captureV032 } = await import('../packages/dsh-bot/scripts/screenshot-v032.mjs');
+        await captureV032(url, dir);
+      }
       child.kill(name === 'first-host' && output.includes('B2B_DONE') ? 'SIGKILL' : 'SIGTERM');
     }
     const code = await done;
@@ -208,7 +214,7 @@ async function command(args, name, live = false) {
 try {
   await command(['--version'], 'version');
   await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-  await command(['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'install');
+  await command(['plugin', '--profile', profile, 'add', process.env.DSH_BOT_E2E_PACKAGE ?? ((kind === 'release' || kind === 'window' || kind === 'lazy') ? resolve(root, 'dist/dsh-bot-0.3.2.tgz') : resolve(root, 'packages/dsh-bot'))], 'install');
   for (const phase of ['first', 'cold']) {
     const patch = [
       '- id: storage-json',
@@ -224,6 +230,8 @@ try {
       '- id: dsh-bot',
       '  config:',
       '    seedExamples: false',
+      `    messagingEnabled: ${kind === 'release' || kind === 'window' || kind === 'lazy' ? 'true' : 'false'}`,
+      ...(kind === 'release' ? ['    messagePairRequests: 100', '    messagePairTotal: 200'] : []),
       `    dataDir: ${JSON.stringify(resolve(dir, 'bots'))}`,
       '- id: agent-default-model',
       '  config:',
@@ -253,6 +261,7 @@ try {
       `        outputDir: ${JSON.stringify(dir)}`,
       `        mockUrl: ${JSON.stringify(mockUrl)}`,
       `        phase: ${phase}`,
+      `        window: ${JSON.stringify(process.env.B2B_CRASH_WINDOW ?? '')}`,
     ].join('\n');
     await writeFile(resolve(home, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);
     await command(['--profile', profile, '--dump-config'], `${phase}-dump`);
@@ -262,7 +271,7 @@ try {
       true,
     );
   }
-  if (kind === 'host')
+  if (kind === 'host' || kind === 'release' || kind === 'window' || kind === 'lazy')
     for (const request of requests) {
       const wire = JSON.stringify(request.body);
       const owner = wire.includes('B2B_PERSONA_alpha')
@@ -282,6 +291,8 @@ try {
         kind,
         profile,
         requests: requests.length,
+        effects,
+        mcpCalls,
         realModelRequests: 0,
       },
       null,

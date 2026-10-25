@@ -130,7 +130,7 @@ await check('cli_remove_reinstall_persistent_data_and_host', async () => {
   }
   return { evidence: 'reinstalled-host.json', storedFilesPreserved: before.length };
 });
-for (const oldVersion of ['0.2.2', '0.3.0']) await check(`upgrade_${oldVersion}_to_${version}`, async () => {
+for (const oldVersion of ['0.2.2', '0.3.0', '0.3.1']) await check(`upgrade_${oldVersion}_to_${version}`, async () => {
   assert.ok(audit);
   const dir = `upgrade-${oldVersion}`;
   await checkUpgrade(root, resolve(runDir, dir), env, artifact, audit, oldVersion);

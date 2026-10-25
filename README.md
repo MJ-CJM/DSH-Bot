@@ -4,7 +4,7 @@
 
 Personal agents for DeepSeek Harness: create multiple personal agents, each with its own persona, long-term memory, tools and skills.
 
-当前交付版本为 **0.3.1**，参考运行时锁定 **DeepSeek Harness 0.2.1-rc.2**。包声明的兼容范围为 `>=0.2.1-rc.2 <0.3.0`；这不代表已验证该范围内的其他版本。安装包为 `dist/dsh-bot-0.3.1.tgz`。0.3.1 的 UI 返工、安装与两条升级验证见 [r3 验收报告](docs/acceptance/P34-rework-r3.md)。0.3.0 的 U01–U13、审查返工 r1/r2 与原始边界见 [P3/P4 验收报告](docs/acceptance/P3-P4.md)；历史 P2 证据见 [P2 报告](docs/acceptance/P2.md)。
+当前交付版本为 **0.3.2**，参考运行时锁定 **DeepSeek Harness 0.2.1-rc.2**。包声明兼容范围为 `>=0.2.1-rc.2 <0.3.0`，其他宿主版本尚未验证。安装包为 `dist/dsh-bot-0.3.2.tgz`，同目录 `.sha256` 文件用于校验。Bot 间互通、全新安装、0.3.1→0.3.2 升级及验证边界见 [0.3.2 验收](docs/acceptance/V032-bot-to-bot.md)。历史 0.3.1 UI 证据见 [r3 报告](docs/acceptance/P34-rework-r3.md)。
 
 头像选择器提供 12 种主题配色和 6 种鲸鱼造型，支持自动分配与键盘选择；旧头像缺省仍为经典造型。R06 的运行验证和浏览器阻断见 [头像扩展验收](docs/acceptance/P2-R06.md)。
 
@@ -13,20 +13,30 @@ Personal agents for DeepSeek Harness: create multiple personal agents, each with
 桌面版安装由用户或编排方手动执行：
 
 1. 打开 DeepSeek Harness，进入 **插件 → 添加插件 → 安装第三方插件**。
-2. 选择 `dist/dsh-bot-0.3.1.tgz`；若界面要求输入安装来源，填写该 tgz 的绝对路径。
+2. 选择 `dist/dsh-bot-0.3.2.tgz`；若界面要求输入安装来源，填写该 tgz 的绝对路径。
 3. 等待安装完成并确认插件已启用，使用 **Cmd+Q 完全退出**，然后重新打开应用。
 4. 在侧栏确认鲸鱼图标与 **Bots** 入口；首次启用且没有既有 Bot 数据时会创建通用助手和研究员两个示例。
 
-从旧版本升级时，先在插件页**卸载旧版 DSH-Bot → 安装 0.3.1 tgz → Cmd+Q 完全退出并重开**。升级过程保持原来的 `DSH_HOME`、profile 和存储后端配置，不删除数据目录、不重置 profile，也不要用“删除 Bot”代替卸载插件。插件卸载会释放注册和运行资源，已有 Bot、记忆及文件数据保留；重装后从同一数据位置读取。切换到另一套 `DSH_HOME` 或存储根会看到另一套数据。
+从旧版本升级时，先在插件页**卸载旧版 DSH-Bot → 安装 0.3.2 tgz → Cmd+Q 完全退出并重开**。升级过程保持原来的 `DSH_HOME`、profile 和存储后端配置，不删除数据目录、不重置 profile，也不要用“删除 Bot”代替卸载插件。插件卸载会释放注册和运行资源，已有 Bot、记忆及文件数据保留；重装后从同一数据位置读取。切换到另一套 `DSH_HOME` 或存储根会看到另一套数据。
 
 CLI 是桌面安装的备用方法。先启动过桌面版以初始化 `desktop` profile，再完全退出应用。在仓库根目录，由用户或编排方确认原桌面实例的 `DSH_HOME` 后手动运行：
 
 ```sh
 DSH_HOME="<桌面实例原有 DSH_HOME 的绝对路径>" \
-  scripts/dsh plugin --profile desktop add "$PWD/dist/dsh-bot-0.3.1.tgz"
+  scripts/dsh plugin --profile desktop add "$PWD/dist/dsh-bot-0.3.2.tgz"
 ```
 
 升级前对应的卸载命令为 `scripts/dsh plugin --profile desktop remove dsh-bot`，同样需要原 `DSH_HOME` 且桌面版已完全退出。完成后重新打开桌面版。`scripts/dsh` 包装桌面版内置 CLI；普通 npm CLI 不能管理 `desktop` profile，CLI 也不能启动或 dump 该 profile。以上是正式安装说明，仓库开发和自动验收不执行这些桌面操作，也不修改 `~/.dsh` 或应用安装内容。
+
+## Bot 间互通
+
+在一个 Bot 的主会话里说：**“去问问 Reviewer 这个方案有什么风险”**。Bot 使用 `bot_message` 向 Reviewer 的既有主会话提问，先返回排队回执；Reviewer 使用自己的人设、记忆、模型和连接器处理，并显式回复。回复会唤醒发起 Bot，由它向你说明结果。下游协作逐层返回，例如 A→B→C→B→A。
+
+新线程首次发送需要原生审批；该审批中列出的 Bot 可参与本线程的下游只读协作，回复无需重复审批。通知也会唤醒对方，但不要求回复。打断每次单独审批，请求取消当前任务并保留排队输入，无法撤销已经完成的操作。队友消息不授予命令执行、写文件、记忆修改、未知 MCP 或其他高风险工具权限，这些操作仍需原生审批。
+
+普通互通默认开启，可用 Host 配置 `messagingEnabled: false` 停止新受理和自动唤醒。已进入原生 Inbox 的消息需在 Bot 详情的“队友消息”里显式取消；关闭开关不会撤回已处理操作。`run_code` 内禁用 `bot_message`；队友消息触发的 `run_code` 需原生审批。若 Bot 使用 PTC 工具模式，需在原生工具模式的 Bot 主会话发消息。
+
+双方主会话显示可折叠的鲸鱼消息卡；Bot 详情显示最近 20 条往来、待回复数和投递/处理/回复状态，可打开原有会话、取消未处理消息或重试确定未送达的失败。不确定状态需人工核查，不自动重发。`bot_delegate` 继续用于一次性子任务，不使用目标 Bot 的主会话历史。群聊、Team、定时任务和 IM 的原有边界保持。
 
 ## 使用
 
@@ -65,7 +75,7 @@ scripts/pnpm check
 DSH_HOME="$PWD/.dsh-dev" node scripts/p34-memory-runtime.mjs
 ```
 
-后者安装本轮实际 tgz，验证原生 Host/Gateway、参考服务器、loopback 模型、冷恢复和清理，并单列浏览器结果；最终集成请运行 `scripts/p34-e2e`，统一安装 `dist/dsh-bot-0.3.1.tgz` 并验证全部已安装文件。`--host-only` 把截图留给编排方；缺少浏览器、IM 与桌面证据时总状态仍为 FAIL，Host 结果独立记录。
+后者安装本轮实际 tgz，验证原生 Host/Gateway、参考服务器、loopback 模型、冷恢复和清理，并单列浏览器结果；最终集成请运行 `scripts/p34-e2e`，统一安装 `dist/dsh-bot-0.3.2.tgz` 并验证全部已安装文件。`--host-only` 把截图留给编排方；缺少浏览器、IM 与桌面证据时总状态仍为 FAIL，Host 结果独立记录。
 
 从仓库根目录执行，pnpm 统一用 `scripts/pnpm`，DSH CLI 统一用 `scripts/dsh`。包装脚本使用本机已有工具，无需全局安装；需要 DSH 时只使用仓库内隔离目录：
 

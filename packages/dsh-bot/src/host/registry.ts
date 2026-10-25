@@ -339,6 +339,11 @@ export class DshBotRegistry extends TypertRemoteService implements DshBotMethods
 
   /** Synchronous generation snapshot for preset plugins. It deliberately bypasses
    * the Remote queue: register() activates rows while that queue is held. */
+  directorySnapshot() {
+    if (!this.initialized || this.stopping) return [];
+    return this.stores.bots.list().map(({ id, name, description }) => ({ id, name, description }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
   presetBot(botId: string): BotRecord {
     const key = parseInput(botIdSchema, botId);
     const bot = this.activating.get(key) ?? this.leases.get(`${this.config.presetIdPrefix}${key}`)?.bot;

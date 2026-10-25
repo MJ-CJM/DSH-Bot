@@ -1,3 +1,4 @@
+import { ToolCallId } from '@deepseek-ai/dsh-llm';
 import assert from 'node:assert/strict';
 import { writeFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -39,6 +40,17 @@ export function apply(ctx, config) {
         assert.equal(worker.session.header.agentPreset, lead.session.header.agentPreset); assert.equal(worker.session.header.parentSession, lead.id);
         await wait(() => lead.session.snapshotEvents().some(e => e.type === 'user/message' && e.data.source?.kind === 'subagent-settled'));
         await lead.whenIdle();
+        const messaging = ctx.get('dshBotMessaging'); assert.ok(messaging);
+        const beforeMessages = messaging.store.rows().length;
+        await assert.rejects(() => messaging.send(worker, { action: 'send', to: 'beta', mode: 'ask', content: 'TEAM_CHILD_MUST_NOT_MESSAGE' }, 'team-child-bypass'));
+        const toolRuntime = ctx.get('tools'); assert.ok(toolRuntime);
+        const nested = await toolRuntime.execute({ agent: worker, name: 'bot_message', arguments: { action: 'send', to: 'beta', mode: 'ask', content: 'TEAM_CHILD_TOOL_MUST_FAIL' }, callId: ToolCallId('team-child-denied'), signal: abort.signal });
+        assert.equal(nested.isError, true);
+        const delegate = await toolRuntime.execute({ agent: lead, name: 'bot_delegate', arguments: { targetBotId: 'beta', task: 'TEAM_SETTLEMENT_MUST_NOT_DELEGATE' }, callId: ToolCallId('team-lead-denied'), signal: abort.signal });
+        assert.equal(delegate.isError, true);
+        await assert.rejects(() => messaging.send(lead, { action: 'send', to: 'beta', mode: 'ask', content: 'TEAM_SETTLEMENT_CANNOT_CREATE_ROOT' }, 'team-new-root-denied'));
+        assert.equal(messaging.store.rows().length, beforeMessages);
+        await save('messaging-source-guard', { status: 'PASS', nativeTeamWorker: worker.id, parentSession: worker.session.header.parentSession, childMessageDenied: nested.isError, settlementDelegateDenied: delegate.isError, noMessageIntentCreated: true });
         await save('native-settlement', { childId: worker.id, sources: lead.session.snapshotEvents().filter(e => e.type === 'user/message').map(e => ({ kind: e.data.source.kind, form: e.data.source.form, senderSessionId: e.data.source.senderSessionId })), leadAssistantCount: lead.session.snapshotEvents().filter(e => e.type === 'assistant/message').length });
         const task = await invoke('dshBot.collaboration', 'createTask', { bot: keys.alpha, input: { subject: 'CAS blocker', description: 'Native task' } });
         const dependent = await invoke('dshBot.collaboration', 'createTask', { bot: keys.alpha, input: { subject: 'Dependent', description: 'Blocked until blocker completes', blockedBy: [task.id] } });

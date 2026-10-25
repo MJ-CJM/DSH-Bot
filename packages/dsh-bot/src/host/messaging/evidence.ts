@@ -17,6 +17,7 @@ export function messageEvidence(record: MessageRecord, events: readonly SessionE
     currentTurn: number | undefined,
     ended = false,
     interrupted = false,
+    crashClosed = false,
     assistant = false;
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
@@ -47,6 +48,7 @@ export function messageEvidence(record: MessageRecord, events: readonly SessionE
     if (e.type === 'turn/end' && turn !== undefined && e.data.turn === turn) {
       ended = true;
       interrupted = e.data.reason.kind !== 'completed';
+      crashClosed = e.data.reason.kind === 'interrupted';
     }
   }
   return {
@@ -58,6 +60,7 @@ export function messageEvidence(record: MessageRecord, events: readonly SessionE
     turn,
     ended,
     interrupted,
+    crashClosed,
     assistant,
   };
 }

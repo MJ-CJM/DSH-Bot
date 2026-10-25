@@ -305,17 +305,19 @@ export class MessageStore {
         'envelope' | 'nativeInput' | 'outgoingInput' | 'invocationKey' | 'invocationDigest' | 'revision'
       >
     >,
+    expectedRevision?: number,
   ) {
     return this.run(async () => {
       const old = this.get(id);
       if (!old) throw new OperationError('not-found');
+      if (expectedRevision !== undefined && old.revision !== expectedRevision) throw new OperationError('conflict');
       if (
         patch.delivery &&
         old.delivery === 'delivered' &&
         !['delivered', 'canceled', 'expired'].includes(patch.delivery)
       )
         throw new OperationError('conflict');
-      if (patch.delivery && terminal.has(old.delivery) && patch.delivery !== old.delivery)
+      if (patch.delivery && terminal.has(old.delivery) && patch.delivery !== old.delivery && !(old.delivery === 'failed' && patch.delivery === 'queued' && expectedRevision !== undefined && !old.nativeRef && ['resolve-unavailable', 'session/writer-held'].includes(old.lastErrorCode ?? '')))
         throw new OperationError('conflict');
       const next = messageRecordSchema.parse({
         ...old,

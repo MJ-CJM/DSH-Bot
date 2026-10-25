@@ -239,6 +239,7 @@ export async function mountClient(
       const releases = [ctx.provide('remote.dshBot.workspace', remote.workspaceManagement), ctx.provide('remote.dshBot.referenceMemory', remote.referenceMemory)];
       return () => { for (const release of releases) release(); };
     }
+    if (contribution?.package === 'dsh-bot/messaging') return ctx.provide('remote.dshBot.messaging', { request: async () => ({ ok: true as const, value: { enabled: true, nestedMessaging: false as const, pending: 0, items: [] } }) });
     if (contribution?.package === 'dsh-bot/groups') return ctx.provide('remote.dshBot.groups', remote.groups);
     if (contribution?.package === 'dsh-bot/collaboration') {
       const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];

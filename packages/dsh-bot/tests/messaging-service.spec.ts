@@ -280,6 +280,19 @@ describe('B03 Host transport fault boundaries with JSON and native Session logs'
         await s.close();
       }
     }));
+  it('marks a committed user input without a completed turn unknown after a cold recovery', () =>
+    withIntegrations(async (f) => {
+      const s = await setup(f);
+      try {
+        const receipt = await s.send(); await s.messaging.settled();
+        const row = s.store.get(receipt.messageId); if (!row?.nativeInput) throw Error();
+        s.beta.session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, removedCount: 1, inserted: [] });
+        (s.beta.inbox.nextTurn as unknown[]).splice(0);
+        s.beta.session.append('user/message', row.nativeInput as unknown as ReturnType<typeof createUserMessage>, { surfaceOp: 'append' });
+        await s.reopen(); expect(s.store.get(receipt.messageId)?.processing).toBe('unknown');
+        expect(s.beta.followup).toHaveBeenCalledOnce();
+      } finally { await s.close(); }
+    }));
   it('does not replay claimed work without a committed user message', () =>
     withIntegrations(async (f) => {
       const s = await setup(f);

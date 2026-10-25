@@ -139,7 +139,7 @@ describe('B02 strict messaging contracts', () => {
   });
   it('validates limits and cross constraints', () => {
     expect(MessagingConfig({})).toMatchObject({
-      messagingEnabled: false,
+      messagingEnabled: true,
       messageMaxDepth: 3,
       messageMaxHop: 8,
       messageThreadLimit: 16,

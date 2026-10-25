@@ -61,6 +61,7 @@ export const envelopeSchema = z
     fromDisplay: display,
     toDisplay: display,
     authorizationId: id,
+  authorizedTargets: z.array(botKeySchema).optional(),
   })
   .superRefine((e, ctx) => {
     if (e.expiresAt <= e.ts) ctx.addIssue({ code: 'custom', message: 'Invalid expiry' });
@@ -90,7 +91,8 @@ export const messageSourceSchema = z.strictObject({
   mode: z.enum(['notify', 'ask', 'reply']),
   priority: z.enum(['normal', 'interrupt']),
   displaySnapshots: z.strictObject({ from: display, to: display }),
-});
+}).refine((s) => (s.kind === 'dsh-bot-message' ? s.form === 'relay' : s.form === 'notice') &&
+  (s.mode === 'reply' ? Boolean(s.replyTo) && s.priority === 'normal' : !s.replyTo), 'Invalid producer form or reply');
 export const wakeSourceSchema = z.strictObject({
   kind: z.literal('dsh-bot-message-wake'),
   form: z.literal('notice'),
