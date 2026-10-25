@@ -5,7 +5,9 @@ export const TYPERT = {
   package: 'dsh-bot',
   face: 'host',
   schemas: [],
-  get invocations() { return TYPERT_REMOTE.descriptors; },
+  get invocations() {
+    return TYPERT_REMOTE.descriptors;
+  },
   model: { services: [], events: [], objects: [] },
 } satisfies TypertContribution;
 

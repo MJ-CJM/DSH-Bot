@@ -1,0 +1,3 @@
+TimeoutError: locator.waitFor: Timeout 8000ms exceeded.
+Call log:
+  - waiting for locator('[data-bots-page]').locator('[role=tabpanel]:visible').getByText(/Review research summary · v/).first() to be visible

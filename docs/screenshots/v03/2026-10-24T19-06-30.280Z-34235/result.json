@@ -1,0 +1,320 @@
+{
+  "fixtureStatus": "NOT_RUN",
+  "status": "FAIL",
+  "phase": "browser-launch",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v03/2026-10-24T19-06-30.280Z-34235",
+  "workDir": "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-06-30.280Z-34235",
+  "realModelRequests": 0,
+  "modelRequests": 0,
+  "commands": [],
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    }
+  ],
+  "narrowChecks": [
+    {
+      "language": "en",
+      "theme": "light",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "status": "FAIL",
+      "reason": "not run"
+    }
+  ],
+  "pageErrors": [],
+  "failure": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /Users/youzihui/Library/Caches/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-mac-arm64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --user-data-dir=/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-06-30.280Z-34235/tmp/playwright_chromiumdev_profile-Ldq3vN --remote-debugging-pipe --no-startup-window\n<launched> pid=34268\n[pid=34268][err] [1024/120630.789455:ERROR:base/power_monitor/thermal_state_observer_mac.mm:140] ThermalStateObserverMac unable to register to power notifications. Result: 9\n[pid=34268][err] [1024/120630.821527:ERROR:net/dns/dns_config_service_posix.cc:138] DNS config watch failed to start.\n[pid=34268][err] [1024/120630.848053:FATAL:base/apple/mach_port_rendezvous_mac.cc:159] Check failed: kr == KERN_SUCCESS. bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer.34268: Permission denied (1100)\n[pid=34268] <process did exit: exitCode=null, signal=SIGTRAP>\n[pid=34268] starting temporary directories cleanup\nCall log:\n  - <launching> /Users/youzihui/Library/Caches/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-mac-arm64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --user-data-dir=/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-06-30.280Z-34235/tmp/playwright_chromiumdev_profile-Ldq3vN --remote-debugging-pipe --no-startup-window\n  - <launched> pid=34268\n  - [pid=34268][err] [1024/120630.789455:ERROR:base/power_monitor/thermal_state_observer_mac.mm:140] ThermalStateObserverMac unable to register to power notifications. Result: 9\n  - [pid=34268][err] [1024/120630.821527:ERROR:net/dns/dns_config_service_posix.cc:138] DNS config watch failed to start.\n  - [pid=34268][err] [1024/120630.848053:FATAL:base/apple/mach_port_rendezvous_mac.cc:159] Check failed: kr == KERN_SUCCESS. bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer.34268: Permission denied (1100)\n  - [pid=34268] <process did exit: exitCode=null, signal=SIGTRAP>\n  - [pid=34268] starting temporary directories cleanup\n  - [pid=34268] <gracefully close start>\n  - [pid=34268] <kill>\n  - [pid=34268] <skipped force kill spawnedProcess.killed=false processClosed=true>\n  - [pid=34268] finished temporary directories cleanup\n  - [pid=34268] <gracefully close end>\n"
+}

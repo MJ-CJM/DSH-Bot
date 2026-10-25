@@ -13,12 +13,23 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * null means no human message; an empty string remembers image-only input.
  */
 export const firstUserProjection = {
-  key: 'dshBotFirstUserPreview', stateVersion: 1,
+  key: 'dshBotFirstUserPreview',
+  stateVersion: 1,
   stateSchema: activityRecordSchema.shape.firstUserPreview.unwrap().nullable(),
   init: () => null,
   apply: (state, event) => {
-    if (state !== null || event.type !== 'user/message'
-      || event.data.source.kind !== 'user' || event.surfaceOp !== 'append') return state;
-    return createActivityPreview(event.data.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n'));
+    if (
+      state !== null ||
+      event.type !== 'user/message' ||
+      event.data.source.kind !== 'user' ||
+      event.surfaceOp !== 'append'
+    )
+      return state;
+    return createActivityPreview(
+      event.data.content
+        .filter((block) => block.type === 'text')
+        .map((block) => block.text)
+        .join('\n'),
+    );
   },
 } satisfies ProjectionDefinition<'dshBotFirstUserPreview', string | null>;

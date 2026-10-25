@@ -1,5 +1,175 @@
 # DSH API 核实记录
 
+## V032 Client 阻断修复（2026-10-24）
+
+`ctx.get(name)` 是 Cordis 的无 inject 探测入口，不授予后续 `ctx.name` 访问权。rc.2 Cordis 公开源码 `src/reflect.ts:135-166` 明确校验调用方 fiber 的服务依赖；`src/registry.ts` 的 `ctx.inject([...], callback)` 创建声明了依赖的子作用域。B05 原实现探测后直接读 `ctx.uiConversation.events`，在真实 peer 服务下抛出 `cannot get property "uiConversation" without inject`；此前根 Context service double 遮蔽了该故障。已用正式构建 Client 工厂及公开 npm Conversation Client 入口、peer-owned UiConversation 复现原错误，再验证修复。
+
+正式消息扩展改用可选 `ctx.inject(['uiConversation'], scope => ...)`，不扩大主插件必需服务。公开 `slots.inject('conversation.chat.node', ...)` 声明可用时，事务性 effect 先注册 renderer，再注册 exclusive Definition；slot 消失、服务/插件卸载同时释放二者。注册表或 slot 缺席、注册失败均保留原生文本渲染，不留下无 renderer 的独占 Definition。服务/注册失败回退是 Client 工厂回归证据，不能替代真实浏览器；本轮后者仍在 Chromium 启动阶段 FAIL（环境）。未新增依赖或 API 私有入口。
+
+cold 会话身份以全部非 blank 会话精确等于原三 Bot 主会话为准，原生日志/主映射仍逐条对账。额外原生 blank 不代表消息运输新建业务会话；可选 `B2B_NATIVE_BLANK_FIXTURE=1` 通过既有公开 `sessionController.create({workspaceId, agentPreset:'standard'})` 和 `sessions.flush` 构造持久 blank，用于 cold 回归，明确不是浏览器创建证据。当前产物和命令结果见 [验收 §8](acceptance/V032-bot-to-bot.md#8-v032-client-阻断修复2026-10-24)。
+
+## P34 B04–B06：0.3.2 正式 Bot 消息（2026-10-24）
+
+正式工具、安全接入、Client 与发布材料见 [0.3.2 验收](acceptance/V032-bot-to-bot.md)。普通消息默认开启，`coldWake` / `interrupt` 走已验证的原生路径；`run_code` 内消息保持禁用，队友轮次的 `run_code` 与未知/高风险工具必须原生 ask。原生拒绝、取消、never 策略及下层 ask 说明均保留。IM/系统通知的旧限制不变。
+
+| 公开入口 / 只读 rc.2 出处 | 本轮接入及证据边界 |
+| --- | --- |
+| `ToolExecution.parent/rootCallId/callId/token`、`tools/pre-execute/guard/execute`；`packages/core/tools/src/index.ts:327-406,724-733,1360-1440` | exact live 主 Agent 工具，严格输入、sender/target 生日、revision、当前原生输入和 invocation 绑定；批准仅在原生真正 dispatch 后生成一次性 Host grant，消费前检查取消信号与工具生命周期，持久意图前再次检查信号。嵌套 parent 的 `bot_message` 硬拒绝。线程根保存批准时的 BotKey 名单，范围外新目标重新 ask；reply 路由仍由 Host 固定。真实模型未知工具批准/拒绝与目标自己的同名 MCP 另有 Host 收据。 |
+| `tools.presentAs('ptc')`、原生 `run_code`，`index.ts:980-1004` 与公开 `ptcRuntime/workingDirectory` provider seam | 测试运行真实 ToolRuntime、ApprovalService 和 run_code/SDK dispatcher；PTC runtime provider 是合成 seam，不运行 OS 程序。拒绝时 provider.run=0；批准后 nested bot_message body=0。不能把该结果称作完整 PTC 后端来源传播通过，受限回退继续生效。 |
+| `systemPrompt.context({required:true,interpolate:false})`；既有 registry 的同步 Store 快照 | 动态 `{id,name,description}` 目录、160 码点摘要、字节预算/不完整提示及同工具 list 分页；工具 deny 不暴露消息入口。工具动态读取已发布 service，避免主 Agent 早于运输服务 ready 时永久漏装。已有 complete persona API 组合证据仍见 B01，不把源码推导当新增完整桌面验证。 |
+| `agent/pre-step` payload.messages 与 await next() 后 decision.messages；`agent/src/runtime-types.ts:309-320`、`agent-loop/src/agent.ts:267-288` | native next 会附加 runtime-context。只移除 wake 后检查 length 不足以阻止空业务模型请求。正式 `withoutWakeControls` 用原始 claim + 过滤后的非 ambient 输入判断，wake-only 返回 reject，混合业务保留；守卫归 Agent effect，功能关闭/卸载仍过滤旧控制消息。物理强杀矩阵与原生 HTTP 请求数证明该边界。 |
+| 原生 `TurnEndReason.kind='interrupted'`；`session/src/types.ts:218-222`、`agent-loop/src/index.ts:875-900` | resume 会为崩溃的未闭合 turn 添加修复 closer，不能当作正常业务结束。evidence 单独记录 crashClosed，processing 保持 unknown，绝不自动重跑；实际 aborted 仍记录 interrupted。 |
+| `isAppendSurfaceEvent`，`@deepseek-ai/dsh-session/surface`；`ConversationNodeDefinition` / `ChatNode` / `conversation.chat.node` 公开出口 | 只独占严格通过 schema 的本包 append 来源；replacement、非法/未知/其他来源走原生保底。折叠、鲸鱼快照、正文 JSON 解码、状态导航和中英 locale；不导入私有 Chat helper/组件。Client source/registry/DOM 与真实 Chromium 截图结果分列，后者失败不冒充 renderer 实拍通过。 |
+| Typert 根与 `/remote-info`；既有 Session/Inbox/flush 与 JSON KvTable | 新增 `dsh-bot/messaging` / `dshBot.messaging/request`，同源严格 list/cancel/retry codec。最近 20 条只返回元数据；取消/重试在目标队列内 CAS，不转移固定主路由，不自动重试 unknown。真实 Gateway、tarball 安装、升级和 crash 矩阵见验收。 |
+
+未新增 Host runtime peer；ui-chat 只有精确 rc.2 dev 类型依赖和 Client bundle 依赖声明。公开 session surface guard 及其无状态依赖按精确路径纳入浏览器构建白名单，平台共享模块仍 external。既有领域/version、BotKey、主会话身份和宿主兼容范围不变；消息信封新增可选 `authorizedTargets`，缺少名单的旧记录不自动扩大下游范围。
+
+所有运输资源仍由 Host effect 管理；retained 最小来源守卫只依赖原生 Agent 日志和本包 schema，随 Agent effect 释放。停止时先拒准入/新唤醒并排空持久写，不 dispose Controller 的主 Agent。测试/探针/截图脚本不进入发布包；完整命令、实际请求数、升级和截图失败记录以验收报告为准。
+
+## P34 B01–B03：Bot 间消息运输层（2026-10-24）
+
+新功能的 [API spike](spikes/B01-bot-message.md) 与 [逐项验收/接续](acceptance/P34-B01-03.md) 分开记录源码、JSON/Client 夹具和真实 Web Host。新增 `dsh_bot_messaging` v1，不修改既有领域、持久身份或宿主版本范围；未新增依赖或 runtime peer。使用的 runtime factory `createUserMessage`、`MessageId` 与 storage-domain 都已是正式共享 peer。
+
+本轮核实并实测的公开入口：`sessionController.resolveAgent` 返回 `{agent}|{error}`（参考 `packages/api/session-controller/src/agent.ts:200-255`）；Agent `followup/send/cancel({kind:'hook',reason},{keepInbox:true})`（`packages/core/agent/src/runtime-types.ts:176-241`）；`agent/pre-step` 的 enter/reject waterfall 必须先 await next（`:309-320`）；`systemPrompt.context({required:true,interpolate:false})` 与 `suppressRuntimeContext`（`packages/core/system-prompt/src/index.ts`）；`Session.append('user/message',factoryOutput,{surfaceOp:'append'})` / `sessions.flush=true`；完整日志 `sessionPersistence.open(id,'read').read()/close()`（`packages/session/session-persistence/src/handle.ts:46-118`）。不使用 prompt 冒充 producer、不自行 resume 抢 AgentHandle、不调用私有 wake driver。
+
+source producer 为 `dsh-bot-message` / `dsh-bot-message-sent`，冷唤醒控制为 `dsh-bot-message-wake`。真实完整 Host 证明 ask/reply 经 scoped 测试工具触发两方模型，回复再次唤醒发起者；maintenance pending 强杀冷恢复只处理一次，interrupt 的实际请求被 abort 且原生人类 Inbox 保留。故障夹具覆盖 flush 不确定/人工取消/claim 后未知；这些夹具不能当每个物理强杀窗口都已执行。
+
+公开 Client npm factory 的 `ConversationEventRegistry` / `ConversationViewRegistry` / `ConversationNodeAssembler` 支持 exact source 的 chat 独占、冲突报错及卸载恢复通用定义，平台 observable/primitives 和通用 view 在探针中为替身。**没有**把它当实际 ui-chat renderer/浏览器证明。PTC 来源传播未证实，按 §14.4 由 B04 禁止 run_code 内 bot_message、队友轮次 run_code 走原生 ask。
+
+生产 `messagingEnabled` 默认 false；即使显式设 true，B03 默认授权拒绝且 processing capability 关闭。原生审批、来源守卫、目录、正式 Client 与 0.3.2 交付分别由 B04–B06 接续；本轮测试的合成授权不是这些门禁的运行证明。
+
+## P34 r4：额外 standard 空白行来源与管理头部（2026-10-24）
+
+本轮未新增产品 DSH API、依赖、Remote 或存储 schema。指定 `19-56-19.688Z-25397` run 的额外行是 `session-64aff497-3ab7-45b2-8ea7-92bf7699ca88`（`standard`、空标题、blank=true、零轮次），不是三个 Bot 主会话，也不是 `group-root-a08113f7-a405-4cb1-a35b-a712345c3873`。该群根不在 Bots workspace 的 sessionIds 中。此结论只针对该 run，不能沿用 r3 对更早 run 的三主会话 blank 来源判断；原 r3 收据保留。
+
+只读锁定 rc.2：`packages/client/ui-workspace/src/client/navigation.ts:411-471` 在全新 Client 无保存选择时恢复最近 workspace，`:193-209` 的 connectWorkspace/connectBlank 会创建原生空白会话；`tree.ts:233-245` 仅让当前选中的 blank 行可见，`rows/Rows.tsx:47-50` 显示本地化新会话。创建者归因为这些源码与落盘身份、时间、fixture/浏览器顺序的共同推断，原 run 无逐 RPC 审计轨迹。fixture 已完成三主会话 mock 轮次，新脚本只通过原生侧栏行点击选中已有主会话，再打开 Bots 页；不写原生 projection、不伪造事件、不删除或归档原生用户会话。每张截图前断言全部可见会话 ID 恰为三主会话且无“新会话/New Session”。
+
+公开原生隐藏能力也已核对：`@deepseek-ai/dsh-workspace` 根导出 `WorkspaceRegistry`，`packages/workspace/workspace/src/index.ts:339-389` 的 `archivedSessionIds/archiveSession` 是持久归档并进行活动检查；并非无副作用的视觉隐藏。本次来源不是群根，且群根本来不在 Bots workspace，因此不调用归档，不改变群的生命周期与原有直接 prompt guard。
+
+Host fixture 与完整群运行探针新增对公开 `workspaceRegistry.list()` / workspace.sessionIds 的精确集合断言（源码 `workspace/src/index.ts:287-301`），验证创建群后 Bots workspace 仍仅含三主会话。实际回归与 Chromium MachPort 阻塞边界见 [r4 验收](acceptance/P34-rework-r3.md#5-r4返工2026-10-24)。共享管理头部与记忆搜索布局不改变 Host 契约；UI 继续使用既有 locale 和主题 alias。
+
+
+## P34 r3：0.3.1 UI 与 fixture（2026-10-24）
+
+产品未增加 DSH API、依赖或 Remote 方法，存储领域/版本与兼容范围不变。UI 使用现有公开主题 alias；轮次展开偏好仅存在 Client 插件生命周期内，由 effect 清理，不写 Host 或 localStorage。
+
+本轮只读 rc.2 核实 `packages/api/session-controller/src/list.ts:50-58` 的 blank 投影仅在 `turn/start` 变为 false；`packages/client/ui-workspace/src/client/rows/Rows.tsx:47-50` 对 blank 行显示本地化 New Session，忽略已存在的标题。因此旧 v03 fixture 仅打开未发言的三个 Bot 主会话会显示一个“新会话”，并非未执行 Bot 标题固定，也非 Team 额外创建主会话。fixture 改为通过既有公开 `sessionController.prompt` 完成 loopback mock 轮次，逐个校验 accepted、真实 assistant/turn-end、flush、列表 blank=false 及标题不变；不伪造事件或修改原生投影。
+
+`release-upgrade-host` 用既有公开 `ctx.get` 兼容读取旧包没有的新服务。0.3.0 升级路径另比较群/成员、禁用连接器、通知策略与 Inbox；0.2.2 路径保留原 Bot、记忆和主会话比较。当前运行收据、全部检查结果、失败重试和视觉 NOT_RUN 见 [r3 验收](acceptance/P34-rework-r3.md)。
+
+## U12–U13：0.3.0 交付与市场 fixture（2026-10-24）
+
+产品 API、Remote、持久身份和宿主兼容范围不变。新增公开开发工具入口 `@deepseek-ai/dsh-plugin-market-index@0.2.1-rc.2` 根的 `parseMarketIndex` / `marketInstallTarget`，只用于 scripts/p34-market.mjs，不进入 Host/Client，也不需 runtime peer。依据只读 rc.2 `packages/util/plugin-market-index/src/{index,types}.ts`；format=1、秒级时间戳、exact semver、Git 40hex commit/相对 path，以及 npm spec/registry 由原生函数验证和生成。private generator 不运行。
+
+市场安装使用原生 `scripts/dsh plugin ... add <target> --registry <loopback>`，合成空 bundle，无真实平台或模型。fixture 不是 0.3.0 发布索引；本地 release tgz 的所有安装文件另比 SHA256。实际命令、Host/Client 与截图结果汇总见 [P3/P4 验收](acceptance/P3-P4.md)。历史各 U/r1/r2 的证据边界继续保留。
+
+
+## P34 审查返工 r2（2026-10-24）
+
+本轮没有新增或改变 DSH API 用法、依赖、公开包入口或服务作用域。按 r2 要求更新本插件 wire 身份：Remote package/typeSymbol 为 `dsh-bot/integrations` / `dsh-bot/integrations#…`，操作错误为 `dsh-bot/<code>`，消息为 `DSH-Bot: <code>`。Client 使用共享常量/守卫；Host 和 Client 同包更新。Cordis service id `dshBotP34` 和全部持久化身份保留。此节取代下方 r1 的“保留旧 wire/error”决定，不追溯修改历史收据。
+
+群服务、Bots 页面和 Store 仅按职责移动；同一队列、effect、flush、CAS、abort/dispose 和关闭顺序保留。r2 `scripts/pnpm check` 实测 52 文件 / 667 测试、build、strict、lint PASS，包括 JSON 后端生命周期/恢复和正式 Client factory 的无重绘/DOM 稳定测试。完整首次/冷 Host、浏览器和桌面本轮未重跑；前一轮收据不能算作 r2 的运行证据。详见 [r2 验收](acceptance/P34-rework.md#r2-返工2026-10-24)。
+
+## P34 审查返工（2026-10-24）
+
+没有新增 DSH API 或依赖。既有公开 `sidebar.session.row.leading` / `hover` slot 新增 exact 群根身份贡献，与 Bot/原生 schedule 的贡献并存并随 effect 注销；52 文件 / 667 测试验证挂载、卸载及鲸鱼/群名。输入式 @ 只在 Client 解析为既有 memberIds，Host codec/准入/CAS 不放宽。保留旧 Remote contribution/service/typeSymbol/错误码及所有 v1 存储身份，领域文件和 locale 改名不需要数据迁移。
+
+Reference Memory 仅按写入适配器、后端状态、复制状态机和读回校验拆文件。真实 tarball 的首次/冷 Host 再验通过：连接器/通知 2 次、群 9 次、记忆 3 次 loopback 请求，真实模型各 0；群根模型请求 0，新增原生 session/list 断言每 Bot 只有一个可见主会话。截图脚本种子独立 Host 通过，2 次 loopback；亮暗和窄屏在 Chromium MachPort 启动阶段 FAIL（环境），没有 PNG。具体收据、命令和 1–11 项结果见 [返工验收](acceptance/P34-rework.md)。
+
+
+## U09–U11：管理工作区、Reference Memory 并存与单向复制（2026-10-24）
+
+实现、命令、逐项结果和浏览器失败见 [U09–U11 验收](acceptance/P34-U09-11.md)。原 MemoryStore、`memory_*` 和一次性注入快照保持权威；无 reference-only、反向导入或后台双写。版本仍为 0.2.2 开发包，U12 才统一打 0.3.0。
+
+| 公开入口 / 只读 rc.2 依据 | 正式组合与实测边界 |
+| --- | --- |
+| `dsh-mcp-client` 根 `Config/apply`，`packages/mcp/mcp-client/src/{index,connection}.ts` | 正式普通依赖锁定 `@modelcontextprotocol/server-memory@2026.7.4`，从包清单解析其公开 CLI executable；通过原生 stdio transport 挂 main Agent child，显式 `MEMORY_FILE_PATH`。只读上游 commit `6dd0a683e198783e30feabf7abaf42f925bd18b1` 是设计出处，不宣称 npm 发布文件与 commit 逐字一致。 |
+| `tools.guard`、scoped `tools/execute` around wrapper；`packages/core/tools/src/index.ts:153-165,327-352,1377` | 所有图谱模型/UI/复制调用同一 Bot 队列；执行前复核 owner、生日、取消、受管文件和凭据签名。主/子代理不共享图谱 client；保留代际使用同一主会话，换 client 先 await 旧 child dispose。原生 reconnect 关闭，断线调用失败后停止准入，显式 apply 才重建。 |
+| `ToolRuntime.execute/get/schemas`、`ToolCallId` 根出口 | UI 和复制走公开同进程输入及原生审批，返回解析 MCP content 的 JSON；不制造会话 assistant/tool 日志。公开 `get('run_code',agent)` 能见 PTC 时管理操作 unsupported，不调用 private `modeFor` 或伪造 parent token。检测 PTC 或其公开能力检查失败即停止 writer，图谱保持 unsupported；本轮验证关闭写入及切回 native 的恢复，不宣称已支持 PTC 图谱。 |
+| `Agent.runMaintenance`、`agents.get`、本包 `MainSessions.find/getBotBinding` | 仅 exact live 主 Agent 空闲时挂载；普通 spawn worker 使用该 Bot 的 internal memory，真实 mock 请求中无图谱工具。20 个并行原生图谱调用逐条读回；两个 Bot 文件隔离，所有捕获的自有 server process 清理完成，Bot 写入者重叠为 0。单后端一个活动 Host，不协调外部写进程。 |
+| `defineDomain/domainTable`、既有 MemoryStore 服务入口 | 新增 `dsh_bot_reference_memory` v1（bindings/copies）与 `dsh_bot_workspace` v1（previews）；保留全部旧表。复制快照/逐条清单只作显式操作恢复，不作双写镜像。commit 在现有 registry 队列内复核源 digest/生日和读回 envelope，再写 binding；跨文件/跨表不宣称原子事务。可恢复 binding 已写、清单未写的重试。 |
+| 既有 `BotMemoryService`/Store saveUnique | 批量内部记忆导入复用校验、凭据筛查和去重，预览目标 digest 后在原队列内新增/合并，生成新 ID/时间，不承诺恢复原身份。复制到图谱则完整保留 ID/kind/tags/pinned/source/timestamps/digest，原条目文件字节比较通过。 |
+| 公开 `main` slot、既有 credentials Remote、native schedule CRUD | 管理导航汇总既有功能，新增独立记忆/传输/统计视图；统计限最近 50 条显式执行，不读会话正文。新两个 namespace 使用同源严格 request/result encode/decode，Client await mount，资源随 effect 清理。亮暗/窄屏浏览器因 MachPort 权限仍 FAIL，正式 factory 的中英 DOM 与后台焦点/草稿测试不能替代截图。 |
+
+新增 Config：`referenceMemoryTimeoutMs=30000`（1000–120000），`referenceMemoryMaxFileBytes=8388608`（1024–67108864）。普通 server CLI dependency 不需共享服务实例，因此不加 peer；既有 Cordis/DSH 精确 dev 和兼容 peer 不变。受管文件按 BotKey hash/图谱 identity 生成，不接受 Client 任意路径；通用连接器保留图谱 namespace。技能传输仅支持 UTF-8 文本，128 文件/1 MiB，拒绝越界、symlink 和覆盖。
+
+真实首次/冷 Host、Gateway、原生 MCP、模型工具闭环、取消、半批续跑、源冲突、损坏文件与进程退出均有本轮收据；模型仅 3 次 loopback，真实请求 0。单独列出未运行的物理强杀提交窗口、PTC、真实桌面和最终 0.3.0 矩阵。
+
+
+## U06–U08：独立群根、确定性路由与群聊 UI（2026-10-24）
+
+实施/命令/逐项证据见 [U06–U08 验收](acceptance/P34-U06-08.md)。正式包仍为 0.2.2 开发版本，U12 才统一改 0.3.0；本轮实际 tgz 安装、完整首次/冷 Web Host 与 Gateway 已运行。9 次 loopback 请求均为群成员，根及真实模型请求各 0；原生 prompt 旁路 blocked、Controller 所有权冲突与贡献卸载后 guard 仍在。浏览器 MachPort 权限失败，截图/窄屏为 FAIL；物理强杀窗口与群内真实 ask 拒绝另列 NOT_RUN。
+
+| 公开入口 / 只读 rc.2 源码 | 正式组合与实测边界 |
+| --- | --- |
+| `dsh-agent` 根的 `agents.create/resume`、AgentHandle；`core/agent/src/index.ts:51-162` | 群服务持有真实 handle，setup await mount 后才发布；default route 来自公开 `agentDefaultModel.currentSelection()`。重复 resume/Controller 抢先占用 fail closed，不将裸 Agent 当 handle。default-model 新增精确 rc.2 dev，只有 type import。 |
+| `dsh-agent-preset-registry` 根 `register/mount`；`preset/agent-preset-registry/src/index.ts:81-100,276-289` | `dsh-bot-group-root` 独立 preset，guard 来自新增公开 `dsh-bot/group-root-guard` export。贡献 fiber 卸载，仍由 Controller 根 retain 的代际继续阻挡；所有 owned 根先 dispose 再注销 preset。 |
+| scoped `agent/pre-step`；`core/agent/src/runtime-types.ts:309-320` | 精确检查 root header preset 后 reject，其他 agent next；未挂 Bot.worker preset。首次/冷启动原生 prompt accepted 后 turn/end blocked，根 assistant 0。 |
+| `dsh-llm` 根 `createUserMessage`、`Session.append`、`sessions.flush` | 本地输入 source=user；回文 source=`dsh-bot-group`、user role，带群/turn/member/BotKey/生日/头像快照/child/stopReason。不伪造 assistant；完整 result.output blocks 保存于原生日志，群 renderer/context 只使用文字并标明非文字省略。成功回执/轮流指针在 flush=true 后确认。 |
+| `dsh-session-title` 根 `normalizeSessionTitle`；`session/session-title/src/normalize.ts:57-60`；Controller `rename` | 使用公开规范函数预检，保存 rename 接受的标题、固定监听并在命名中抑制重入。该包从 type-only 变为真实 runtime helper import，故新增兼容 peer；精确 dev 已存在。正常标题路径实际 Host 通过，其余控制字符处理复用原生实现。 |
+| `dsh-subagent` 根 `getProvider/startActivation`、`SubagentActivation.result/dispose`；`subagent/subagent/src/types.ts:118-182,252-277` | 检查 agentPreset/agentOptions/depthLimit 与不继承父上下文，独立 Bot preset、显式默认 route、ContentBlock[]、maxDepth、delivery=caller。三个实际 preset/persona、Bot.model/默认 fallback 与同名 MCP 工具隔离均通过。 |
+| 同包 signal/dispose 生命周期；`subagent/subagent/src/manager.ts:1094-1189` | **实际 stall 修正**：仅 abort 后等待 result 会阻塞清理；现在 abort 同时调用 disposer，且 final/close 共用 Promise。实际取消/卸载后 ownedRoots/workers/activations 均 0；fixture 另测 timeout、进行中移除、未知回执及不补跑，不能冒充全部完整 Host 故障试验。 |
+| `defineDomain/domainTable`、Typert `/remote-info` 与 Gateway | 独立 v1 sidecar groups/members/turns/deliveries/read_state，无正文账本。8 个严格 groups 端点显式同源贡献/Client mount，禁止任意 parent/Agent/preset/sessionId。读回执独立 CAS，避免读消息干扰群设置 revision。 |
+| 公开 `main` / `conversation.session.header.utilities` slots 与 hooks | Bots 页并列群聊入口；自有鲸鱼 renderer/composer、结构化 @、轮流/全轮、成员管理与原生根到群页的引导，复用 polling/epoch/effect。中英 DOM 保留节点/草稿/焦点/选区/滚动与错误旧内容通过；亮暗和窄屏真实浏览器未运行成功。 |
+
+完整 `scripts/pnpm check`：49 文件 / 620 测试、strict/build/lint PASS。原生 Team 与 IM 门禁不改，群不借 Team roster 冒充独立 Bot；未新增模型客户端、全局服务或真实平台发送。
+
+## U04–U05：IM 依赖门禁与原生 Team 任务板（2026-10-24）
+
+执行范围和逐项 PASS/FAIL 见 [U04–U05 验收](acceptance/P34-U04-05.md)。按设计 §14：U04 依赖的 U01 consumer gate 未通过，正式包只提供可选服务/合同诊断与禁用 UI，不挂入站消费者、不连接通知端口、不开放 IM 绑定/发送 Remote。方法名/版本检测不代表已验证账号、安装 commit 或消费卸载行为。锁定 dsh-im 只在本仓库隔离 profile 打包安装，无真实平台账号。
+
+| 公开入口 / 只读 rc.2 源码 | 本轮用法和验证边界 |
+| --- | --- |
+| `@deepseek-ai/dsh-experimental-agent-team` 根类型；`packages/experimental/agent-team/src/index.ts:111-219` | 产品只有 type import；真实 Host 探针从根 default 挂载 TeamService。成员/任务由原生 membership/listMembers/listTasks/createTask/updateTask 提供，不复制任务账本。宿主未挂此实验服务则任务板 unsupported，本包不接管全局服务生命周期。新增精确 devDependency，无新增 Team runtime peer。 |
+| 同包 `TeamTaskView` / `UpdateTeamTaskRequest`；`src/types.ts:83-99,224-251` | Client 仅传 taskId/expectedRevision 和 claim/complete，不接受 owner/Agent/任意 action；原生 lead 权限允许完成所属 Team 任务。真实 Gateway 严格拒绝额外 sessionId；严格 codec 拒绝 agentPreset/agentId/reassign。 |
+| `agentTeams.membership`；`src/roster.ts:90-113` | Team 是顶层 live lead 的隐式身份，无 createTeam API。用户显式 ensure 只关联既有 Bot 主会话；不将另一 Bot 主会话充当 teammate。实际 native child header 的 parent/preset 已核对继承 lead。 |
+| `sessionController.resolveAgent` / `agents.get` / 本包 Bot binding | 从主会话关联取得 exact live Agent，再校主会话、生日、顶层 header 和 native membership；无 Client 任意 Agent 参数。关联 sidecar 冷重开与完整冷 Host 验证分开；读冷板可恢复原生 Agent/已有子代理，不作零模型恢复保证。 |
+| `sessions.flush`；`packages/experimental/agent-team/src/journal.ts:67-83` | 原生事务 append 后调用 flush，本包在成功回执前另核 flush=true。false 返回 recovery-needed；不自动重放任务。原生 CAS/依赖测试使用真实服务，不把 Agent/Controller fixture 单测当完整 Host。 |
+| native subagent settlement；`packages/subagent/subagent/src/continuation-messages.ts:137-169`、`src/manager.ts:675-689` | 原生 Team teammate 完成会向 lead 投递 `subagent-settled` 并唤醒。探针记录合成 worker 与 lead 的 loopback 请求，以及原生 source/childId；不能误断言 U05 的 lead 必须零模型调用，也不能把该行为套用到尚未实施的群根。 |
+| `defineDomain/domainTable`、Typert 根与 `/remote-info` | 新增 `dsh_bot_collaboration` v1 的 `team_links`，仅保存 BotKey/leadSessionId/nativeTeamId/版本，不保存 roster/tasks。显式 contribution 5 端点同源编解码，Host/Client effect 注册与释放。 |
+| 锁定 `xmanrui/dsh-im@4645cf7` 的公开 `dshIm` v1 | 只同步检测 contractVersion/inboundVersion 及公开方法，无读取凭据/历史/账号的诊断调用。真实隔离服务零账号；fake 公共合同验证零调用及恒定禁用。consumer 注册/注销无 fallback、去重、thread 回复和 checked 实际发送仍 FAIL/NOT_RUN，未用 mock 结果覆盖 U01。 |
+
+全量检查通过 47 文件 / 601 测试、strict/build/lint；真实 Host/冷恢复与 Chromium 亮暗尝试另见验收收据。浏览器受系统 MachPort 权限限制的 FAIL 不以 DOM/token 测试替代；真实平台收发与 OS 通知仍未验证/不支持。
+
+
+## U02–U03：产品连接器桥与通知中心（2026-10-24）
+
+实现/命令/逐项结果见 [U02–U03 验收](acceptance/P34-U02-03.md)。参考树和 CLI 仍锁定 rc.2。正式包新增 MCP、credentials 根入口的精确 dev + 兼容 peer；不从私有 connection/transport 导入，不改变 engines/exports/发布版本。
+
+| 公开入口 / 只读源码 | 本轮实际组合与边界 |
+| --- | --- |
+| `dsh-mcp-client` 根 `Config/apply`；`packages/mcp/mcp-client/src/index.ts:154-203` | Agent 私有无 config 参数 child closure；只在内存解析 credentials。真实 HTTP 两 Bot scope、认证/发现失败、stdio 原生 reconnect、PID 清理通过；fiber.config、preset/DTO/log/sidecar/lib sentinel 检查通过。不是第三方 MCP 永不泄密保证。 |
+| `dsh-credentials` 根 `credentialRef` / `credentials.resolve` / `credentials/reference-updated` | provider-managed 变化标 pending；显式空闲 apply 后重新 resolve，不缓存到配置。环境仍是 CLI launch snapshot，需重启 Host。Client 复用宿主已挂载的 `remote.credentials.describe/set`：describe 只返回配置/可写状态，密码只写入原生提供者；不预填，提交或离页清空，不新增秘密 Remote。缺 namespace 时引导原生设置。 |
+| Agent `runMaintenance` / `agent/status`；`core/agent/src/runtime-types.ts:185-202,280` | 真实 turn busy 时保留 pending，维护抢占失败仍 pending；关闭旧 child 后才挂新 child。新旧代际和凭据事件使用本桥 epoch 防迟到成功覆盖。主会话 ID、native Session/Inbox 保持权威。 |
+| `tools.guard`；`core/tools/src/index.ts:724-732,1133-1151` | 对本桥真正拥有的工具先拒新调用，禁止 namespace 冲突时误伤宿主继承工具。已发到远端的请求不能承诺撤销；guard 和 child 归 Agent effect/preset/Host 联合停止。 |
+| `tools/pre-execute` / `tools/result`、`defineTool` / `approval` | bot_notify 从当前 Agent 固定 BotKey，先持久中心意图。原生 ask 展示目标/文本/scope；execute 再核对 birthday、revision、targetDigest。真实拒绝与 native never 策略、审批中改策略均无发送。preapproved 只能由用户 Remote 管理显式确认。 |
+| `setApprovalPolicy`；`interaction/user-approval/src/index.ts:99-106` | 仅新增测试的公开原生策略 helper，产品不切换或抬高 child policy。never 测试为原生 ToolRuntime/ApprovalService + Agent fixture，不冒充真实平台子代理发送。 |
+| `defineDomain/domainTable` 根入口 | 两个独立 v1 sidecar；表名必须匹配 `/^[a-z][a-z0-9_]*$/`，因此采用 legacy_imports/read_state。intent 同行额度/状态为权威，无跨表/跨 Host 事务。JSON 重开恢复 sending→unknown，绝不自动重发。 |
+| `TypertRemoteService` / `Remote` / `createTypertRemoteInfo` / Gateway | 新 contribution 有 8 个同源严格端点，connectors 与 notifications 使用各自 service/namespace。真实 Gateway 暴露跨 namespace 绑定不合法并已修正；Client await mount，显式 encode/decode，不增加自动 generator。 |
+| 原生 `Inbox.append/remove` / `sessions.flush`；`core/agent/src/runtime-types.ts:48-88` | 完整 Host 检查外推 suppressed 不影响已有 native Inbox，flush=true。产品普通通知只写中心，不为通知再唤醒模型；未开启任意 schedule 回复的自动外推。 |
+
+新增 `NotificationPort` 是本包 Host 能力，不是 DSH API；通过 `notifications.attachPort(port, ownerContext)` 纳入适配器 effect。生产 adapter 缺席时外推 unavailable，U04 才接 dsh-im。fake 端口仅证明策略/AbortSignal/状态，不代表平台受理或已读。
+
+完整 `scripts/pnpm check` 通过 44 文件 / 589 测试；真实首次/冷 Web Host、2 次 loopback 模型和 0 次真实模型请求另有运行收据。浏览器因 `bootstrap_check_in Permission denied (1100)` 启动失败，亮暗实际 UI 为 FAIL；DOM/主题 token 检查不替代该验收。OS 桌面通知无公开 API，继续禁用。
+
+
+## U01：P34 公开 API 组合实测（2026-10-24）
+
+探针仅在 `spikes/p34/`，不接入正式包。逐 gate、重跑命令和失败记录见 [U01 报告](spikes/P34-api-spike.md)。参考树仍为锁定 `dsh-v0.2.1-rc.2` / `687f282e8625c6b8d11ff58211a90524be2e4317`；CLI 为同版。以下是实际隔离 Web Host / loopback 结果，不代表桌面或真实平台验收。
+
+| 公开入口 / 源码（H 为只读参考树） | 实测与后续约束 |
+| --- | --- |
+| `dsh-mcp-client` 根 `Config/apply`；H `packages/mcp/mcp-client/src/index.ts:154-203` | 两 Bot Agent 下同名 github namespace 可隔离；无 config 参数的 child closure 中调用 apply，sentinel 不进入 preset 文档、fiber.config、真实 TypertGateway.invoke 的 Bot DTO 或 Host 日志。busy 时维护拒绝；idle 关闭旧 child、resolve、再挂新 child；guard 撤权立即拒绝调用。发现/认证失败无残留工具；stdio 退出后 native reconnect，再 dispose 验证 PID 退出。无需 deep import。 |
+| `dsh-credentials` 根 `credentialRef` / `credentials.resolve/describe/set/unset`；H `packages/credentials/credentials-local/src/index.ts:557-570,624-649`；`packages/util/launch-environment/src/index.ts:78-100,114-116` | **设计修正**：CLI process 环境来自启动快照，后改 process.env 不会改变 resolve。真正热轮换使用 provider-managed set，观察 reference-updated 后维护窗口重建。探针只写运行目录的合成凭据文件，并 unset 清理；不读实际用户凭据。 |
+| `agents.create/resume` / `AgentHandle.dispose` / `agentPresets.mount` / scoped `agent/pre-step`；H `packages/core/agent/src/index.ts:51-162`、`packages/core/agent/src/runtime-types.ts:309-320` | owned 群根创建、flush、第二个 Host 冷恢复通过。原生 prompt accepted 后 blocked，零根 assistant、零根模型请求。重复 resume 与 Controller 抢先拥有时拒绝；声明 preset 的 contribution fiber 真正卸载后，既有 Controller 根保留 guard。不能把裸 Agent 当 owned handle。 |
+| `createUserMessage` / `Session.append('user/message', …, {surfaceOp:'append'})` / `sessions.flush` | 本地输入及 producer 来源的成员回文均持久化、冷恢复；不伪造根 assistant。这里只验证原生日志，不验证群 renderer。 |
+| `subagents.getProvider/startActivation` + `delivery:'caller'`；H `packages/subagent/subagent/src/types.ts:118-182,252-277` | 两个真实 Bot preset 分别成功输出并持久回文；无 Bot.model 的 beta 使用显式 currentSelection 路由成功；caller 不唤醒根，主会话 ID 不变。仍复用 native 取消/权限/生命周期。 |
+| `dsh-experimental-agent-team` 根 default `TeamService`；H `packages/experimental/agent-team/src/index.ts:111-219` | roster、同 revision 两 claimant 仅一成功、依赖阻塞/完成及第二 Host 恢复通过。teammate header 继承 lead preset；SpawnTeammateRequest 无 agentPreset，不得冒充另一个 Bot。 |
+| 锁定 `xmanrui/dsh-im@4645cf7` 的公开根与 `dshIm` service | 源码 archive SHA256 校验、tarball 安装、服务方法加载通过；**消费者注册/撤销后无 fallback 的运行 gate FAIL / NOT_RUN**。无公开 fake 平台注入证据，不导入其私有工厂；U04 依赖的入站/checked 平台投递暂不可启用，U03 本地通知不受阻。 |
+| `@modelcontextprotocol/server-memory@2026.7.4` 公开 CLI + SDK Client/stdio | 两个真实 server 共享文件并发 create_entities 均确认成功，但 round 0 丢一条；串行写、分文件隔离、冷重开和四个 PID 退出通过。此 PASS 是“风险复现”，绝非多写者安全证明；U10 必须具备跨主/子 Agent/代际的单写者所有权。 |
+
+依赖只加到 private spike：DSH 精确 rc.2、Cordis 4.0.5、Schemastery 3.18.5；实际 Host runtime service imports 同时声明兼容 peer。正式产品依赖/exports/版本均未改变。最终产品回归仍为 41 文件 / 555 测试通过；IM gate 使完整 spike 命令按约定退出 1，不能报告全 gate PASS。
+
 ## R06：12 色与 6 种鲸鱼头像（2026-10-21）
 
 **r2 返工**：无新增 DSH API；造型图块增大、单色特征加粗，截图按选择器与关闭模态框后的列表分开，测色限定各自 DOM 范围。见 [r2 报告](acceptance/P2-R06-r2.md)。

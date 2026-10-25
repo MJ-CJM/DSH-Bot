@@ -1,0 +1,291 @@
+{
+  "status": "FAIL",
+  "phase": "browser-launch",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v03/2026-10-24T18-58-36.777Z-19739",
+  "workDir": "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T18-58-36.777Z-19739",
+  "realModelRequests": 0,
+  "modelRequests": 0,
+  "commands": [],
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    }
+  ]
+}

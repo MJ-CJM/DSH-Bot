@@ -1,0 +1,2488 @@
+{
+  "fixtureStatus": "PASS",
+  "profile": "screenshots-v03-1792872340672-42662",
+  "installedAudit": {
+    "profile": "screenshots-v03-1792872340672-42662",
+    "version": "0.3.1",
+    "files": 270,
+    "artifactSha256": "1a0c6dbe58b373c1429e917609f599d6635c0df7950aa1ffad3301a01b007445",
+    "status": "PASS"
+  },
+  "artifact": {
+    "sha256": "1a0c6dbe58b373c1429e917609f599d6635c0df7950aa1ffad3301a01b007445",
+    "path": ".dsh-dev/screenshots-v03/2026-10-24T20-05-37.302Z-42662/dsh-bot-0.3.1.tgz"
+  },
+  "aliases": [
+    {
+      "file": ".codex/screens/v03-admin-light.png",
+      "status": "preserved existing file",
+      "source": "zh-light-management.png"
+    },
+    {
+      "file": ".codex/screens/v03-connectors-light.png",
+      "status": "preserved existing file",
+      "source": "zh-light-connectors.png"
+    },
+    {
+      "file": ".codex/screens/v03-notifications-light.png",
+      "status": "preserved existing file",
+      "source": "zh-light-notifications.png"
+    },
+    {
+      "file": ".codex/screens/v03-group-light.png",
+      "status": "preserved existing file",
+      "source": "zh-light-group-mention.png"
+    },
+    {
+      "file": ".codex/screens/v03-admin-dark.png",
+      "status": "preserved existing file",
+      "source": "zh-dark-management.png"
+    },
+    {
+      "file": ".codex/screens/v03-connectors-dark.png",
+      "status": "preserved existing file",
+      "source": "zh-dark-connectors.png"
+    },
+    {
+      "file": ".codex/screens/v03-notifications-dark.png",
+      "status": "preserved existing file",
+      "source": "zh-dark-notifications.png"
+    },
+    {
+      "file": ".codex/screens/v03-group-dark.png",
+      "status": "preserved existing file",
+      "source": "zh-dark-group-mention.png"
+    }
+  ],
+  "themeEvidence": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bot-editor",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "routines",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "im",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-records",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "transfer",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "routines",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "im",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-records",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "transfer",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bot-editor",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "routines",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "im",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-records",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "transfer",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "color": "rgb(15, 17, 21)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "routines",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "im",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-records",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "transfer",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "color": "rgb(249, 250, 251)",
+      "background": "rgb(21, 21, 23)"
+    }
+  ],
+  "sidebarEvidence": [
+    {
+      "language": "en",
+      "theme": "light",
+      "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+      "title": "Assistant",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+      "title": "Research Assistant",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+      "title": "Reviewer",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bot-editor",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "routines",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "im",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-records",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "transfer",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+      "title": "Assistant",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+      "title": "Research Assistant",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+      "title": "Reviewer",
+      "blank": false
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "routines",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "im",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-records",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "transfer",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewernow"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistantnow"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 scheduled tasksAssistantnow"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+      "title": "Assistant",
+      "blank": false
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+      "title": "Research Assistant",
+      "blank": false
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+      "title": "Reviewer",
+      "blank": false
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bot-editor",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "routines",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "im",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-records",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "transfer",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+      "title": "Assistant",
+      "blank": false
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+      "title": "Research Assistant",
+      "blank": false
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+      "title": "Reviewer",
+      "blank": false
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "routines",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "im",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-records",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "transfer",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "visibleRows": [
+        {
+          "sessionId": "session-9f0ef2cd-c2af-4ffe-988b-d8d598bbb8cc",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nReviewer刚刚"
+        },
+        {
+          "sessionId": "session-b9157317-7fb7-4945-be75-fce05babb77f",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\nResearch Assistant刚刚"
+        },
+        {
+          "sessionId": "session-edf1dbf4-6b8c-4b3e-96a1-f6f0231cee8a",
+          "text": "/* src/client/styles/session-row.module.css */\n.session_row_leading {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 16px;\n  height: 20px;\n}\n.session_row_leading:has(~ :not(style)) {\n  display: none;\n}\n1 个自动化任务Assistant刚刚"
+        }
+      ],
+      "noNewSession": true
+    }
+  ],
+  "scrollEvidence": [
+    {
+      "language": "en",
+      "theme": "light",
+      "height": 468,
+      "fullHeight": 468,
+      "bottom": 0,
+      "start": 0,
+      "overflowY": "auto",
+      "position": "static"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "height": 518,
+      "fullHeight": 768,
+      "bottom": 250,
+      "start": 0,
+      "overflowY": "auto",
+      "position": "static"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "height": 518,
+      "fullHeight": 1068,
+      "bottom": 550,
+      "start": 0,
+      "overflowY": "auto",
+      "position": "static"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "height": 518,
+      "fullHeight": 1368,
+      "bottom": 850,
+      "start": 0,
+      "overflowY": "auto",
+      "position": "static"
+    }
+  ],
+  "status": "PASS",
+  "phase": "capture",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v03/2026-10-24T20-05-37.302Z-42662",
+  "workDir": "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T20-05-37.302Z-42662",
+  "realModelRequests": 0,
+  "modelRequests": 14,
+  "commands": [
+    {
+      "tool": "pnpm",
+      "args": [
+        "-F",
+        "dsh-bot",
+        "build"
+      ],
+      "label": "build",
+      "code": 0
+    },
+    {
+      "tool": "pnpm",
+      "args": [
+        "-C",
+        "packages/dsh-bot",
+        "pack",
+        "--pack-destination",
+        "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T20-05-37.302Z-42662"
+      ],
+      "label": "pack",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792872340672-42662",
+        "--from-default-profile",
+        "web",
+        "--dump-config"
+      ],
+      "label": "initialize",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "plugin",
+        "--profile",
+        "screenshots-v03-1792872340672-42662",
+        "add",
+        "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T20-05-37.302Z-42662/dsh-bot-0.3.1.tgz"
+      ],
+      "label": "install",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792872340672-42662",
+        "--no-open",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0"
+      ],
+      "label": "host",
+      "code": 0
+    }
+  ],
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "status": "PASS",
+      "file": "en-light-bots.png",
+      "sha256": "49e41559275e7592bd669533dadfdfccb09992000680d57d9bfd547500e21c65"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "PASS",
+      "file": "en-light-bot-editor.png",
+      "sha256": "7dea96b7b5319e6cee51f75855a11f099dcca52bf2d1fc5ef10de167bae59d04"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "PASS",
+      "file": "en-light-connectors.png",
+      "sha256": "293c2280c1b9d5331732689a989f901e1612b578047cbdda905baa46891f0093"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "PASS",
+      "file": "en-light-notifications.png",
+      "sha256": "e833a3387f7cd3f8f1dfa043f5808f2ae96cabcb46d8e2d814868098843a3ca5"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "PASS",
+      "file": "en-light-collaboration.png",
+      "sha256": "14f41b5b805623d4f8224ff25a74fec15f6aec37842f04bbb2af6b27208da679"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "PASS",
+      "file": "en-light-group-create.png",
+      "sha256": "267d6e57bf997200b4ecb108dc9900dfadbefd1d3118dca1af4d742be0ba69f3"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "PASS",
+      "file": "en-light-group-members.png",
+      "sha256": "c5cdf8d81b0e6fc99b1e9fa27859c4b6b95ef760e1ed112f7d9da75c2fb51d44"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "PASS",
+      "file": "en-light-group-mention.png",
+      "sha256": "63a7669dba546b47169d631a063827b765f6b7eef25054510498e0cef54b0df6"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "PASS",
+      "file": "en-light-group-round.png",
+      "sha256": "fa6644067b5f23633db79ab5add873f7a523ce0bcb58fd2539737a399648610f"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "status": "PASS",
+      "file": "en-light-management.png",
+      "sha256": "b3e5a878aad6202a5d5b1ed07ffccc0d8cfd810eac1774921457475b634a7b9f"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "PASS",
+      "file": "en-light-memory-records.png",
+      "sha256": "dae17cbd00b7e2a687b788c26d970a9ff39100d4c9c01ae36a3c87c75618466f"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "PASS",
+      "file": "en-light-memory-backend.png",
+      "sha256": "442260c66c4b5610b69a372788cc74d73c79274c8800b6a4d91bbb48bdec577d"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "PASS",
+      "file": "en-light-transfer.png",
+      "sha256": "63d462867e65f2363f5fe9ef81ab85d072d63e2cc4ed3a96a692760f6ffb7612"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "routines",
+      "status": "PASS",
+      "file": "en-light-routines.png",
+      "sha256": "788b239e5e7b097df682ffc031ba6a77a76c05535d46113363b063c382665f6d"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "im",
+      "status": "PASS",
+      "file": "en-light-im.png",
+      "sha256": "cbfde0237e477b9ef1fc3c7b8bd39292b31bd57eb3b1935642a50afcd615f77d"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "PASS",
+      "file": "en-dark-bots.png",
+      "sha256": "b72ee7dfe2866f18a152bc51c2c088ac656ba363005caccc7c54fbdfde3c4a57"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "PASS",
+      "file": "en-dark-bot-editor.png",
+      "sha256": "7bedfc001609fb978bb57bdca9da5f950f58e89b17cc08dc13d0ddde9441b65a"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "PASS",
+      "file": "en-dark-connectors.png",
+      "sha256": "b02f336f502c063f7b9f1a7f629b87ad37f5d5ca98d16af457b94ce00df05f6d"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "PASS",
+      "file": "en-dark-notifications.png",
+      "sha256": "076af0c9afd89fb1c014cab7c58f8d7a37e8f4b3796f12ae7310323cbadc4fc7"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "PASS",
+      "file": "en-dark-collaboration.png",
+      "sha256": "3ca5d5cf732ad8fd707e74d9aa121221b43fad4dfbaf04c83cf99c4bf1289e6f"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "PASS",
+      "file": "en-dark-group-create.png",
+      "sha256": "b1b60e13cb0ef6fb703489599752bff548546761f0a1647ccd91cf76cea113c8"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "PASS",
+      "file": "en-dark-group-members.png",
+      "sha256": "9cd208f878e487336c6a25a16b1202dc31942913724abec905d8856332beb2d5"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "PASS",
+      "file": "en-dark-group-mention.png",
+      "sha256": "a5c516bcca9be530566489df1260d29653fdfddb4a8dd23038b3fd72727fe395"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "PASS",
+      "file": "en-dark-group-round.png",
+      "sha256": "67a2786461ea5bdad52360931d41c04ca105c043a15d91f94ed40e864eb5fa89"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "status": "PASS",
+      "file": "en-dark-management.png",
+      "sha256": "5dd5d8f73664fd68e845aa9bca33f8be40d7aef72e38e837aa596462014dfc09"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "PASS",
+      "file": "en-dark-memory-records.png",
+      "sha256": "8539728ec31d353d813bde0d1778abf0a6b10974ea4c19f0147998c1158a413a"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "PASS",
+      "file": "en-dark-memory-backend.png",
+      "sha256": "ff602497c4b90832ad1f3a63b76bad2d74188b3d42757787df71440bb095235b"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "PASS",
+      "file": "en-dark-transfer.png",
+      "sha256": "d28d4b20b86158fb952bb8651cd43b4dc16e8de62796a6618e3eb06499073197"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "PASS",
+      "file": "en-dark-routines.png",
+      "sha256": "b5ff45546fae40e3b4838d7f9c6e4a2fca32d9d701ec9cbf530319a36db3c924"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "im",
+      "status": "PASS",
+      "file": "en-dark-im.png",
+      "sha256": "f77d7686f46ff93fdb36f3c2d1f7993cbfb8f12b2fcdd98502fd7b4557a6be15"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "status": "PASS",
+      "file": "zh-light-bots.png",
+      "sha256": "38b4097896904caf38cf3f60106ef81b032cbf3ba2390ce4e90608fa19eabe59"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "PASS",
+      "file": "zh-light-bot-editor.png",
+      "sha256": "cc875626aad8a3767fea3628deecae470fd7f9540e6db96d101388c51e4f7529"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "PASS",
+      "file": "zh-light-connectors.png",
+      "sha256": "c5b0bf1a061f3d4a07cdf72d6fd2cebeb95558f591dc82ccdc72bd1c3cc465af"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "PASS",
+      "file": "zh-light-notifications.png",
+      "sha256": "178ed5a64a1d98797fed6c958bc3ed4ebc44c1fab2607f816d0e449b5d92d541"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "PASS",
+      "file": "zh-light-collaboration.png",
+      "sha256": "86d1b939357a68d87b9954f599fb52441ac1e9656af84f99f128e639e5ca809b"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "PASS",
+      "file": "zh-light-group-create.png",
+      "sha256": "435fdcab41966041cf0c9cebe7b234c516d905362a5da334ccb07d781607ad83"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "PASS",
+      "file": "zh-light-group-members.png",
+      "sha256": "5b23e4e887cecb16a2396b17308d4f259391f343aa67e7f6a9072d208b1a956e"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "PASS",
+      "file": "zh-light-group-mention.png",
+      "sha256": "1484b69b0689f454fd9d32dbd04803df8827d8e4cc62db8a7b5d0f7bc4b317ca"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "PASS",
+      "file": "zh-light-group-round.png",
+      "sha256": "f9ce986a18e8fbd418f784ae1227088c7ae96f2479372a5162723657bb3200c0"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "status": "PASS",
+      "file": "zh-light-management.png",
+      "sha256": "9a83d451c32155d8117b908d55ecc2ce789010ca82abcdc8ea0b9e6025f00e5b"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "PASS",
+      "file": "zh-light-memory-records.png",
+      "sha256": "dbd441598222f331ab589758081702785abd144570620652ecb48a40a57a4676"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "PASS",
+      "file": "zh-light-memory-backend.png",
+      "sha256": "dd9c5e10a346c2124a68c03a1fa0586fcf9f26a3576bc52a14b4dd6b1e32c751"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "PASS",
+      "file": "zh-light-transfer.png",
+      "sha256": "6c34d26284d8acb486b7e855fc016ae6c788784190c5676fb923ff42cdc1b003"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "routines",
+      "status": "PASS",
+      "file": "zh-light-routines.png",
+      "sha256": "0e97bb2497ad7e1d75b6bda4055d79b7dcc0d86bade18351c1546ce904aace86"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "im",
+      "status": "PASS",
+      "file": "zh-light-im.png",
+      "sha256": "b9216f524ec7aed701f52d7f33e2013b8ec83906166bcf351bf1afa14b062d37"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "PASS",
+      "file": "zh-dark-bots.png",
+      "sha256": "fbab9feb5778551df2b3e6cddb0fcf3e5822621f2d587450d54f4fe837ac9efd"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "PASS",
+      "file": "zh-dark-bot-editor.png",
+      "sha256": "3dfefa615eaaa7f19fb4a1a6ea6d38f8dd52347510c358993fc993a5c9d52276"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "PASS",
+      "file": "zh-dark-connectors.png",
+      "sha256": "c83276ea75c9164e8ccf56c9970c05d15e96c568fc1dc44f91cfa8ad7e0df016"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "PASS",
+      "file": "zh-dark-notifications.png",
+      "sha256": "a82165114c8c7f26704a9e230272f647f3a40a26a154f25efc73286d2929afbe"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "PASS",
+      "file": "zh-dark-collaboration.png",
+      "sha256": "fe24c6b0e2b1f1b89b073a395f5ea95e9a5dad143b5a627f7910f75977802dfc"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "PASS",
+      "file": "zh-dark-group-create.png",
+      "sha256": "8820c4ee2e828898fe0b4cd3241a170f321b54215b08aa34063a526d573a363c"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "PASS",
+      "file": "zh-dark-group-members.png",
+      "sha256": "d63b1c66c9a920b0e80751e3e0a7f43775d630cf99364c6966bcc572120478a8"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "PASS",
+      "file": "zh-dark-group-mention.png",
+      "sha256": "bab89f0a07b09edfa07be83b5788bd4b3d5c03c5fcf160888ac855dfdd9512fb"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "PASS",
+      "file": "zh-dark-group-round.png",
+      "sha256": "62a770c193bf5f32108409f3332894731d11dfa81d93b6866ebf33eccd17d151"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "status": "PASS",
+      "file": "zh-dark-management.png",
+      "sha256": "0e7b272f4e8fa8f372fd73903031f90aeb456a81e5d7f770b918e80c6f5228b5"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "PASS",
+      "file": "zh-dark-memory-records.png",
+      "sha256": "4e3911fd33819ad1c5312aef331e0cf5dbc898d2e9f3a7c792b2db8cbe12a7ee"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "PASS",
+      "file": "zh-dark-memory-backend.png",
+      "sha256": "3e6e70085cf5ca0900ac60c341d8f6a698521f51b2068f168c01a0d8b14a0f69"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "PASS",
+      "file": "zh-dark-transfer.png",
+      "sha256": "bb69fea46429e542589f3823a1b4e27a47f5851e4d442dfad67823176a4c50fb"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "PASS",
+      "file": "zh-dark-routines.png",
+      "sha256": "dd506ad0b22ffa42b8cadce1140affa55a6ee8c6b497ce8bf597ff1ef9c7e074"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "im",
+      "status": "PASS",
+      "file": "zh-dark-im.png",
+      "sha256": "56659b0e7ab1ef4c4eb3ea632419a6a39a4f2b3f9d26df178238885440b4b4cf"
+    }
+  ],
+  "narrowChecks": [
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "group",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "management",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "connectors",
+      "status": "PASS",
+      "bounds": {
+        "width": 289,
+        "fullWidth": 289
+      }
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "memory",
+      "status": "PASS",
+      "bounds": {
+        "width": 259,
+        "fullWidth": 259
+      }
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "group",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "management",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "connectors",
+      "status": "PASS",
+      "bounds": {
+        "width": 289,
+        "fullWidth": 289
+      }
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "memory",
+      "status": "PASS",
+      "bounds": {
+        "width": 259,
+        "fullWidth": 259
+      }
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "group",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "management",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "connectors",
+      "status": "PASS",
+      "bounds": {
+        "width": 289,
+        "fullWidth": 289
+      }
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "memory",
+      "status": "PASS",
+      "bounds": {
+        "width": 253,
+        "fullWidth": 253
+      }
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "group",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "management",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "connectors",
+      "status": "PASS",
+      "bounds": {
+        "width": 289,
+        "fullWidth": 289
+      }
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "memory",
+      "status": "PASS",
+      "bounds": {
+        "width": 253,
+        "fullWidth": 253
+      }
+    }
+  ],
+  "pageErrors": []
+}

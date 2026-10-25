@@ -1,5 +1,11 @@
 import type { CSSProperties } from 'react';
-import { AVATAR_COLOR_TOKENS, AVATAR_VARIANTS, type AvatarColor, type BotRecord, type WhaleVariant } from '../../shared/schema.js';
+import {
+  AVATAR_COLOR_TOKENS,
+  AVATAR_VARIANTS,
+  type AvatarColor,
+  type BotRecord,
+  type WhaleVariant,
+} from '../../shared/schema.js';
 import { WhaleGlyph } from './WhaleGlyph.js';
 
 // All colors derive from the host's aliases. A final foreground mix maintains
@@ -39,7 +45,7 @@ export function defaultAvatarVariant(id: string): WhaleVariant {
   return AVATAR_VARIANTS[identityHash(`variant:${id}`) % AVATAR_VARIANTS.length] ?? 'classic';
 }
 export function resolvedAvatarVariant(bot: Pick<BotRecord, 'id' | 'avatarVariant'>): WhaleVariant {
-  return bot.avatarVariant === 'auto' ? defaultAvatarVariant(bot.id) : bot.avatarVariant ?? 'classic';
+  return bot.avatarVariant === 'auto' ? defaultAvatarVariant(bot.id) : (bot.avatarVariant ?? 'classic');
 }
 
 export interface BotAvatarProps {
@@ -55,16 +61,38 @@ export function BotAvatar({ bot, size = 48, className, label }: BotAvatarProps) 
   const color = bot.avatarColor ?? defaultAvatarColor(bot.id);
   const variant = resolvedAvatarVariant(bot);
   const style: CSSProperties = {
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    width: size, height: size, borderRadius: Math.max(5, size * 0.25), overflow: 'hidden',
-    background: 'var(--dsw-alias-bg-base)', color: avatarColors[color].color,
-    fontSize: size * 0.58, lineHeight: 1, verticalAlign: 'middle',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    width: size,
+    height: size,
+    borderRadius: Math.max(5, size * 0.25),
+    overflow: 'hidden',
+    background: 'var(--dsw-alias-bg-base)',
+    color: avatarColors[color].color,
+    fontSize: size * 0.58,
+    lineHeight: 1,
+    verticalAlign: 'middle',
   };
   const image = bot.avatar?.startsWith('data:image/');
-  return <span className={className} style={style} role="img"
-    aria-label={label} aria-hidden={label ? undefined : true} data-bot-avatar={image ? 'image' : bot.avatar ? 'emoji' : 'whale'}
-    data-avatar-color={color} data-avatar-variant={variant} data-bot-id={bot.id}>
-    {image ? <img src={bot.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      : bot.avatar ?? <WhaleGlyph size={size * 0.9} variant={variant} />}
-  </span>;
+  return (
+    <span
+      className={className}
+      style={style}
+      role="img"
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      data-bot-avatar={image ? 'image' : bot.avatar ? 'emoji' : 'whale'}
+      data-avatar-color={color}
+      data-avatar-variant={variant}
+      data-bot-id={bot.id}
+    >
+      {image ? (
+        <img src={bot.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        (bot.avatar ?? <WhaleGlyph size={size * 0.9} variant={variant} />)
+      )}
+    </span>
+  );
 }

@@ -128,7 +128,7 @@ describe('Bot conversations through the supported sidebar footer action', () => 
 
   it('keeps previews on a single ellipsized line using theme tokens', () => {
     const css = readFileSync('src/client/styles/sidebar.module.css', 'utf8');
-    expect(css).toMatch(/\.name, \.sessionTitle, \.preview\s*\{[^}]*overflow:\s*hidden;[^}]*white-space:\s*nowrap;[^}]*text-overflow:\s*ellipsis/s);
+    expect(css).toMatch(/\.name,\s*\.sessionTitle,\s*\.preview\s*\{[^}]*overflow:\s*hidden;[^}]*white-space:\s*nowrap;[^}]*text-overflow:\s*ellipsis/s);
     expect(css).toMatch(/\.unreadDot\s*\{[^}]*var\(--dsw-alias-state-error-primary\)/s);
   });
 

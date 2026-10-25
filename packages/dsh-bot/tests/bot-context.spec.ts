@@ -117,6 +117,19 @@ async function withFixture(run: (value: Awaited<ReturnType<typeof fixture>>) => 
 }
 
 describe('Bot preset context using the published scope and tool services', () => {
+  it('joins a connector start racing preset unload and releases the late child', async () => withFixture(async f => {
+    let finish!: (release: () => Promise<void>) => void;
+    const childClosed = vi.fn(async () => {});
+    const attach = vi.fn(async () => new Promise<() => Promise<void>>(resolve => { finish = resolve; }));
+    const remove = f.ctx.provide('dshBotConnectors', { attach } as unknown as Context['dshBotConnectors']);
+    const preset = await f.preset('beta'); const agent = f.agent(preset.key);
+    const announce = agent.announce(); const rejected = expect(announce).rejects.toMatchObject({ code: 'bot/unavailable' });
+    await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+    let disposed = false; const closing = preset.plugin.dispose().then(() => { disposed = true; });
+    await Promise.resolve(); expect(disposed).toBe(false);
+    finish(childClosed); await closing; await rejected;
+    expect(childClosed).toHaveBeenCalledOnce(); expect(botContext.getBotBinding(agent.subject)).toBeUndefined(); remove();
+  }));
   it('adds concise English private home and workspace guidance per Agent even when memory is disabled', async () => withFixture(async ({ ctx, preset, agent, ensureHome }) => {
     const alpha = await preset('alpha');
     const first = agent(alpha.key);

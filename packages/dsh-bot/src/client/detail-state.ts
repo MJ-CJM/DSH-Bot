@@ -1,6 +1,9 @@
 import type { Context } from '@deepseek-ai/cordis';
 
-export interface BotDetailRequest { botId: string; requestId: number }
+export interface BotDetailRequest {
+  botId: string;
+  requestId: number;
+}
 export interface BotDetailSource {
   getSnapshot(): BotDetailRequest | undefined;
   subscribe(listener: () => void): () => void;
@@ -14,10 +17,23 @@ export function createBotDetailSource(ctx: Context): BotDetailSource {
   let sequence = 0;
   let disposed = false;
   const listeners = new Set<() => void>();
-  ctx.effect(() => () => { disposed = true; snapshot = undefined; listeners.clear(); }, 'dsh-bot: detail navigation');
+  ctx.effect(
+    () => () => {
+      disposed = true;
+      snapshot = undefined;
+      listeners.clear();
+    },
+    'dsh-bot: detail navigation',
+  );
   return {
     getSnapshot: () => snapshot,
-    subscribe(listener) { if (disposed) return () => {}; listeners.add(listener); return () => { listeners.delete(listener); }; },
+    subscribe(listener) {
+      if (disposed) return () => {};
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
     open(botId) {
       if (disposed) return;
       snapshot = { botId, requestId: ++sequence };

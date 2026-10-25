@@ -22,8 +22,9 @@ export function botSkillsDirectory(botId: string, config: Pick<ComposerConfig, '
  * a directory on rollback/delete: it may contain user-authored skills. */
 export async function ensureBotSkillsDirectory(botId: string, config: Pick<ComposerConfig, 'dataDir'>): Promise<void> {
   const path = botSkillsDirectory(botId, config);
-  try { await mkdir(path, { recursive: true }); }
-  catch (cause) {
+  try {
+    await mkdir(path, { recursive: true });
+  } catch (cause) {
     throw new DshBotError('bot/preset-failed', `Cannot prepare skills directory '${path}'`, { cause });
   }
 }
@@ -68,17 +69,24 @@ export async function composeBotPreset(
       throw new Error('Template already contains bot-context');
     }
     const skills = allRows.filter((row) => row.name === '@deepseek-ai/dsh-skill-filesystem');
-    if (skills.length > 1 || (skills[0] && !rows.includes(skills[0]))
-      || (bot.template === 'standard' && skills.length !== 1)) {
+    if (
+      skills.length > 1 ||
+      (skills[0] && !rows.includes(skills[0])) ||
+      (bot.template === 'standard' && skills.length !== 1)
+    ) {
       throw new Error('Template must contain exactly one skill-filesystem row (minimal may omit it)');
     }
     const persona = personas[0];
     if (!persona) throw new Error('Missing persona');
     rows[rows.indexOf(persona)] = { ...persona, name: '@deepseek-ai/dsh-persona', config: { ...bot.persona } };
     const skillsRow = skills[0] ?? { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem' };
-    const configuredSkills: Row = { ...skillsRow, config: {
-      ...objectConfig(skillsRow), customSkillDirs: [botSkillsDirectory(bot.id, config), ...bot.skills.extraDirs],
-    } };
+    const configuredSkills: Row = {
+      ...skillsRow,
+      config: {
+        ...objectConfig(skillsRow),
+        customSkillDirs: [botSkillsDirectory(bot.id, config), ...bot.skills.extraDirs],
+      },
+    };
     if (skills.length) rows[rows.indexOf(skillsRow)] = configuredSkills;
     else {
       if (rows.some((row) => row.id === skillsRow.id)) throw new Error('Template skill-filesystem id collision');
@@ -88,10 +96,17 @@ export async function composeBotPreset(
     // its only public row parameter is the bound identity.
     rows.push({ id: 'bot-context', name: 'dsh-bot/bot-context', config: { botId: bot.id } });
     return {
-      id: `${config.presetIdPrefix}${bot.id}`, name: bot.name, description: bot.description,
-      order: bot.order ?? config.presetOrder, plugins: rows,
+      id: `${config.presetIdPrefix}${bot.id}`,
+      name: bot.name,
+      description: bot.description,
+      order: bot.order ?? config.presetOrder,
+      plugins: rows,
     };
   } catch (cause) {
-    throw new DshBotError('bot/preset-failed', `Cannot compose Bot '${bot.id}' from '${bot.template}': ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    throw new DshBotError(
+      'bot/preset-failed',
+      `Cannot compose Bot '${bot.id}' from '${bot.template}': ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
   }
 }

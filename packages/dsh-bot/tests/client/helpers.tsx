@@ -1,3 +1,10 @@
+import type { WorkspaceMethods, ReferenceMemoryMethods } from '../../src/shared/workspace-contract.js';
+import type { GroupMethods } from '../../src/shared/groups-contract.js';
+import type { GroupView, GroupSummary } from '../../src/shared/groups.js';
+import type { CollaborationMethods } from '../../src/shared/collaboration-contract.js';
+import { IM_PIN, type TeamBoard } from '../../src/shared/collaboration.js';
+import type { IntegrationMethods } from '../../src/shared/integrations-contract.js';
+import { EMPTY_INTEGRATIONS } from '../../src/client/integrations-state.js';
 import type { BotsPageInjected } from '../../src/client/pages/BotsPage.js';
 import type { AutomationRemoteMethods } from '../../src/shared/automation-contract.js';
 import type { RunRecord } from '../../src/shared/automation.js';
@@ -29,7 +36,7 @@ export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot'
 }
 
 export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
+  const data = { groups: [] as GroupSummary[], groupView: undefined as GroupView | undefined, board: { supported: false, reason: 'native-service-missing', members: [], tasks: [] } as TeamBoard, integrations: structuredClone(EMPTY_INTEGRATIONS), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
   const activity = {
     list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
       sessions: [...data.activities], bots: data.records.map((bot) => {
@@ -136,7 +143,30 @@ export function remoteDouble(initial: BotRecord[] = []) {
     list: vi.fn<AutomationRemoteMethods<'dshBot.run'>['list']>(async options => ({ ok: true, value: data.runs.filter(row => !options.nativeScheduleId || row.nativeScheduleId === options.nativeScheduleId).slice(0, options.limit ?? 50) })),
   };
   const automation = { status: vi.fn<AutomationRemoteMethods<'dshBot.automation'>['status']>(async () => ({ ok: true, value: { state: 'ready' } })) };
-  return { methods, data, routine, schedule, run, automation };
+  const connectors = {
+    catalog: vi.fn<IntegrationMethods<'dshBot.connectors'>['catalog']>(async () => ({ ok: true, value: data.integrations })),
+    saveDefinition: vi.fn<IntegrationMethods<'dshBot.connectors'>['saveDefinition']>(),
+    saveAssignment: vi.fn<IntegrationMethods<'dshBot.connectors'>['saveAssignment']>(),
+    applyIdle: vi.fn<IntegrationMethods<'dshBot.connectors'>['applyIdle']>(),
+    importLegacy: vi.fn<IntegrationMethods<'dshBot.connectors'>['importLegacy']>(),
+  };
+  const notifications = {
+    savePolicy: vi.fn<IntegrationMethods<'dshBot.notifications'>['savePolicy']>(), markRead: vi.fn<IntegrationMethods<'dshBot.notifications'>['markRead']>(), test: vi.fn<IntegrationMethods<'dshBot.notifications'>['test']>(),
+  };
+  const collaboration = {
+    board: vi.fn<CollaborationMethods['board']>(async () => ({ ok: true, value: data.board })),
+    ensure: vi.fn<CollaborationMethods['ensure']>(), createTask: vi.fn<CollaborationMethods['createTask']>(), updateTask: vi.fn<CollaborationMethods['updateTask']>(),
+  };
+  const groups = {
+    markRead: vi.fn<GroupMethods['markRead']>(async () => ({ok:true,value:true})),
+    list: vi.fn<GroupMethods['list']>(async () => ({ ok: true, value: data.groups })),
+    view: vi.fn<GroupMethods['view']>(async () => { if (!data.groupView) throw new Error('No group fixture'); return { ok: true, value: data.groupView }; }),
+    create: vi.fn<GroupMethods['create']>(), edit: vi.fn<GroupMethods['edit']>(), send: vi.fn<GroupMethods['send']>(), cancel: vi.fn<GroupMethods['cancel']>(), archive: vi.fn<GroupMethods['archive']>(),
+  };
+  const im = { status: vi.fn(async () => ({ ok: true as const, value: { pin: IM_PIN, installed: false, contractDetected: false, inboundSupported: false as const, outboundSupported: false as const, reason: 'plugin-missing' as const } })) };
+  const workspaceManagement = { request: vi.fn<WorkspaceMethods['request']>() };
+  const referenceMemory = { request: vi.fn<ReferenceMemoryMethods['request']>(async input => ({ ok: true, value: { status: { bot: input.bot, state: 'internal', toolCount: 0, writer: false, copies: [] } } })) };
+  return { methods, data, routine, schedule, run, automation, connectors, notifications, collaboration, im, groups, workspaceManagement, referenceMemory };
 }
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
@@ -205,6 +235,20 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === 'dsh-bot/workspace') {
+      const releases = [ctx.provide('remote.dshBot.workspace', remote.workspaceManagement), ctx.provide('remote.dshBot.referenceMemory', remote.referenceMemory)];
+      return () => { for (const release of releases) release(); };
+    }
+    if (contribution?.package === 'dsh-bot/messaging') return ctx.provide('remote.dshBot.messaging', { request: async () => ({ ok: true as const, value: { enabled: true, nestedMessaging: false as const, pending: 0, items: [] } }) });
+    if (contribution?.package === 'dsh-bot/groups') return ctx.provide('remote.dshBot.groups', remote.groups);
+    if (contribution?.package === 'dsh-bot/collaboration') {
+      const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];
+      return () => { for (const release of releases) release(); };
+    }
+    if (contribution?.package === 'dsh-bot/integrations') {
+      const releases = [ctx.provide('remote.dshBot.connectors', remote.connectors), ctx.provide('remote.dshBot.notifications', remote.notifications)];
+      return async () => { for (const release of releases) await release(); };
+    }
     if (contribution?.package === '@deepseek-ai/dsh-schedule') return ctx.provide('remote.schedule', remote.schedule);
     if (contribution?.package === 'dsh-bot/automation') {
       const releases = [ctx.provide('remote.dshBot.nativeSchedule', remote.routine), ctx.provide('remote.dshBot.run', remote.run), ctx.provide('remote.dshBot.automation', remote.automation)];
@@ -446,7 +490,7 @@ export async function mountClient(
 }
 
 export function button(container: ParentNode, text: string): HTMLButtonElement {
-  const element = [...container.querySelectorAll('button')].find((item) => item.textContent?.trim() === text || item.getAttribute('aria-label') === text);
+  const element = [...container.querySelectorAll('button')].find((item) => !item.closest('[hidden]') && (item.textContent?.trim() === text || item.getAttribute('aria-label') === text));
   if (!element) throw new Error(`Button ${JSON.stringify(text)} not found in ${container.textContent}`);
   return element;
 }
@@ -456,7 +500,7 @@ export async function click(element: HTMLElement) {
 }
 
 export function field(container: ParentNode, label: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
-  const labelElement = [...container.querySelectorAll('label')].find((item) => item.textContent?.trim().startsWith(label));
+  const labelElement = [...container.querySelectorAll('label')].find((item) => !item.closest('[hidden]') && item.textContent?.trim().startsWith(label));
   const control = labelElement?.control;
   if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
     throw new Error(`Field ${JSON.stringify(label)} not found in ${container.textContent}`);
@@ -475,7 +519,7 @@ export async function fill(control: HTMLInputElement | HTMLTextAreaElement | HTM
 }
 
 export async function submit(container: ParentNode) {
-  const form = container.querySelector('form');
+  const form = [...container.querySelectorAll('form')].find(form => !form.closest('[hidden]'));
   if (!form) throw new Error('No form is mounted');
   await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
 }

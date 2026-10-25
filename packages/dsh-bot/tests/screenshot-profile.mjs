@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import TeamService from '@deepseek-ai/dsh-experimental-agent-team';
+export const name = 'bot-screenshot-fixture';
+export const inject = ['loader', 'dshBots', 'dshBotGroups', 'dshBotConnectors', 'dshBotNotifications', 'dshBotCollaborationRemote', 'dshBotReferenceMemory', 'schedule', 'workspaceRegistry', 'sessionController', 'sessionTitle', 'agents', 'sessions'];
+export function apply(ctx, config) {
+  ctx.effect(() => {
+    let team;
+    let stopping = false;
+    const abort = new AbortController();
+    const run = (async () => {
+      await ctx.loader.await();
+      await ctx.dshBots.waitUntilReady();
+      const bots = [];
+      for (const [id, name] of [['assistant', 'Assistant'], ['researcher', 'Research Assistant'], ['reviewer', 'Reviewer']]) {
+        bots.push(await ctx.dshBots.create({ id, name, template: 'minimal', persona: { prefix: 'Synthetic screenshot fixture. Use no tools.' } }));
+      }
+      const mains = await Promise.all(bots.map(bot => ctx.dshBots.openConversation(bot.id)));
+      // rc.2 marks title-only sessions blank until a real turn/start. Previously
+      // all fixture mains were blank, so the selected one showed “New Session”.
+      const before = await ctx.sessionController.list({});
+      const mainRows = mains.map((main, i) => {
+        const row = before.items.find(row => row.sessionId === main.sessionId);
+        assert.ok(row?.blank);
+        assert.equal(ctx.sessionTitle.get(ctx.agents.get(main.sessionId).session).title, bots[i].name);
+        return { sessionId: main.sessionId, title: bots[i].name, beforeBlank: row.blank };
+      });
+      for (const main of mains) {
+        const receipt = await ctx.sessionController.prompt({ sessionId: main.sessionId, requestId: randomUUID(), mode: 'queue', content: [{ type: 'text', text: 'Prepare a synthetic screenshot summary. Use no tools.' }] }, abort.signal);
+        assert.equal(receipt.accepted, true);
+        const agent = ctx.agents.get(main.sessionId);
+        const deadline = Date.now() + 30000;
+        while (!agent.session.snapshotEvents().some(event => event.type === 'turn/end')) {
+          assert.ok(!stopping && Date.now() < deadline, 'Synthetic main turn did not settle');
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        assert.ok(agent.session.snapshotEvents().some(event => event.type === 'assistant/message'));
+        assert.equal(await ctx.sessions.flush(agent.session), true);
+      }
+      const after = await ctx.sessionController.list({});
+      for (const row of mainRows) {
+        assert.equal(after.items.find(item => item.sessionId === row.sessionId)?.blank, false);
+        assert.equal(ctx.sessionTitle.get(ctx.agents.get(row.sessionId).session).title, row.title);
+      }
+      await writeFile(join(config.outputDir, 'sidebar-main-identity.json'), JSON.stringify({ source: 'fixture opened title-only blank mains; rc.2 localizes blank rows as New Session', model: 'loopback only', rows: mainRows.map(row => ({ ...row, afterBlank: false })) }, null, 2));
+      const schedule = await ctx.schedule.create(mains[0].sessionId, { title: 'Synthetic daily review', prompt: 'Review the synthetic research summary.', every_seconds: 86400 });
+      const keys = bots.map(bot => ({ botId: bot.id, botCreatedAt: bot.createdAt }));
+      await ctx.dshBots.memoryFor('assistant').save({ content: 'Prefers clear, concise research summaries.', kind: 'preference', tags: ['demo'], pinned: true }, { by: 'user', at: Date.now() });
+      await ctx.dshBotConnectors.saveDefinition({ id: 'sample', label: 'Example MCP connector', serverName: 'sample', transport: 'streamable-http', url: 'http://127.0.0.1:9/mcp', enabled: false }, 0);
+      await ctx.dshBotNotifications.savePolicy({ id: 'local', owner: keys[0], channel: 'in-app', enabled: true, timezone: 'UTC', dailyLimit: 20, cooldownSec: 0, authorization: { mode: 'ask' } }, 0, false);
+      await ctx.dshBotNotifications.record(keys[0], { operationId: 'screenshot', policyId: 'local', text: 'Research summary is ready to review.' }, { kind: 'tool', id: 'synthetic-screenshot' });
+      team = ctx.plugin(TeamService, {});
+      await team.await();
+      await ctx.dshBotCollaborationRemote.ensure(keys[0], 0);
+      await ctx.dshBotCollaborationRemote.createTask(keys[0], { subject: 'Review research summary', description: 'Compare the two synthetic summaries.', blockedBy: [] });
+      const group = await ctx.dshBotGroups.create({ operationId: 'screenshot', name: 'Research group', mode: 'round-robin', members: keys, historyConfirmed: true });
+      const workspace = ctx.workspaceRegistry.list().find(workspace => mains.every(main => workspace.sessionIds.includes(main.sessionId)));
+      assert.ok(workspace);
+      assert.deepEqual([...workspace.sessionIds].sort(), mains.map(main => main.sessionId).sort(), 'Creating a group must not add any row to the Bots workspace');
+      assert.ok(!workspace.sessionIds.includes(group.rootSessionId));
+      await writeFile(join(config.outputDir, 'sidebar-after-group.json'), JSON.stringify({ status: 'PASS', workspaceId: workspace.id, sessionIds: workspace.sessionIds, mainSessionIds: mains.map(main => main.sessionId), groupRootId: group.rootSessionId, groupRootInBotsWorkspace: false }, null, 2));
+      const groupKey = { groupId: group.id, groupCreatedAt: group.createdAt };
+      await ctx.dshBotGroups.send(groupKey, { operationId: 'screenshot-round', expectedMembershipRevision: 1, text: 'Compare the research approaches for this synthetic example.', round: true });
+      const deadline = Date.now() + 30000;
+      let view;
+      do { view = await ctx.dshBotGroups.view(groupKey); if (view.turns.every(t => t.state === 'completed')) break; await new Promise(r => setTimeout(r, 25)); } while (!stopping && Date.now() < deadline);
+      assert.ok(view.turns.every(t => t.state === 'completed'));
+      await ctx.dshBotReferenceMemory.request({ action: 'configure', bot: keys[0], mode: 'internal+reference-graph', expectedRevision: 0 });
+      await writeFile(join(config.outputDir, 'fixture.json'), JSON.stringify({ status: 'PASS', bots: bots.map(b => b.id), mainSessionIds: mains.map(m => m.sessionId), scheduleId: schedule.id, groupId: group.id }));
+      console.log('V03_SCREENSHOT_READY');
+    })().catch(async error => {
+      await writeFile(join(config.outputDir, 'fixture-error.json'), JSON.stringify({ error: String(error), stack: error.stack }));
+      console.log('V03_SCREENSHOT_FAILED');
+    });
+    return async () => { stopping = true; abort.abort(); await run; await team?.dispose(); };
+  });
+}

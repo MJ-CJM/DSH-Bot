@@ -3,13 +3,29 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client';
 import type {} from '@deepseek-ai/dsh-client-connection/client';
 import type { BotStatus, DshBotRemoteMethods } from '../shared/remote-contract.js';
 import type { BotRecord } from '../shared/schema.js';
-import { DEFAULT_POLL_INTERVAL_MS, sharedPollingScheduler, validatePollInterval, type PollingOptions } from './polling-scheduler.js';
+import {
+  DEFAULT_POLL_INTERVAL_MS,
+  sharedPollingScheduler,
+  validatePollInterval,
+  type PollingOptions,
+} from './polling-scheduler.js';
 import { structuralEqual } from './structural-equal.js';
-export { DEFAULT_POLL_INTERVAL_MS, DEFAULT_MAX_POLL_INTERVAL_MS, MIN_POLL_INTERVAL_MS, MAX_POLL_INTERVAL_MS } from './polling-scheduler.js';
+export {
+  DEFAULT_POLL_INTERVAL_MS,
+  DEFAULT_MAX_POLL_INTERVAL_MS,
+  MIN_POLL_INTERVAL_MS,
+  MAX_POLL_INTERVAL_MS,
+} from './polling-scheduler.js';
 
 export type BotPresetStatus = BotStatus;
-export interface BotCatalogEntry { bot: BotRecord; status?: BotPresetStatus }
-export interface CatalogError { code?: string; message: string }
+export interface BotCatalogEntry {
+  bot: BotRecord;
+  status?: BotPresetStatus;
+}
+export interface CatalogError {
+  code?: string;
+  message: string;
+}
 export interface CatalogSnapshot extends PollingSnapshot {
   readonly entries: readonly BotCatalogEntry[];
   readonly presetIdPrefix?: string;
@@ -50,13 +66,16 @@ function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T | 
     const abort = () => resolve(undefined);
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) abort();
-    pending.then((result) => {
-      signal.removeEventListener('abort', abort);
-      resolve(result);
-    }, (error: unknown) => {
-      signal.removeEventListener('abort', abort);
-      reject(error);
-    });
+    pending.then(
+      (result) => {
+        signal.removeEventListener('abort', abort);
+        resolve(result);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      },
+    );
   });
 }
 
@@ -75,7 +94,10 @@ export interface PollingCatalog<Payload> {
 }
 
 export function createPollingCatalog<Payload>(
-  ctx: Context, initial: Payload, load: () => Promise<Payload>, options: BotCatalogOptions = {},
+  ctx: Context,
+  initial: Payload,
+  load: () => Promise<Payload>,
+  options: BotCatalogOptions = {},
 ): PollingCatalog<Payload> {
   let pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   validatePollInterval(pollIntervalMs);
@@ -126,7 +148,7 @@ export function createPollingCatalog<Payload>(
   const source = {
     polling: false,
     // Slow requests finish instead of being starved by periodic invalidation.
-    refresh: (supersede: boolean) => !supersede && controller ? Promise.resolve(undefined) : read(),
+    refresh: (supersede: boolean) => (!supersede && controller ? Promise.resolve(undefined) : read()),
   };
   const stop = () => {
     cancelRead();
@@ -179,21 +201,31 @@ export function createPollingCatalog<Payload>(
       scheduler.setPollIntervalMs(value);
       publish({ ...snapshot, pollIntervalMs });
     },
-    dispose: () => { void disposeOwner(); },
+    dispose: () => {
+      void disposeOwner();
+    },
     subscribe: (listener) => subscribe(listener, true),
     observe: (listener) => subscribe(listener, false),
   };
 }
 
 export function createBotCatalog(ctx: Context, options: BotCatalogOptions = {}): BotCatalog {
-  return createPollingCatalog<{ entries: readonly BotCatalogEntry[]; presetIdPrefix?: string }>(ctx, { entries: [] }, async () => {
-    const remote = ctx.get('remote.dshBot') as DshBotRemoteMethods | undefined;
-    if (!remote) throw { code: 'bot/unavailable', message: '' };
-    const [bots, statuses, info] = await Promise.all([remote.list(), remote.status(), remote.catalogInfo()]);
-    if (!bots.ok) throw bots.error;
-    if (!statuses.ok) throw statuses.error;
-    if (!info.ok) throw info.error;
-    const byId = new Map(statuses.value.map((status) => [status.id, status]));
-    return { presetIdPrefix: info.value.presetIdPrefix, entries: bots.value.map((bot) => ({ bot, status: byId.get(bot.id) })) };
-  }, options);
+  return createPollingCatalog<{ entries: readonly BotCatalogEntry[]; presetIdPrefix?: string }>(
+    ctx,
+    { entries: [] },
+    async () => {
+      const remote = ctx.get('remote.dshBot') as DshBotRemoteMethods | undefined;
+      if (!remote) throw { code: 'bot/unavailable', message: '' };
+      const [bots, statuses, info] = await Promise.all([remote.list(), remote.status(), remote.catalogInfo()]);
+      if (!bots.ok) throw bots.error;
+      if (!statuses.ok) throw statuses.error;
+      if (!info.ok) throw info.error;
+      const byId = new Map(statuses.value.map((status) => [status.id, status]));
+      return {
+        presetIdPrefix: info.value.presetIdPrefix,
+        entries: bots.value.map((bot) => ({ bot, status: byId.get(bot.id) })),
+      };
+    },
+    options,
+  );
 }

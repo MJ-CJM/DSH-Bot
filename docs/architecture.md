@@ -1,4 +1,4 @@
-# DSH-Bot 架构（R05 单主会话，0.2.2）
+# DSH-Bot 架构（0.3.0）
 
 本页描述当前正式包的实现。DSH 参考源码锁定 `dsh-v0.2.1-rc.2`（`687f282e8625c6b8d11ff58211a90524be2e4317`），只使用已发布包的公开入口、service、Remote 和 slot。具体 API 出处见 [DSH API 核实记录](dsh-api-notes.md)，P1 操作清单见 [P1 验收清单](acceptance/P1.md)，P2 运行证据与验收边界见 [P2 报告](acceptance/P2.md)；架构说明本身不代表运行验收通过。
 
@@ -140,7 +140,7 @@ Host 合约、preset disposer、领域句柄、stream 订阅、Agent 事件/工�
 
 Host 配置集中在导出的 Schemastery `Config`；Client 刷新、分页及侧栏条数使用独立 Client `Config`，rc.2 不自动透传 Host 行的配置。记忆条数、工具 deny、人设、默认目录等属于 Bot 记录。
 
-当前 0.2.2 版本在 P1 Bot、记忆、活动和原生 UI 扩展上提供原生定时聚合、显式立即运行与原生子代理委派。MCP 绑定、外部通知和通用 Bot 消息仍未交付。Host 的存活、构建成功或 dump-config 无错误都不能证明真实模型、桌面导航、亮暗视觉和端到端流程通过；对应证据按 [P1 验收清单](acceptance/P1.md) 分项记录。
+当前 0.3.0 在原有 Bot、记忆、活动、原生定时与 spawn 委派上增加每 Bot MCP 桥、应用内通知、独立群聊、原生 Team 任务板、管理传输及附加图谱。IM 收发依赖的 consumer gate 未通过；系统通知没有公开 API。Host 存活、构建或 dump-config 不能证明桌面导航、亮暗视觉或完整端到端流程；本轮证据及未通过项见 [P3/P4 验收](acceptance/P3-P4.md)。
 
 
 ## R02：原生定时与 Bots 聚合
@@ -210,3 +210,63 @@ P1 契约增加 openConversation 和可选 status.mainSessionId，共 20 个端�
 | 显式投递也复用原生主会话 | R05 删除剩余 RunExecutor；旧 Run/report 只兼容读取，新 manual 使用主会话投递回执，不恢复旧委派或回报。 |
 
 子会话走 DSH 原生子代理目录/导航；既有 Bots 最近普通会话列表继续排除 subagent，不把它当普通会话展示。本轮没有新增 UI 或亮暗主题修改。完整运行证据与限制见 [R03 验收](acceptance/P2-R03.md)。
+
+
+## P34 U06–U08：独立群会话
+
+群由 `Groups` 服务持有独立非 Bot root AgentHandle；`dsh-bot-group-root` preset 的 scoped pre-step guard 在模型前 reject。成员使用公开 native spawn/caller 运行各自 Bot preset，并显式提供当前宿主默认 route；Bot.model 仍由既有 bot-context override。群不复用 Bot 主会话或 Team teammate。
+
+`dsh_bot_groups` v1 保存群/生日成员/turn/delivery/read_state，正文只在原生 user/message 中。输入为 user 来源，回文为 `dsh-bot-group` producer，含当时的发言身份/鲸鱼快照、childSessionId 与 stopReason。回文保留原始 ContentBlock，群 renderer/context 当前只展示文字并明示非文字需查看子会话。所有成功投递与轮流指针均在根 flush=true 后确认。
+
+@ 在 Host 契约中始终使用 memberId；Client 将输入框中的 `@名称` / `@BotId` 按当前有效成员快照解析成 memberId。支持中文、含空格名称、NFKC 和大小写归一化，并优先匹配完整长名称。重名需结构化选择器消歧；未匹配的 @ 显示提示并保留正文，有有效目标或轮流路由时继续发送，没有可路由目标时保留草稿并提示，不发无效 Remote 请求。准入时保存成员顺序、Bot revision、上下文截止 seq 与 operationId 摘要。每群串行 worker；后续输入可以排队。上下文只包括固定截止线前的群记录与本轮已 flush 的前序回复，不带 Bot 私聊 transcript；按字节去掉较早完整消息并提示截断。失败/部分/取消/未知各有回执，不默认重试不明副作用。重启把不确定的执行回执标 recovery_needed/unknown。
+
+取消、超时、成员移除及卸载会 abort 并立即启动 activation.dispose，先排空 child/worker，再 flush/dispose owned root、注销 preset 和关闭领域。Controller 抢先拥有 root 则拒绝路由，只允许从公开日志读取历史；不取得或销毁裸 Agent。retained preset 代际继续保护 Controller 根，缺失 preset 不 fallback standard。
+
+Client 在 Bots 页增加群列表和专用 composer，使用公开 main/header slots、同源严格 Remote 与现有 polling/epoch；后台读不重新挂载已有消息和草稿。独立 read_state CAS 保存未读位置，不改变群设置 revision。成员会使用其 Bot 的记忆快照、skills/home、连接器和原生权限，不构成私人记忆或文件的安全隔离。
+
+实际运行、变更文件、恢复边界与未完成的浏览器/物理崩溃/群内 ask 证据见 [U06–U08 验收](acceptance/P34-U06-08.md)。
+
+
+## U09–U11：管理传输和主对话参考图谱
+
+Bots 一级导航只有 Bots、群聊、管理。管理分区提供记忆/传输、连接器、通知、原生定时、协作和 IM；记忆区另含条目/参考图谱/传输步骤及最近 50 条显式执行统计。打开过的分区用稳定 DOM 保留非秘密草稿；未打开的分区延迟挂载，相同轮询快照不发布更新。隐藏图谱页取消读订阅，切回时复用已有快照；凭据密码在提交、失败和离开连接器分区时清空。条目记忆仍归 MemoryStore。Bot JSON 只携带可迁移编辑字段、禁用的连接器纯引用、无目标的渠道类型和可选记忆/文本技能；不携带配置目录、凭据、会话或预授权；文本中仍含可识别绝对文件路径或凭据签名则拒绝传输，不静默改写正文。导入预览保存在独立 `dsh_bot_workspace` v1，确认后新建 Bot 或经既有服务批量新增/合并记忆；无跨存储事务，部分失败保留 receipt，不能自动覆盖重试。
+
+`dsh_bot_reference_memory` v1 只管理 binding/显式复制清单。默认 internal；显式启用 internal+reference-graph 后，唯一主 Agent 空闲时由 native MCP 挂载本地精确锁版 server。图谱位于 `<DSH_HOME>/dsh-bot/memory/<BotKey hash>/<fileIdentity>.jsonl`。同进程 writer lease + Agent scoped guard/around wrapper 串行所有图谱调用；Agent/Host effect 关闭先停准入、排空、await child dispose，最后释放 writer。native reconnect 关闭，断线后显式重试。群/委派 worker 没有该 client，继续使用条目记忆；不承诺跨 Host 或外部进程并发安全。图谱/传输 sidecar 启动失败只关闭该领域，其他管理入口继续启动。
+
+复制链为 preview → staging → verified → committed，另有 failed/rolled-back。预览保存旧 binding、源 digest、完整 MemoryRecord snapshot 与稳定 entity name；只在独立 staging 文件里通过原生工具幂等写 envelope，再 read_graph 验证每项全部元数据。串行工具入口不绕过原生审批。提交在 MemoryStore 原队列里复核源与目标，再写唯一 binding 指针，条目表不变；清单写入中断可从已提交 binding 对账重试。取消 abort 正在暂存的操作并恢复旧 client；回退恢复旧 pointer，保留两份文件。图谱自然实体/关系不会复制到新条目副本；UI 明示其保留在旧文件中。流程不提供反向导入、reference-only 或后台双写。
+
+证据及限制见 [U09–U11 验收](acceptance/P34-U09-11.md)。
+
+
+## P34 审查返工：领域模块与兼容边界（2026-10-24）
+
+- `shared/identity.ts`、`connectors.ts`、`notifications.ts` 定义身份与各领域 schema，`integrations.ts` 只组合 catalog；Client 对应 `integrations-state.ts`、`ConnectorsPanel` / `ConnectorEditor` / `CredentialEditor` / `NotificationsPanel`，locale 使用领域 namespace。Host 的通用队列/错误位于 `common/operations.ts`，存储组合位于 `common/integration-stores.ts`，连接器和通知的 Remote 分别归属各自目录。
+- r2 按任务要求将 Remote contribution/package/typeSymbol 统一为 `dsh-bot/integrations` / `dsh-bot/integrations#…`，通用操作错误统一为 `dsh-bot/<code>`，消息为 `DSH-Bot: <code>`。`shared/operation-errors.ts` 导出错误码常量及结构类型守卫，Client 不导入 Host 错误类。Host 与 Client 必须一起更新，旧 `p34/*` 错误码和旧 contribution 不再作为新响应输出。保留 `dshBotP34` 的 Cordis service id、所有 Domain/表/schemaVersion/operation digest；无需数据迁移，没有新增依赖或升级发布版本。
+- `ReferenceMemory` 是薄请求入口，继承链按职责分为 `MemoryCopyWorkflow`（复制状态机）、`ReferenceBackend`（主会话选择与后端状态）、`ReferenceWriter`（MCP client/串行调用/关闭）；`model.ts` 集中 domain、writer lease 和完整读回校验。保持同一 `control` 队列、同一 writer Map 及关闭顺序，原 `service.ts` 继续 re-export 验证 helper/domain。所有这些单文件均小于 300 行。
+- 图谱 UI 分为后端概览、`GraphTools` 和 `MemoryCopySteps`，导入 UI 的预览收据拆到 `TransferPreview`。单向复制说明明确“不会同步回写、不删除源”；暂存前显示条目数并要求用户确认，确认绑定 copyId/sourceDigest/count。提交和回退仍使用原 Host 契约。
+- 群的 `prepareDelivery`、`deliver`、`recordDeliveryResult` 将身份复核、原生 worker 生命周期、持久回执分开，仍在根 flush=true 且成功时推进 nextMemberId。公开 sidebar leading/hover slots 根据 exact 群根 SessionId 显示鲸鱼及群名称；成员 worker 保持原生 subagent，Bot 列表仍只显示唯一 mainSessionId。
+
+静态、DOM、完整首次/冷 Host 与浏览器证据分开列于 [返工验收](acceptance/P34-rework.md)。截图统一入口为 `packages/dsh-bot/scripts/screenshot-v03.mjs`，只使用仓库 `.dsh-dev`、全新 profile 和 loopback mock，输出中英×亮暗共 40 个目标至 `docs/screenshots/v03/<run>/`；沙箱内 Chromium 受 MachPort 权限阻断，真实截图与窄屏验收仍为 FAIL（环境）。
+
+
+### r2 拆分边界（2026-10-24）
+
+- 群服务 `groups/service.ts`（103 行）只组合内部模块、转发公开请求并协调关闭。`state.ts` 集中同一个 Serial 队列、Domain、根/worker 所有权与取消状态；`members.ts` 处理群创建及成员编辑；`roots.ts` 负责根的创建辅助、恢复、命名与 preset；`messages.ts` 读取原生日志并管理摘要/读状态；`turns.ts` 负责准入、取消与归档；`turn-runner.ts` 负责准备、原生 activation、回文落盘与结算；`round-robin.ts` 计算成功后的下个成员。所有文件 ≤300 行，最大的回合执行模块 246 行。继续先 flush 回文再推进指针，先排空 worker/队列再释放根、preset 与 Domain。
+- `pages/BotsPage.tsx`（162 行）保留页面布局、一级导航与状态提示；Bots 主分区、历史、对话框和记忆页分别在 `BotsTab`、`BotSessionHistory`、`BotDialogs`、`BotMemoryTab`。管理和群分区继续复用既有独立组件。`use-bots-page.ts` 保持原订阅、选中项、导航取消与表单操作状态，`bots-page-types.ts` 定义注入合同。组件在模块顶层定义，未为轮询引入新 key、新订阅或卸载重挂载；原页面继续导出注入类型。
+- `store.ts`（70 行）保留原导出与 effect 打开/关闭入口；`stores/{bots,activity,memory}.ts` 按领域拆分，`stores/domain.ts` 集中原领域 schema、同一 WeakMap 写队列及级联删除 helper。Bot 删除在已有 writer 槽调用 helper，不能二次入队；所有 Store 实例继续按同一个 Domain 串行写入。没有修改表名、读写校验、CAS、落盘或失败映射。
+- Registry 仅低风险移出 `registry-config.ts` 的配置/schema，并从原路径 re-export `Config`。剩余 `registry.ts`（712 行）暂不强拆：初始化/关闭共享 `ready`、`tail`、`releaseResources`、`watchOwner`；preset transition 的注销/获取/回滚共享 `leases`、`activating`、诊断和同一写队列，Agent setup 又会回调本注册表。按 CRUD 或活动分成多个有状态服务会引入重入、回滚和 disposer 次序风险。本轮保留此所有权边界；以后需要拆分时可先抽取显式 transition 状态机，再独立验证注册失败与关闭并发，不能只以减少行数为目的。
+
+r2 实际检查结果及未重新运行的完整 Host/浏览器边界见 [返工验收 r2](acceptance/P34-rework.md#r2-返工2026-10-24)。
+
+
+## U12–U13：最终包和可重跑证据
+
+正式版本为 0.3.0，宿主仍锁定 rc.2，`engines.dsh` 不变。发布内容只有现有 exports 的 lib、bundle patch、双语 locale、鲸鱼图标、README、LICENSE 和 manifest。仓库原先没有许可证授权，本轮显式记录 UNLICENSED，不自行赋予开源许可。repository 指向本仓库 packages/dsh-bot；没有新增产品服务或在线安装源。
+
+Client CSS 构建的虚拟模块键及嵌套编译入口使用相对 packageRoot 的路径。原产物将本机绝对目录写入 CSS 注释和 sourcemap；最终包审计发现后修复，bundle 回归同时检查 client.js/map 不包含构建路径。类映射和平台 external 策略不变。
+
+`scripts/p34-e2e` 从仓库根、隔离 DSH_HOME 运行 frozen install/check/build/pack，生成 dist/artifact-manifest.json 与 tgz SHA256。artifact 审计遍历实际文件、exports、版本、依赖、locale、机器路径和合成 secret sentinel；pnpm 会重新序列化 manifest，因此源码 manifest 比语义，其余文件比字节；每个 profile 的安装文件全部按 tgz hash 核验。四个原生领域 runtime、原生 schedule/delegate 和截图脚本均接收同一 `DSH_BOT_E2E_PACKAGE`；故障场景使用独立 profile/storage/session/agents 根，避免共享测试状态。CLI remove/reinstall 另验证持久文件不变及重新启动 Host 可读。升级场景使用本地保留的实际 0.2.2 tgz，在新 profile 生成合成 Bot/置顶记忆/主会话，再安装最终包逐字段比较；缺少旧包时明确 FAIL，不修改当前 manifest 来伪造旧发行版。
+
+公开 `dsh-plugin-market-index` 仅为精确 rc.2 开发依赖。离线 fixture 使用显式合成包和 .invalid registry；运行时换成 loopback registry，原生 CLI 验证安装、版本读回及 404。Git 的 commit/path 仅由公开 parser/target 验证；没有最终已发布来源时不执行或宣称 Git 安装、线上市场验证。未运行只读参考树的 private generator。
+
+`scripts/screenshot.mjs --v03` 复用返工 screenshot-v03：中英 × 亮暗 × 15 页面（60 张目标），另做群聊/管理 390px 操作与截图。先准备并核验安装包及真实种子 Host，再启动缓存 Chromium；浏览器失败不抹去 Host 成功收据，矩阵仍逐项 FAIL。正式报告汇总 U01–U13、r1/r2，清楚区分历史证据、最终 tgz Host 回归、DOM 与浏览器验收，见 [P3/P4 验收](acceptance/P3-P4.md)。
