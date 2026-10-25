@@ -1,3 +1,5 @@
+import { Messaging, messagingDomain } from './messaging/service.js';
+import { MessageStore } from './messaging/store.js';
 import { Groups, groupsDomain } from './groups/service.js';
 import { ReferenceMemory, referenceMemoryDomain } from './reference-memory/service.js';
 import { WorkspaceManagement, workspaceDomain } from './workspace/service.js';
@@ -50,6 +52,7 @@ export function apply(ctx: Context, config: Config): void {
   let groups: Groups | undefined;
   let referenceMemory: ReferenceMemory | undefined;
   let management: WorkspaceManagement | undefined;
+  let messaging: Messaging | undefined;
   let stopping = false;
   const ready = registry
     .waitUntilReady()
@@ -96,6 +99,32 @@ export function apply(ctx: Context, config: Config): void {
       const mainSessions = new MainSessions(ctx, registry);
       await mainSessions.start();
       registry.mainSessions = mainSessions;
+      if (registry.config.messagingEnabled) {
+        try {
+          await ctx.effect(async () => {
+            const domain = await ctx.storageDomain.open(messagingDomain);
+            messaging = new Messaging(ctx, registry, new MessageStore(domain, registry.config));
+            try {
+              await messaging.start();
+            } catch (error) {
+              await messaging.close();
+              throw error;
+            }
+            return () => messaging?.close();
+          }, 'dsh-bot: messaging');
+          if (messaging)
+            ctx.effect(
+              () => ctx.provide('dshBotMessaging', messaging as Messaging),
+              'dsh-bot: messaging service',
+            );
+          ctx.logger.info(
+            '[dsh-bot] messaging transport ready; automatic processing awaits scoped safety adapter',
+          );
+        } catch {
+          messaging = undefined;
+          ctx.logger.warn('[dsh-bot] messaging store unavailable; existing Bot features remain active');
+        }
+      }
       try {
         await ctx.effect(async () => {
           const domain = await ctx.storageDomain.open(referenceMemoryDomain);
@@ -171,6 +200,7 @@ export function apply(ctx: Context, config: Config): void {
       await ready;
       const errors: unknown[] = [];
       for (const close of [
+        () => messaging?.close(),
         () => referenceMemory?.close(),
         () => management?.close(),
         () => groups?.close(),

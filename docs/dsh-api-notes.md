@@ -1,5 +1,17 @@
 # DSH API 核实记录
 
+## P34 B01–B03：Bot 间消息运输层（2026-10-24）
+
+新功能的 [API spike](spikes/B01-bot-message.md) 与 [逐项验收/接续](acceptance/P34-B01-03.md) 分开记录源码、JSON/Client 夹具和真实 Web Host。新增 `dsh_bot_messaging` v1，不修改既有领域、持久身份或宿主版本范围；未新增依赖或 runtime peer。使用的 runtime factory `createUserMessage`、`MessageId` 与 storage-domain 都已是正式共享 peer。
+
+本轮核实并实测的公开入口：`sessionController.resolveAgent` 返回 `{agent}|{error}`（参考 `packages/api/session-controller/src/agent.ts:200-255`）；Agent `followup/send/cancel({kind:'hook',reason},{keepInbox:true})`（`packages/core/agent/src/runtime-types.ts:176-241`）；`agent/pre-step` 的 enter/reject waterfall 必须先 await next（`:309-320`）；`systemPrompt.context({required:true,interpolate:false})` 与 `suppressRuntimeContext`（`packages/core/system-prompt/src/index.ts`）；`Session.append('user/message',factoryOutput,{surfaceOp:'append'})` / `sessions.flush=true`；完整日志 `sessionPersistence.open(id,'read').read()/close()`（`packages/session/session-persistence/src/handle.ts:46-118`）。不使用 prompt 冒充 producer、不自行 resume 抢 AgentHandle、不调用私有 wake driver。
+
+source producer 为 `dsh-bot-message` / `dsh-bot-message-sent`，冷唤醒控制为 `dsh-bot-message-wake`。真实完整 Host 证明 ask/reply 经 scoped 测试工具触发两方模型，回复再次唤醒发起者；maintenance pending 强杀冷恢复只处理一次，interrupt 的实际请求被 abort 且原生人类 Inbox 保留。故障夹具覆盖 flush 不确定/人工取消/claim 后未知；这些夹具不能当每个物理强杀窗口都已执行。
+
+公开 Client npm factory 的 `ConversationEventRegistry` / `ConversationViewRegistry` / `ConversationNodeAssembler` 支持 exact source 的 chat 独占、冲突报错及卸载恢复通用定义，平台 observable/primitives 和通用 view 在探针中为替身。**没有**把它当实际 ui-chat renderer/浏览器证明。PTC 来源传播未证实，按 §14.4 由 B04 禁止 run_code 内 bot_message、队友轮次 run_code 走原生 ask。
+
+生产 `messagingEnabled` 默认 false；即使显式设 true，B03 默认授权拒绝且 processing capability 关闭。原生审批、来源守卫、目录、正式 Client 与 0.3.2 交付分别由 B04–B06 接续；本轮测试的合成授权不是这些门禁的运行证明。
+
 ## P34 r4：额外 standard 空白行来源与管理头部（2026-10-24）
 
 本轮未新增产品 DSH API、依赖、Remote 或存储 schema。指定 `19-56-19.688Z-25397` run 的额外行是 `session-64aff497-3ab7-45b2-8ea7-92bf7699ca88`（`standard`、空标题、blank=true、零轮次），不是三个 Bot 主会话，也不是 `group-root-a08113f7-a405-4cb1-a35b-a712345c3873`。该群根不在 Bots workspace 的 sessionIds 中。此结论只针对该 run，不能沿用 r3 对更早 run 的三主会话 blank 来源判断；原 r3 收据保留。

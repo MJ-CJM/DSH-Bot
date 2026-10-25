@@ -319,3 +319,11 @@ interface MessageRecord {
 4. [编排] PTC/run_code 内部若 B01 证明无法可靠传播来源约束，则在 run_code 内禁用 bot_message 并拒绝队友消息轮次中的 run_code 自动执行（走原生审批），而不是整体关闭消息功能。
 5. [编排] B01 任一 gate 失败：按 §12 回退只关闭对应子能力（如 interrupt 退化为 normal+提示），其余继续交付，不停下等用户。
 6. [编排] 版本 0.3.2，单包。实施分两次 Codex run：B01–B03、B04–B06（B06 含打包 0.3.2、e2e、截图脚本 v032）。
+
+## 15. B01–B03 实施收据（2026-10-24）
+
+本轮交付 [B01 实测](spikes/B01-bot-message.md) 和 [B02/B03 实现验收、命令与 B04 接续](acceptance/P34-B01-03.md)。基础 source/wire、冷 pending 唤醒、cancel/keepInbox、complete persona required context 已在真实 rc.2 Web Host 实测；Client exclusive 为公开 npm factory 的 registry/assembler 夹具，并非正式浏览器结果。PTC 与极端 wake/卸载组合按 §14 分开设门禁。
+
+`resolveAgent` 的真实返回是 `{agent}|{error}`，`createUserMessage` 接受单一 `{source,content}` 对象，`list` 的 blank 在 row 顶层；实现以这些实测合同取代示意性调用。Host 运输层已接入可选独立领域，但默认不注册模型工具、不允许自动处理；B04 需接入原生审批/来源守卫后再开放 processing。0.3.2 版本仍按 §14.6 留给 B06。
+
+决策：基础消息运输继续交付，正式 UI、PTC 与完整卸载保护按各自任务接续。理由：普通路径已用真实工具/模型/强杀冷恢复证明；尚未证实的能力不借构建、夹具或旧收据冒充通过。

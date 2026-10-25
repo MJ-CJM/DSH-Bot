@@ -1,7 +1,8 @@
+import { messagingConfigFields, validateMessagingConfig, type MessagingConfig } from './messaging/config.js';
 import Schema from '@deepseek-ai/schemastery';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
 
-export interface Config {
+export interface Config extends MessagingConfig {
   referenceMemoryTimeoutMs: number;
   referenceMemoryMaxFileBytes: number;
   groupMaxMembers: number;
@@ -33,7 +34,8 @@ const activityLimit = (name: string, fallback: number) =>
     if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`${name} must be a positive safe integer`);
     return value;
   }).default(fallback);
-export const Config: Schema<Partial<Config>, Config> = Schema.object({
+const baseConfig = Schema.object({
+  ...messagingConfigFields,
   referenceMemoryTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
   referenceMemoryMaxFileBytes: Schema.number().min(1024).max(67108864).step(1).default(8388608),
   groupMaxMembers: Schema.number().min(2).max(16).step(1).default(8),
@@ -82,3 +84,6 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
     return value;
   }).default(20),
 });
+export const Config: Schema<Partial<Config>, Config> = Schema.transform(baseConfig, (value) =>
+  validateMessagingConfig(value as unknown as Config),
+).default(baseConfig({}) as Config);
