@@ -18,6 +18,7 @@ export interface HistoryIO {
   readSurface(session: Session): Promise<unknown>;
   // Default is closed. Policy must cover raw session-query, read/bash, skills and every unreviewed file/connector tool.
   rawReadPolicyVerified: boolean;
+  headBlocked?: boolean;
 }
 /** Keep the native head intact: idle system append is invalid durable grammar in rc.2. */
 export async function cleanHistory(agent: Agent, io: HistoryIO): Promise<CleanupReason[]> {
@@ -29,7 +30,7 @@ export async function cleanHistory(agent: Agent, io: HistoryIO): Promise<Cleanup
     const events = new Map(session.snapshotEvents().map(e => [e.seq, e]));
     const head = session.surface.nodes[0];
     const hasHead = head !== undefined && events.get(head)?.type === 'system/message';
-    if (hasHead) reasons.push('system-head');
+    if (hasHead && io.headBlocked !== false) reasons.push('system-head');
     const nodes = session.surface.nodes.slice(hasHead ? 1 : 0);
     const first = nodes[0], last = nodes.at(-1);
     // An already replaced range is a no-op, including after crash/retry.

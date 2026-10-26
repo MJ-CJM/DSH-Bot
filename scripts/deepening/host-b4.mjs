@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdir, readFile, writeFile, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, appendFile, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { runner } from './b3-runner.mjs';
 import { forgetCases } from './b4-cases.mjs';
@@ -51,27 +51,43 @@ try {
       await writeFile(resolve(run.env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);
       const before = requests.length;
       await run.command(['--profile', profile, '--no-open', '--host', '127.0.0.1', '--port', '0'], `${scenario}-${phase}`, true);
-      if (phase === 'cold') assert.equal(requests.length, before, 'Cold blocked requests must never reach adapter');
+      if (phase === 'cold') {
+        const cold = JSON.parse(await readFile(resolve(dir, 'receipts', `${scenario}-cold.json`)));
+        assert.equal(requests.length - before, cold.cleanRequests);
+      }
     }
     const receipt = JSON.parse(await readFile(resolve(dir, 'receipts', `${scenario}-first.json`)));
     const cold = JSON.parse(await readFile(resolve(dir, 'receipts', `${scenario}-cold.json`)));
     assert.deepEqual(receipt.ids, cold.ids); assert.equal(receipt.blockedRequests, 0); assert.equal(cold.blockedRequests, 0);
-    rows.push({ scenario, bots: 3, identity: 'PASS', stopped: 'PASS', guard: 'PASS',
-      history: receipt.cleanup.reasons.includes('system-head') ? 'BLOCKED (system-head)' : receipt.cleanup.phase,
-      strong: receipt.cleanup.strong ? 'PASS' : 'FAIL (P0 OPEN)', canaryPostForgetRequests: 0,
-      cleanPostForgetRequestProof: 'FAIL (blocked; no clean dispatch proven)', reasons: receipt.cleanup.reasons });
+    const blocked = ['system-head', 'stop-only', 'preview-inbox-cas', 'human-inbox', 'derived-inbox',
+      'retry-boundary', 'copy-unavailable', 'flush-failure', 'root-instructions'].includes(scenario);
+    assert.equal(receipt.cleanup.strong, !blocked, `${scenario}: unexpected strong verdict`);
+    if (scenario === 'root-instructions') await unlink(resolve(run.env.DSH_HOME, 'dsh-bot/bots/AGENTS.md'));
+    const legacy = scenario === 'system-head';
+    rows.push({ scenario, bots: 3, category: legacy ? 'legacy-head' : blocked ? 'pending-or-fault' : 'completable',
+      identity: 'PASS', stopped: 'PASS', guard: 'PASS', expected: blocked ? 'blocked' : 'strong',
+      strong: receipt.cleanup.strong ? 'PASS' : 'BLOCKED (expected)',
+      cleanPostForgetRequests: receipt.cleanRequests, coldCleanRequests: cold.cleanRequests,
+      canaryPostForgetRequests: 0, reasons: receipt.cleanup.reasons });
   }
   const denials = await readFile(resolve(dir, 'network-denials.jsonl'), 'utf8').catch(e => {
     if (e.code === 'ENOENT') return ''; throw e;
   });
   assert.equal(denials, '');
   await save('matrix.json', rows);
-  await save('summary.json', { status: 'PASS (safe blocking and exercised paths)', suite, cases: rows.length, botsPerCase: 3,
+  const completed = rows.filter(r => r.category === 'completable');
+  const legacy = rows.filter(r => r.category === 'legacy-head');
+  await save('summary.json', { status: 'PASS', suite, cases: rows.length, botsPerCase: 3,
     requests: requests.length, realModelRequests: 0, blockedRequests: 0, canaryPostForgetRequests: 0,
-    p0Status: 'FAIL (P0 OPEN)', levels: { currentInjection: 'PASS', history: 'BLOCKED (native system head)',
-      strongForgetting: 'FAIL (raw-read policy and inventory unverified; native provider serializers NOT_RUN)' },
+    completable: { cases: completed.length, strongPass: completed.filter(r => r.strong === 'PASS').length,
+      hotCleanRequests: completed.reduce((n, r) => n + r.cleanPostForgetRequests, 0),
+      coldCleanRequests: completed.reduce((n, r) => n + r.coldCleanRequests, 0) },
+    legacyHead: { cases: legacy.length, expectedBlocked: legacy.filter(r => r.strong === 'BLOCKED (expected)').length },
+    pendingOrFault: rows.filter(r => r.category === 'pending-or-fault').length,
+    p0Status: 'OPEN (provider-specific serializers outside loopback evidence)',
     exactReferenceHost: cliVersion === '0.2.1-rc.2' ? 'PASS' : 'FAIL (environment: installed CLI differs)', cliVersion });
-  console.log(JSON.stringify({ dir, cases: rows.length, requests: requests.length, p0Status: 'FAIL (P0 OPEN)' }));
+  console.log(JSON.stringify({ dir, cases: rows.length, requests: requests.length,
+    completable: completed.length, legacyHead: legacy.length }));
 } catch (error) {
   await save('failure.json', { error: String(error), stack: error.stack });
   await save('summary.json', { status: 'FAIL', suite, completedCases: rows.length, requests: requests.length });

@@ -23,7 +23,7 @@ export async function exerciseBeforeForget(s) {
   }
   if (kind === 'earlier-revision') await memory.update(rows[0].id, { content: `${canary}_NEW_REVISION` });
   if (kind === 'system-head') {
-    s.offStatic = agent.ctx.effect(() => agent.ctx.systemPrompt.section({ name: 'b4-static', order: 301, text: canary }));
+    s.offStatic = agent.ctx.effect(() => agent.ctx.systemPrompt.section({ name: 'b4-static', order: 301, text: `${canary}_alpha` }));
     adapter.mode = 'text'; agent.followup(message('POPULATE_SYSTEM_HEADER')); await agent.whenIdle();
     // Disposing a section cannot retroactively change the persisted native system head.
     s.offStatic();
@@ -155,16 +155,11 @@ export async function exerciseAfterForget(s, cleanup) {
     const graph = ctx.get('dshBotReferenceMemory');
     assert.equal((await graph.forgetInventory()).count, 0);
     const bot = await registry.get('alpha');
-    await assert.rejects(graph.request({ action: 'apply', bot: { botId: bot.id, botCreatedAt: bot.createdAt } }), /blocked/i);
+    if (!cleanup.strong)
+      await assert.rejects(graph.request({ action: 'apply', bot: { botId: bot.id, botCreatedAt: bot.createdAt } }), /blocked/i);
   }
   if (kind === 'copy-unavailable') assert.ok(cleanup.reasons.includes('copies'));
   if (kind === 'flush-failure') assert.ok(cleanup.reasons.includes('flush'));
   if (kind === 'root-instructions') assert.ok(cleanup.reasons.includes('root-instructions'));
-  if (kind === 'unload-guard') {
-    await registry.memoryAdmission.close();
-    await assert.rejects(async () => {
-      for await (const _ of agents[0].ctx.llm.stream({ provider: 'dp-loopback', model: 'fixture',
-        sessionId: agents[0].session.id, messages: [message(canary)] })) {}
-    }, /blocked/i);
-  }
+
 }

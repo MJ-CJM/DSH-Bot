@@ -8,6 +8,7 @@ export function MemoryCleanupStatus({ statuses, retry, t }: {
   return <div>{statuses.map(status => <div key={status.id} className={styles.notice} role="status">
     <strong>{t(status.strong ? 'forget.strong' : status.stopped ? 'forget.stopped' : 'forget.pending')}</strong>
     {!status.strong && <p>{t('forget.blocked')}</p>}
+    {status.reasons.includes('system-head') && <p>{t('forget.legacyOptions')}</p>}
     {status.reasons.map(reason => <p key={reason}>{t(`forget.reason.${reason}`)}</p>)}
     {!status.strong && <button type="button" className={styles.button} onClick={() => { void retry(status.id); }}>
       {t('forget.retry')}</button>}

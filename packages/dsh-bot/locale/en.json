@@ -651,6 +651,7 @@
     "forget.reason.raw-read-policy": "Raw history and file-reading outlets are not fully audited.",
     "forget.reason.inventory": "Historical managed sessions are not fully accounted for.",
     "forget.reason.flush": "Native session persistence did not confirm cleanup.",
-    "forget.reason.unavailable": "A cleanup dependency is unavailable; the barrier remains."
+    "forget.reason.unavailable": "A cleanup dependency is unavailable; the barrier remains.",
+    "forget.legacyOptions": "This legacy session still has memory in its system header. Keep it blocked, or stop using it and retain the history for review. Retry after a supported native header cleanup becomes available. No new session is created."
   }
 }

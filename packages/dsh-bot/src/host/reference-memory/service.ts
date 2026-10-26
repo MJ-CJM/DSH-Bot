@@ -15,6 +15,7 @@ import { keyOf } from './model.js';
 import { MemoryCopyWorkflow } from './copies.js';
 import { managedGraphFiles, eraseManagedGraphs } from './cleanup-files.js';
 import { randomUUID } from 'node:crypto';
+import { unlink } from 'node:fs/promises';
 export { referenceMemoryDomain, memoryEntity, verifyMemoryEntity } from './model.js';
 export class ReferenceMemory extends MemoryCopyWorkflow {
   async forgetInventory() {
@@ -35,6 +36,21 @@ export class ReferenceMemory extends MemoryCopyWorkflow {
         if (binding.mode === 'internal' && !binding.importId) continue;
         await this.domain.table('bindings').put(key, graphBindingSchema.parse({ ...binding, mode: 'internal',
           importId: undefined, fileIdentity: digest([randomUUID()]), revision: binding.revision + 1 }));
+      }
+      // Reopen twice through the actual MCP reader. A stopped writer or an empty directory is insufficient proof.
+      for (const [, binding] of this.domain.table('bindings').entries()) {
+        const agent = await this.main(binding.bot);
+        if (!agent) throw new Error('Reference main unavailable for cold read');
+        await agent.runMaintenance(async signal => {
+          for (let pass = 0; pass < 2; pass++) {
+            const live = await this.mount(binding.bot, agent, binding.fileIdentity, true);
+            try {
+              const graph = graphSchema.parse(await this.call(live, 'read_graph', {}, signal, true));
+              if (graph.entities.length || graph.relations.length) throw new Error('Reference remount contains stale data');
+            } finally { await this.closeLive(live); }
+          }
+          await unlink(this.file(binding.bot, binding.fileIdentity));
+        });
       }
       const check = await this.forgetInventory();
       if (check.count || this.live.size) throw new Error('Reference copy cleanup unverified');

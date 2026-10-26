@@ -288,3 +288,31 @@ Fence 拒绝收据：
 最终 C：.dsh-dev/deepening/b4-check-delivery.log；安装 frozen-lockfile exit=0，lockfile 未变。
 E(forget)、E(root-warning) 各 exit=1，脚本保留供编排方在沙箱外重跑。
 早期测试/fixture/strict 失败收据保留，实际修正和复跑记录见 B4 报告。
+
+
+## B4-rework：常见路径放行、MCP 重挂载与真实 Web（2026-10-25）
+
+基线 8988bf5f，执行 tasks/DP/B4-rework.md；版本仍为 0.3.2。
+完整改动 26 文件、命令/退出码与收据见 [返工报告](B4-rework.md)。
+保留既有 pnpm-workspace.yaml 与 .codex/；未 commit/push、嵌套 Codex、修改桌面或读取真实凭据/会话。
+
+| 验收 | 结果 | 实测数字/边界 |
+| --- | --- | --- |
+| I16 常见动态 context | PASS | 22×3 Bot；22 个 strong PASS；热、冷各 66 条普通完整请求，canary=0 |
+| I16 旧静态 system 头部 | PASS（预期 blocked） | 1×3 Bot，热冷均阻断；不创建新会话，中英操作说明 |
+| I17 受管副本 | PASS | current/stage/previous/orphan；两次真实 MCP 重挂载/读空，释放后再配置/挂载/读回 |
+| I18 阶段与恢复 | PASS | 不可达、flush 失败保留屏障；恢复后原 ID verified，新增 6 条干净冷请求 |
+| Inbox/只停用/根来源 | PASS（预期阻断） | 3 Inbox 持久依赖 + 2 只停用 + 1 根来源，冷恢复不误放行 |
+| I19 / I20 | FAIL(environment) | 真实 DSH Web fixture READY；中英×亮暗×宽窄共 32 个计划截图项，0 张 |
+| I21 | PASS（限定 loopback） | 31×3 Bot、62 Host 阶段、305 完整请求；真实模型/阻断泄漏/清理后 canary 均 0 |
+| U / C | PASS | U 22；C 80 文件，805 passed + 3 expected fail = 808；build/strict/lint exit 0 |
+| 精确 rc.2 / 完整 P0 | FAIL(NOT_RUN) / OPEN | CLI 实际 rc.3；专用 serializer、第三方全读取闭包与任意强杀未证明 |
+
+修复释放后才开始迭代的旧 prepared 请求：原生来源、当前 surface/toolHistory 与 epoch 在最终入口复查。
+修复阻断/提交前取消消费 claim 的输入丢失：公开 Inbox 事件与 splice 保留身份、原队列及顺序，归 Agent effect。
+pendingInbox 依赖持久保留；原生重开后队列看似为空不是核销证据，当前未提供未知来源输入的核销入口。
+UI 截图已删除裸 DOM fixture，改用隔离 profile 的正式 Web Client/Remote；Chromium MachPort 拒绝需编排方重跑 E。
+原始事件仍保留，未审计读取工具/无归属请求保持关闭；完整 P0 继续 OPEN。
+
+最终矩阵：.dsh-dev/deepening/b4-forget-matrix-2026-10-26T05-47-55.790Z-3683/。
+命令索引：.dsh-dev/deepening/b4-rework/commands.json；最终 C：b4-rework-check-receipt.log。

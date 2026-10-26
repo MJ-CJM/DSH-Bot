@@ -110,7 +110,7 @@ export class ReferenceWriter {
     l.off.push(
       agent.ctx.tools.guard((exec) => {
         if (!exec.name.startsWith(GRAPH_PREFIX)) return;
-        try { this.registry.memoryAdmission?.assertAllowed(); } catch { return 'Memory cleanup pending'; }
+        try { this.registry.memoryAdmission?.assertToolAllowed(exec); } catch { return 'Memory cleanup pending'; }
         if (!l.accepting || this.stopping || exec.agent !== agent || (l.copying && !l.allowed.has(exec.callId)))
           return 'Reference graph writer unavailable';
         try {
@@ -127,7 +127,7 @@ export class ReferenceWriter {
         (exec, next) => {
           if (!exec.name.startsWith(GRAPH_PREFIX)) return next();
           const pending = l.tail.then(async () => {
-            this.registry.memoryAdmission?.assertAllowed();
+            this.registry.memoryAdmission?.assertToolAllowed(exec);
             if (!l.accepting || this.stopping || exec.agent !== agent || (l.copying && !l.allowed.has(exec.callId)))
               throw new OperationError('unavailable');
             exec.signal.throwIfAborted();
@@ -215,18 +215,20 @@ export class ReferenceWriter {
     const l = this.live.get(keyOf(bot));
     if (l) await this.closeLive(l);
   }
-  protected async call(l: Live, tool: string, args: unknown, signal: AbortSignal) {
-    this.registry.memoryAdmission?.assertAllowed();
+  protected async call(l: Live, tool: string, args: unknown, signal: AbortSignal, cleanup = false) {
+    if (!cleanup) this.registry.memoryAdmission?.assertAllowed();
+    if (cleanup && tool !== 'read_graph') throw new OperationError('invalid');
     const callId = ToolCallId(randomUUID());
     l.allowed.add(callId);
     try {
-      const result = await l.agent.ctx.tools.execute({
+      const execute = () => l.agent.ctx.tools.execute({
         name: GRAPH_PREFIX + tool,
         arguments: args,
         agent: l.agent,
         callId,
         signal,
       });
+      const result = cleanup ? await this.registry.memoryAdmission.cleanupRead(l.agent, callId, execute) : await execute();
       if (result.isError) throw new OperationError('unavailable');
       const value = parse(
         z.object({

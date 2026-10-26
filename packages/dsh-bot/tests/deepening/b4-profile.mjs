@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { LoopbackAdapter, canary } from './loopback-adapter.mjs';
+import { verifyClean, verifyCold } from './b4-proof.mjs';
 import { exerciseBeforeForget, exerciseAfterForget } from './b4-scenarios.mjs';
 
 export const name = 'dp-b4-probe';
@@ -42,19 +43,12 @@ export function apply(ctx, config) {
       for (const id of ids) { const result = await ctx.sessionController.resolveAgent(id); assert.ok(result.agent); agents.push(result.agent); }
       if (!first) {
         const old = JSON.parse(await readFile(resolve(config.outputDir, 'receipts', `${config.scenario}-first.json`)));
-        assert.deepEqual(ids, old.ids); assert.equal(registry.memoryKernel.blocked, true);
-        const before = adapter.count;
-        for (const agent of agents) { agent.followup(message('COLD_BLOCKED')); await agent.whenIdle(); }
-        assert.equal(adapter.count, before); assert.equal(adapter.count, 0);
-        for (const agent of agents) {
-          const raw = await ctx.sessionPersistence.open(agent.session.id, 'read');
-          try { assert.ok(JSON.stringify(await raw.read()).includes(canary)); } finally { await raw.close(); }
-        }
-        await save({ ids, blockedRequests: 0, rawLogsStillContainCanary: true,
-          cleanup: registry.memoryForget.runner.statuses()[0] }); return;
+        if (old.cleanup.phase !== 'stopped') await registry.memoryForget.runner.resume(old.cleanup.id);
+        await verifyCold({ ctx, registry, ids, old, agents, adapter, message, canary, save }); return;
       }
       const rows = [];
-      for (const id of ['alpha', 'beta', 'gamma']) rows.push(await registry.memoryFor(id).save({ content: `${canary}_${id}` }));
+      for (const id of ['alpha', 'beta', 'gamma']) rows.push(await registry.memoryFor(id).save({
+        content: id === 'alpha' ? `${canary}_alpha` : `CLEAN_MEMORY_${id}` }));
       let fixtureExecutions = 0;
       for (const agent of agents) {
         agent.ctx.effect(() => agent.ctx.tools.register(defineTool({ name: 'dp_fixture', description: 'Synthetic tool', parameters: {},
@@ -91,23 +85,49 @@ export function apply(ctx, config) {
         ctx.sessions.flush = async () => false;
         restore.push(() => { ctx.sessions.flush = original; });
       }
+      // Test-only transport of the exact native request captured by production admission, before barrier release.
+      const verify = registry.memoryAdmission.verifyRequest.bind(registry.memoryAdmission);
+      registry.memoryAdmission.verifyRequest = async agent => {
+        const request = await verify(agent);
+        assert.ok(!JSON.stringify(request).includes(canary), 'Complete pre-release request contains target');
+        assert.equal(registry.memoryKernel.blocked, true);
+        assert.equal(registry.memoryAdmission.inFlight, 0);
+        adapter.hold = false; adapter.mode = 'text';
+        for await (const _ of adapter.stream(request)) {} // loopback only; request is not reconstructed or edited
+        return request;
+      };
       const cleanup = state.preChosen?.cleanup ?? await registry.memoryForget.choose({ previewRevision: preview.previewRevision,
         choice: config.scenario === 'stop-only' ? 'stop' : 'clean' });
       for (const fn of restore.reverse()) fn();
-      assert.equal(cleanup.stopped, true); assert.equal(cleanup.strong, false); assert.equal(registry.memoryKernel.blocked, true);
+      assert.equal(cleanup.stopped, true);
+      assert.equal(registry.memoryKernel.blocked, !cleanup.strong);
       assert.ok(!registry.memoryKernel.snapshot.versions.has(rows[0].id));
       const count = adapter.count;
       await exerciseAfterForget(state, cleanup);
-      for (const agent of agents) { agent.followup(message('BLOCKED_REQUEST')); await agent.whenIdle(); }
-      assert.equal(adapter.count, count, 'Blocked request reached adapter');
+      let cleanRequests = 0;
+      if (cleanup.strong) cleanRequests = await verifyClean(state);
+      else {
+        for (const agent of agents) await assert.rejects(async () => {
+          for await (const _ of agent.ctx.llm.stream({ provider: 'dp-loopback', model: 'fixture',
+            sessionId: agent.session.id, messages: agent.session.deriveMessages(), toolHistory: agent.session.toolHistory() })) {}
+        }, /blocked|epoch|surface/i);
+        assert.equal(adapter.count, count, 'Blocked request reached adapter');
+      }
       if (cleanup.phase !== 'stopped' && config.scenario !== 'approval-wait') for (const agent of agents) {
         const surface = await ctx.sessionQuery.readSurface(agent.session.id);
         // Native system head may remain. All user/tool/assistant historical nodes were replaced.
         assert.ok(!JSON.stringify(agent.session.deriveMessages().slice(1)).includes(canary));
         assert.ok(surface);
       }
-      await save({ ids, preview, cleanup, baselineRequests: beforeRequests, blockedRequests: adapter.count - count,
-        nativeSystemHeader: 'BLOCKED (known rc.2 grammar limit)', realModelRequests: 0 });
+      if (config.scenario === 'unload-guard') {
+        await registry.memoryAdmission.close();
+        await assert.rejects(async () => {
+          for await (const _ of agents[0].ctx.llm.stream({ provider: 'dp-loopback', model: 'fixture',
+            sessionId: agents[0].session.id, messages: [message(canary)] })) {}
+        }, /blocked|epoch|surface/i);
+      }
+      await save({ ids, preview, cleanup, baselineRequests: beforeRequests, blockedRequests: 0, cleanRequests,
+        nativeSystemHeader: cleanup.reasons.includes('system-head') ? 'BLOCKED (legacy target)' : 'CLEAN', realModelRequests: 0 });
     })().then(() => console.log('DP_B4_DONE')).catch(async error => {
       await mkdir(dirname(resolve(config.outputDir, 'failure.json')), { recursive: true });
       await writeFile(resolve(config.outputDir, `${config.scenario}-${config.phase}-failure.json`),

@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { forgetChoiceSchema, forgetJobSchema, type ForgetJob, type ForgetChoice, type CleanupStatus,
-  type CleanupReason } from '../../shared/memory-forget.js';
+  type CleanupReason, type ForgetPreview } from '../../shared/memory-forget.js';
 import type { MemoryKernel } from './op-log.js';
 import type { ForgetPreviews } from './forget-preview.js';
 import { persistProjection } from './projection.js';
 
 export interface ForgetIO {
   drain(): Promise<void>;
-  history(sessionId: string): Promise<CleanupReason[]>;
+  captureHeads?(preview: ForgetPreview): Promise<string[]>;
+  history(sessionId: string, job: ForgetJob): Promise<CleanupReason[]>;
   copies(): Promise<void>;
   verifyInventory(job: ForgetJob): Promise<CleanupReason[]>;
 }
@@ -32,7 +33,8 @@ export class ForgetRunner {
       if (this.stopped) throw new Error('Memory cleanup is stopping');
       await this.previews.validate(input.previewRevision);
       await this.save({ id, targets: preview.targets, sessionIds: preview.sessionIds, epoch: this.kernel.epoch + 1,
-        revision: preview.revision, choice: input.choice, phase: 'intent', reasons: [], historyVerified: [], copiesVerified: false });
+        revision: preview.revision, choice: input.choice, phase: 'intent', reasons: [], historyVerified: [], copiesVerified: false,
+        blockedHeads: await this.io.captureHeads?.(preview), pendingInbox: preview.pendingMessages > 0 });
     });
     this.previews.clear();
     await this.phase(id, 'stopped');
@@ -79,7 +81,8 @@ export class ForgetRunner {
     if (this.stopped) throw new Error('Memory cleanup is stopping');
     if (this.job(id).phase === 'verified') { await this.release(this.job(id)); return this.status(id); }
     if (!this.kernel.domain.table('ops').get(id)) throw new Error('Forget intent has not committed');
-    await this.phase(id, 'cleaning');
+    await this.kernel.serial(() => this.save({ ...this.job(id), phase: 'cleaning', reasons: [],
+      historyVerified: [], copiesVerified: false }));
     const reasons: CleanupReason[] = [];
     try {
       await this.io.drain();
@@ -87,7 +90,7 @@ export class ForgetRunner {
       await this.kernel.serial(() => persistProjection(this.kernel.domain, this.kernel.snapshot));
       for (const sessionId of this.job(id).sessionIds) {
         if (this.stopped) throw new Error('Memory cleanup stopped');
-        const result = await this.io.history(sessionId);
+        const result = await this.io.history(sessionId, this.job(id));
         reasons.push(...result);
         if (!result.length) await this.kernel.serial(async () => {
           const job = this.job(id);
@@ -104,6 +107,7 @@ export class ForgetRunner {
     const job = this.job(id);
     if (job.sessionIds.some(s => !job.historyVerified.includes(s))) reasons.push('history');
     if (!job.copiesVerified) reasons.push('copies');
+    if (job.pendingInbox) reasons.push('inbox');
     if (reasons.length) { await this.phase(id, 'blocked', reasons); return this.status(id); }
     await this.kernel.serial(async () => {
       // Receipt first, barrier release last. A crash between them leaves admission closed.

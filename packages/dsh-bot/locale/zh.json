@@ -651,6 +651,7 @@
     "forget.reason.raw-read-policy": "原始历史及文件读取出口尚未全部验证。",
     "forget.reason.inventory": "历史受管会话闭包尚未全部核实。",
     "forget.reason.flush": "原生会话持久化未确认清理成功。",
-    "forget.reason.unavailable": "清理依赖暂不可用；屏障保持。"
+    "forget.reason.unavailable": "清理依赖暂不可用；屏障保持。",
+    "forget.legacyOptions": "此旧会话的系统头部仍含记忆。可保持阻断，或停止使用该会话并保留历史供核查；原生支持头部清理后可重试。此操作不会创建新会话。"
   }
 }

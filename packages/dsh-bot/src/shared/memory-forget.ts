@@ -19,6 +19,7 @@ export const forgetJobSchema = z.strictObject({
   phase: z.enum(['intent', 'stopped', 'cleaning', 'blocked', 'verified']),
   reasons: z.array(cleanupReasonSchema), historyVerified: z.array(z.string()), copiesVerified: z.boolean(),
   verificationReceipt: randomId.optional(),
+  blockedHeads: z.array(z.string()).optional(), pendingInbox: z.boolean().optional(),
 });
 export const cleanupStatusSchema = z.strictObject({
   id: randomId, stopped: z.boolean(), strong: z.boolean(), phase: forgetJobSchema.shape.phase,

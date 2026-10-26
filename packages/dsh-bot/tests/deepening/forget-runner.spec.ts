@@ -70,6 +70,22 @@ describe('I18 durable two-level forgetting with explicit audited test seams', ()
       expect(cold.statuses()[0]?.strong).toBe(true);
     } finally { await f.close(); }
   });
+  it('retains the durable Inbox dependency even when a reopened native queue appears empty', async () => {
+    const f = await v2Fixture();
+    try {
+      const row = await f.alpha.save({ content: 'PENDING_INBOX_TARGET' });
+      const previews = new ForgetPreviews(f.kernel, async () => ({ ...await inventory(), pendingMessages: 1 }));
+      const runner = new ForgetRunner(f.kernel, previews, io());
+      const p = await previews.create({ memoryId: row.id, mode: 'version' });
+      const stopped = await runner.choose({ previewRevision: p.previewRevision, choice: 'clean' });
+      expect(stopped).toMatchObject({ strong: false, phase: 'blocked', reasons: ['inbox'] });
+      await runner.close(); await f.reopen();
+      const cold = new ForgetRunner(f.kernel, new ForgetPreviews(f.kernel, inventory), io());
+      await cold.recover();
+      expect(cold.status(stopped.id)).toMatchObject({ strong: false, phase: 'blocked', reasons: ['inbox'] });
+      expect(f.kernel.blocked).toBe(true);
+    } finally { await f.close(); }
+  });
   it('retains system-head/raw-read/inventory reasons and leaves strong false', async () => {
     const f = await v2Fixture();
     try {

@@ -1,5 +1,36 @@
 # DSH API 核实记录
 
+## DP B4-rework：清理后放行与真实 Web 验收（2026-10-25）
+
+完整结果见 [B4 返工报告](deepening/B4-rework.md)。以下覆盖 B4 初轮的“所有路径始终阻断”。
+
+- 复用公开 `sessionQuery.listSessions()` 的完整目录元数据及 `SessionHeader.agentPreset/parentSession`，
+  枚举受管 Bot 会话与递归子会话，再合并已登记读取收据；目录不可用时不能完成强遗忘。
+  rc.2 只读出处：`packages/session-query/session-query/src/index.ts:174`、`packages/core/session/src/types.ts:95-132`。
+- 首节点依赖在 forget op 擦除 payload 前，结合目标所有版本、来源/读取收据及实际静态正文判定；
+  持久 job 只增加 blockedHeads 会话 ID 与 pendingInbox 依赖标记，不保存正文或正文 hash。旧未完成 job 缺该证据时保守阻断。
+  动态 context 本身不污染 system 首节点；包含目标的旧静态头部不绕过原生持久语法。
+- `sessionPersistence.open(id,'read')` 新 handle 读回后，使用公开 `Session.create(id,events,header,inheritedEventCount)`
+  重建模型 surface/toolHistory 并与 live 对比；新增 `@deepseek-ai/dsh-session` runtime peer，既有精确 rc.2 dev 保留。
+  rc.2 `packages/core/session/src/index.ts:583`；不把 live-preferred query 当持久冷读。
+- 验证控制消息仍走原生 Agent loop/systemPrompt/prepareCall；最终 `llm/stream` 只捕获完整 request，
+  不调用生产 provider、不执行工具。只接纳当前 verification input ID、原生 `isAgentLoopRequest` 与当前 surface。
+  H 将同一不可变 request 原样送 loopback 并断言 canary=0，再允许 verified 收据释放屏障；产品没有测试 adapter。
+- 屏障释放后仍拒绝未归属请求、旧 prepared/惰性请求和与当前 surface/toolHistory 不符的请求。
+  原始事件保留；遗忘后的受管 Agent 对未审计工具保持拒绝，仅允许本包记忆工具及图谱三个只读入口，
+  防止 read/bash/技能/外部连接器重新读入原始历史。这是明确的功能限制，不宣称物理擦除或任意 provider serializer 已验证。
+- 新用公开 `agent/inbox/inserted/claimed/discarded`、`agent/status`、`session/event` 和 `Inbox.splice`，
+  保留未提交为 user/message 的原始 nextStep/nextTurn 归属、顺序与输入身份。原生 pre-step reject 会消费 claim，
+  因而在屏障拒绝或提交前取消后将输入持久放回，不 clear 人类输入；所有 observer 归 retained Agent effect。
+  预览已登记的 pendingInbox 依赖持久保留，重开后队列不可见不等于完成核销；该类仍保持 blocked。
+  只读 rc.2 出处 `packages/core/agent/src/runtime-types.ts:47-106,280-320`。
+- MCP 清理后在同一 control 队列按新 identity 两次实际 mount/read_graph/close，空图谱才记 copiesVerified。
+  临时读取能力绑定具体 Agent、callId 和 `mcp__bot_memory_graph__read_graph`，finally 撤销；没有通用 bypass。
+  解除阻断后的重新配置、挂载和读回另由 H(copy-cleanup) 验证；不可达仍保留屏障。
+- E(forget)/E(root-warning) 改为隔离 profile 的真实 DSH Web 与正式 Client/Remote；沿用 screenshot-v03 的
+  locale/colorScheme 切换，要求 dark 实际深色并检查窄屏溢出。沙箱 Chromium MachPort 失败明确记 FAIL(environment)，
+  不用 DOM、白底页面或空目录冒充截图证据。
+
 ## DP B4：两级遗忘、维护与副本清理（2026-10-25）
 
 完整范围、命令、文件和分级验收见 [B4 报告](deepening/B4.md)。版本保持 0.3.2。
