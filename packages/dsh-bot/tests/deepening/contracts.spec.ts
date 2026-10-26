@@ -2,9 +2,11 @@ import { Context } from '@deepseek-ai/cordis';
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildMemoryPrompt } from '../../src/host/memory/prompt.js';
+import { memoryContext } from '../../src/host/memory/context.js';
+import { v2Fixture } from './v2-fixtures.js';
 import { withoutWakeControls } from '../../src/host/messaging/wake.js';
 import { createActivityPreview } from '../../src/shared/activity-preview.js';
-import { clearReceipts, fixed, memoryFixture, memoryRecord, open } from './contract-fixtures.js';
+import { clearReceipts, fixed, memoryFixture, memoryRecord } from './contract-fixtures.js';
 import { legacyAcceptsModelText, legacyPack, legacyPreview, legacySave, legacyWakeInput } from './legacy-contracts.js';
 
 describe('M1 history: review fixtures versus current public behavior', () => {
@@ -45,12 +47,21 @@ describe('M1 history: review fixtures versus current public behavior', () => {
     expect(withoutWakeControls([wake, human], { kind: 'enter', messages: [...messages, human] }).kind).toBe('enter');
   });
 
-  it.fails('H03 deleting the table row must revoke a previously assembled static prompt', async () => {
+  it('H03 deleting the table row must revoke a previously assembled static prompt', async () => {
     const { id } = await f.alpha.save({ content: 'SYNTHETIC_STATIC_CANARY' });
     const liveSection = buildMemoryPrompt(await f.alpha.snapshot(20), 4000);
     await f.alpha.forget({ id });
     expect(await f.alpha.list()).toEqual([]);
-    await open('H03', liveSection.includes('SYNTHETIC_STATIC_CANARY'), false);
+    const v2 = await v2Fixture();
+    try {
+      const provider = memoryContext(v2.kernel, { botId: 'alpha', botCreatedAt: 1 },
+        { maxInjectChars: 4000, privateShare: 0.6, journalShare: 0.25, journalDays: 30 }, 20);
+      const saved = await v2.alpha.save({ content: 'SYNTHETIC_STATIC_CANARY' });
+      expect(provider()).toContain('SYNTHETIC_STATIC_CANARY');
+      await v2.alpha.forget({ id: saved.id });
+      expect(v2.kernel.blocked).toBe(true);
+      await fixed('H03', liveSection.includes('SYNTHETIC_STATIC_CANARY'), provider().includes('SYNTHETIC_STATIC_CANARY'), false);
+    } finally { await v2.close(); }
   });
 
   it('H14 ordinary records must be packed whole, skipping one that cannot fit', async () => {

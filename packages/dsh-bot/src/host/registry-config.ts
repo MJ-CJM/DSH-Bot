@@ -22,6 +22,11 @@ export interface Config extends MessagingConfig {
   /** Files such as skills; storageDomain retains its separately configured backend root. */
   dataDir: string;
   maxInjectChars: number;
+  privateShare: number;
+  sharedShare: number;
+  journalShare: number;
+  journalDays: number;
+  quotaTimeZone: string;
   memorySectionOrder: number;
   memoryListLimit: number;
   enableBotManageInStandard: boolean;
@@ -71,6 +76,13 @@ const baseConfig = Schema.object({
       throw new TypeError('maxInjectChars must be a nonnegative safe integer');
     return value;
   }).default(4000),
+  privateShare: Schema.number().min(0).max(1).default(0.6),
+  sharedShare: Schema.number().min(0).max(1).default(0.4),
+  journalShare: Schema.number().min(0).max(1).default(0.25),
+  journalDays: Schema.number().min(1).max(3650).step(1).default(30),
+  quotaTimeZone: Schema.transform(Schema.string(), (value) => {
+    new Intl.DateTimeFormat('en', { timeZone: value }); return value;
+  }).default(Intl.DateTimeFormat().resolvedOptions().timeZone),
   memorySectionOrder: Schema.transform(Schema.number(), (value) => {
     // rc.2: persona prefix = 0, the first tool policy (PTC_ONLY) = 800.
     if (!Number.isFinite(value) || value <= 0 || value >= 800)
@@ -84,6 +96,8 @@ const baseConfig = Schema.object({
     return value;
   }).default(20),
 });
-export const Config: Schema<Partial<Config>, Config> = Schema.transform(baseConfig, (value) =>
-  validateMessagingConfig(value as unknown as Config),
-).default(baseConfig({}) as Config);
+export const Config: Schema<Partial<Config>, Config> = Schema.transform(baseConfig, (value) => {
+  const config = value as unknown as Config;
+  if (Math.abs(config.privateShare + config.sharedShare - 1) > 1e-9) throw new TypeError('Memory shares must sum to one');
+  return validateMessagingConfig(config);
+}).default(baseConfig({}) as Config);

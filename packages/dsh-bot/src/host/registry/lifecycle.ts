@@ -13,6 +13,7 @@ import type { MainSessions } from '../main-session.js';
 import { Config } from '../registry-config.js';
 import type { Lease } from './types.js';
 import { messageOf } from './identity.js';
+import { MemoryAdmission } from '../memory/admission.js';
 
 const examples: readonly BotCreateInput[] = [
   {
@@ -33,6 +34,8 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
   static inject = ['storageDomain', 'agentPresets'];
   static Config = Config;
   readonly config: Config;
+  readonly memoryAdmission: MemoryAdmission;
+  get memoryKernel() { return this.stores?.memoryKernel; }
   mainSessions?: MainSessions;
   protected stores!: Awaited<ReturnType<typeof openBotStores>>;
   protected readonly leases = new Map<string, Lease>();
@@ -52,6 +55,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
   protected readonly changeListeners = new Set<() => void>();
   protected readonly watchOwner: Context;
   protected readonly homes: BotHomes;
+  protected readonly memoryOwnerDir: string;
   protected releaseResources?: () => Promise<void>;
   protected closeTask?: Promise<void>;
 
@@ -64,7 +68,10 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
     super(ctx, 'dshBots', { namespace: 'dshBot' });
     this.watchOwner = ctx;
     const parsed = Config(config);
+    this.memoryAdmission = new MemoryAdmission(ctx, parsed.presetIdPrefix);
     const home = resolveDshHome();
+    // Skill dataDir changes must not create a second writer for the same native storage.
+    this.memoryOwnerDir = resolve(home, 'dsh-bot');
     this.homes = new BotHomes(home);
     this.config = { ...parsed, dataDir: resolve(parsed.dataDir.replace(/^\$DSH_HOME(?=\/|$)/, home)) };
     this.ready = (async () => {
@@ -126,6 +133,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
       const shutdown = () =>
         (shutdownTask ??= (async () => {
           this.stopping = true;
+          await this.memoryAdmission.close();
           await this.tail;
           const errors: unknown[] = [];
           for (const lease of [...this.leases.values()].reverse()) {
@@ -145,6 +153,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
       this.releaseResources = shutdown;
       try {
         this.stores = await openBotStores(this.ctx, {
+          memoryV2: { dataDir: this.memoryOwnerDir, timeZone: this.config.quotaTimeZone },
           assertOwner: this.assertOwner,
           activityMaxSessionsPerBot: this.config.activityMaxSessionsPerBot,
           activityMaxSessionsTotal: this.config.activityMaxSessionsTotal,
@@ -153,6 +162,8 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
             await this.tail;
           },
         });
+        if (!this.stores.memoryKernel) throw new Error('Memory kernel did not initialize');
+        this.memoryAdmission.start(this.stores.memoryKernel);
         // Workspace storage may be temporarily unavailable. Bot management and
         // preset registration still work, while the launch Remote can retry.
         try {

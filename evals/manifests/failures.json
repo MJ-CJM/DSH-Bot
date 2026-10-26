@@ -275,8 +275,8 @@
     {
       "id": "H03",
       "path": "evals/cases/failures/H03.json",
-      "sha256": "f13a2d2cb653e69c0a52e2e8d4b060a946d93f5c61510f4478d162e95edb6932",
-      "status": "OPEN"
+      "sha256": "9c99232227c841624dfde7c7c8395380986863c15926f22f08763de2d4e78b44",
+      "status": "FIXED"
     },
     {
       "id": "H04",
@@ -443,8 +443,8 @@
     {
       "id": "S04",
       "path": "evals/cases/failures/S04.json",
-      "sha256": "1785922ccbca8abe30468753fbc9ef3e8f397147e336d61f16ce6f145c4cc4dd",
-      "status": "OPEN"
+      "sha256": "fdbc9cfb89bae6aefce61e2e59a359c9307257cf1fa43dfee995433260eddcf9",
+      "status": "FIXED"
     },
     {
       "id": "S05",
@@ -455,8 +455,8 @@
     {
       "id": "S06",
       "path": "evals/cases/failures/S06.json",
-      "sha256": "0882bf7a006efb0c4814ad8d12bde638870fa5421d492771f15630b784fcfd3c",
-      "status": "OPEN"
+      "sha256": "f40c92d66081263039ab8b412f1b8122694657cac69f414dcb7d4e004ac1a601",
+      "status": "FIXED"
     },
     {
       "id": "S07",
@@ -467,8 +467,8 @@
     {
       "id": "S08",
       "path": "evals/cases/failures/S08.json",
-      "sha256": "a5134bcafbd70743709965b18b441a543f3f72406586322fd6b675d48db1af4d",
-      "status": "OPEN"
+      "sha256": "edeeb423068e4f7d27ec93166a7b4bca185d1fa44cd3b88863f79936fc5be924",
+      "status": "FIXED"
     }
   ],
   "dispositions": [
@@ -2644,15 +2644,11 @@
     }
   ],
   "openContracts": [
-    "H03",
     "S01",
     "S02",
     "S03",
-    "S04",
     "S05",
-    "S06",
-    "S07",
-    "S08"
+    "S07"
   ],
   "notes": [
     "Frozen inputs: 41 acceptance Markdown + 4 R-review files + one explicit progress snapshot = 46.",
@@ -2661,6 +2657,7 @@
     "Three acceptance file-list txt inputs are separately listed as non-narrative exclusions and have zero matching lines.",
     "MAST categories are a coarse internal mapping, not a claim of running the external benchmark.",
     "S01/S02/S03 are target shared semantics against private v1 reads; they do not imply private candidate storage is a v1 bug.",
-    "S05/S07 remain OPEN/SOURCE with no executable v2 promotion or quota facade; not counted toward six shared reproductions."
+    "S05/S07 remain OPEN/SOURCE with no executable v2 promotion or quota facade; not counted toward six shared reproductions.",
+    "B3 closes H03 current injection, S04 pending-cleanup replay gate, S06 BotKey isolation and S08 delayed epoch gate. History, verified-copy cleanup and native approval grants remain B4/M4 gates."
   ]
 }

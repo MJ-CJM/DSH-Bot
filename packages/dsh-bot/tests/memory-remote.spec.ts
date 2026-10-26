@@ -35,6 +35,11 @@ class Presets extends Service {
 async function facility() {
   await mkdir(isolatedHome, { recursive: true });
   const root = await mkdtemp(join(isolatedHome, 't09-memory-remote-'));
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = root;
+  const restoreHome = () => {
+    if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
+  };
   const ctx = new Context();
   try {
     await ctx.plugin(Storage).await();
@@ -46,8 +51,9 @@ async function facility() {
     let unit!: KvUnit;
     const open = kv.open.bind(kv);
     const opening = vi.spyOn(kv, 'open').mockImplementation(async (descriptor) => {
-      unit = await open(descriptor);
-      return unit;
+      const opened = await open(descriptor);
+      if (descriptor.name === 'dsh_bot_memory') unit = opened;
+      return opened;
     });
     const host = ctx.plugin({
       inject: ['storageDomain', 'agentPresets'],
@@ -67,11 +73,11 @@ async function facility() {
       ctx, registry, remote: ctx.dshBotMemory, unit, host,
       close: async () => {
         opening.mockRestore();
-        try { await ctx.fiber.dispose(); } finally { await rm(root, { recursive: true, force: true }); }
+        try { await ctx.fiber.dispose(); } finally { restoreHome(); await rm(root, { recursive: true, force: true }); }
       },
     };
   } catch (error) {
-    try { await ctx.fiber.dispose(); } finally { await rm(root, { recursive: true, force: true }); }
+    try { await ctx.fiber.dispose(); } finally { restoreHome(); await rm(root, { recursive: true, force: true }); }
     throw error;
   }
 }
@@ -165,7 +171,8 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     expect(await remote.list('alpha', {})).toMatchObject([{ id, content: 'Safe content', tags: [] }]);
   }));
 
-  it('keeps mutations in the registry lifecycle queue and propagates storage failure', async () => withFacility(async ({ remote, registry, unit, host, ctx }) => {
+  it('keeps mutations in the registry lifecycle queue and propagates storage failure', async () => withFacility(async ({ remote, registry, unit,
+    host, ctx }) => {
     const originalPut = unit.putRecord.bind(unit);
     const put = vi.spyOn(unit, 'putRecord').mockRejectedValueOnce(new Error('disk unavailable'));
     await expect(remote.save('alpha', { content: 'Must fail' })).rejects.toMatchObject({ code: 'store/unavailable' });

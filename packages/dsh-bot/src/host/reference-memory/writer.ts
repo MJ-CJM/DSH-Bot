@@ -46,7 +46,9 @@ export class ReferenceWriter {
     );
   }
   protected async assertBot(bot: BotKey) {
+    this.registry.memoryAdmission?.assertAllowed();
     if ((await this.registry.get(bot.botId)).createdAt !== bot.botCreatedAt) throw new OperationError('conflict');
+    this.registry.memoryAdmission?.assertAllowed();
   }
   protected binding(bot: BotKey) {
     return this.domain.table('bindings').get(keyOf(bot));
@@ -108,6 +110,7 @@ export class ReferenceWriter {
     l.off.push(
       agent.ctx.tools.guard((exec) => {
         if (!exec.name.startsWith(GRAPH_PREFIX)) return;
+        try { this.registry.memoryAdmission?.assertAllowed(); } catch { return 'Memory cleanup pending'; }
         if (!l.accepting || this.stopping || exec.agent !== agent || (l.copying && !l.allowed.has(exec.callId)))
           return 'Reference graph writer unavailable';
         try {
@@ -124,6 +127,7 @@ export class ReferenceWriter {
         (exec, next) => {
           if (!exec.name.startsWith(GRAPH_PREFIX)) return next();
           const pending = l.tail.then(async () => {
+            this.registry.memoryAdmission?.assertAllowed();
             if (!l.accepting || this.stopping || exec.agent !== agent || (l.copying && !l.allowed.has(exec.callId)))
               throw new OperationError('unavailable');
             exec.signal.throwIfAborted();
@@ -212,6 +216,7 @@ export class ReferenceWriter {
     if (l) await this.closeLive(l);
   }
   protected async call(l: Live, tool: string, args: unknown, signal: AbortSignal) {
+    this.registry.memoryAdmission?.assertAllowed();
     const callId = ToolCallId(randomUUID());
     l.allowed.add(callId);
     try {

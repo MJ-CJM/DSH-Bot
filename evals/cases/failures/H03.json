@@ -13,21 +13,21 @@
     ]
   },
   "evidenceLevel": "UNIT",
-  "status": "OPEN",
+  "status": "FIXED",
   "precondition": "A live Agent has already captured a static memory section.",
   "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts -t \"H03 \"",
   "expected": "Deleting a version stops future injection and preserves a barrier until history/copies are verified.",
   "observed": {
     "original": "Table deletion leaves the old long-lived system section intact; this is the declared private P0.",
     "beforeFix": "Table deletion leaves the old long-lived system section intact; this is the declared private P0.",
-    "afterFix": "NOT_RUN: future v2 behavior remains OPEN."
+    "afterFix": "B3 v2 regression PASS: dynamic injection, BotKey isolation, or pending-cleanup/epoch gate. Full history/copy cleanup remains B4 P0 OPEN."
   },
   "regressions": [
     {
       "testId": "H03",
       "testFile": "packages/dsh-bot/tests/deepening/contracts.spec.ts",
       "testName": "H03 deleting the table row must revoke a previously assembled static prompt",
-      "status": "OPEN",
+      "status": "PASS",
       "receipt": ".dsh-dev/deepening/b2/receipts/H03.json"
     }
   ]

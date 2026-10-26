@@ -164,7 +164,7 @@ export const botRemoveOptionsSchema = z.strictObject({
 });
 export type BotRemoveOptions = z.input<typeof botRemoveOptionsSchema>;
 
-const memoryFields = z.strictObject({
+export const memoryFields = z.strictObject({
   kind: z.enum(['profile', 'preference', 'fact', 'note']),
   content: nonempty.refine((value) => utf8Bytes(value) <= MEMORY_MAX_BYTES, {
     message: 'Memory exceeds 2 KiB',

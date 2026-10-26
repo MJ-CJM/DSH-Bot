@@ -13,21 +13,21 @@
     ]
   },
   "evidenceLevel": "UNIT",
-  "status": "OPEN",
+  "status": "FIXED",
   "precondition": "Queue a pre-approved synthetic save, forget the existing row, then release the queue.",
   "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/shared-contracts.spec.ts -t \"S08 \"",
   "expected": "Revalidate payload version, forgetEpoch and policy at commit; stale grant commits zero rows.",
   "observed": {
     "original": "v1 save has cancellation but no epoch grant; delayed write restores captured content.",
     "beforeFix": "v1 save has cancellation but no epoch grant; delayed write restores captured content.",
-    "afterFix": "NOT_RUN: future v2 behavior remains OPEN."
+    "afterFix": "B3 v2 regression PASS: dynamic injection, BotKey isolation, or pending-cleanup/epoch gate. Full history/copy cleanup remains B4 P0 OPEN."
   },
   "regressions": [
     {
       "testId": "S08",
       "testFile": "packages/dsh-bot/tests/deepening/shared-contracts.spec.ts",
       "testName": "S08 approval captured before forget cannot commit from the queued operation",
-      "status": "OPEN",
+      "status": "PASS",
       "receipt": ".dsh-dev/deepening/b2/receipts/S08.json"
     }
   ]

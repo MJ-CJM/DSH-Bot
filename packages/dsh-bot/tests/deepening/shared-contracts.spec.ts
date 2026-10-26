@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { BotMemoryService } from '../../src/host/memory/service.js';
-import { clearReceipts, memoryFixture, open } from './contract-fixtures.js';
+import { clearReceipts, memoryFixture, open, fixed } from './contract-fixtures.js';
+import { v2Fixture } from './v2-fixtures.js';
 import { contractCases } from './contracts.js';
 
 // v1 is private-only. These are deliberately OPEN v2 requirements against the actual v1
@@ -35,7 +36,7 @@ describe('M1 shared target contracts on current v1 (OPEN; no shared product beha
     await open('S03', current, ['Current city: Beijing'], contractCases.S03);
   });
 
-  it.fails('S04 replay of a captured managed copy is rejected after forgetting', async () => {
+  it('S04 replay of a captured managed copy is rejected after forgetting', async () => {
     const { id } = await f.alpha.save({ content: 'SYNTHETIC_COPY_CANARY' });
     const copy = (await f.alpha.list())[0];
     if (!copy) throw new Error('Fixture did not save its copy');
@@ -43,19 +44,31 @@ describe('M1 shared target contracts on current v1 (OPEN; no shared product beha
     expect(await f.alpha.list()).toEqual([]);
     // Controlled replay through the real public facade; no raw backend edit or external backup restore.
     await f.alpha.save({ content: copy.content, kind: copy.kind, tags: copy.tags, pinned: copy.pinned });
-    await open('S04', (await f.alpha.list()).map(row => row.content), [], contractCases.S04);
+    const before = (await f.alpha.list()).map(row => row.content), v2 = await v2Fixture();
+    try {
+      const saved = await v2.alpha.save({ content: copy.content }); await v2.alpha.forget({ id: saved.id });
+      await expect(v2.alpha.save({ content: copy.content })).rejects.toThrow('cleanup pending');
+      await fixed('S04', before, (await v2.alpha.list()).map(r => r.content), []);
+    } finally { await v2.close(); }
   });
 
-  it.fails('S06 same Bot ID with a new birth cannot inherit retained private rows', async () => {
+  it('S06 same Bot ID with a new birth cannot inherit retained private rows', async () => {
     await f.alpha.save({ content: 'SYNTHETIC_OLD_BIRTH_PRIVATE' });
     await f.bots.remove('alpha', { deleteMemories: false });
     const rebuilt = await f.bots.create({ id: 'alpha', name: 'New Alpha' }, 100);
     expect(rebuilt.createdAt).toBe(100);
     const newOwner = new BotMemoryService(f.store, 'alpha');
-    await open('S06', (await newOwner.list()).map(row => row.content), [], contractCases.S06);
+    const before = (await newOwner.list()).map(row => row.content), v2 = await v2Fixture();
+    try {
+      await v2.alpha.save({ content: 'SYNTHETIC_OLD_BIRTH_PRIVATE' });
+      await v2.bots.remove('alpha', { deleteMemories: false }); await v2.bots.create({ id: 'alpha', name: 'New Alpha' }, 100);
+      const replacement = new BotMemoryService(v2.store, 'alpha');
+      await expect(v2.alpha.list()).rejects.toThrow();
+      await fixed('S06', before, (await replacement.list()).map(r => r.content), []);
+    } finally { await v2.close(); }
   });
 
-  it.fails('S08 approval captured before forget cannot commit from the queued operation', async () => {
+  it('S08 approval captured before forget cannot commit from the queued operation', async () => {
     const { id } = await f.alpha.save({ content: 'SYNTHETIC_APPROVAL_CANARY' });
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
@@ -66,7 +79,17 @@ describe('M1 shared target contracts on current v1 (OPEN; no shared product beha
     await f.alpha.forget({ id });
     release();
     await pending;
-    await open('S08', (await f.alpha.list()).map(row => row.content), [], contractCases.S08);
+    const before = (await f.alpha.list()).map(row => row.content), v2 = await v2Fixture();
+    try {
+      const saved = await v2.alpha.save({ content: 'SYNTHETIC_APPROVAL_CANARY' });
+      let unblock!: () => void;
+      const waiting = new Promise<void>(resolve => { unblock = resolve; });
+      const queued = new BotMemoryService(v2.store, 'alpha', async operation => { await waiting; return operation(); });
+      const pendingV2 = queued.save({ content: 'SYNTHETIC_APPROVAL_CANARY' });
+      const denied = expect(pendingV2).rejects.toThrow('Stale memory epoch');
+      await v2.alpha.forget({ id: saved.id }); unblock(); await denied;
+      await fixed('S08', before, (await v2.alpha.list()).map(r => r.content), []);
+    } finally { await v2.close(); }
   });
 
 });

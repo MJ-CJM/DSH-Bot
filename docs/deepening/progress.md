@@ -182,3 +182,32 @@
 后续 M2/M3/M4 接真实 v2 门面、可信入口、grant/epoch 与双配额后，保留原始失败，
 将对应 it.fails 与 manifest 一起迁为修复后 PASS。继续执行 B1 留下的完整请求、原始历史再读与 MCP 副本 P0 门禁。
 本轮没有浏览器、桌面、Host loopback 或真实模型新运行证据，SOURCE 与 UNIT 不能替代这些验收。
+
+## B3：I08–I14、I22–I24（2026-10-25）
+
+实施、完整改动文件、逐命令收据与验收见 [B3 报告](B3.md)。
+基线 `6637b36fcf42673ee1f4fac26e73966c91e9b0ce`；保留已有 workspace 修改和 `.codex/`，没有改版本、依赖或 lockfile。
+未嵌套 Codex、commit/push、读取真实会话或凭据、启动真实模型、修改参考源码或桌面安装。
+
+| 任务 | 结果 | 实测数字 |
+| --- | --- | --- |
+| I08–I10 | PASS (UNIT rc.2) | schema 11、op-log 2、rebuild 4；同 opId、未知提交冻结/重开、坏缓存和局部遗忘 |
+| I11 | PASS (HOST rc.3) | 真实 0.3.2 tgz 拒绝 Fence，模型请求 0 |
+| I12 | PASS (UNIT rc.2 / HOST rc.3) | context 3；required 动态读取、Unicode 整条预算、from/to/午夜失效、同一步 retry 更新 |
+| I13 | PASS (UNIT rc.2) | lifecycle 4；真实双进程与死 owner 竞争，20 次实际 Cordis effect 装卸 |
+| I14 | PASS (HOST rc.3) | 4 次 loopback；屏障、prepared、未知 summary、旧代际、保留守卫和 cold 请求 0；lease 1→0 |
+| I22–I24 | PASS (UNIT rc.2 / HOST rc.3) | migration-copy 3；旧包 2 条逐项对账，全部隔离，Fence/cutover 续迁、冷恢复 epoch/tombstone |
+| B2 相关契约 | PASS (UNIT) | H03/S04/S06/S08 从 OPEN 转 FIXED，3 个其它共享预期失败保留 |
+| 全量 C | PASS | 73 文件 / 774 passed + 3 expected fail = 777；strict/build/lint 通过，无告警 |
+| 精确 rc.2 CLI Host | FAIL (NOT_RUN) | `scripts/dsh --version` 实际 0.2.1-rc.3；没有替换或降级桌面 |
+| 强遗忘/P0 | FAIL (B4 待完成) | 历史、摘要、Inbox、MCP 副本和完整故障矩阵仍缺验证；屏障持续保留 |
+
+当前私有注入已修复，生产历史替换与完整强遗忘仍未完成；B1 的最小 spike 不被扩大为产品强遗忘证明。
+旧项全部 private/candidate，v1 没有 BotKey 收据，因此完整复制为 proposed 隔离项，不按时间猜归属。
+新 owner 路径固定到 DSH_HOME，不随技能 dataDir 改变；provider 不做同步文件 I/O。
+R2 的 Host 系统时区已解析并持久化；共享读本批为空，自动共享/额度和显式旧项归属分别由 M4/M3 接续。
+
+U(schema/op-log/rebuild/context/lifecycle/migration-copy)、H(fence/admission/migration/migration-rollback)、
+`DSH_HOME="$PWD/.dsh-dev" scripts/pnpm check`、case 收据校验、额外 lint 与尺寸检查最终均 exit=0。
+最新收据索引为 `.dsh-dev/deepening/b3/commands.json`；失败历史、旧 tgz SHA256 与每项证据边界见 B3 报告。
+下一批仍需编排方审查后派发；B3 没有提供解除未验证屏障的操作。

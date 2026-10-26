@@ -12,9 +12,9 @@ describe('M1 failure catalog validates frozen coverage, schema and OPEN inventor
     expect(summary.inventory.sources).toBe(46);
     expect(summary.inventory.candidates).toBe(310);
     expect(summary.historyCases).toBeGreaterThanOrEqual(12);
-    expect(summary.fixedHistoryRegressions).toBe(6);
+    expect(summary.fixedHistoryRegressions).toBe(7);
     expect(summary.sharedReproductions).toBe(6);
-    expect(summary.expectedFailures).toBe(7);
+    expect(summary.expectedFailures).toBe(3);
     expect(summary.runtimeReceiptsChecked).toBe(false);
   });
 

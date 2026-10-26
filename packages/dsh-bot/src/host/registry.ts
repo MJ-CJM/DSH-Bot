@@ -314,6 +314,7 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
       const key = parseInput(botIdSchema, id);
       const fields = parseInput(botRemoveOptionsSchema, options ?? {});
       this.stores.bots.get(key);
+      if (fields.deleteMemories) await this.stores.memories.removeByBot(key);
       const removeHome = fields.deleteHome ? await this.homes.prepareRemoval(key) : undefined;
       await this.transition(key, undefined, () => this.stores.bots.remove(key, fields));
       this.changed(key, 'remove');

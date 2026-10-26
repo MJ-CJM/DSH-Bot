@@ -1,5 +1,27 @@
 # DSH API 核实记录
 
+## DP B3：记忆内核、动态 context、Fence 与最终准入（2026-10-25）
+
+范围、命令和逐项验收见 [B3 报告](deepening/B3.md)。没有新增依赖或 Host runtime peer，版本保持 0.3.2。
+参考源码和 UNIT npm 包仍为 rc.2；本轮包装脚本实测 **CLI 0.2.1-rc.3**。
+Host 收据明确记录当前 CLI 版本，不把这些结果当成精确 rc.2 CLI 验收。
+
+- `storageDomain.open/defineDomain/domainTable` 和 `KvTable.put/get/entries/delete` 沿用公开根入口。
+  新 `dsh_bot_memory` v2 的 ops 为唯一提交点；缓存可重建，未知提交冻结后重开对账。
+  旧 unit v1 的 memories 只在迁移 opener 接受 strict Fence union；真实旧 tgz 的严格 schema 实际拒绝。
+- `systemPrompt.context({required:true,interpolate:false,text:provider,order:300})` 正式替换一次性记忆 section。
+  每次请求/同一步 retry 原生刷新，provider 只同步读已发布内存，不改 LLM 请求体。
+  complete persona 保持其 system section，同时保留必需的记忆 context；双语旧提示同步修正。
+- `llm/stream` 在惰性迭代前后核对 epoch，准入与提交共享内核队列，持久依赖后才取得 lease。
+  完成/取消迭代后释放；pre-step 不是唯一检查点。无归属请求在屏障期间保守拒绝整个相关 runtime。
+- `Agent.cancel({kind:'hook',reason},{keepInbox:true})` 只发取消，不从当前工具/hook 等待自己的 idle。
+  卸载排空真实在途 lease，再关闭领域。最小 Agent effect 守卫保留到 Agent 销毁；未安全重附的旧 Bot 代际拒绝发送。
+- 原生 `tools.guard` 与 Reference Memory 入口在 pending cleanup 时拒绝读取/复制/调用，不制造摘要清理或伪造 verified。
+
+Node 排他文件/后继链只负责本机 owner，不是 DSH 新服务或跨机器数据库。
+本批 H03/S04/S06/S08 的 UNIT 修复不等于强遗忘、原生确认 grant 或完整 MCP 副本闭包通过。
+历史、摘要、Inbox、原始事件读取和当前/stage/previous MCP 清理仍属于 B4，P0 保持 OPEN。
+
 ## DP B2：失败案例库与契约（2026-10-25）
 
 本轮没有新增 DSH 产品 API、runtime import、依赖或 peer。
