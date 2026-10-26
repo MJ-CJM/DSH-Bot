@@ -185,18 +185,19 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
-      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
-    expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'>();
+      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace'
+        | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
+    expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count' | 'quarantineCount'>();
   });
 
-  it('shares all twenty strict descriptors between Host and Client exports', () => {
+  it('shares all strict descriptors between Host and Client exports', () => {
     expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
     // The Host owns registration in ctx.effect. ./typert would also be picked
     // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(20);
+    expect(TYPERT.invocations).toHaveLength(21);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -313,7 +314,8 @@ describe('single-source Remote contract', () => {
     if (!descriptor) throw new Error('Missing update descriptor');
     const input = descriptor.input({ strict: true }).create();
     expect(input.parse({ id: 'test-bot', patch: {} })).toEqual({ id: 'test-bot', patch: {} });
-    expect(input.parse({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } })).toEqual({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } });
+    expect(input.parse({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } }))
+      .toEqual({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } });
     expect(() => input.parse({ id: 'test-bot', patch: { avatarVariant: 'unknown' } })).toThrow();
     const patch = { avatar: null, avatarColor: null, avatarVariant: null, model: null, defaultCwd: null, order: null };
     const parsed = input.parse({ id: 'test-bot', patch });
@@ -348,7 +350,7 @@ describe('single-source Remote contract', () => {
           search: [[memory], [{ id: 'bad' }]],
           save: [{ id: 'memory-1', deduplicated: false }, { id: 'memory-1', deduplicated: 'false' }],
           update: [memory, { ...memory, source: { by: 'untrusted', at: 1 } }],
-          delete: [undefined, { removed: true }], count: [201, -1],
+          delete: [undefined, { removed: true }], count: [201, -1], quarantineCount: [3, -1],
         };
         const value = values[descriptor.method];
         if (!value) throw new Error(`Missing memory result case ${descriptor.method}`);

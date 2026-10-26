@@ -60,6 +60,11 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
   }
 
   @Remote
+  async quarantineCount(): Promise<number> {
+    return this.ctx.dshBots.memoryQuarantineCount();
+  }
+
+  @Remote
   async count(botId: string): Promise<number> {
     return this.ctx.dshBots.memoryFor(botId).count();
   }

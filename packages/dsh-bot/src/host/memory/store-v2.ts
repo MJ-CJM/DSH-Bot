@@ -3,14 +3,14 @@ import { sameBot, type BotKey } from '../../shared/identity.js';
 import { memoryAddSchema, memoryPatchSchema, memoryListOptionsSchema, memorySchema, normalizeMemoryContent,
   type MemoryAddInput, type MemoryRecord, type MemoryPatch, type MemoryListOptions } from '../../shared/schema.js';
 import { parseInput } from '../errors.js';
-import { missingMemory, nextTimestamp, missingBot } from '../stores/domain.js';
+import { missingMemory, nextTimestamp, missingBot, compareId } from '../stores/domain.js';
 import { lexicalMemorySearch } from '../stores/memory.js';
 import type { BotStore } from '../stores/bots.js';
 import type { MemoryKernel } from './op-log.js';
 import { privateVersion } from './version.js';
 
 const compare = (a: { id: string; pinned: boolean; updatedAt: number }, b: typeof a) =>
-  Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id);
+  Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || compareId(a.id, b.id);
 export class V2MemoryStore {
   constructor(readonly kernel: MemoryKernel, private readonly bots: BotStore,
     private readonly queue = { tail: Promise.resolve() as Promise<unknown> }, private readonly bound?: BotKey) {}
@@ -28,6 +28,13 @@ export class V2MemoryStore {
     const result = this.queue.tail.then(() => { this.assertEpoch(epoch); return work(); });
     this.queue.tail = result.catch(() => {}); return result;
   }
+  private compare = (a: { id: string; pinned: boolean; updatedAt: number }, b: typeof a): number => {
+    const sourceId = (id: string) => {
+      const v = this.kernel.snapshot.versions.get(id);
+      return v && this.kernel.domain.table('payloads').get(v.contentRef)?.legacy?.id || id;
+    };
+    return compare({ ...a, id: sourceId(a.id) }, { ...b, id: sourceId(b.id) });
+  };
   /** Read-only legacy DTO. Host version/provenance fields never enter the old Remote/tool contract. */
   records(botId: string): MemoryRecord[] {
     const owner = this.owner(botId), rows: MemoryRecord[] = [];
@@ -38,13 +45,13 @@ export class V2MemoryStore {
       const payload = this.kernel.domain.table('payloads').get(v.contentRef);
       if (payload?.legacy) rows.push(memorySchema.parse({ ...payload.legacy, id: v.memoryId, content: payload.content }));
     }
-    return rows.sort(compare);
+    return rows.sort(this.compare);
   }
   listByBot(botId: string, options: MemoryListOptions): MemoryRecord[] {
     const f = parseInput(memoryListOptionsSchema, options);
     return this.records(botId).filter(r => (f.pinned === undefined || r.pinned === f.pinned) &&
       (f.tag === undefined || r.tags.includes(f.tag)) && (!f.query || lexicalMemorySearch.matches(r, f.query)) &&
-      (!f.before || compare(r, f.before) > 0)).slice(0, f.limit);
+      (!f.before || this.compare(r, f.before) > 0)).slice(0, f.limit);
   }
   countByBot(botId: string): number { return this.records(botId).length; }
   async add(input: MemoryAddInput): Promise<MemoryRecord> { return (await this.persist(input, false)).record; }

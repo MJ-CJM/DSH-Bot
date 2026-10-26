@@ -139,6 +139,9 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
       {!bot.memory.enabled && <p className={styles.notice}>{t('memory.disabled')}</p>}
       {bot.memory.enabled && bot.persona.complete && <p className={styles.notice}>{t('memory.complete')}</p>}
       <p className={styles.hint}>{t('memory.sessionNotice')}</p>
+      {snapshot.quarantined !== undefined && snapshot.quarantined > 0 && (
+        <p className={styles.notice} role="status">{t('memory.quarantined', { count: snapshot.quarantined })}</p>
+      )}
       <MemorySearchControls search={search} busy={busy} t={t} onChange={setSearch}
         onSearch={() => {
           if (busyRef.current) return;

@@ -43,11 +43,11 @@ export async function migratePrivate(legacy: MigrationBotDomain, kernel: MemoryK
     for (const record of rows) {
       let item = kernel.domain.table('migration_items').get(record.id);
       const bot = legacy.table('bots').get(record.botId);
-      // v1 has no BotKey lifecycle receipt. Timestamp ordering alone cannot prove ownership.
-      // Preserve every row in quarantine until explicit management assigns it to a verified lifecycle.
+      // B3-rework: a surviving Bot and a memory no older than its birthday establish the legacy lifecycle.
+      // Orphans and records predating a recreated Bot remain quarantined for M3.
       if (!item) {
         item = migrationItemSchema.parse({ legacyId: record.id, memoryId: randomUUID(), versionId: randomUUID(),
-          opId: randomUUID(), contentRef: randomUUID(), quarantine: true });
+          opId: randomUUID(), contentRef: randomUUID(), quarantine: !bot || record.createdAt < bot.createdAt });
         await kernel.domain.table('migration_items').put(record.id, item);
       }
       const old = kernel.domain.table('ops').get(item.opId);

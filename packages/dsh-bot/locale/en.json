@@ -117,6 +117,7 @@
     "memory.loading": "Loading memories…",
     "memory.empty": "No memories yet.",
     "memory.noMatches": "No matching memories.",
+    "memory.quarantined": "{count} legacy memories across all Bots are quarantined (including deleted Bots). Assignment will be available in M3.",
     "memory.total": "{count} memories in this Bot",
     "memory.firstPage": "Back to first page",
     "memory.nextPage": "Next page",

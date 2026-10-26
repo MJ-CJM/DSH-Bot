@@ -1,6 +1,6 @@
 import { required } from '../fixtures/required.js';
-import { describe, expect, it } from 'vitest';
-import { memoryContext, nextDayBoundary } from '../../src/host/memory/context.js';
+import { describe, expect, it, vi } from 'vitest';
+import { memoryContext, nextDayBoundary, registerMemoryContext } from '../../src/host/memory/context.js';
 import { v2Fixture, command } from './v2-fixtures.js';
 
 const policy = { maxInjectChars: 4000, privateShare: 0.6, journalShare: 0.25, journalDays: 30 };
@@ -42,6 +42,51 @@ describe('I12 synchronous dynamic context', () => {
       const text = memoryContext(f.kernel, { botId: 'alpha', botCreatedAt: 1 }, { ...policy, maxInjectChars: 220 }, 20)();
       expect([...text].length).toBeLessThanOrEqual(220); expect(text).toContain('whole small fact');
       expect(text).not.toContain('😀'); expect(text).not.toContain('DISPUTED'); expect(text).toContain('More memories');
+    } finally { await f.close(); }
+  });
+});
+
+describe('B3-rework Host calendar policy and configured context order', () => {
+  it.each([
+    ['Asia/Shanghai', '2026-01-01T15:59:59.999Z', '2026-01-01T16:00:00Z'],
+    ['America/Los_Angeles', '2026-03-08T08:00:00Z', '2026-03-09T07:00:00Z'],
+    ['America/Los_Angeles', '2026-11-01T07:00:00Z', '2026-11-02T08:00:00Z'],
+  ])('invalidates cached payload reads at %s midnight across DST (%s)', async (zone, from, to) => {
+    const f = await v2Fixture(true, zone);
+    try {
+      expect(f.kernel.scope).toMatchObject({ quotaTimeZone: zone, policyRevision: 1 });
+      const c = command(f, 'CALENDAR_FACT'); await f.kernel.commit(c);
+      let now = Date.parse(from);
+      const provider = memoryContext(f.kernel, { botId: 'alpha', botCreatedAt: 1 }, policy, 20, () => now);
+      const spy = vi.spyOn(f.kernel.domain.table('payloads'), 'get');
+      expect(provider()).toContain('CALENDAR_FACT'); expect(spy).toHaveBeenCalledTimes(1);
+      now = Date.parse(to) - 1; provider(); expect(spy).toHaveBeenCalledTimes(1);
+      now++; provider(); expect(spy).toHaveBeenCalledTimes(2);
+      provider(); expect(spy).toHaveBeenCalledTimes(2); spy.mockRestore();
+      await f.reopen(); expect(f.kernel.scope).toMatchObject({ quotaTimeZone: zone, policyRevision: 1 });
+    } finally { await f.close(); }
+  });
+  it('resolves the Host default at startup and keeps its policy on recovery with another requested zone', async () => {
+    const f = await v2Fixture();
+    try {
+      const before = f.kernel.scope;
+      expect(before.quotaTimeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      await f.kernel.recover(before.quotaTimeZone === 'UTC' ? 'Asia/Shanghai' : 'UTC');
+      expect(f.kernel.scope).toEqual(before);
+    } finally { await f.close(); }
+  });
+  it('registers the configured order with required literal context and returns its disposer', async () => {
+    const f = await v2Fixture();
+    try {
+      const dispose = vi.fn(), context = vi.fn((_input: unknown) => dispose), observed = vi.fn();
+      const agent = { ctx: { systemPrompt: { context } }, session: { id: 'synthetic-order' } };
+      const off = registerMemoryContext(agent as unknown as Parameters<typeof registerMemoryContext>[0],
+        { botId: 'alpha', botCreatedAt: 1 }, f.kernel,
+        { observed } as unknown as Parameters<typeof registerMemoryContext>[3], { ...policy, memorySectionOrder: 175 }, 20);
+      expect(context).toHaveBeenCalledWith(expect.objectContaining({ order: 175, required: true, interpolate: false }));
+      const provider = required(context.mock.calls[0]) as unknown as [{ text: () => string }];
+      provider[0].text(); expect(observed).toHaveBeenCalledWith('synthetic-order', []);
+      off(); expect(dispose).toHaveBeenCalledOnce();
     } finally { await f.close(); }
   });
 });

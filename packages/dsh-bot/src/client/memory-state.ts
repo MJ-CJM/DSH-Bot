@@ -9,6 +9,7 @@ interface MemoryPage {
   before?: MemoryCursor;
   hasNext: boolean;
   total: number | undefined;
+  quarantined?: number;
 }
 export type MemoryCatalogSnapshot = MemoryPage & PollingSnapshot;
 export interface MemoryCatalog extends Omit<PollingCatalog<MemoryPage>, 'reset' | 'observe'> {
@@ -37,18 +38,21 @@ export function createMemoryCatalog(ctx: Context, botId: string, options: Memory
       const memory = ctx.get('remote.dshBot.memory') as DshBotRemoteMethods['memory'] | undefined;
       if (!memory) throw { code: 'bot/unavailable', message: '' };
       const input = { limit: pageSize + 1, before: requestedBefore };
-      const [rows, count] = await Promise.all([
+      const [rows, count, quarantined] = await Promise.all([
         requestedQuery ? memory.search(botId, { ...input, query: requestedQuery }) : memory.list(botId, input),
         memory.count(botId),
+        memory.quarantineCount(),
       ]);
       if (!rows.ok) throw rows.error;
       if (!count.ok) throw count.error;
+      if (!quarantined.ok) throw quarantined.error;
       return {
         records: rows.value.slice(0, pageSize),
         query: requestedQuery,
         before: requestedBefore,
         hasNext: rows.value.length > pageSize,
         total: count.value,
+        quarantined: quarantined.value,
       };
     },
     options,

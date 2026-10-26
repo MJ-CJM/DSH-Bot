@@ -14,6 +14,7 @@ function setup() {
   const memory = {
     list: vi.fn(async (_botId: string, _input: unknown) => ({ ok: true as const, value: [row('one'), row('two'), row('three')] })),
     search: vi.fn(async (_botId: string, _input: unknown) => ({ ok: true as const, value: [row('match')] })),
+    quarantineCount: vi.fn(async () => ({ ok: true as const, value: 3 })),
     count: vi.fn(async (_botId: string) => ({ ok: true as const, value: 205 })),
   };
   ctx.provide('remote.dshBot.memory', memory);
@@ -30,7 +31,7 @@ describe('memory catalog pagination and lifetime', () => {
     await catalog.refresh();
     expect(memory.list).toHaveBeenCalledWith('alpha', { limit: 3, before: undefined });
     expect(memory.count).toHaveBeenCalledWith('alpha');
-    expect(catalog.getSnapshot()).toMatchObject({ total: 205, hasNext: true, records: [row('one'), row('two')] });
+    expect(catalog.getSnapshot()).toMatchObject({ total: 205, quarantined: 3, hasNext: true, records: [row('one'), row('two')] });
     memory.list.mockResolvedValueOnce({ ok: true, value: [row('three')] });
     catalog.nextPage();
     await settle();

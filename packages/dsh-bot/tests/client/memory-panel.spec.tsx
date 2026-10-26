@@ -74,6 +74,14 @@ afterEach(async () => {
 });
 
 describe('MemoryPanel with React and external catalog doubles', () => {
+  it.each(['en', 'zh'] as const)('shows the global orphan/quarantine count in %s without exposing contents', async language => {
+    const app = await mount({ language });
+    await app.publish({ quarantined: 3 });
+    const dictionary = language === 'zh' ? zh.ui : en.ui;
+    expect(app.container.textContent).toContain(dictionary['memory.quarantined'].replace('{count}', '3'));
+    await app.publish({ quarantined: 0 });
+    expect(app.container.textContent).not.toContain(dictionary['memory.quarantined'].replace('{count}', '0'));
+  });
   it('renders contents, localized kinds, tags, attribution, timestamps and source-session navigation', async () => {
     const app = await mount();
     expect(app.container.textContent).toContain('Prefers concise answers');
@@ -199,7 +207,8 @@ describe('MemoryPanel with React and external catalog doubles', () => {
   });
 
   it('shows the localized disabled or complete-persona notice and explains live versus cold-restored snapshots', async () => {
-    const app = await mount({ language: 'zh', bot: bot({ id: 'alpha-bot', name: 'Alpha', memory: { enabled: false, injectLimit: 20 }, persona: { prefix: '', complete: true } }) });
+    const app = await mount({ language: 'zh', bot: bot({ id: 'alpha-bot', name: 'Alpha',
+      memory: { enabled: false, injectLimit: 20 }, persona: { prefix: '', complete: true } }) });
     expect(app.container.textContent).toContain(zh.ui['memory.disabled']);
     expect(app.container.textContent).not.toContain(zh.ui['memory.complete']);
     expect(app.container.textContent).toContain(zh.ui['memory.sessionNotice']);

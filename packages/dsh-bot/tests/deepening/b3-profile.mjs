@@ -1,6 +1,8 @@
 import '../../../../scripts/deepening/network-guard.mjs';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+import { memoryContext } from '../../lib/host/memory/context.js';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
@@ -52,6 +54,10 @@ export function apply(ctx, config) {
           model: { provider: 'dp-loopback', model: 'fixture' }, memory: { enabled: true, injectLimit: 20 } });
       if (config.phase === 'legacy-seed') {
         for (const id of ['alpha', 'beta']) await registry.memoryFor(id).save({ content: `LEGACY_${id}`, kind: 'fact' }, { by: 'user', at: 10 });
+        const { buildMemoryPrompt } = await import(pathToFileURL(config.legacyPrompt).href);
+        const prompts = {};
+        for (const id of ['alpha', 'beta']) prompts[id] = buildMemoryPrompt(await registry.memoryFor(id).snapshot(20), 4000);
+        await save('context', prompts);
         await save('seed', { bots: (await registry.list()).map(b => ({ id: b.id, createdAt: b.createdAt })), count: 2 }); return;
       }
       const kernel = registry.memoryKernel;
@@ -60,8 +66,16 @@ export function apply(ctx, config) {
       if (['upgrade', 'forget', 'cold', 'cold-blocked'].includes(config.phase) && config.phase !== 'cold-blocked') {
         const seed = await read('legacy-seed-seed.json');
         assert.deepEqual((await registry.list()).map(b => ({ id: b.id, createdAt: b.createdAt })), seed.bots);
-        assert.deepEqual(migration.counts, { source: 2, copied: 2, quarantined: 2 });
+        assert.deepEqual(migration.counts, { source: 2, copied: 2, quarantined: 0 });
         for (const [, v] of kernel.snapshot.versions) assert.equal(v.trust, 'candidate');
+        const previous = await read('legacy-seed-context.json');
+        for (const id of ['alpha', 'beta']) {
+          const bot = (await registry.list()).find(b => b.id === id);
+          const text = memoryContext(kernel, { botId: id, botCreatedAt: bot.createdAt }, registry.config, 20)();
+          assert.equal(text, previous[id], 'Legacy private context must survive upgrade unchanged');
+        }
+        assert.equal(await registry.memoryQuarantineCount(), 0);
+        await save('context-equivalence', { same: true, bots: ['alpha', 'beta'] });
       }
       await save('migration', { manifest: migration, idMap: [...kernel.domain.table('migration_items').entries()], epoch: kernel.epoch });
       if (config.phase === 'fresh' || config.phase === 'upgrade' || config.phase === 'cold') return;
@@ -73,7 +87,11 @@ export function apply(ctx, config) {
         const previous = await read('identity.json'); assert.deepEqual(ids, previous.ids);
         assert.ok(kernel.blocked); assert.ok(kernel.epoch > 0);
         agent.followup(message('COLD_BLOCKED')); await agent.whenIdle();
-        assert.equal(adapter.count, 0); assert.equal((await memory.list()).length, 0);
+        assert.equal(adapter.count, 0);
+        const rows = await memory.list();
+        const seed = await readFile(resolve(config.outputDir, 'receipts', 'legacy-seed-seed.json'), 'utf8')
+          .then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
+        assert.deepEqual(rows.map(r => r.content), seed ? ['LEGACY_alpha'] : []);
         await save('blocked', { ids, epoch: kernel.epoch, blocked: kernel.blocked, requests: adapter.count }); return;
       }
       await save('identity.json', { ids });

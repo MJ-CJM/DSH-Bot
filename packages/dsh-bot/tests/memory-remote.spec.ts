@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { memorySchema } from '../src/shared/schema.js';
+import { privateVersion } from '../src/host/memory/version.js';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,6 +91,25 @@ async function withFacility(run: (fixture: Awaited<ReturnType<typeof facility>>)
 }
 
 describe('memory Remote methods over the T06 registry queue and actual JSON domain', () => {
+  it('exposes a management-only global count for orphaned quarantine rows without adding them to private reads', async () =>
+    withFacility(async ({ registry, remote }) => {
+      const kernel = registry.memoryKernel;
+      if (!kernel) throw new Error('Missing memory kernel');
+      const record = memorySchema.parse({ id: 'orphan', botId: 'deleted', content: 'SYNTHETIC_QUARANTINE',
+        kind: 'note', tags: [], pinned: true, createdAt: 1, updatedAt: 1 });
+      const { version, payload } = privateVersion(kernel, record, { botId: 'deleted', botCreatedAt: 0 });
+      version.status = 'proposed';
+      const opId = randomUUID();
+      await kernel.domain.table('migration_items').put(record.id, { legacyId: record.id, memoryId: version.memoryId,
+        versionId: version.versionId, opId, contentRef: version.contentRef, quarantine: true });
+      await kernel.commit({ opId, kind: 'migration', subjectIds: [version.memoryId], expectedRevision: kernel.seq,
+        forgetEpoch: kernel.epoch, versions: [version], payloads: { [version.contentRef]: payload } });
+      expect(await remote.quarantineCount()).toBe(1);
+      expect(await remote.count('alpha')).toBe(0);
+      expect(await remote.list('alpha', {})).toEqual([]);
+      expect(await remote.list('beta', {})).toEqual([]);
+    }));
+
   it('lists, searches and pages within the selected Bot; persists manual provenance and updates', async () => withFacility(async ({ remote, registry }) => {
     const first = await remote.save('alpha', { content: 'Prefer short titles', kind: 'preference', tags: ['writing'] });
     const second = await remote.save('alpha', { content: 'Prefer long reports', tags: ['writing'], pinned: true });
@@ -208,7 +230,7 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     expect(remote.typertRemote.namespace).toBe('dshBot.memory');
     const cases: Record<string, unknown[]> = {
       list: ['alpha', {}], search: ['alpha', { query: 'absent' }],
-      save: ['alpha', { content: 'Codec result' }], count: ['alpha'],
+      save: ['alpha', { content: 'Codec result' }], count: ['alpha'], quarantineCount: [],
     };
     let saved: MemoryRecord | undefined;
     for (const descriptor of TYPERT.invocations.filter(({ namespace }) => namespace === 'dshBot.memory')) {

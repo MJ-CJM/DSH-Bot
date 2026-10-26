@@ -96,7 +96,8 @@ describe('built bundle contract', () => {
         if (typeof failure === 'string') throw new Error(failure);
         expect(messages).toContain('[dsh-bot] loaded');
       });
-      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace', 'dsh-bot/collaboration', 'dsh-bot/groups']);
+      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
+        'dsh-bot/collaboration', 'dsh-bot/groups']);
       if (nativeEnabled === 'corrupt-memory') expect(ctx.get('dshBotReferenceMemory')).toBeUndefined();
       if (nativeEnabled === 'corrupt-transfer') expect(ctx.get('dshBotWorkspace')).toBeUndefined();
       await fork.dispose();
@@ -144,7 +145,11 @@ describe('built bundle contract', () => {
     expect(payload.version).toBe(3);
     const dependencySources = payload.sources.filter((path: string) => path.includes('/node_modules/'));
     expect(dependencySources).toHaveLength(5);
-    expect(dependencySources.every((path: string) => /@deepseek-ai\/(dsh-typert-protocol\/lib\/types\/remote-info\.js|dsh-schedule\/lib\/typert.remote-client\.js|dsh-session\/lib\/types\/surface\.js|schemastery\/lib\/index\.mjs|cosmokit\/lib\/index\.js)$/.test(path))).toBe(true);
+    const publicDependency = new RegExp(`@deepseek-ai/(${[
+      'dsh-typert-protocol/lib/types/remote-info\\.js', 'dsh-schedule/lib/typert\\.remote-client\\.js',
+      'dsh-session/lib/types/surface\\.js', 'schemastery/lib/index\\.mjs', 'cosmokit/lib/index\\.js',
+    ].join('|')})$`);
+    expect(dependencySources.every((path: string) => publicDependency.test(path))).toBe(true);
     expect(payload.sources.some((path: string) => /\/(?:host|spikes)\//.test(path))).toBe(false);
     const generatedLine = source.split('\n').findIndex((line) => line.startsWith('function BotsIcon('));
     expect(generatedLine).toBeGreaterThan(0);
@@ -201,7 +206,9 @@ describe('built bundle contract', () => {
     expect(() => host.Config({ enableBotManageInStandard: 'yes' } as never)).toThrow();
   });
 
-  it.each(['native', 'missing-service', 'missing-registry', 'missing-slot', 'registration-failure'] as const)('activates the built Client with a peer-owned Conversation service (%s) and releases resources', async (mode) => {
+  it.each(['native', 'missing-service', 'missing-registry', 'missing-slot', 'registration-failure'] as const)(
+    'activates the built Client with a peer-owned Conversation service (%s) and releases resources',
+    async (mode) => {
     const ctx = new Context();
     const active = new Set<string>();
     const releases: string[] = [];
@@ -229,10 +236,18 @@ describe('built bundle contract', () => {
     ctx.provide('remote', {
       $on: () => register('schedule.changed'),
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
-        expect(['dsh-bot', 'dsh-bot/automation', '@deepseek-ai/dsh-schedule', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace', 'dsh-bot/collaboration', 'dsh-bot/groups']).toContain(contribution.package);
+        expect(['dsh-bot', 'dsh-bot/automation', '@deepseek-ai/dsh-schedule', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
+          'dsh-bot/collaboration', 'dsh-bot/groups']).toContain(contribution.package);
         await Promise.resolve();
         mountedEndpoints.push(...contribution.descriptors.map((entry) => `${entry.namespace}/${entry.method}`));
-        const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' : contribution.package === 'dsh-bot/automation' ? 'remote.automation' : contribution.package === 'dsh-bot/integrations' ? 'remote.p34' : contribution.package === 'dsh-bot/collaboration' ? 'remote.collaboration' : contribution.package === 'dsh-bot/groups' ? 'remote.groups' : contribution.package === 'dsh-bot/messaging' ? 'remote.messaging' : contribution.package === 'dsh-bot/workspace' ? 'remote.workspace' : 'remote.schedule');
+        const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' :
+          contribution.package === 'dsh-bot/automation' ? 'remote.automation' : contribution.package === 'dsh-bot/integrations' ?
+          'remote.p34' :
+          contribution.package === 'dsh-bot/collaboration' ? 'remote.collaboration' : contribution.package === 'dsh-bot/groups' ?
+          'remote.groups' :
+          contribution.package === 'dsh-bot/messaging' ? 'remote.messaging' : contribution.package === 'dsh-bot/workspace' ?
+          'remote.workspace' :
+          'remote.schedule');
         return async () => { dispose(); };
       },
     } as unknown as Context['remote']);
@@ -240,7 +255,8 @@ describe('built bundle contract', () => {
     new Function('window', readFileSync(require.resolve('@deepseek-ai/dsh-client-ui-conversation/client'), 'utf8'))({
       __ModuleLoader__: { load(entry: { factory: (load: (id: string) => unknown) => typeof conversation }) {
         conversation = entry.factory(id => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives :
-          id === '@deepseek-ai/dsh-client-store' ? { notifySubscribers: (listeners: Set<() => void>) => { for (const listener of listeners) listener(); } } : require(id));
+          id === '@deepseek-ai/dsh-client-store' ? { notifySubscribers: (listeners: Set<() => void>) => { for (const listener of listeners) listener(); } }
+            : require(id));
       } },
     });
     if (!conversation) throw Error('Native Conversation factory did not load');
@@ -267,24 +283,37 @@ describe('built bundle contract', () => {
       await fork.await();
       expect(fork.state).toBe(2);
       expect(assembly?.events.entries().map(d => d.kind) ?? []).toEqual(mode === 'native' ? ['dsh-bot-message'] : []);
-      const resources = [...(mode === 'native' ? ['conversation.chat.node'] : []), 'conversation.session.header.utilities', 'dictionaries', 'main', 'remote.automation', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.schedule', 'remote.workspace', 'schedule.changed',
+      const resources = [...(mode === 'native' ?
+        ['conversation.chat.node'] :
+        []), 'conversation.session.header.utilities', 'dictionaries', 'main',
+        'remote.automation', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.schedule',
+        'remote.workspace', 'schedule.changed',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'];
       expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([
         'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',
         'dshBot.collaboration/board', 'dshBot.collaboration/createTask', 'dshBot.collaboration/ensure', 'dshBot.collaboration/updateTask',
-        'dshBot.connectors/applyIdle', 'dshBot.connectors/catalog', 'dshBot.connectors/importLegacy', 'dshBot.connectors/saveAssignment', 'dshBot.connectors/saveDefinition',
-        'dshBot.groups/archive', 'dshBot.groups/cancel', 'dshBot.groups/create', 'dshBot.groups/edit', 'dshBot.groups/list', 'dshBot.groups/markRead', 'dshBot.groups/send', 'dshBot.groups/view',
-        'dshBot.im/status', 'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/save', 'dshBot.memory/search', 'dshBot.memory/update', 'dshBot.messaging/request',
-        'dshBot.nativeSchedule/aggregate', 'dshBot.nativeSchedule/deleteLegacy', 'dshBot.nativeSchedule/runNow', 'dshBot.notifications/markRead', 'dshBot.notifications/savePolicy', 'dshBot.notifications/test', 'dshBot.referenceMemory/request', 'dshBot.run/get', 'dshBot.run/list', 'dshBot.workspace/request',
-        'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get', 'dshBot/list', 'dshBot/openConversation', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
+        'dshBot.connectors/applyIdle', 'dshBot.connectors/catalog', 'dshBot.connectors/importLegacy', 'dshBot.connectors/saveAssignment',
+          'dshBot.connectors/saveDefinition',
+        'dshBot.groups/archive', 'dshBot.groups/cancel', 'dshBot.groups/create', 'dshBot.groups/edit', 'dshBot.groups/list', 'dshBot.groups/markRead',
+          'dshBot.groups/send', 'dshBot.groups/view',
+        'dshBot.im/status', 'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/quarantineCount', 'dshBot.memory/save',
+          'dshBot.memory/search', 'dshBot.memory/update', 'dshBot.messaging/request',
+        'dshBot.nativeSchedule/aggregate', 'dshBot.nativeSchedule/deleteLegacy', 'dshBot.nativeSchedule/runNow', 'dshBot.notifications/markRead',
+          'dshBot.notifications/savePolicy', 'dshBot.notifications/test', 'dshBot.referenceMemory/request', 'dshBot.run/get', 'dshBot.run/list',
+          'dshBot.workspace/request',
+        'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get',
+          'dshBot/list', 'dshBot/openConversation', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
       ]);
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);
       expect(assembly?.events.entries() ?? []).toEqual([]);
-      expect(releases.sort()).toEqual([...resources, ...(mode === 'registration-failure' ? ['conversation.chat.node'] : []), 'conversation.session.header.utilities', 'sidebar.session.row.leading', 'sidebar.session.row.hover'].sort());
+      expect(releases.sort()).toEqual([...resources, ...(mode === 'registration-failure' ?
+        ['conversation.chat.node'] :
+        []),
+        'conversation.session.header.utilities', 'sidebar.session.row.leading', 'sidebar.session.row.hover'].sort());
     } finally {
       await ctx.fiber.dispose();
     }

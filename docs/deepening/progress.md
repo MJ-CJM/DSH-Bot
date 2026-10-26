@@ -211,3 +211,47 @@ U(schema/op-log/rebuild/context/lifecycle/migration-copy)、H(fence/admission/mi
 `DSH_HOME="$PWD/.dsh-dev" scripts/pnpm check`、case 收据校验、额外 lint 与尺寸检查最终均 exit=0。
 最新收据索引为 `.dsh-dev/deepening/b3/commands.json`；失败历史、旧 tgz SHA256 与每项证据边界见 B3 报告。
 下一批仍需编排方审查后派发；B3 没有提供解除未验证屏障的操作。
+
+
+## B3-rework：审查返工（2026-10-25）
+
+执行 tasks/DP/B3-rework.md 的六项要求（含最高优先级追加），基线 ce8e2ebe。
+完整改动文件、命令/退出码、失败历史和证据边界见 [返工报告](B3-rework.md)。
+本节覆盖上文 B3“旧项全部 proposed 隔离”的行为；版本、依赖、lockfile 均未改。
+保留开始时 pnpm-workspace.yaml 修改和 .codex/；未 commit/push、嵌套 Codex、修改桌面或读取真实数据。
+
+| 审查项 | 结果 | 当前实测 |
+| --- | --- | --- |
+| 1：Host 系统时区与 DST | PASS (UNIT rc.2) | 当前源码已解析/持久化本地时区；补上海午夜、LA 23/25 小时日、缓存命中/失效/重开测试 |
+| 2：memorySectionOrder | PASS | 使用配置值；默认 100、范围 (0,800) 保留，配置 175 的注册/disposer 测试通过 |
+| 3：工具名后续改名 | PASS | context/prompt 加 TODO(I34/B5)，未提前改 memory_search |
+| 4：真实 0.3.2 Fence | PASS (HOST rc.3) | dist/dsh-bot-0.3.2.tgz 安装字节核对；旧包明确因 Fence schema 不符拒绝开域 |
+| 5：迁移连续性与隔离数量 | PASS (UNIT/DOM + HOST rc.3) | 合法生命周期 private/active/candidate；8 条中隔离 3 条；2 条实际旧包 context 升级/冷读逐字相同 |
+| 6：CLI 来源核查 | PASS | scripts/dsh → Electron 桌面 CLI rc.3；仓库 101 个 DSH 包无 rc.2 CLI bin，app-boot 仅库出口 |
+| 6：精确 rc.2 的四组 H | FAIL (NOT_RUN) | 仓库现有依赖不能提供 rc.2 CLI；未升级/降级桌面，不拿 rc.3 Host 替代 |
+| I08/I09/I10/I13 | PASS (UNIT rc.2) | schema 11、op-log 2、rebuild 4、lifecycle 4 |
+| I11/I12/I14/I22/I23/I24 | PASS (UNIT rc.2 / HOST rc.3) | context 8、migration-copy 4；四组 H 共 11 阶段，loopback 4、真实模型 0 |
+| 全量 C | PASS | 73 文件，783 passed + 3 expected fail = 786；build/strict/lint exit 0 |
+| 完整强遗忘/P0 | FAIL (B4 未完成) | 历史/摘要/Inbox/MCP 副本与完整矩阵未完成，屏障保留 |
+| 浏览器/桌面/主题截图 | FAIL (NOT_RUN) | 本轮只有中英文 DOM 计数验证，非浏览器截图 |
+
+私有注入及管理读取保留 pinned 和同时间旧 ID 顺序。管理 Remote 只给所有 Bot（含孤儿）的隔离总数，
+各 Bot 记忆面板显示中英提示；完整归属操作留给 M3，候选信任不扩大共享权限。
+U 六文件共 33 项 exit=0；H 四组各 exit=0；C exit=0；case 收据校验、额外 lint、尺寸/diff 检查均 exit=0。
+3 项既有共享预期失败仍 OPEN；未执行依赖安装，不将其计 PASS。
+
+最新收据如下，均位于独立合成 DSH_HOME；没有访问 ~/.dsh/凭据/真实会话。
+- fence: .dsh-dev/deepening/b3-fence-2026-10-26T04-38-02.216Z-60893 (CLI 0.2.1-rc.3)
+- admission: .dsh-dev/deepening/b3-admission-2026-10-26T04-38-06.694Z-60997 (CLI 0.2.1-rc.3)
+- migration: .dsh-dev/deepening/b3-migration-2026-10-26T04-38-10.635Z-61095 (CLI 0.2.1-rc.3)
+- migration-rollback: .dsh-dev/deepening/b3-migration-rollback-2026-10-26T04-38-16.330Z-61226 (CLI 0.2.1-rc.3)
+
+Fence 拒绝收据：
+.dsh-dev/deepening/b3-fence-2026-10-26T04-38-02.216Z-60893/receipts/old-rejected-old-package.json。
+该收据的 reason 明确为 memories 中 __dsh_bot_memory_v2_fence__ 不匹配旧 schema；adapterRequests=0。
+旧 tgz SHA256：1cad1685ae60deef5197a374d2213bb160cb5246eea4ad3e449035de050f986b。
+命令索引为 .dsh-dev/deepening/b3-rework/commands.json，CLI 调查为同目录 cli-discovery.json。
+失败历史完整保留：首次 Remote 清单/排序断言、src/lib 类型不兼容、一次 build 清理窗口与
+回滚旧隔离断言失败均已纠正，未覆盖原始日志。
+
+遗留：编排方提供精确 rc.2 CLI 后重跑相同 H；M3 处理隔离归属，B4 处理完整强遗忘。

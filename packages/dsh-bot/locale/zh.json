@@ -117,6 +117,7 @@
     "memory.loading": "正在读取记忆…",
     "memory.empty": "尚无记忆。",
     "memory.noMatches": "没有匹配的记忆。",
+    "memory.quarantined": "所有 Bot 共有 {count} 条旧记忆处于隔离状态（含已删除 Bot）；归属处理将在 M3 提供。",
     "memory.total": "此 Bot 共 {count} 条记忆",
     "memory.firstPage": "返回首页",
     "memory.nextPage": "下一页",

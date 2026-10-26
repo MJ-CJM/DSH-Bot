@@ -247,6 +247,11 @@ export const dshBotRemoteSpec = {
       parameters: [botId, memoryId],
       result: codec('void', z.void()),
     },
+    'dshBot.memory/quarantineCount': {
+      ...memoryOwner,
+      parameters: [],
+      result: activityResultCodec('MemoryQuarantineCount', z.number().int().nonnegative()),
+    },
     'dshBot.memory/count': {
       ...memoryOwner,
       parameters: [botId],

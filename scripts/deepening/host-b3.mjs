@@ -59,6 +59,8 @@ try {
       '- insert:', '    - id: dp-b3-probe',
       `      name: ${JSON.stringify(resolve(root, 'packages/dsh-bot/tests/deepening/b3-profile.mjs'))}`,
       '      config:', `        outputDir: ${JSON.stringify(dir)}`, `        endpoint: ${JSON.stringify(endpoint)}`, `        phase: ${phase}`,
+      `        legacyPrompt: ${JSON.stringify(resolve(run.env.DSH_HOME, 'profiles', profile,
+        'node_modules/dsh-bot/lib/host/memory/prompt.js'))}`,
     ].join('\n');
     await writeFile(resolve(run.env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);
     await run.command(['--profile', profile, '--dump-config'], `${phase}-dump`);

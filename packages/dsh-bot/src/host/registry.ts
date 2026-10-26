@@ -65,6 +65,17 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
     );
   }
 
+  /** Management-only total includes orphaned legacy rows that have no current Bot panel. */
+  async memoryQuarantineCount(): Promise<number> {
+    return this.enqueue(() => {
+      const kernel = this.memoryKernel;
+      if (!kernel) throw new Error('Memory kernel is not ready');
+      const state = kernel.snapshot;
+      return [...kernel.domain.table('migration_items').entries()].filter(([, item]) =>
+        item.quarantine && state.versions.get(item.memoryId)?.status === 'proposed').length;
+    });
+  }
+
   /** Host-only completion sink. The same queue drains before domain shutdown
    * and serializes accepted messages with Bot deletion and Remote reads. */
   async recordActivity(input: Parameters<ActivityStore['record']>[0]): Promise<void> {

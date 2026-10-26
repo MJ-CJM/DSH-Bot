@@ -27,7 +27,7 @@ export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: Conte
     const key = JSON.stringify([kernel.scope.scope.id, owner, state.seq, state.epoch, kernel.scope.policyRevision, policy, injectLimit]);
     if (cached && cached.key === key && now >= cached.from && now < cached.until) { observed(cached.ids); return cached.text; }
     let until = nextDayBoundary(now, kernel.scope.quotaTimeZone);
-    const rows: { line: string; id: string; pinned: boolean; at: number }[] = [];
+    const rows: { line: string; id: string; pinned: boolean; at: number; sortId: string }[] = [];
     for (const version of state.versions.values()) {
       if (version.scope !== 'private' || !sameBot(version.ownerBotKey, owner) || version.status !== 'active' ||
         version.labels.readers === 'shared' || !version.labels.readers.some(reader => sameBot(reader, owner)) ||
@@ -36,15 +36,17 @@ export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: Conte
       if (!p) throw new Error('Memory payload missing');
       for (const boundary of [p.valid.from, p.valid.to]) if (boundary !== null && boundary > now) until = Math.min(until, boundary);
       if ((p.valid.from !== null && now < p.valid.from) || (p.valid.to !== null && now >= p.valid.to)) continue;
-      rows.push({ id: version.versionId, pinned: p.legacy?.pinned ?? false, at: p.legacy?.updatedAt ?? version.recordedAt,
+      rows.push({ id: version.versionId, sortId: p.legacy?.id ?? version.memoryId,
+        pinned: p.legacy?.pinned ?? false, at: p.legacy?.updatedAt ?? version.recordedAt,
         line: `- ${p.legacy?.pinned ? '[pinned] ' : ''}[${version.legacyKind ?? version.kind}] ${JSON.stringify(p.content)}` });
     }
-    rows.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.at - a.at || a.id.localeCompare(b.id));
+    rows.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.at - a.at || (a.sortId < b.sortId ? -1 : a.sortId > b.sortId ? 1 : 0));
     const candidates = rows.filter(r => r.pinned).concat(rows.filter(r => !r.pinned).slice(0, injectLimit));
     // Base budgets are 2400 private / 1600 shared at defaults. Empty shared lends its unused budget.
     const privateBudget = Math.floor(policy.maxInjectChars * policy.privateShare);
     const sharedBudget = policy.maxInjectChars - privateBudget;
     const budget = privateBudget + sharedBudget, lines: string[] = [], ids: string[] = [];
+    // TODO(I34 / B5): rename memory_search with the complete bot_memory_* tool contract.
     const footer = '[More memories available via memory_search]';
     for (const row of candidates) if (chars([header, ...lines, row.line, footer].join('\n')) <= budget) {
       lines.push(row.line); ids.push(row.id);
@@ -56,7 +58,8 @@ export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: Conte
   };
 }
 export function registerMemoryContext(agent: Agent, owner: BotKey, kernel: MemoryKernel, admission: MemoryAdmission,
-  policy: ContextPolicy, injectLimit: number): () => void {
+  policy: ContextPolicy & { memorySectionOrder: number }, injectLimit: number): () => void {
   const provider = memoryContext(kernel, owner, policy, injectLimit, Date.now, ids => admission.observed(agent.session.id, ids));
-  return agent.ctx.systemPrompt.context({ name: 'dsh-bot:memory', order: 300, required: true, interpolate: false, text: provider });
+  return agent.ctx.systemPrompt.context({ name: 'dsh-bot:memory', order: policy.memorySectionOrder,
+    required: true, interpolate: false, text: provider });
 }

@@ -1,5 +1,25 @@
 # DSH API 核实记录
 
+## DP B3-rework：私有迁移连续性与管理计数（2026-10-25）
+
+当前结论及收据见 [B3 返工报告](deepening/B3-rework.md)，覆盖下方 B3 初轮的“全部隔离”行为。
+现存 Bot 且旧记忆 createdAt >= Bot.createdAt 时迁为 private/active/candidate；孤儿及时间矛盾项保持 proposed。
+迁移前后的私有 context 条目、置顶和同时间排序已作 UNIT 及真实 0.3.2 tgz 升级/冷恢复比较。
+候选信任不阻断自身私有读取，也不授予共享权限。
+
+新增本包管理 Remote `dshBot.memory/quarantineCount()`，沿用公开 Typert decorator/spec/strict codec，
+由 registry 队列读取已发布投影及 migration_items，只返回所有 Bot（含孤儿）的隔离总数，不返回正文。
+Client 沿用 createPollingCatalog 的 epoch/lifetime，记忆面板中英提示计数；M3 再提供归属处理。
+该 Remote 未注册为模型工具。没有新增 DSH 产品 API、依赖或 runtime peer。
+
+required literal memory context 继续使用原生 systemPrompt.context；order 改读 Config.memorySectionOrder，
+默认仍为 100，校验范围仍为 (0,800)。memory_search 提示保留 TODO(I34/B5)，不提前改名。
+现有本地日界实现和首次持久化时区策略已补上海跨日、洛杉矶春秋 DST、缓存重算及重开测试；
+时区注入沿用 openMemoryKernel 的可选参数，不引入系统时区或全局配置修改。
+
+scripts/dsh 仍经桌面 Electron CLI 启动 rc.3。现有仓库依赖的 101 个 DSH 包没有 rc.2 CLI bin，
+rc.2 app-boot 只提供库出口。四组 Host 的 rc.3 证据与精确 rc.2 FAIL(NOT_RUN) 分列；未改桌面安装。
+
 ## DP B3：记忆内核、动态 context、Fence 与最终准入（2026-10-25）
 
 范围、命令和逐项验收见 [B3 报告](deepening/B3.md)。没有新增依赖或 Host runtime peer，版本保持 0.3.2。

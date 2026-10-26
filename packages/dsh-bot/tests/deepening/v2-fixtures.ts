@@ -15,7 +15,7 @@ import { BotMemoryService } from '../../src/host/memory/service.js';
 import { privateVersion } from '../../src/host/memory/version.js';
 import { memorySchema } from '../../src/shared/schema.js';
 
-export async function v2Fixture(migrate = true) {
+export async function v2Fixture(migrate = true, timeZone?: string) {
   const base = resolve('../../.dsh-dev/deepening/b3'); await mkdir(base, { recursive: true });
   const root = await mkdtemp(join(base, 'unit-')), ctx = new Context();
   let opened: Awaited<ReturnType<typeof openMemoryKernel>> | undefined;
@@ -25,7 +25,7 @@ export async function v2Fixture(migrate = true) {
     let legacy = await ctx.storageDomain.open(migrationBotDomain);
     let bots = new BotStore(legacy as unknown as BotDomain);
     await bots.create({ id: 'alpha', name: 'Alpha' }, 1); await bots.create({ id: 'beta', name: 'Beta' }, 2);
-    opened = await openMemoryKernel(ctx, join(root, 'data'));
+    opened = await openMemoryKernel(ctx, join(root, 'data'), timeZone);
     if (migrate) await migratePrivate(legacy, opened.kernel);
     const services = () => {
       const store = new V2MemoryStore(required(opened).kernel, bots);
@@ -36,7 +36,7 @@ export async function v2Fixture(migrate = true) {
       async reopen() {
         await required(opened).close(); await legacy.close();
         legacy = await ctx.storageDomain.open(migrationBotDomain); bots = new BotStore(legacy as unknown as BotDomain);
-        opened = await openMemoryKernel(ctx, join(root, 'data'));
+        opened = await openMemoryKernel(ctx, join(root, 'data'), timeZone);
         return services();
       },
       async close() { try { await opened?.close(); await legacy.close(); await ctx.fiber.dispose(); }
