@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H04",
+  "kind": "history",
+  "rootCause": "navigation-shares-mutation-busy-state",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P2-R06-r1.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      7,
+      21
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "A list click starts delayed openConversation while the user opens an editor.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Editing cancels late navigation without allowing overlapping writes.",
+  "observed": {
+    "original": "Edit became disabled then detached because navigation shared the global busy flag and unmounted the page.",
+    "beforeFix": "Edit became disabled then detached because navigation shared the global busy flag and unmounted the page.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H18",
+  "kind": "history",
+  "rootCause": "clock-crosses-due-point-between-scan-and-timer-reset",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P2-T17.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      87,
+      89
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Time is one millisecond before due during scan, then crosses due before arming.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Arm an immediate next scan rather than waiting for the fallback timer.",
+  "observed": {
+    "original": "Old dispatcher deterministically timed out every60 without a Run or mock request.",
+    "beforeFix": "Old dispatcher deterministically timed out every60 without a Run or mock request.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

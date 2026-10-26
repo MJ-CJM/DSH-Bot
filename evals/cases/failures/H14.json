@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "H14",
+  "kind": "history",
+  "rootCause": "slice-based-budget-cuts-records-and-starves-short-facts",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P1-T06.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      7,
+      7
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "A long ordinary memory precedes a short record within a fixed budget.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts -t \"H14 \"",
+  "expected": "Pack complete records and exact omission counts, scanning later short records.",
+  "observed": {
+    "original": "Review replaced character slicing with record packing and JSON-safe pin handling.",
+    "beforeFix": "Review reconstruction reproduces the documented failure mechanism.",
+    "afterFix": "Current product/public Cordis boundary passes the same invariant (UNIT only)."
+  },
+  "regressions": [
+    {
+      "testId": "H14",
+      "testFile": "packages/dsh-bot/tests/deepening/contracts.spec.ts",
+      "testName": "H14 ordinary records must be packed whole, skipping one that cannot fit",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/H14.json"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "H15",
+  "kind": "history",
+  "rootCause": "missing-atomic-normalized-deduplication",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P1-T06.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      10,
+      10
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "Concurrent service instances save normalized equivalents.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts -t \"H15 \"",
+  "expected": "Exactly one normalized record with stable identity and merged metadata.",
+  "observed": {
+    "original": "Review added normalized-content uniqueness in the domain write queue.",
+    "beforeFix": "Review reconstruction reproduces the documented failure mechanism.",
+    "afterFix": "Current product/public Cordis boundary passes the same invariant (UNIT only)."
+  },
+  "regressions": [
+    {
+      "testId": "H15",
+      "testFile": "packages/dsh-bot/tests/deepening/contracts.spec.ts",
+      "testName": "H15 concurrent normalized duplicate saves use one domain write slot",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/H15.json"
+    }
+  ]
+}

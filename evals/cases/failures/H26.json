@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H26",
+  "kind": "history",
+  "rootCause": "jsdom-module-url-is-not-a-file-url",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P1-T08j.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      19,
+      19
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "A jsdom test resolves an artifact via import.meta.url.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Use the package working directory for this test artifact.",
+  "observed": {
+    "original": "First check failed because import.meta.url was not a file URL.",
+    "beforeFix": "First check failed because import.meta.url was not a file URL.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "S01",
+  "kind": "shared",
+  "rootCause": "cross-bot-correction-leaves-stale-private-user-fact",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/deepening/implementation-design.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      89,
+      103
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "OPEN",
+  "precondition": "Alpha knows Beijing; later trusted Beta input corrects it to Shanghai.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/shared-contracts.spec.ts -t \"S01 \"",
+  "expected": "Alpha no longer injects Beijing; a shared correction propagates without revealing private content.",
+  "observed": {
+    "original": "Current v1 Alpha snapshot still contains Beijing.",
+    "beforeFix": "Current v1 Alpha snapshot still contains Beijing.",
+    "afterFix": "NOT_RUN: future v2 behavior remains OPEN."
+  },
+  "regressions": [
+    {
+      "testId": "S01",
+      "testFile": "packages/dsh-bot/tests/deepening/shared-contracts.spec.ts",
+      "testName": "S01 a cross-Bot correction suppresses the old conflicting local fact",
+      "status": "OPEN",
+      "receipt": ".dsh-dev/deepening/b2/receipts/S01.json"
+    }
+  ]
+}

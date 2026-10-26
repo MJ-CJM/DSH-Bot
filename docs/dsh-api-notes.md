@@ -1,5 +1,14 @@
 # DSH API 核实记录
 
+## DP B2：失败案例库与契约（2026-10-25）
+
+本轮没有新增 DSH 产品 API、runtime import、依赖或 peer。
+案例/manifest JSON schema 使用现有精确 `zod@4.4.3` 的公开 `z.fromJSONSchema` 生成校验器，
+再校验来源摘要、行号、候选去向、测试与收据引用；正例及篡改负例均作为 UNIT 执行。
+真实 Cordis peer 作用域与 JSON 存储沿用已有公开入口，不引入共享记忆替身产品实现。
+27 个历史案例及 8 个共享案例的证据边界见 [M1 案例库](deepening/failure-catalog.md)。
+H03 与共享 v2 契约继续 OPEN；B1 的完整请求/受管副本强遗忘 P0 未关闭。
+
 
 ## DP B1：公开维护、系统头部与最终请求入口（2026-10-25）
 

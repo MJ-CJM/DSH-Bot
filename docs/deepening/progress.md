@@ -92,3 +92,93 @@
 正式历史清理必须继续阻断原始日志再读，完成 MCP 副本、provider replay、取消/flush 失败与完整矩阵后再评估 P0。
 本轮未运行浏览器/桌面/真实模型验收，亦未把等价组件拆分的 DOM 回归当成亮暗主题截图证明。
 下一批仍由编排方按 §11 审查后派发。
+
+## B2：I04–I07，M1 失败案例库与契约（2026-10-25）
+
+读取根规则、API notes、PLAN、实施设计全文（含优先审查 §11）、B1 结论及 B2 任务后执行。
+基线为 `phase/deepening@66db1ea03b52237ba499a3c2642a4caf4c6d12f9`。
+未嵌套调用 Codex、commit/push、启动真实模型或读取真实会话/凭据。
+保留原有 `pnpm-workspace.yaml` 的 `spikes/p34` 行和未跟踪 `.codex/`；本轮没有写这两处。
+没有修改产品运行代码、依赖、lockfile、版本、参考 DSH 源码或桌面安装内容。
+
+完整方法、命令及共享语义边界见 [M1 案例库](failure-catalog.md)。
+机器可读入口为 [manifest](../../evals/manifests/failures.json) 与 [冻结输入](../../evals/inputs/failures.json)。
+
+### 逐项验收
+
+| 项目 | 结果 | 实际数字与证据 |
+| --- | --- | --- |
+| I04 冻结输入与重算 | PASS | 41 份验收 Markdown + 4 份审查 + 1 份进度快照 = 46；3 份文件清单另列，匹配零条 |
+| I04 候选去向完整 | PASS | 310/310；20 主入口 + 133 重复引用 + 157 附原因的范围外记录；无丢项或多去向 |
+| I05 case/manifest schema、摘要及来源校验 | PASS | 35 案例；来源 revision/行号、文件摘要、重复引用、OPEN 与精确测试名称均校验；9 项正负例测试 |
+| I06 历史根因与复现 | PASS | 27 个不同根因；7 个确定性复现，其中 6 个旧机制失败/当前通过，H03 静态遗忘仍预期失败 |
+| I07 共享案例与契约复现 | PASS | 8 类；6 个真实 v1 存取反例用 it.fails 记录；其余两项 SOURCE/OPEN，不混入复现数量 |
+| 设计 §9 指定命令 | PASS | catalog、validate、U(contracts)、U(shared-contracts)、C 均退出 0；下表保留实际计数 |
+| 全量 C | PASS | 63 文件，743 passed + 7 expected fail = 750；build、strict typecheck、lint 297 文件通过 |
+| 代码尺寸与额外脚本 lint | PASS | 本轮所有代码 ≤400 行/≤160 字符；scripts/deepening 及测试额外 lint 通过 |
+| H03 当前静态快照遗忘语义 | FAIL (OPEN) | 清表后已捕获 section 仍含合成 canary；B1 的完整请求/受管副本 P0 未关闭 |
+| S01/S02/S03/S04/S06/S08 目标 v2 行为 | FAIL (OPEN) | 6 项最终断言确实失败，独立 UNIT 收据完整；不是共享功能已通过 |
+| S05 精确私有提升、S07 双配额竞争运行 | FAIL (NOT_RUN) | v2 提升/grant/配额日志尚未实现；只有 SOURCE 契约，不造替身实现或伪造合法路径 |
+
+310 是不区分大小写的 `FAIL|NOT_RUN|返工|根因` 逐行并集；大写匹配为 278。
+验收/审查自身为 305，另加进度记录 5 条。相比历史约 306 为 +4；旧估数没有冻结清单和精确规则，
+不能把 +4 解释成四个新增缺陷。完整原文、假阳性和未执行边界均保留。
+当前主来源 delta 为 added=0 / removed=0 / changed=0；以后新增或修改来源独立报告，不自动改写冻结基线。
+
+### 命令与退出码
+
+以下命令均从仓库根运行。所有需要 DSH 环境的命令显式设置 `DSH_HOME="$PWD/.dsh-dev"`。
+完整结构化记录位于 `.dsh-dev/deepening/b2/commands.json`，日志及独立收据在同目录。
+
+| 命令 | 退出码 / 结果 |
+| --- | --- |
+| `DSH_HOME="$PWD/.dsh-dev" node scripts/deepening/catalog.mjs --freeze` | 0；首次排他冻结，不覆盖历史 |
+| `DSH_HOME="$PWD/.dsh-dev" node scripts/deepening/catalog.mjs` | 0；46 来源 / 310 候选 / 当前 delta 为零 |
+| `DSH_HOME="$PWD/.dsh-dev" node scripts/deepening/validate-cases.mjs` | 最终 0；schema、完整性与引用校验 |
+| `DSH_HOME="$PWD/.dsh-dev" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts` | 0；6 passed + 1 expected fail |
+| `DSH_HOME="$PWD/.dsh-dev" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/shared-contracts.spec.ts` | 0；6 expected fail，功能仍 OPEN |
+| `DSH_HOME="$PWD/.dsh-dev" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/catalog-validation.spec.ts` | 0；9 项正负例；最终版本同样纳入 C |
+| `DSH_HOME="$PWD/.dsh-dev" node scripts/deepening/validate-cases.mjs --receipts` | 0；13 个独立收据：6 个修复对照、7 个 OPEN 反例 |
+| `scripts/pnpm -F dsh-bot typecheck` | 0；实现初期 strict 检查，最终再由 C 复核 |
+| `scripts/pnpm exec biome lint scripts/deepening packages/dsh-bot/tests/deepening` | 0；18 文件，无告警 |
+| `DSH_HOME="$PWD/.dsh-dev" scripts/pnpm check` | 最终 0；63 文件 / 750 项，其中 7 expected fail；check-final.log |
+| `git diff --check` 与代码行数/行宽检查 | 0；仅格式/尺寸证据，不冒充运行验证 |
+
+首次校验入口因在 async 函数默认参数里使用 await 而退出 1；随后来源范围校验发现 H18 误填候选编号而非源行号，退出 1。
+两项分别修正为函数体内 await，以及正确源行 87–89；原始工具错误与结构化开发失败记录保留。
+早期 combined 定向运行退出 0，7 passed / 7 expected fail；单独 catalog 正负例退出 0，9 项。
+初次全量退出 0，744 passed + 7 expected fail = 751；随后移除一条仅核对常量数量的浅测试，
+最终完整重跑为 743 passed + 7 expected fail = 750，不把删除的浅测试算为功能覆盖。
+没有依赖变更或依赖复现需求，本轮未安装依赖；没有把未执行安装列为运行通过。
+
+### 改动文件
+
+- `README.md`：文档索引。
+- `docs/dsh-api-notes.md`：B2 的 API/证据边界。
+- `docs/deepening/failure-catalog.md`：盘点方法、运行入口、契约及后续接线。
+- `docs/deepening/progress.md`：本节。
+- `evals/inputs/failures.json`：冻结来源、摘要、310 条完整候选。
+- `evals/inputs/failures-progress.md`：未跟踪进度输入的内容快照。
+- `evals/schemas/case.json`、`evals/schemas/manifest.json`。
+- `evals/manifests/failures.json`。
+- `evals/cases/failures/H01.json` 至 `H27.json`：27 个历史案例，逐文件列于 manifest。
+- `evals/cases/failures/S01.json` 至 `S08.json`：8 个共享案例，逐文件列于 manifest。
+- `scripts/deepening/catalog-lib.mjs`。
+- `scripts/deepening/catalog.mjs`。
+- `scripts/deepening/validate-cases.mjs`。
+- `packages/dsh-bot/tests/deepening/contract-fixtures.ts`。
+- `packages/dsh-bot/tests/deepening/legacy-contracts.ts`。
+- `packages/dsh-bot/tests/deepening/contracts.ts`。
+- `packages/dsh-bot/tests/deepening/contracts.spec.ts`。
+- `packages/dsh-bot/tests/deepening/shared-contracts.spec.ts`。
+- `packages/dsh-bot/tests/deepening/catalog-validation.spec.ts`。
+
+### 遗留与建议
+
+本批只完成 M1。S01–S04 的 v1 私有存取反例说明缺少未来共享投影，不代表 v1 已有自动共享，
+也不把私有存储候选本身说成违反旧契约。S08 只是延迟写的批准后排队模型，未调用原生审批。
+旧机制 fixture 是按记录重建的最小代码，不是旧包逐字节运行，也不是浏览器或 Host 全流程结果。
+
+后续 M2/M3/M4 接真实 v2 门面、可信入口、grant/epoch 与双配额后，保留原始失败，
+将对应 it.fails 与 manifest 一起迁为修复后 PASS。继续执行 B1 留下的完整请求、原始历史再读与 MCP 副本 P0 门禁。
+本轮没有浏览器、桌面、Host loopback 或真实模型新运行证据，SOURCE 与 UNIT 不能替代这些验收。

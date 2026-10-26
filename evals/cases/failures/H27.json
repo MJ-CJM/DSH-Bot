@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H27",
+  "kind": "history",
+  "rootCause": "crash-repair-closer-misread-as-business-completion",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/acceptance/V032-bot-to-bot.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      16,
+      16
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Cold resume repairs an unclosed turn with an interrupted closer.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Keep processing unknown unless actual business completion is proven.",
+  "observed": {
+    "original": "The release fixed cold recovery to distinguish crash repair from a genuine aborted turn.",
+    "beforeFix": "The release fixed cold recovery to distinguish crash repair from a genuine aborted turn.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

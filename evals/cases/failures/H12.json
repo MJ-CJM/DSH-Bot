@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H12",
+  "kind": "history",
+  "rootCause": "ptc-origin-propagation-unproved",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P34-B01-03.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      55,
+      55
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "A nested run_code path attempts bot_message.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Keep the path disabled until native provenance and all lower guards are proven.",
+  "observed": {
+    "original": "PTC propagation was not established; later release retained the restricted fallback.",
+    "beforeFix": "PTC propagation was not established; later release retained the restricted fallback.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

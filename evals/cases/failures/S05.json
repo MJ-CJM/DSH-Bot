@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "S05",
+  "kind": "shared",
+  "rootCause": "private-promotion-without-exact-content-scope-grant",
+  "mastCategory": "specification",
+  "source": {
+    "path": "docs/deepening/implementation-design.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      89,
+      103
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "OPEN",
+  "precondition": "A private fact is proposed for promotion to all Bots.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Bind precise payload version, target scope, source, birth, epoch and policy to a single-use grant.",
+  "observed": {
+    "original": "No v2 promotion facade or native exact-content approval path exists; SOURCE_ONLY, no runnable fake success.",
+    "beforeFix": "No v2 promotion facade or native exact-content approval path exists; SOURCE_ONLY, no runnable fake success.",
+    "afterFix": "NOT_RUN: future v2 behavior remains OPEN."
+  },
+  "regressions": []
+}

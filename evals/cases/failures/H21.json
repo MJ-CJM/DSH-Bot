@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H21",
+  "kind": "history",
+  "rootCause": "im-consumer-disposal-fallback-gate-unverified",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/acceptance/P34-U04-05.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      54,
+      56
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "An IM consumer is installed then unregistered.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Prove no fallback independent session and checked reply/send before enabling.",
+  "observed": {
+    "original": "No public fake-platform seam was found; affected production paths stay disabled.",
+    "beforeFix": "No public fake-platform seam was found; affected production paths stay disabled.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}
