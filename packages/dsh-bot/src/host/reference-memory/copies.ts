@@ -125,7 +125,7 @@ export class MemoryCopyWorkflow extends ReferenceBackend {
         } finally {
           if (l) await this.closeLive(l);
           const binding = this.binding(bot);
-          if (binding?.mode === 'internal+reference-graph' && !this.stopping)
+          if (binding?.mode === 'internal+reference-graph' && !this.stopping && !this.registry.memoryKernel?.blocked)
             await this.mount(bot, agent, binding.fileIdentity, false);
         }
       })

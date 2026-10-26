@@ -53,4 +53,6 @@ export async function persistProjection(domain: MemoryDomain, state: Projection)
   const live = new Set([...domain.table('ops').entries()].flatMap(([, op]) => op.versions
     .filter(version => !state.forgotten.has(version.memoryId)).map(version => version.contentRef)));
   for (const [id] of domain.table('payloads').entries()) if (!live.has(id)) await domain.table('payloads').delete(id);
+  for (const [id, item] of domain.table('migration_items').entries())
+    if (state.forgotten.has(item.memoryId)) await domain.table('migration_items').delete(id);
 }

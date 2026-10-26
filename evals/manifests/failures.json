@@ -275,7 +275,7 @@
     {
       "id": "H03",
       "path": "evals/cases/failures/H03.json",
-      "sha256": "9c99232227c841624dfde7c7c8395380986863c15926f22f08763de2d4e78b44",
+      "sha256": "1f50c4bea94a3e33529920044cd767775b945b697fc4e1d3804531e4da1461e5",
       "status": "FIXED"
     },
     {
@@ -443,7 +443,7 @@
     {
       "id": "S04",
       "path": "evals/cases/failures/S04.json",
-      "sha256": "fdbc9cfb89bae6aefce61e2e59a359c9307257cf1fa43dfee995433260eddcf9",
+      "sha256": "ba80c5233027dd02e5605eacaf506500cb68eed88e1a7c6bbdd9c66405316876",
       "status": "FIXED"
     },
     {
@@ -467,7 +467,7 @@
     {
       "id": "S08",
       "path": "evals/cases/failures/S08.json",
-      "sha256": "edeeb423068e4f7d27ec93166a7b4bca185d1fa44cd3b88863f79936fc5be924",
+      "sha256": "dcc31370876e10f5c667feb0fc04b2c6b00b1ecf1b8bc577c36c8ec9123939f1",
       "status": "FIXED"
     }
   ],
@@ -2658,6 +2658,7 @@
     "MAST categories are a coarse internal mapping, not a claim of running the external benchmark.",
     "S01/S02/S03 are target shared semantics against private v1 reads; they do not imply private candidate storage is a v1 bug.",
     "S05/S07 remain OPEN/SOURCE with no executable v2 promotion or quota facade; not counted toward six shared reproductions.",
-    "B3 closes H03 current injection, S04 pending-cleanup replay gate, S06 BotKey isolation and S08 delayed epoch gate. History, verified-copy cleanup and native approval grants remain B4/M4 gates."
+    "B3 closes H03 current injection, S04 pending-cleanup replay gate, S06 BotKey isolation and S08 delayed epoch gate. History, verified-copy cleanup and native approval grants remain B4/M4 gates.",
+    "B4: H03/S04/S08 evidence extended; all forgetting-related narrow contracts were already FIXED by B3. No unrelated OPEN shared contract was closed. Full private strong forgetting remains FAIL (P0 OPEN); see docs/deepening/B4.md."
   ]
 }

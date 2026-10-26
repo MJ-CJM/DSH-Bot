@@ -305,7 +305,9 @@ describe('built bundle contract', () => {
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get',
           'dshBot/list', 'dshBot/openConversation', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
-      ]);
+        'dshBot.memory/previewForget', 'dshBot.memory/chooseForget', 'dshBot.memory/cleanupStatuses',
+        'dshBot.memory/retryCleanup', 'dshBot.memory/rootInstructions',
+      ].sort());
       await fork.dispose();
       await fork.dispose();
       expect([...active]).toEqual([]);

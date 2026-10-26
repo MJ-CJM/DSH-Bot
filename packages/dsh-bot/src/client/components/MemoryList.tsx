@@ -13,13 +13,14 @@ interface Props {
   onOpenSession: MemoryPanelProps['onOpenSession'];
   onUpdate: MemoryPanelProps['onUpdate'];
   onRemove: MemoryPanelProps['onRemove'];
+  previewForget?(id: string): void;
   edit(record?: MemoryRecord): void;
   setPendingDelete(value?: string): void;
   setNotice(value: undefined): void;
   perform(action: () => unknown | Promise<unknown>, errorKey: 'memory.saveError' | 'memory.removeError' | 'memory.openError',
     successKey?: 'memory.saved' | 'memory.removed', done?: () => void): Promise<void>;
 }
-export function MemoryList({ records, busy, draft, pendingDelete, t, onOpenSession, onUpdate, onRemove,
+export function MemoryList({ records, busy, draft, pendingDelete, t, onOpenSession, onUpdate, onRemove, previewForget,
   edit, setPendingDelete, setNotice, perform }: Props) {
   function timestamp(value: number, label: 'memory.created' | 'memory.updated') {
     const date = new Date(value);
@@ -101,7 +102,8 @@ export function MemoryList({ records, busy, draft, pendingDelete, t, onOpenSessi
                   className={styles.dangerButton}
                   disabled={busy || Boolean(draft)}
                   onClick={() => {
-                    setPendingDelete(record.id);
+                    if (previewForget) previewForget(record.id);
+                    else setPendingDelete(record.id);
                     setNotice(undefined);
                   }}
                 >

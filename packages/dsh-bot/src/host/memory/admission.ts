@@ -13,6 +13,11 @@ export class MemoryAdmission {
   private readonly seen = new Map<string, string[]>();
   denied = 0;
   get inFlight(): number { return this.leases.size; }
+  sessions(): Agent[] { return [...this.agents.values()]; }
+  async drain(): Promise<void> {
+    this.changed();
+    await Promise.all([...this.leases.values()].map(l => l.done));
+  }
   constructor(private readonly ctx: Context, private readonly presetPrefix = 'bot-') {
     ctx.effect(() => ctx.on('llm/stream', (options, next) => this.stream(options, next, this.kernel?.epoch)),
       'dsh-bot: memory final admission');

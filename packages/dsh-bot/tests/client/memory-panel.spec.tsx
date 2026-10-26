@@ -276,8 +276,17 @@ describe('MemoryPanel integrated with the public Client slots', () => {
     expect(button(panel, t['memory.unpin'])).toBeDefined();
     await click(button(panel, t['actions.delete']));
     expect(app.remote.methods.memory.delete).not.toHaveBeenCalled();
-    await click(button(panel, t['memory.deleteAction']));
-    expect(app.remote.methods.memory.delete).toHaveBeenCalledExactlyOnceWith('alpha-bot', 'memory-one');
+    await click(button(panel, t['forget.preview']));
+    expect(app.remote.methods.memory.previewForget).toHaveBeenCalledExactlyOnceWith('alpha-bot', {
+      memoryId: 'memory-one', mode: 'version',
+    });
+    await click(button(panel, t['forget.stop']));
+    expect(app.remote.methods.memory.chooseForget).toHaveBeenCalledExactlyOnceWith({
+      previewRevision: '00000000-0000-4000-8000-000000000001', choice: 'stop',
+    });
+    expect(app.remote.methods.memory.delete).not.toHaveBeenCalled();
+    expect(panel.textContent).toContain(t['forget.stopped']);
+    expect(panel.textContent).not.toContain(t['forget.strong']);
     expect(app.remote.methods.memory.list).toHaveBeenCalledTimes(3);
     expect(panel.textContent).toContain(t['memory.empty']);
     await click(button(panel, t['memory.add']));

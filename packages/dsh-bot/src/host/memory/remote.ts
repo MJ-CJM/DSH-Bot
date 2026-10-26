@@ -15,6 +15,8 @@ import type { MemoryRecord, MemorySaveResult } from '../../shared/schema.js';
 import { parseInput } from '../errors.js';
 import type {} from '../registry.js';
 import { rejectMemorySecrets } from './secrets.js';
+import { forgetChoiceSchema, forgetSelectionSchema, type ForgetChoice, type ForgetSelection } from '../../shared/memory-forget.js';
+import { z } from 'zod';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -29,6 +31,30 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
   constructor(ctx: Context) {
     super(ctx, 'dshBotMemory', { namespace: 'dshBot.memory' });
   }
+  private forgetting() {
+    const service = this.ctx.dshBots.memoryForget;
+    if (!service) throw new Error('Memory cleanup is not ready');
+    return service;
+  }
+
+  @Remote
+  async previewForget(botId: string, selection: ForgetSelection) {
+    return this.forgetting().preview(botId, parseInput(forgetSelectionSchema, selection));
+  }
+  @Remote
+  async chooseForget(choice: ForgetChoice) {
+    const result = await this.forgetting().choose(parseInput(forgetChoiceSchema, choice));
+    this.ctx.dshBots.invalidate();
+    return result;
+  }
+  @Remote
+  async cleanupStatuses() { return this.forgetting().runner.statuses(); }
+  @Remote
+  async retryCleanup(id: string) {
+    return this.forgetting().runner.resume(parseInput(z.uuid(), id));
+  }
+  @Remote
+  async rootInstructions() { return this.forgetting().roots(); }
 
   @Remote
   async list(botId: string, options: MemoryRemoteListInput): Promise<MemoryRecord[]> {

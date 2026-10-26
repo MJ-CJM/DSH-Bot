@@ -9,6 +9,9 @@ import { MemoryList } from './MemoryList.js';
 import { MemorySearchControls } from './MemorySearchControls.js';
 import { BotAvatar } from './BotAvatar.js';
 import { MemoryEditor, type Draft } from './MemoryEditor.js';
+import { ForgetPreview, type ForgetActions } from './ForgetPreview.js';
+import { MemoryCleanupStatus } from './MemoryCleanupStatus.js';
+import { RootInstructionsWarning } from './RootInstructionsWarning.js';
 
 export type MemoryPanelInput = Pick<MemoryRecord, 'content' | 'kind' | 'tags' | 'pinned'>;
 export interface MemoryPanelProps {
@@ -17,6 +20,7 @@ export interface MemoryPanelProps {
   onSave(input: MemoryPanelInput): unknown | Promise<unknown>;
   onUpdate(id: string, patch: Pick<MemoryPatch, 'content' | 'kind' | 'tags' | 'pinned'>): unknown | Promise<unknown>;
   onRemove(id: string): unknown | Promise<unknown>;
+  forgetting?: ForgetActions;
   onOpenSession(id: string): unknown | Promise<unknown>;
   t: PropsLocale<'dsh-bot'>['t'];
 }
@@ -24,11 +28,12 @@ export interface MemoryPanelProps {
 /** The owning page binds each action to this Bot and refreshes the catalog after
  * mutations. No Context, Host service, portal or additional modal is needed here.
  */
-export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, t }: MemoryPanelProps) {
+export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, forgetting, t }: MemoryPanelProps) {
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
   const [search, setSearch] = useState(snapshot.query);
   const [draft, setDraft] = useState<Draft>();
   const [pendingDelete, setPendingDelete] = useState<string>();
+  const [forgetId, setForgetId] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error: boolean }>();
@@ -42,6 +47,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
     setBusy(false);
     setDraft(undefined);
     setPendingDelete(undefined);
+    setForgetId(undefined);
     setNotice(undefined);
     setInvalid(false);
     setSearch(catalog.getSnapshot().query);
@@ -139,6 +145,11 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
       {!bot.memory.enabled && <p className={styles.notice}>{t('memory.disabled')}</p>}
       {bot.memory.enabled && bot.persona.complete && <p className={styles.notice}>{t('memory.complete')}</p>}
       <p className={styles.hint}>{t('memory.sessionNotice')}</p>
+      <RootInstructionsWarning roots={snapshot.roots} t={t} />
+      {forgetting && <MemoryCleanupStatus statuses={snapshot.cleanups ?? []} retry={id => perform(
+        () => forgetting.retry(id), 'memory.removeError')} t={t} />}
+      {forgetId && forgetting && <ForgetPreview key={forgetId} memoryId={forgetId} actions={forgetting}
+        close={() => setForgetId(undefined)} t={t} />}
       {snapshot.quarantined !== undefined && snapshot.quarantined > 0 && (
         <p className={styles.notice} role="status">{t('memory.quarantined', { count: snapshot.quarantined })}</p>
       )}
@@ -189,6 +200,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
         <p className={styles.notice}>{t(snapshot.query ? 'memory.noMatches' : 'memory.empty')}</p>
       )}
       <MemoryList records={snapshot.records} busy={busy} draft={Boolean(draft)} pendingDelete={pendingDelete} t={t}
+        previewForget={forgetting ? setForgetId : undefined}
         onOpenSession={onOpenSession} onUpdate={onUpdate} onRemove={onRemove} edit={edit}
         setPendingDelete={setPendingDelete} setNotice={setNotice} perform={perform} />
       {(snapshot.before || snapshot.hasNext) && (

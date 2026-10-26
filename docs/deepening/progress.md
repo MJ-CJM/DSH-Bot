@@ -255,3 +255,36 @@ Fence 拒绝收据：
 回滚旧隔离断言失败均已纠正，未覆盖原始日志。
 
 遗留：编排方提供精确 rc.2 CLI 后重跑相同 H；M3 处理隔离归属，B4 处理完整强遗忘。
+
+
+## B4：两级遗忘（2026-10-25）
+
+基线 15de71c4，执行 tasks/DP/B4.md；版本仍为 0.3.2。
+完整实现、文件、命令、退出码、矩阵及缺口见 [B4 报告](B4.md)。
+保留原 pnpm-workspace.yaml 修改和 .codex/；未 commit/push、嵌套 Codex、修改桌面或访问真实数据。
+
+| 项目 | 结果 | 实测数字/边界 |
+| --- | --- | --- |
+| I15 | PASS（已知闭包/CAS） | 7 UNIT；对版本、历史、Inbox、副本、根指令变化重新预览，未知部分显式保守 |
+| I16 | FAIL（system-head blocked） | 非首节点完整工具对替换、flush、同 ID 热冷验证通过；不绕过原生语法 |
+| I17 | FAIL（重挂载未验证） | 真实 MCP 当前/stage/previous/orphan 文件与完整 copy snapshot 清理通过；不可达保持阻断 |
+| I18 | PASS（停用/阶段/幂等） | 4 UNIT；H(forget) 4 场景×3 Bot×热冷；原生审批取消后工具正文 0 |
+| I19 | FAIL(environment) | 3 DOM：中英双状态/CAS/100 刷新身份与焦点；Chromium SIGABRT，未取得截图 |
+| I20 | FAIL(environment，E 未过) | U 1 项与中英 DOM PASS，原生默认候选仅元数据、独立 context 声明；浏览器未运行 |
+| I21 | FAIL（完整强遗忘未过） | 31×3 Bot/62 Host 阶段/101 loopback；阻断期请求 0；未证明清理后正常发送 |
+| C | PASS | 79 文件；802 passed + 3 expected fail = 805；build/strict/lint exit 0 |
+| B2 清册 | PASS（窄契约） | H03/S04/S08 与 manifest digest 更新；5 个其它共享 OPEN 保留 |
+| 精确 rc.2 Host | FAIL(NOT_RUN) | scripts/dsh 实际 CLI 0.2.1-rc.3，未修改桌面安装 |
+| 三级强遗忘/P0 | FAIL (P0 OPEN) | 原生系统头部、完整会话/派生闭包、raw-read 策略、重挂载与专用 serializer 仍缺证据 |
+
+操作仅在 forget op 持久提交后显示“已停止使用”；历史/副本未 verified 时继续阻断。
+当前生产没有任何场景显示“强遗忘完成”。UNIT 的可成功 IO 接口是明确测试边界。
+预览明确告知清理所有批准会话在系统头部后的全部模型可见历史，并重置全部受管图谱；
+用户可以取消/只停用。统计是已观测数据，冷历史或不可达副本不伪装成已查清。
+原始事件仍保留；最终 101 条请求是基线/遗忘前请求，canaryPostForgetRequests=0 来自持续阻断。
+
+命令索引：.dsh-dev/deepening/b4/commands.json。
+最终矩阵：.dsh-dev/deepening/b4-forget-matrix-2026-10-26T05-06-15.621Z-51066/。
+最终 C：.dsh-dev/deepening/b4-check-delivery.log；安装 frozen-lockfile exit=0，lockfile 未变。
+E(forget)、E(root-warning) 各 exit=1，脚本保留供编排方在沙箱外重跑。
+早期测试/fixture/strict 失败收据保留，实际修正和复跑记录见 B4 报告。

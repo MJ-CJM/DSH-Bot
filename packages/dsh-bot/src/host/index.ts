@@ -20,6 +20,7 @@ import { TYPERT } from '../typert.host.js';
 import { Config, DshBotRegistry } from './registry.js';
 import { registerStandardBotManage } from './tools/bot-manage.js';
 import { DshBotMemoryRemote } from './memory/remote.js';
+import { MemoryForgetting } from './memory/forget-service.js';
 import { DshBotActivityRemote } from './activity/remote.js';
 import { AUTOMATION_HOST, AutomationStatusRemote } from './automation/remote.js';
 import type { AutomationStatus } from '../shared/automation-contract.js';
@@ -192,6 +193,12 @@ export function apply(ctx: Context, config: Config): void {
       new GroupsRemote(ctx, groups);
       await ctx.effect(() => ctx.typert.register(GROUPS_HOST), 'dsh-bot: groups Remote');
       automation = await startAutomation(ctx, registry);
+      await ctx.effect(async () => {
+        const forget = new MemoryForgetting(ctx, registry);
+        registry.memoryForget = forget;
+        await forget.runner.recover();
+        return async () => { await forget.runner.close(); registry.memoryForget = undefined; };
+      }, 'dsh-bot: forgetting coordinator');
       status = { state: 'ready' };
       ctx.logger.info('[dsh-bot] loaded');
     })
@@ -207,6 +214,7 @@ export function apply(ctx: Context, config: Config): void {
       await ready;
       const errors: unknown[] = [];
       for (const close of [
+        () => registry.memoryForget?.runner.close(),
         () => messaging?.close(),
         () => referenceMemory?.close(),
         () => management?.close(),

@@ -16,6 +16,7 @@ import { DshBotMemoryRemote } from '../lib/host/memory/remote.js';
 import { DshBotRegistry } from '../lib/host/registry.js';
 import { TYPERT } from '../lib/typert.host.js';
 import type { MemoryRecord } from '../src/shared/schema.js';
+import { MemoryForgetting } from '../src/host/memory/forget-service.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
 
@@ -226,11 +227,14 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     expect(() => registry.memoryFor('alpha')).toThrow();
   }));
 
-  it('publishes decorator names and strict codecs for all actual Host methods', async () => withFacility(async ({ remote }) => {
+  it('publishes decorator names and strict codecs for all actual Host methods', async () => withFacility(async ({ remote, registry, ctx }) => {
     expect(remote.typertRemote.namespace).toBe('dshBot.memory');
+    registry.memoryForget = new MemoryForgetting(ctx, registry);
+    const target = await registry.memoryFor('alpha').save({ content: 'Synthetic forget target' });
     const cases: Record<string, unknown[]> = {
       list: ['alpha', {}], search: ['alpha', { query: 'absent' }],
       save: ['alpha', { content: 'Codec result' }], count: ['alpha'], quarantineCount: [],
+      previewForget: ['alpha', { memoryId: target.id, mode: 'version' }], cleanupStatuses: [], rootInstructions: [],
     };
     let saved: MemoryRecord | undefined;
     for (const descriptor of TYPERT.invocations.filter(({ namespace }) => namespace === 'dshBot.memory')) {
@@ -241,6 +245,10 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
       if (!args) throw new Error(`Missing case for ${method}`);
       const result = await Reflect.apply(Reflect.get(remote, method), remote, args);
       expect(descriptor.result.create().parse(result)).toEqual(result);
+      if (descriptor.method === 'previewForget') cases.chooseForget = [{
+        previewRevision: (result as { previewRevision: string }).previewRevision, choice: 'stop',
+      }];
+      if (descriptor.method === 'chooseForget') cases.retryCleanup = [(result as { id: string }).id];
       if (descriptor.method === 'save') saved = (await remote.list('alpha', {}))[0];
     }
   }));

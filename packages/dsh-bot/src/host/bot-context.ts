@@ -15,6 +15,7 @@ import { BOT_ID_PATTERN } from '../shared/ids.js';
 import type {} from './registry.js';
 import { DshBotError } from './errors.js';
 import { registerMemoryContext } from './memory/context.js';
+import { rootInstructionNotice } from './memory/root-instructions.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './memory/tools.js';
 import { BOT_MANAGE_TOOL_NAME, registerBotPresetManage } from './tools/bot-manage.js';
 import { registerBotPresetActivity } from './activity/tracker.js';
@@ -154,6 +155,8 @@ export function apply(ctx: Context, config: Config): void {
           if (errors.length) throw new AggregateError(errors, 'Bot agent cleanup failed');
         };
         try {
+          releases.push(agent.ctx.systemPrompt.context({ name: 'dsh-bot:root-instructions', order: memorySectionOrder,
+            required: true, interpolate: false, text: rootInstructionNotice }));
           // Do not silently ignore unknown, same-layer or reserved tool names.
           if (deny.length) releases.push(agent.ctx.tools.restrict({ deny }));
           releases.push(

@@ -20,7 +20,7 @@
   "observed": {
     "original": "Table deletion leaves the old long-lived system section intact; this is the declared private P0.",
     "beforeFix": "Table deletion leaves the old long-lived system section intact; this is the declared private P0.",
-    "afterFix": "B3 v2 regression PASS: dynamic injection, BotKey isolation, or pending-cleanup/epoch gate. Full history/copy cleanup remains B4 P0 OPEN."
+    "afterFix": "B4 adds preview CAS, durable stopped/blocked stages, native history replacements and cold recovery. Native system-head grammar, historical session inventory and raw-read outlets remain unverified; FAIL (P0 OPEN). See docs/deepening/B4.md."
   },
   "regressions": [
     {

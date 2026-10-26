@@ -15,6 +15,7 @@ import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/cli
 import type { BotStatus, DshBotRemoteMethods } from "../../src/shared/remote-contract.js";
 import { type ActivitySession, isActivityUnread } from "../../src/shared/activity.js";
 import { vi } from "vitest";
+import type { CleanupStatus } from '../../src/shared/memory-forget.js';
 import { type BotCreateInput, type BotRecord, type MemoryRecord, botCreateSchema, botSchema, normalizeBotPatch } from "../../src/shared/schema.js";
 
 export function bot(input: BotCreateInput = { id: "alpha-bot", name: "Alpha Bot" }): BotRecord {
@@ -36,7 +37,9 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		memories: [] as MemoryRecord[],
 		activities: [] as ActivitySession[],
 		statuses: undefined as BotStatus[] | undefined,
+    cleanups: [] as CleanupStatus[],
 	};
+  let forgetTarget = '';
 	const activity = {
 		list: vi.fn<DshBotRemoteMethods["activity"]["list"]>(async () => ({
 			ok: true,
@@ -64,6 +67,21 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		}),
 	};
 	const memory = {
+    previewForget: vi.fn<DshBotRemoteMethods['memory']['previewForget']>(async (_botId, selection) => {
+      forgetTarget = selection.memoryId;
+      return { ok: true, value: { previewRevision: '00000000-0000-4000-8000-000000000001', ...selection,
+        revision: 1, targets: [selection.memoryId], sessionIds: ['synthetic-session'], versions: 1, historyNodes: 1,
+        summaries: 0, copies: 0, pendingMessages: 0, conservative: true, rootInstructions: false } };
+    }),
+    chooseForget: vi.fn<DshBotRemoteMethods['memory']['chooseForget']>(async () => {
+      data.memories = data.memories.filter(r => r.id !== forgetTarget);
+      const value: CleanupStatus = { id: '00000000-0000-4000-8000-000000000001', stopped: true,
+        strong: false, phase: 'blocked', reasons: ['history'], sessions: 1 };
+      data.cleanups = [value]; return { ok: true, value };
+    }),
+    cleanupStatuses: vi.fn(async () => ({ ok: true as const, value: data.cleanups })),
+    rootInstructions: vi.fn(async () => ({ ok: true as const, value: { root: '/synthetic/Bots', files: [] } })),
+    retryCleanup: vi.fn<DshBotRemoteMethods['memory']['retryCleanup']>(async () => ({ ok: true, value: data.cleanups[0] as CleanupStatus })),
 		list: vi.fn<DshBotRemoteMethods["memory"]["list"]>(async (id) => ({ ok: true, value: data.memories.filter((row) => row.botId === id) })),
 		search: vi.fn<DshBotRemoteMethods["memory"]["search"]>(async (id, input) => ({
 			ok: true,

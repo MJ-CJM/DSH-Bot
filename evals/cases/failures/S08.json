@@ -20,7 +20,7 @@
   "observed": {
     "original": "v1 save has cancellation but no epoch grant; delayed write restores captured content.",
     "beforeFix": "v1 save has cancellation but no epoch grant; delayed write restores captured content.",
-    "afterFix": "B3 v2 regression PASS: dynamic injection, BotKey isolation, or pending-cleanup/epoch gate. Full history/copy cleanup remains B4 P0 OPEN."
+    "afterFix": "B4 revalidates preview inside the admission/commit queue, cancels active leases and keeps retry/prepared requests blocked after forget epoch changes. Full native grant/egress contracts remain B6; P0 stays OPEN. See docs/deepening/B4.md."
   },
   "regressions": [
     {

@@ -1,6 +1,8 @@
 /** Hand-authored, browser-safe contract for the locked DSH release's public Typert API. */
 import type { RemoteResult, RemoteStreamHandle, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import { z } from 'zod';
+import { forgetSelectionSchema, forgetPreviewSchema, forgetChoiceSchema, cleanupStatusSchema,
+  rootInstructionsSchema } from './memory-forget.js';
 import { botIdSchema, memoryIdSchema } from './ids.js';
 import { activityListResultSchema, activitySessionIdSchema, activitySessionSchema } from './activity.js';
 export type { ActivityRecord, ActivitySession, ActivityListResult } from './activity.js';
@@ -256,6 +258,24 @@ export const dshBotRemoteSpec = {
       ...memoryOwner,
       parameters: [botId],
       result: codec('MemoryCount', z.number().int().nonnegative()),
+    },
+    'dshBot.memory/previewForget': {
+      ...memoryOwner, parameters: [botId, parameter('selection', 'ForgetSelection', forgetSelectionSchema)],
+      result: activityResultCodec('ForgetPreview', forgetPreviewSchema),
+    },
+    'dshBot.memory/chooseForget': {
+      ...memoryOwner, parameters: [parameter('choice', 'ForgetChoice', forgetChoiceSchema)],
+      result: activityResultCodec('CleanupStatus', cleanupStatusSchema),
+    },
+    'dshBot.memory/cleanupStatuses': {
+      ...memoryOwner, parameters: [], result: activityResultCodec('CleanupStatus[]', z.array(cleanupStatusSchema)),
+    },
+    'dshBot.memory/retryCleanup': {
+      ...memoryOwner, parameters: [parameter('id', 'CleanupId', z.uuid())],
+      result: activityResultCodec('CleanupStatus', cleanupStatusSchema),
+    },
+    'dshBot.memory/rootInstructions': {
+      ...memoryOwner, parameters: [], result: activityResultCodec('RootInstructions', rootInstructionsSchema),
     },
   },
 } as const satisfies TypertRemoteSpec;

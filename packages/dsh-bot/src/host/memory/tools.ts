@@ -109,9 +109,10 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
     }),
     defineTool({
       name: 'memory_forget',
-      description: 'Delete a memory belonging to this Bot when the user asks to forget it or it is no longer valid.',
+      description: 'Stop using a memory belonging to this Bot. Affected sessions stay blocked until history and copy cleanup is verified.',
       parameters: { id: { type: 'string', required: true } },
-      output: { schema: { type: 'null' }, render: () => [{ type: 'text', text: 'Memory deleted.' }] },
+      output: { schema: { type: 'null' }, render: () => [{ type: 'text',
+        text: 'Stopped using this memory. Strong forgetting is pending; affected sessions remain blocked.' }] },
       async execute(args, exec) {
         authorize(exec);
         await memory.forget(args, exec.signal);

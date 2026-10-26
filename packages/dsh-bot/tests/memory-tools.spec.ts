@@ -79,7 +79,8 @@ function failure(result: ToolExecutionResult, code?: string) {
 }
 
 describe('Memory tools through published native ToolRuntime and JSON storage', () => {
-  it('returns canonical deduplication metadata and a structured secret rejection without echoing the input', async () => withFixture(async ({ create, execute, stores }) => {
+  it('returns canonical deduplication metadata and a structured secret rejection without echoing the input',
+    async () => withFixture(async ({ create, execute, stores }) => {
     const alpha = create('alpha');
     const original = successful(await execute(alpha.agent, 'memory_save', { content: 'Ｆａｃｔ  one', tags: ['one'] })) as { id: string };
     const duplicate = await execute(alpha.agent, 'memory_save', { content: 'Fact\n one', tags: ['two'], pinned: true });
@@ -93,7 +94,8 @@ describe('Memory tools through published native ToolRuntime and JSON storage', (
     expect(JSON.stringify(rejected)).not.toContain(token);
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toEqual(before);
   }));
-  it('isolates save/search/list/forget and renders validated canonical values with trusted session provenance', async () => withFixture(async ({ ctx, stores, create, execute }) => {
+  it('isolates save/search/list/forget and renders validated canonical values with trusted session provenance',
+    async () => withFixture(async ({ ctx, stores, create, execute }) => {
     const alpha = create('alpha');
     const beta = create('beta');
     for (const tool of ctx.tools.schemas(alpha.agent)) {
@@ -134,12 +136,14 @@ describe('Memory tools through published native ToolRuntime and JSON storage', (
     expect(stores.memories.listByBot('beta', { limit: 20 })).toEqual(betaRows);
     const deleted = await execute(alpha.agent, 'memory_forget', { id });
     expect(successful(deleted)).toBeNull();
-    expect(deleted.content).toEqual([{ type: 'text', text: 'Memory deleted.' }]);
+    expect(deleted.content).toEqual([{ type: 'text',
+      text: 'Stopped using this memory. Strong forgetting is pending; affected sessions remain blocked.' }]);
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toEqual([]);
     expect(failure(await execute(alpha.agent, 'memory_forget', { id })).message).toBe('Memory was not found for this bot');
   }));
 
-  it('rejects forged identity/provenance and invalid or unknown arguments without changing storage', async () => withFixture(async ({ stores, create, execute }) => {
+  it('rejects forged identity/provenance and invalid or unknown arguments without changing storage',
+    async () => withFixture(async ({ stores, create, execute }) => {
     const alpha = create('alpha');
     const { id } = successful(await execute(alpha.agent, 'memory_save', { content: 'Keep this memory.' })) as { id: string };
     const original = stores.memories.listByBot('alpha', { limit: 20 });
@@ -211,12 +215,14 @@ describe('Memory tools through published native ToolRuntime and JSON storage', (
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toEqual([]);
   }));
 
-  it('checks the owning Agent even if a definition is registered in another scope, and disposes each scope independently', async () => withFixture(async ({ ctx, stores, create, execute }) => {
+  it('checks the owning Agent even if a definition is registered in another scope, and disposes each scope independently',
+    async () => withFixture(async ({ ctx, stores, create, execute }) => {
     const alpha = create('alpha');
     const beta = create('beta');
     const misplaced = create('beta', { install: false });
     for (const tool of alpha.definitions) misplaced.agent.ctx.effect(() => misplaced.agent.ctx.tools.register(tool));
-    expect(failure(await execute(misplaced.agent, 'memory_save', { content: 'Attempt through the wrong owner' })).message).toBe('Memory tool belongs to another agent');
+    expect(failure(await execute(misplaced.agent, 'memory_save', { content: 'Attempt through the wrong owner' })).message)
+      .toBe('Memory tool belongs to another agent');
     failure(await execute(undefined, 'memory_save', { content: 'No Agent scope' }), 'UNKNOWN_TOOL');
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toEqual([]);
     expect(stores.memories.listByBot('beta', { limit: 20 })).toEqual([]);

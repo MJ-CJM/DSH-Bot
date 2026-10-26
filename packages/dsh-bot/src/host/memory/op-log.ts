@@ -45,7 +45,8 @@ export class MemoryKernel {
   get epoch(): number { return this.state.epoch; }
   get seq(): number { return this.state.seq; }
   get blocked(): boolean {
-    return this.frozen || this.stopped || [...this.domain.table('barriers').entries()].some(([, b]) => b.state !== 'verified');
+    return this.frozen || this.stopped || [...this.domain.table('barriers').entries()].some(([, b]) => b.state !== 'verified') ||
+      [...this.domain.table('forget_jobs').entries()].some(([, job]) => job.phase !== 'verified');
   }
   assertReadable(): void {
     if (this.frozen || this.stopped) throw new Error('Memory unavailable: reconciliation required');
@@ -54,7 +55,7 @@ export class MemoryKernel {
   serial<T>(operation: () => Promise<T> | T): Promise<T> {
     const result = this.tail.then(operation); this.tail = result.catch(() => {}); return result;
   }
-  async commit(input: Commit): Promise<MemoryOp> {
+  async commit(input: Commit, beforeCommit?: () => Promise<void>): Promise<MemoryOp> {
     return this.serial(async () => {
       this.assertReadable();
       this.assertOwner();
@@ -71,6 +72,7 @@ export class MemoryKernel {
       if (this.blocked && !['forget', 'cleanup'].includes(op.kind)) throw new Error('Memory cleanup pending; writes blocked');
       if (input.forgetEpoch !== this.state.epoch + Number(input.kind === 'forget')) throw new Error('Stale memory epoch');
       if (input.expectedRevision !== this.state.seq) throw new Error('Memory revision conflict');
+      await beforeCommit?.();
       if (!Number.isSafeInteger(op.seq)) throw new Error('Memory sequence exhausted');
       if (op.versions.some(v => v.userScope !== this.scope.scope.id || !op.subjectIds.includes(v.memoryId) ||
         (!payloads[v.contentRef] && !this.domain.table('payloads').get(v.contentRef)))) throw new Error('Invalid memory version references');
@@ -81,7 +83,17 @@ export class MemoryKernel {
         await this.domain.table('payloads').put(id, payload);
       }
       // Install the in-memory barrier before waiting on the authoritative forget commit.
-      if (op.kind === 'forget') this.frozen = true;
+      if (op.kind === 'forget') {
+        this.frozen = true;
+        this.publish();
+        if (!this.domain.table('forget_jobs').get(op.opId)) {
+          const sessionIds = [...new Set([...this.domain.table('receipts').entries()]
+            .filter(([, r]) => r.state === 'read').map(([, r]) => r.sessionId))];
+          await this.domain.table('forget_jobs').put(op.opId, { id: op.opId, targets: op.subjectIds,
+            sessionIds, epoch: op.forgetEpoch, revision: op.expectedRevision, choice: 'stop', phase: 'intent',
+            reasons: [], historyVerified: [], copiesVerified: false });
+        }
+      }
       try { this.assertOwner(); await this.domain.table('ops').put(op.opId, op); }
       catch (cause) {
         this.frozen = true;

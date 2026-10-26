@@ -38,7 +38,8 @@ import { SessionBotBadge } from './components/SessionBotBadge.js';
 import { WhaleGlyph } from './components/WhaleGlyph.js';
 import { SessionBotLeading, SessionBotHover, type SessionBotRowInjected } from './components/SessionBotLeading.js';
 import { BotSessionsSidebar, type BotSessionsSidebarInjected } from './components/BotSessionsSidebar.js';
-import { createMemoryCatalog, type MemoryCatalog } from './memory-state.js';
+import type { MemoryCatalog } from './memory-state.js';
+import { memoryPanelFactory } from './memory-panel.js';
 import { createBotDetailSource } from './detail-state.js';
 import { createBotCatalog } from './state.js';
 import { createActivityCatalog } from './activity-state.js';
@@ -167,7 +168,9 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     beforeOpen?: (id: SessionId) => void,
   ) => startBot(id, signal, beforeOpen);
   const page: BotsPageInjected = {
-    messages: { subscribe(refresh) { return ctx.effect(() => sharedPollingScheduler(ctx, config).register({ polling: true, refresh: async () => { await refresh(); return undefined; } }), 'dsh-bot: message overview'); }, async request(input) {
+    messages: { subscribe(refresh) { return ctx.effect(() => sharedPollingScheduler(ctx, config).register({
+      polling: true, refresh: async () => { await refresh(); return undefined; },
+    }), 'dsh-bot: message overview'); }, async request(input) {
       const remote = ctx.get('remote.dshBot.messaging');
       if (!active || !remote) throw new Error(t('messages.disabled'));
       return messageOverviewSchema.parse(unwrap(await remote.request(input)));
@@ -187,28 +190,9 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onOpenSession: (id, signal) => openSession(id, undefined, signal),
     onDetailConsumed: detail.consume,
     onCountMemories: async (id) => unwrap(await memoryRemote().count(id)),
-    createMemoryPanel: (id) => {
-      const memory = createMemoryCatalog(ctx, id, {
-        pollIntervalMs: catalog.getSnapshot().pollIntervalMs,
-        pageSize: config.memoryPageSize,
-      });
-      memories.add(memory);
-      const write = async (operation: () => Promise<RemoteResult<unknown>>) => {
-        unwrap(await operation());
-        await memory.refresh();
-      };
-      return {
-        catalog: memory,
-        dispose: () => {
-          memories.delete(memory);
-          memory.dispose();
-        },
-        onSave: (input) => write(() => memoryRemote().save(id, input)),
-        onUpdate: (memoryId, patch) => write(() => memoryRemote().update(id, memoryId, patch)),
-        onRemove: (memoryId) => write(() => memoryRemote().delete(id, memoryId)),
-        onOpenSession: openSession,
-      };
-    },
+    createMemoryPanel: memoryPanelFactory(ctx, memories, () => ({
+      pollIntervalMs: catalog.getSnapshot().pollIntervalMs, pageSize: config.memoryPageSize,
+    }), memoryRemote, openSession),
     onRefresh: refresh,
     getPreferredWorkspace: () => preferredWorkspace,
     onPollInterval: (value) => {

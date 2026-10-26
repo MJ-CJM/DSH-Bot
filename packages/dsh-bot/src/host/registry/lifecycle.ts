@@ -14,6 +14,7 @@ import { Config } from '../registry-config.js';
 import type { Lease } from './types.js';
 import { messageOf } from './identity.js';
 import { MemoryAdmission } from '../memory/admission.js';
+import type { MemoryForgetting } from '../memory/forget-service.js';
 
 const examples: readonly BotCreateInput[] = [
   {
@@ -35,6 +36,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
   static Config = Config;
   readonly config: Config;
   readonly memoryAdmission: MemoryAdmission;
+  memoryForget?: MemoryForgetting;
   get memoryKernel() { return this.stores?.memoryKernel; }
   mainSessions?: MainSessions;
   protected stores!: Awaited<ReturnType<typeof openBotStores>>;

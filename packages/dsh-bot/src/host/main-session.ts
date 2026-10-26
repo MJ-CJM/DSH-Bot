@@ -31,6 +31,10 @@ export class MainSessions {
   private readonly naming = new Set<string>();
   private off?: () => void;
   private readonly repairs = new Set<string>();
+  /** Host-only immutable IDs, including retired Bot generations. No resolve or title writes during forget CAS. */
+  boundSessionIds(): string[] {
+    return this.domain ? [...this.domain.table('bindings').entries()].map(([, row]) => row.sessionId) : [];
+  }
   constructor(
     private readonly ctx: Context,
     private readonly bots: DshBotRegistry,

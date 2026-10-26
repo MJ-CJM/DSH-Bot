@@ -20,7 +20,7 @@
   "observed": {
     "original": "v1 creates a new row with the same captured content.",
     "beforeFix": "v1 creates a new row with the same captured content.",
-    "afterFix": "B3 v2 regression PASS: dynamic injection, BotKey isolation, or pending-cleanup/epoch gate. Full history/copy cleanup remains B4 P0 OPEN."
+    "afterFix": "B4 loopback and real MCP cover current/stage/previous/orphan generations, copy snapshot deletion and blocked rollback/remount. All pending-cleanup requests stay blocked; clean-dispatch strong forgetting remains FAIL (P0 OPEN). See docs/deepening/B4.md."
   },
   "regressions": [
     {

@@ -1,5 +1,36 @@
 # DSH API 核实记录
 
+## DP B4：两级遗忘、维护与副本清理（2026-10-25）
+
+完整范围、命令、文件和分级验收见 [B4 报告](deepening/B4.md)。版本保持 0.3.2。
+本轮仍只读核对 rc.2 tag；真实包装 CLI 是 rc.3，不能视作精确 rc.2 Host 证据。
+
+- 原生 Agent.cancel(keepInbox=true) → whenIdle → runMaintenance、surface 顺序 replace、
+  完整 sourceEventSeqs、sessions.flush(true) 与 sessionQuery.readSurface 复用既有公开 API。
+  当前实现保留系统首节点；原生 idle system append 的持久语法限制未绕过。
+  因此生产强遗忘始终保持 blocked，不以 B1 的测试控制步骤重投影冒充产品维护事务。
+- 原生 Agent.inbox.nextTurn / nextStep 是公开只读消息数组，源码
+  `packages/core/agent/src/runtime-types.ts:47-89`。本轮只观测并保留消息；不 clear 人类 Inbox。
+- `@deepseek-ai/dsh-compaction` 根入口的 toolPairingBalancedBefore/After 首次进入产品 runtime。
+  增加兼容 peer，既有精确 rc.2 dev 依赖保留；不调用摘要模型或 compactNow/compactRegion。
+  frozen-lockfile 安装成功，lockfile 没有变化。
+- forget preview 在同一内核队列校验 op revision、依赖/Inbox/历史/副本元数据 stamp。
+  服务端持有预览；客户端不能提交 targets、epoch 或 verified。持久 forget_jobs 为无正文阶段收据，
+  intent 先持久化，forget op 才是停用提交点；verified receipt 持久化后才写最终 barrier。
+- 本包管理 Remote 新增 previewForget / chooseForget / cleanupStatuses / retryCleanup /
+  rootInstructions，全部复用 Typert decorator/spec/strict codec。没有注册为模型工具。
+  旧 memory_forget 仅提交停用并保持屏障，输出明确“不等于强遗忘完成”。
+- ReferenceMemory 在自身 control 队列取消 stage、关闭并等待 MCP writer 后，删除全部受管
+  current/stage/previous/orphan 文件和 copies 完整快照，清除旧 import 指针并切回 internal。
+  路径/符号链接异常或依赖不可达时保留屏障；重挂载与清理后正常模型请求仍未放行验证。
+- 根指令只 lstat 原生默认候选 AGENTS.md / CLAUDE.md 与 local overlay，不打开文件正文、不删除。
+  Bot 的 required literal context 独立声明其不受共享记忆配额、冲突、遗忘规则管理，含 memory-disabled Bot。
+  自定义原生候选配置、历史子会话完整清册与全部原始读取出口没有被假定已验证。
+
+完整请求矩阵把“阻断期 adapter 为 0”与“清理后完整请求无 canary”分开计；后者没有放行证据。
+Chromium 启动受沙箱限制，E(forget)/E(root-warning) 均 FAIL(environment)，DOM 证据不替代浏览器。
+**FAIL (P0 OPEN)**：系统头部、完整历史闭包、原始读取策略、重挂载/正常 clean dispatch 与专用 provider serializer 仍有缺口。
+
 ## DP B3-rework：私有迁移连续性与管理计数（2026-10-25）
 
 当前结论及收据见 [B3 返工报告](deepening/B3-rework.md)，覆盖下方 B3 初轮的“全部隔离”行为。
