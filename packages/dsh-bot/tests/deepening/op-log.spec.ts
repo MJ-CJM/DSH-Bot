@@ -9,7 +9,7 @@ describe('I09 durable op commit', () => {
       const c = command(f); const first = await f.kernel.commit(c);
       expect(await f.kernel.commit(c)).toEqual(first);
       expect(f.kernel.seq).toBe(1); expect(f.kernel.domain.table('ops').size).toBe(1);
-      expect(() => (f.kernel.snapshot.versions as Map<string, unknown>).clear()).toThrow('immutable');
+      expect(() => f.kernel.snapshot.versions.clear()).toThrow('immutable');
       const changed = structuredClone(c); required(changed.payloads[required(c.versions[0]).contentRef]).content = 'different';
       await expect(f.kernel.commit(changed)).rejects.toThrow('opId reused');
       const serialized = JSON.stringify([...f.kernel.domain.table('ops').entries()]);

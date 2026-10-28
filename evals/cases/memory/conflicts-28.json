@@ -1,0 +1,166 @@
+[
+  {
+    "id": "explicit-correction-07",
+    "annotation": "explicit-correction",
+    "at": 1700,
+    "bot": "alpha",
+    "rows": [
+      {
+        "id": "old",
+        "content": "Beijing",
+        "scope": "shared",
+        "trust": "user_stated",
+        "from": 1680,
+        "to": null,
+        "basis": "explicit",
+        "seq": 1,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      },
+      {
+        "id": "new",
+        "content": "Shanghai",
+        "scope": "shared",
+        "trust": "user_stated",
+        "from": 1690,
+        "to": null,
+        "basis": "explicit",
+        "seq": 2,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      }
+    ],
+    "expectedActive": [
+      "new"
+    ],
+    "expectedStates": {
+      "old": "superseded"
+    }
+  },
+  {
+    "id": "confirmed-outranks-stated-07",
+    "annotation": "confirmed-outranks-stated",
+    "at": 1700,
+    "bot": "alpha",
+    "rows": [
+      {
+        "id": "old",
+        "content": "Beijing",
+        "scope": "shared",
+        "trust": "user_confirmed",
+        "from": 1680,
+        "to": null,
+        "basis": "explicit",
+        "seq": 1,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      },
+      {
+        "id": "new",
+        "content": "Shanghai",
+        "scope": "shared",
+        "trust": "user_stated",
+        "from": 1690,
+        "to": null,
+        "basis": "explicit",
+        "seq": 2,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      }
+    ],
+    "expectedActive": [
+      "old"
+    ],
+    "expectedStates": {}
+  },
+  {
+    "id": "candidate-never-overwrites-07",
+    "annotation": "candidate-never-overwrites",
+    "at": 1700,
+    "bot": "alpha",
+    "rows": [
+      {
+        "id": "old",
+        "content": "Beijing",
+        "scope": "shared",
+        "trust": "user_stated",
+        "from": 1680,
+        "to": null,
+        "basis": "explicit",
+        "seq": 1,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      },
+      {
+        "id": "new",
+        "content": "Shanghai",
+        "scope": "shared",
+        "trust": "candidate",
+        "from": 1001699,
+        "to": null,
+        "basis": "explicit",
+        "seq": 2,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      }
+    ],
+    "expectedActive": [
+      "old"
+    ],
+    "expectedStates": {}
+  },
+  {
+    "id": "backfill-not-current-07",
+    "annotation": "backfill-not-current",
+    "at": 1700,
+    "bot": "alpha",
+    "rows": [
+      {
+        "id": "old",
+        "content": "Beijing",
+        "scope": "shared",
+        "trust": "user_stated",
+        "from": 1680,
+        "to": null,
+        "basis": "explicit",
+        "seq": 1,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      },
+      {
+        "id": "new",
+        "content": "Shanghai",
+        "scope": "shared",
+        "trust": "user_stated",
+        "from": 1600,
+        "to": 1670,
+        "basis": "explicit",
+        "seq": 2,
+        "kind": "user_fact",
+        "subject": "user",
+        "factKey": "city",
+        "qualifiers": {}
+      }
+    ],
+    "expectedActive": [
+      "old"
+    ],
+    "expectedStates": {
+      "new": "expired"
+    }
+  }
+]

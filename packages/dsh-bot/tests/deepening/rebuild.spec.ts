@@ -41,7 +41,7 @@ describe('I10 restart and uncertain commits', () => {
     try {
       const c = command(f), cache = f.kernel.domain.table('projections');
       const fault = vi.spyOn(cache, 'put').mockRejectedValueOnce(new Error('cache unavailable'));
-      await f.kernel.commit(c); fault.mockRestore(); expect(f.kernel.cacheFailures).toBe(1);
+      await f.kernel.commit(c); expect(fault).not.toHaveBeenCalled(); fault.mockRestore();
       await cache.put(required(c.subjectIds[0]), { invalidCache: 'must rebuild from log' });
       await f.kernel.domain.table('payloads').put(randomUUID(), required(c.payloads[required(c.versions[0]).contentRef]));
       await f.reopen(); expect(f.kernel.snapshot).toEqual(rebuild(f.kernel.domain));

@@ -75,7 +75,7 @@ export class BotMemoryService {
     const fields = parseInput(memorySearchInputSchema, input);
     return this.run(
       () =>
-        this.store.listByBot(this.botId, {
+        (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
           ...fields,
           limit: fields.limit ?? this.defaultListLimit,
         }),
@@ -87,7 +87,7 @@ export class BotMemoryService {
     const fields = parseInput(memoryListInputSchema, input);
     return this.run(
       () =>
-        this.store.listByBot(this.botId, {
+        (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
           ...fields,
           limit: fields.limit ?? this.defaultListLimit,
         }),

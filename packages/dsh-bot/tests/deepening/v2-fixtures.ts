@@ -9,6 +9,7 @@ import * as storageDomain from '@deepseek-ai/dsh-storage-domain';
 import { BotStore } from '../../src/host/stores/bots.js';
 import { migrationBotDomain, type BotDomain } from '../../src/host/stores/domain.js';
 import { openMemoryKernel } from '../../src/host/memory/open-v2.js';
+import type { MemoryKernel } from '../../src/host/memory/op-log.js';
 import { migratePrivate } from '../../src/host/memory/migration.js';
 import { V2MemoryStore } from '../../src/host/memory/store-v2.js';
 import { BotMemoryService } from '../../src/host/memory/service.js';
@@ -46,7 +47,7 @@ export async function v2Fixture(migrate = true, timeZone?: string) {
     await opened?.close(); await ctx.fiber.dispose(); await rm(root, { recursive: true, force: true }); throw error;
   }
 }
-export function command(f: Awaited<ReturnType<typeof v2Fixture>>, content = 'SYNTHETIC_V2') {
+export function command(f: { kernel: MemoryKernel }, content = 'SYNTHETIC_V2') {
   const id = randomUUID(), opId = randomUUID();
   const record = memorySchema.parse({ id, botId: 'alpha', content, kind: 'note', tags: [], pinned: false, createdAt: 2, updatedAt: 2 });
   const { version, payload } = privateVersion(f.kernel, record, { botId: 'alpha', botCreatedAt: 1 });

@@ -17,6 +17,7 @@ import type {} from '../registry.js';
 import { rejectMemorySecrets } from './secrets.js';
 import { forgetChoiceSchema, forgetSelectionSchema, type ForgetChoice, type ForgetSelection } from '../../shared/memory-forget.js';
 import { z } from 'zod';
+import type { MemoryQuery, MemoryCreate, MemoryRevise, MemoryConfirm, MemoryResolve } from '../../shared/memory-management.js';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -30,6 +31,30 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
 
   constructor(ctx: Context) {
     super(ctx, 'dshBotMemory', { namespace: 'dshBot.memory' });
+  }
+  @Remote
+  async query(input: MemoryQuery) { return this.ctx.dshBots.manageMemory(m => m.query(input)); }
+  @Remote
+  async createManaged(input: MemoryCreate) {
+    const result = await this.ctx.dshBots.manageMemory(m => m.create(input)); this.ctx.dshBots.invalidate(); return result;
+  }
+  @Remote
+  async revise(input: MemoryRevise) {
+    await this.ctx.dshBots.manageMemory(m => m.revise(input)); this.ctx.dshBots.invalidate();
+  }
+  @Remote
+  async confirm(input: MemoryConfirm) {
+    const result = await this.ctx.dshBots.manageMemory(m => m.confirm(input)); this.ctx.dshBots.invalidate(); return result;
+  }
+  @Remote
+  async resolve(input: MemoryResolve) {
+    await this.ctx.dshBots.manageMemory(m => m.resolve(input)); this.ctx.dshBots.invalidate();
+  }
+  @Remote
+  async previewContribution(id: string) { return this.forgetting().previews.contribution(parseInput(z.uuid(), id)); }
+  @Remote
+  async previewShared(selection: ForgetSelection) {
+    return this.forgetting().previewShared(parseInput(forgetSelectionSchema, selection));
   }
   private forgetting() {
     const service = this.ctx.dshBots.memoryForget;

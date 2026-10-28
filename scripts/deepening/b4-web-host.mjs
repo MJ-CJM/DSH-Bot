@@ -14,16 +14,19 @@ export async function webHost(dir, suite) {
     DSH_TELEMETRY_DISABLED: '1', pnpm_config_offline: 'true',
     pnpm_config_store_dir: resolve(root, '.dsh-dev/pnpm-store'), pnpm_config_cache_dir: resolve(root, '.dsh-dev/pnpm-cache') };
   await mkdir(env.HOME, { recursive: true }); await mkdir(env.TMPDIR, { recursive: true });
-  let count = 0;
+  let count = 0, startupMs;
   const server = createServer(async (req, res) => {
     let body = ''; for await (const chunk of req) body += chunk;
     assert.equal(req.url, '/capture'); JSON.parse(body); count++;
     res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}');
   });
-  await new Promise(accept => server.listen(0, '127.0.0.1', accept));
+  await new Promise((accept, reject) => {
+    server.once('error', reject); server.listen(0, '127.0.0.1', accept);
+  });
   env.DP_MOCK_PORT = String(server.address().port); env.DP_NETWORK_RECEIPT = resolve(dir, 'network-denials.jsonl');
   const endpoint = `http://127.0.0.1:${server.address().port}/capture`;
   async function command(args, label, live = false) {
+    const started = Date.now();
     const child = spawn(resolve(root, 'scripts/dsh'), args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     children.add(child); let output = '', closed = false;
     for (const stream of [child.stdout, child.stderr]) stream.on('data', b => { output += b; });
@@ -34,12 +37,13 @@ export async function webHost(dir, suite) {
     const save = async () => {
       const code = await done; clearTimeout(timer);
       await writeFile(resolve(dir, `${label}.log`), output.replace(/([?&]token=)[^\s&"'<>]+/g, '$1[redacted]'));
-      commands.push({ args, label, code }); return code;
+      commands.push({ args, label, code, durationMs: Date.now() - started, startupMs: live ? startupMs : undefined }); return code;
     };
     if (!live) { assert.equal(await save(), 0, `See ${label}.log`); return; }
     child.once('close', () => { void save(); });
     const deadline = Date.now() + 60000;
     while (!closed && !/B4_WEB_(READY|FAILED)/.test(output) && Date.now() < deadline) await delay(50);
+    startupMs = Date.now() - started;
     assert.match(output, /B4_WEB_READY/, `Host fixture failed: ${dir}`);
     const url = output.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+)/)?.[1];
     assert.ok(url); return url;
@@ -68,6 +72,6 @@ export async function webHost(dir, suite) {
     ].join('\n');
     await writeFile(resolve(env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);
     const url = await command(['--profile', profile, '--no-open', '--host', '127.0.0.1', '--port', '0'], 'host', true);
-    return { url, env, stop, requests: () => count };
+    return { url, env, stop, startupMs, requests: () => count };
   } catch (error) { await stop(); throw error; }
 }

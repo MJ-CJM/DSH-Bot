@@ -1,3 +1,4 @@
+import { memoryResultCases } from './fixtures/memory-result-cases.js';
 import { createRequire } from 'node:module';
 import { Context } from '@deepseek-ai/cordis';
 import * as Gateway from '@deepseek-ai/dsh-api-gateway/client';
@@ -185,6 +186,7 @@ describe('single-source Remote contract', () => {
       .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace'
         | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'
+      | 'query' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
       | 'quarantineCount' | 'previewForget' | 'chooseForget' | 'cleanupStatuses' | 'retryCleanup' | 'rootInstructions'>();
   });
   it('shares all strict descriptors between Host and Client exports', () => {
@@ -194,7 +196,7 @@ describe('single-source Remote contract', () => {
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(26);
+    expect(TYPERT.invocations).toHaveLength(33);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -335,23 +337,7 @@ describe('single-source Remote contract', () => {
         expect(() => codec.parse({ ...value, unexpected: true })).toThrow();
         expect(() => codec.parse({ sessions: [], bots: [{ botId: 'test-bot', unreadCount: -1 }] })).toThrow();
       } else if (descriptor.namespace === 'dshBot.memory') {
-        const values: Record<string, [unknown, unknown]> = {
-          list: [[memory], [{ ...memory, unknown: true }]],
-          search: [[memory], [{ id: 'bad' }]],
-          save: [{ id: 'memory-1', deduplicated: false }, { id: 'memory-1', deduplicated: 'false' }],
-          update: [memory, { ...memory, source: { by: 'untrusted', at: 1 } }],
-          delete: [undefined, { removed: true }], count: [201, -1], quarantineCount: [3, -1],
-          rootInstructions: [{ root: '/synthetic', files: [] }, { root: '/synthetic', files: [], content: 'forbidden' }],
-          cleanupStatuses: [[], [{ id: 'bad', strong: true }]],
-          chooseForget: [{ id: '00000000-0000-4000-8000-000000000001', stopped: true, strong: false,
-            phase: 'blocked', reasons: ['history'], sessions: 3 }, { strong: true }],
-          retryCleanup: [{ id: '00000000-0000-4000-8000-000000000001', stopped: true, strong: false,
-            phase: 'blocked', reasons: ['copies'], sessions: 3 }, { strong: true }],
-          previewForget: [{ previewRevision: '00000000-0000-4000-8000-000000000001',
-            memoryId: '00000000-0000-4000-8000-000000000002', mode: 'version', revision: 1, targets: [], sessionIds: [],
-            versions: 1, historyNodes: 0, summaries: 0, copies: 0, pendingMessages: 0,
-            conservative: true, rootInstructions: false }, { previewRevision: 'bad' }],
-        };
+        const values = memoryResultCases(memory);
         const value = values[descriptor.method];
         if (!value) throw new Error(`Missing memory result case ${descriptor.method}`);
         expect(codec.parse(value[0])).toEqual(value[0]);

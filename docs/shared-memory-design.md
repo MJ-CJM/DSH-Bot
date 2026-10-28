@@ -1,6 +1,6 @@
 # DSH-Bot 共享记忆设计（Shared Memory）
 
-> 状态：设计稿，未实现。需求来自佳民（t44u）：Bot 之间要有共享记忆，参考 Grok Bot 的 shared_profile / shared_journal。
+> 状态：设计基线；B5 已实现 M3 手动管理，浏览器验收与 M4/P0 边界见 [B5 报告](deepening/B5.md)。需求来自佳民（t44u）：Bot 之间要有共享记忆，参考 Grok Bot 的 shared_profile / shared_journal。
 > 过程：Codex（`gpt-6-astra`，effort high，只读）出方案 SHM-1（`.codex/runs/SHM-1.result.md`）→ 编排方质疑“所有共享都要用户确认”→ Codex SHM-2 修订（`.codex/runs/SHM-2.result.md`）→ 收敛如下。
 > 标注：**[Codex]** / **[我]**（编排方）/ **[共识]**。与 `docs/deepening-proposal.md` 的 M1–M5 一致，不新增 M6。
 

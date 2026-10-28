@@ -23,3 +23,21 @@ Unknown or high-risk recipient tools still ask. bot_message is disabled inside r
 Cold recovery reconciles native input IDs; uncertain work is never automatically replayed.
 关闭 messagingEnabled 不会撤回已进入原生 Inbox 的消息；未处理消息需显式取消，不确定状态需人工核查。
 完整操作、验证结果及限制见仓库 README 与 docs/acceptance/V032-bot-to-bot.md。
+
+### 共享记忆与工具改名（B5，不兼容变更）
+
+现有记忆管理面板提供当前 Bot 私有、私有候选与历史、用户共享及待归属旧记忆。
+共享正文只由用户明确新增、修订、确认或裁决；本批不提供模型自动共享。
+共享可供本域之后新建的 Bot 读取，候选和冲突不进入共享 context。
+删除 Bot 会退休其分片并保留已发布共享贡献；“遗忘该 Bot 的贡献”通过原有两级遗忘预览处理。
+根指令、原生原始事件和外部备份仍不属于可承诺物理擦除的范围。
+
+工具统一为 `bot_memory_save`、`bot_memory_search`、`bot_memory_list`、`bot_memory_forget`。
+旧 `memory_save/search/list/forget` 不注册别名；旧会话应刷新工具定义。
+模型保存仍写本 Bot 私有记忆；search/list 可读取自身私有及已发布共享条目，模型不能确认或发布共享。
+启动会把本包 Bot 的精确旧 deny 名映射为新名，MCP 和带限定的社区名称保持原值。
+同名社区插件仍拥有其旧名工具；不存在该工具时，旧调用会返回改名指引。
+
+English: this is a breaking tool-name change with no legacy aliases. Use the four `bot_memory_*` tools.
+Manual management alone publishes exact shared content; automatic sharing is deferred to M4.
+Shared facts remain after deleting their contributing Bot. Use the separate contribution-forgetting preview to remove them.

@@ -1,3 +1,4 @@
+import { migrateMemoryDeny } from '../../shared/memory-tool-names.js';
 import { DshBotError, parseInput } from '../errors.js';
 import { validateDefaultCwd } from '../home.js';
 import { botIdSchema } from '../../shared/ids.js';
@@ -26,6 +27,16 @@ import {
 } from './domain.js';
 export class BotStore {
   constructor(private readonly domain: BotDomain) {}
+
+  async migrateMemoryTools(): Promise<void> {
+    await write(this.domain, async () => {
+      for (const [id, record] of this.domain.table('bots').entries()) {
+        const deny = migrateMemoryDeny(record.tools.deny);
+        if (JSON.stringify(deny) !== JSON.stringify(record.tools.deny))
+          await this.domain.table('bots').put(id, { ...record, tools: { ...record.tools, deny } });
+      }
+    });
+  }
 
   botsWorkspaceId(): string | undefined {
     return read(() => this.domain.table('registry_state').get('bots-workspace')?.botsWorkspaceId);
@@ -87,6 +98,7 @@ export class BotStore {
 
   async create(input: BotCreateInput, createdAt = Date.now()): Promise<BotRecord> {
     const fields = parseInput(botCreateSchema, input);
+    if (fields.tools) fields.tools = { ...fields.tools, deny: migrateMemoryDeny(fields.tools.deny) };
     await validateDefaultCwd(fields.defaultCwd);
     const now = parseInput(timestampSchema, createdAt);
     return write(this.domain, async () => {
@@ -101,6 +113,7 @@ export class BotStore {
   async update(id: string, patch: BotPatch, expectedUpdatedAt?: number): Promise<BotRecord> {
     const key = parseInput(botIdSchema, id);
     const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
+    if (fields.tools) fields.tools = { ...fields.tools, deny: migrateMemoryDeny(fields.tools.deny) };
     await validateDefaultCwd(fields.defaultCwd);
     const expected = parseInput(timestampSchema.optional(), expectedUpdatedAt);
     return write(this.domain, async () =>

@@ -1,37 +1,38 @@
-import { isDeepStrictEqual } from 'node:util';
 import type { MemoryOp } from '../../shared/memory-ops.js';
-import { memoryVersionSchema, type MemoryVersion } from '../../shared/memory-v2.js';
+import type { MemoryVersion } from '../../shared/memory-v2.js';
 import type { MemoryDomain } from './domain-v2.js';
+import { PersistentMap, PersistentSet } from './persistent-map.js';
 
-export interface Projection { seq: number; epoch: number; versions: ReadonlyMap<string, MemoryVersion>; forgotten: ReadonlySet<string> }
-const immutable = () => { throw new Error('Published memory snapshot is immutable'); };
+export interface Projection { seq: number; epoch: number; versions: PersistentMap<MemoryVersion>;
+  forgotten: PersistentSet; retired: PersistentSet }
 function freezeValue(value: unknown): void {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
   for (const item of Object.values(value)) freezeValue(item);
   Object.freeze(value);
 }
 function publish(state: Projection): Projection {
-  for (const v of state.versions.values()) freezeValue(v);
-  Object.defineProperties(state.versions, { set: { value: immutable }, delete: { value: immutable }, clear: { value: immutable } });
-  Object.defineProperties(state.forgotten, { add: { value: immutable }, delete: { value: immutable }, clear: { value: immutable } });
-  Object.freeze(state.versions); Object.freeze(state.forgotten); return Object.freeze(state);
+  // Reused subtrees and values are already frozen; publication never visits the full map.
+  return Object.freeze(state);
 }
-export const emptyProjection = (): Projection => publish({ seq: 0, epoch: 0, versions: new Map(), forgotten: new Set() });
+export const emptyProjection = (): Projection => publish({ seq: 0, epoch: 0,
+  versions: new PersistentMap(), forgotten: new PersistentSet(), retired: new PersistentSet() });
 export function applyOp(current: Projection, op: MemoryOp): Projection {
   if (op.seq !== current.seq + 1 || op.expectedRevision !== current.seq || op.forgetEpoch < current.epoch)
     throw new Error('Invalid memory log order');
   if (op.kind === 'forget' ? op.forgetEpoch !== current.epoch + 1 : op.forgetEpoch !== current.epoch)
     throw new Error('Invalid memory epoch');
-  const versions = new Map(current.versions), forgotten = new Set(current.forgotten);
-  for (const id of op.kind === 'forget' ? op.subjectIds : []) { forgotten.add(id); versions.delete(id); }
+  let versions = current.versions;
+  let forgotten = current.forgotten, retired = current.retired;
+  for (const id of op.kind === 'forget' ? op.subjectIds : []) { forgotten = forgotten.with(id); versions = versions.without(id); }
   if (op.kind === 'retire_shard' && op.owner) {
-    for (const [id, v] of versions) if (v.scope === 'private' && isDeepStrictEqual(v.ownerBotKey, op.owner)) versions.delete(id);
+    retired = retired.with(JSON.stringify(op.owner));
   }
   for (const version of op.versions) {
     if (forgotten.has(version.memoryId) || version.commitSeq !== op.seq) throw new Error('Memory resurrection or bad commit sequence');
-    versions.set(version.memoryId, structuredClone(version));
+    const value = structuredClone(version); freezeValue(value);
+    versions = versions.with(version.memoryId, value);
   }
-  return publish({ seq: op.seq, epoch: op.forgetEpoch, versions, forgotten });
+  return publish({ seq: op.seq, epoch: op.forgetEpoch, versions, forgotten, retired });
 }
 export function rebuild(domain: MemoryDomain): Projection {
   let state = emptyProjection();
@@ -45,11 +46,15 @@ export function rebuild(domain: MemoryDomain): Projection {
   }
   return state;
 }
-/** Projection rows are disposable caches. Recovery also removes abandoned payload attachments. */
+/** Constant-size disposable watermark, never authority for recovery. Replay does bounded work per version after sorting ops. */
+export async function persistWatermark(domain: MemoryDomain, state: Projection): Promise<void> {
+  await domain.table('projections').put('snapshot', { seq: state.seq });
+}
+/** Recovery/forget maintenance only: remove abandoned and erased attachments, including old revisions. */
 export async function persistProjection(domain: MemoryDomain, state: Projection): Promise<void> {
   const cache = domain.table('projections');
-  for (const [id] of cache.entries()) if (!state.versions.has(id)) await cache.delete(id);
-  for (const [id, v] of state.versions) if (!isDeepStrictEqual(cache.get(id), v)) await cache.put(id, memoryVersionSchema.parse(v));
+  await persistWatermark(domain, state);
+  for (const [id] of cache.entries()) if (id !== 'snapshot') await cache.delete(id);
   const live = new Set([...domain.table('ops').entries()].flatMap(([, op]) => op.versions
     .filter(version => !state.forgotten.has(version.memoryId)).map(version => version.contentRef)));
   for (const [id] of domain.table('payloads').entries()) if (!live.has(id)) await domain.table('payloads').delete(id);

@@ -5,7 +5,11 @@ import styles from '../styles/bots.module.css';
 export function MemoryCleanupStatus({ statuses, retry, t }: {
   statuses: readonly CleanupStatus[]; retry(id: string): Promise<unknown>; t: MemoryPanelProps['t'];
 }) {
-  return <div>{statuses.map(status => <div key={status.id} className={styles.notice} role="status">
+  // Repeated polling/retry receipts replace by job identity. Completed jobs share one current banner.
+  const latest = [...new Map(statuses.map(status => [status.id, status])).values()];
+  return <div>
+    {latest.some(status => status.strong) && <p className={styles.notice} role="status">{t('forget.strong')}</p>}
+    {latest.filter(status => !status.strong).map(status => <div key={status.id} className={styles.notice} role="status">
     <strong>{t(status.strong ? 'forget.strong' : status.stopped ? 'forget.stopped' : 'forget.pending')}</strong>
     {!status.strong && <p>{t('forget.blocked')}</p>}
     {status.reasons.includes('system-head') && <p>{t('forget.legacyOptions')}</p>}

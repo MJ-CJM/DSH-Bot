@@ -43,7 +43,7 @@ DSH_HOME="<桌面实例原有 DSH_HOME 的绝对路径>" \
 - 在 **Bots** 页面新建、编辑、复制或删除 Bot，设置名称、头像、人设、模板、记忆和隐藏工具。默认头像、导航与原生会话行的 Bot 标记使用同一鲸鱼图形，支持中英文及亮暗主题。
 - 点击 Bot 或 **打开对话** 进入该 Bot 的持久主会话，缺失时在共享 **Bots** 工作区惰性创建，标题固定为 Bot 名称。升级时选择最近活跃的已有普通会话；其他历史原样保留，在 Bots 页隐藏。
 - 会话头部或空白会话提供 **Bots** 按钮，可打开原生右侧 Bots tab，查看 Bot 与会话、切换到对应主会话。Bot 详情中的记忆面板支持搜索、新增、编辑、置顶和删除。
-- 每 Bot 的技能目录默认是 `$DSH_HOME/dsh-bot/bots/<id>/skills`。Bot 会话可使用 `memory_save`、`memory_search`、`memory_list`、`memory_forget`；`bot_manage` 的创建、修改和删除操作经过 DSH 审批，默认只提供给 Bot preset。
+- 每 Bot 的技能目录默认是 `$DSH_HOME/dsh-bot/bots/<id>/skills`。Bot 会话可使用 `bot_memory_save`、`bot_memory_search`、`bot_memory_list`、`bot_memory_forget`；`bot_manage` 的创建、修改和删除操作经过 DSH 审批，默认只提供给 Bot preset。
 
 默认会话的真实 cwd 是 `$DSH_HOME/dsh-bot/bots`，每 Bot 的 `home` 子目录由提示词约定用于文件整理。**各 Bot 共享该根目录，私有 home 不是文件系统隔离边界**；文件读写及提权沿用 DSH 原生权限和审批设置。更多说明见[架构文档](docs/architecture.md)。
 
@@ -109,3 +109,21 @@ DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v03
 [失败案例库及共享契约](docs/deepening/failure-catalog.md)。案例库的预期失败表示后续功能仍 OPEN，不能作为产品验收通过。
 
 头像截图复跑（先 `scripts/pnpm check`）：`DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs --v022-avatar`。输出亮暗各两张：`.codex/screens/v022-avatar-{light,dark}.png`（仅头像选择器）和 `v022-avatar-list-{light,dark}.png`（关闭模态框后的 Bots 列表）。真实隔离 Web Host，不发送模型请求。
+
+### 共享记忆与工具改名（B5，不兼容变更）
+
+现有记忆管理面板提供当前 Bot 私有、私有候选与历史、用户共享及待归属旧记忆。
+共享正文只由用户明确新增、修订、确认或裁决；本批不提供模型自动共享。
+共享可供本域之后新建的 Bot 读取，候选和冲突不进入共享 context。
+删除 Bot 会退休其分片并保留已发布共享贡献；“遗忘该 Bot 的贡献”通过原有两级遗忘预览处理。
+根指令、原生原始事件和外部备份仍不属于可承诺物理擦除的范围。
+
+工具统一为 `bot_memory_save`、`bot_memory_search`、`bot_memory_list`、`bot_memory_forget`。
+旧 `memory_save/search/list/forget` 不注册别名；旧会话应刷新工具定义。
+模型保存仍写本 Bot 私有记忆；search/list 可读取自身私有及已发布共享条目，模型不能确认或发布共享。
+启动会把本包 Bot 的精确旧 deny 名映射为新名，MCP 和带限定的社区名称保持原值。
+同名社区插件仍拥有其旧名工具；不存在该工具时，旧调用会返回改名指引。
+
+English: this is a breaking tool-name change with no legacy aliases. Use the four `bot_memory_*` tools.
+Manual management alone publishes exact shared content; automatic sharing is deferred to M4.
+Shared facts remain after deleting their contributing Bot. Use the separate contribution-forgetting preview to remove them.

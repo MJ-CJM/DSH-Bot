@@ -1,3 +1,4 @@
+import { createSharedMemoryCatalog } from './shared-memory-state.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import type { DshBotRemoteMethods } from '../shared/remote-contract.js';
@@ -10,12 +11,14 @@ export function memoryPanelFactory(ctx: Context, memories: Set<MemoryCatalog>, o
   return (id: string): Omit<MemoryPanelProps, 'bot' | 't'> & { dispose(): void } => {
     const memory = createMemoryCatalog(ctx, id, options());
     memories.add(memory);
+    const shared = createSharedMemoryCatalog(ctx, id, options());
     const write = async (operation: () => Promise<RemoteResult<unknown>>) => {
       unwrap(await operation()); await memory.refresh();
     };
     return {
       catalog: memory,
-      dispose: () => { memories.delete(memory); memory.dispose(); },
+      shared: { catalog: shared, remote, refresh: async () => { await Promise.all([shared.refresh(), memory.refresh()]); } },
+      dispose: () => { memories.delete(memory); memory.dispose(); shared.dispose(); },
       onSave: input => write(() => remote().save(id, input)),
       onUpdate: (memoryId, patch) => write(() => remote().update(id, memoryId, patch)),
       onRemove: memoryId => write(() => remote().delete(id, memoryId)),

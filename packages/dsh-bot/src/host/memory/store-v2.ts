@@ -7,6 +7,7 @@ import { missingMemory, nextTimestamp, missingBot, compareId } from '../stores/d
 import { lexicalMemorySearch } from '../stores/memory.js';
 import type { BotStore } from '../stores/bots.js';
 import type { MemoryKernel } from './op-log.js';
+import { readableFacts, rankFacts } from './query.js';
 import { privateVersion } from './version.js';
 
 const compare = (a: { id: string; pinned: boolean; updatedAt: number }, b: typeof a) =>
@@ -52,6 +53,18 @@ export class V2MemoryStore {
     return this.records(botId).filter(r => (f.pinned === undefined || r.pinned === f.pinned) &&
       (f.tag === undefined || r.tags.includes(f.tag)) && (!f.query || lexicalMemorySearch.matches(r, f.query)) &&
       (!f.before || this.compare(r, f.before) > 0)).slice(0, f.limit);
+  }
+  readableByBot(botId: string, options: MemoryListOptions): (MemoryRecord & { scope?: 'private' | 'shared' })[] {
+    const f = parseInput(memoryListOptionsSchema, options), owner = this.owner(botId);
+    const facts = readableFacts(this.kernel, owner, { at: Date.now() });
+    return rankFacts(facts, f.query ?? '', 10000).flatMap(({ version: v, payload: p }) => {
+      const record = p.legacy ? memorySchema.parse({ ...p.legacy, id: v.memoryId, content: p.content, botId }) : memorySchema.parse({
+        id: v.memoryId, botId, content: p.content, kind: 'fact', tags: [], pinned: false,
+        createdAt: v.recordedAt, updatedAt: v.recordedAt,
+      });
+      if (f.tag !== undefined && !record.tags.includes(f.tag) || f.pinned !== undefined && record.pinned !== f.pinned) return [];
+      return [{ ...record, ...(v.scope === 'shared' ? { scope: 'shared' as const } : {}) }];
+    }).slice(0, f.limit);
   }
   countByBot(botId: string): number { return this.records(botId).length; }
   async add(input: MemoryAddInput): Promise<MemoryRecord> { return (await this.persist(input, false)).record; }
@@ -104,7 +117,10 @@ export class V2MemoryStore {
   }
   async removeByBot(botId: string): Promise<number> {
     return this.mutate(async () => {
-      const ids = this.records(botId).map(r => r.id); await this.forget(ids); return ids.length;
+      const owner = this.owner(botId);
+      const ids = [...this.kernel.snapshot.versions.values()]
+        .filter(v => v.scope === 'private' && sameBot(v.ownerBotKey, owner)).map(v => v.memoryId);
+      await this.forget(ids); return ids.length;
     });
   }
 }

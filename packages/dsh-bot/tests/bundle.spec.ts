@@ -307,6 +307,8 @@ describe('built bundle contract', () => {
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
         'dshBot.memory/previewForget', 'dshBot.memory/chooseForget', 'dshBot.memory/cleanupStatuses',
         'dshBot.memory/retryCleanup', 'dshBot.memory/rootInstructions',
+        'dshBot.memory/query', 'dshBot.memory/createManaged', 'dshBot.memory/revise', 'dshBot.memory/confirm',
+        'dshBot.memory/resolve', 'dshBot.memory/previewContribution', 'dshBot.memory/previewShared',
       ].sort());
       await fork.dispose();
       await fork.dispose();

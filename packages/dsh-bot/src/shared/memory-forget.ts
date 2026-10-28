@@ -5,6 +5,7 @@ export const forgetSelectionSchema = z.strictObject({ memoryId: randomId, mode: 
 export const forgetPreviewSchema = z.strictObject({
   previewRevision: randomId, memoryId: randomId, mode: forgetSelectionSchema.shape.mode,
   revision: safeCounter, targets: z.array(randomId), sessionIds: z.array(z.string()),
+  affectedBots: safeCounter.optional(), derivatives: safeCounter.optional(),
   versions: safeCounter, historyNodes: safeCounter, summaries: safeCounter,
   copies: safeCounter, pendingMessages: safeCounter, conservative: z.boolean(), rootInstructions: z.boolean(),
 });

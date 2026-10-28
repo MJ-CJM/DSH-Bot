@@ -28,6 +28,14 @@ export function apply(ctx, config) {
         await ctx.dshBots.memoryFor(id).save({ content: `SYNTHETIC_BROWSER_TARGET_${id}` });
         sessions[id] = main.sessionId;
       }
+      if (config.suite.startsWith('memory-')) {
+        for (const [content, factKey] of [['SYNTHETIC_SHARED_STABLE', 'preference'],
+          ['SYNTHETIC_CONFLICT_A', 'city'], ['SYNTHETIC_CONFLICT_B', 'city']]) {
+          await ctx.dshBots.manageMemory(memory => memory.create({ botId: 'en-light-1360', scope: 'shared',
+            kind: 'user_fact', content, subject: 'user', factKey, valid: { from: null, to: null, basis: 'unknown' },
+            expectedRevision: ctx.dshBots.memoryKernel.seq }));
+        }
+      }
       if (config.suite === 'root-warning') {
         await mkdir(ctx.dshBots.memoryForget.root, { recursive: true });
         await writeFile(join(ctx.dshBots.memoryForget.root, 'AGENTS.md'), 'Synthetic root instruction fixture.');

@@ -1,3 +1,4 @@
+import { migrateMemoryDeny } from '../../shared/memory-tool-names.js';
 import { type BotCreateInput, type BotRecord, botCreateSchema, botSchema } from '../../shared/schema.js';
 import { DshBotError, parseInput } from '../errors.js';
 import { validateDefaultCwd } from '../home.js';
@@ -8,6 +9,7 @@ export abstract class RegistryMutations extends RegistryPresets {
   protected abstract changed(id: string, action: BotChanged['action']): void;
   protected async createRecord(input: BotCreateInput, action: 'create' | 'duplicate'): Promise<BotRecord> {
     const fields = parseInput(botCreateSchema, input);
+    fields.tools = { ...fields.tools, deny: migrateMemoryDeny(fields.tools.deny) };
     await validateDefaultCwd(fields.defaultCwd);
     if (this.stores.bots.list().some((bot) => bot.id === fields.id)) {
       throw new DshBotError('bot/conflict', `Bot '${fields.id}' already exists`);

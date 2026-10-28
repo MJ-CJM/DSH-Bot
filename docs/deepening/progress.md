@@ -316,3 +316,84 @@ UI 截图已删除裸 DOM fixture，改用隔离 profile 的正式 Web Client/Re
 
 最终矩阵：.dsh-dev/deepening/b4-forget-matrix-2026-10-26T05-47-55.790Z-3683/。
 命令索引：.dsh-dev/deepening/b4-rework/commands.json；最终 C：b4-rework-check-receipt.log。
+
+
+## B5：M3 双时态、手动共享管理与工具改名（2026-10-25–26）
+
+执行 `tasks/DP/B5.md`，基线 fa2280e2。完整实现、112 个改动文件、命令/退出码与限制见 [B5 报告](B5.md)。
+保持版本 0.3.2；未新增依赖、peer 或 lockfile 变更。保留原有 pnpm-workspace.yaml 与 .codex/。
+未嵌套 Codex、commit/push、改桌面或全局配置、读取真实会话/凭据、调用真实模型。
+
+| 项目 | 结果 | 本轮证据 |
+| --- | --- | --- |
+| B4r 截图脚本 | PASS（静态）/ FAIL(environment，实测) | 可见行→真实 conversation 就绪→可用 Bots；capture 失败先存 PNG/DOM/ARIA；Chromium 未能进入 capture |
+| I25 | PASS（UNIT rc.2） | 160 合成标注案例 / 16 类；明确改口 30/30，candidate 覆盖 0、disputed 注入 0，合成来源引用完整 |
+| I26 | PASS（UNIT rc.2） | CAS/双时态/未来版本可管理、严格热冷结构、退休/新生日、隔离归属与贡献闭包；精确正文提升不携私有标签 canary |
+| I27 | PASS（UNIT rc.2） | 7 个管理 Remote、strict 输入/结果 codec、正式 decorator/公开 Gateway 套件；模型无共享发布工具 |
+| I28 | PASS（小语料词法基线） | 10 个合成检索题 Recall@5=1、MRR=1；固定 4000 字符，整条选择与 journal 窗口 |
+| I29 | PASS（UNIT/DOM） | 中英各 100 刷新，行重挂载/焦点或草稿丢失/重复发布均 0；CAS 对比、乱序、卸载通过 |
+| I30 / I31 | FAIL(environment；实现与 UNIT/DOM 已接线) | 列表/鲸鱼来源/时间/替代、确认/裁决/贡献遗忘/隔离归属；真实 Web Host READY，capture 未运行 |
+| I32 | FAIL(environment) | 8 组计划截图，0 张；不以 DOM 代替视觉证明 |
+| I33 门槛 | PASS（npm rc.2/真实 JSON） | 10 个实际 Bot / 10000 条（1 bootstrap op）；命中 p95 0.007 ms、重算 10.99 ms、30 新进程冷恢复 353.87 ms |
+| I33 独立完整 CLI 启动基线 | FAIL(NOT_RUN) | 另报 rc.3 CLI→合成夹具 READY 6.50–8.01 秒，含种数据和 loopback turns，不作纯启动基线 |
+| I34 | PASS（UNIT rc.2） | bot_memory_* 无别名；同名社区插件原生运行；精确 deny 持久迁移与冷读，提示/队友白名单同步 |
+| C | PASS | 86 文件 / 822 passed + 3 expected fail = 825；build、strict、375 文件 lint 通过 |
+| 精确 rc.2 CLI / 完整 P0 | FAIL(NOT_RUN) / OPEN | CLI 实际 rc.3；自动共享、原生确认 grant、统一出站和任意 provider serializer 不在本批关闭 |
+
+共享和私有复用同一 v2 操作日志，没有第二条 shared 权威历史。
+来源名称和鲸鱼样式保存在可删除载荷中；JSON cache 改为一个可重建 snapshot，减少 single 后端写放大。
+用户只能通过明确管理操作确认已展示正文/结构字段；发布不复制私有标签、置顶或来源摘录。
+删除 Bot 保留共享贡献；新生日不继承私有权限；隔离旧项需显式绑定当前 Bot，保持 private。
+
+最终 C：`.dsh-dev/deepening/b5-check-complete.log`。
+分项命令/实际退出码：`.dsh-dev/deepening/b5/commands.json`。
+性能：`.dsh-dev/deepening/b5-performance-1792997772116/summary.json`。
+语料与 DOM：`.dsh-dev/deepening/b5/{conflicts,retrieval,memory-state-en,memory-state-zh}.json`。
+全部 E/S 在沙箱 Chromium MachPort Permission denied/SIGTRAP 失败；脚本与逐组 FAIL 清单保留供编排方沙箱外重跑。
+自动共享继续留给 B6；完整 P0 仍 OPEN，不以手工共享或纯词法分数替代真实模型、浏览器与全出口证据。
+
+## B5-rework：侧栏展开、检索难例与独立日志（2026-10-26）
+
+执行 `tasks/DP/B5-rework.md`，基于 fa2280e2 当前未提交 B5 工作区，增量 9 文件。
+改动、命令/退出码、指标与失败历史见 [B5 返工报告](B5-rework.md)。
+保留原有 pnpm-workspace.yaml、.codex/ 和全部 B5 工作；未 commit/push、嵌套 Codex、访问真实数据或调用模型。
+
+| 验收 | 结果 | 本轮证据 |
+| --- | --- | --- |
+| 侧栏折叠修复 | PASS（代码）/ FAIL（浏览器未执行） | role/aria 展开中英溢出按钮，再点击可见会话；保留 8 Bot |
+| I28 | PASS（UNIT） | 102 记忆 / 60 题 / 6 类；Recall@5=0.2500、MRR=0.2857、MRR@5=0.2500 |
+| I33 | FAIL（性能目标未达） | 10000 次独立提交 / 30 新进程；冷恢复 p95=4713.54ms，重建=4421.95ms；投影全部一致 |
+| E 四组 | FAIL(environment) | 各 exit=1；host-setup 的 loopback listen EPERM，0 截图、48 个截图项未执行 |
+| scripts/pnpm check | FAIL(environment) | exit=1；单 worker：816 passed + 3 expected fail + 6 failed；5 EPERM / 1 网络测试超时 |
+| strict / lint / 尺寸 | PASS | 单独 typecheck/lint exit=0；376 产品文件、55 定向文件；7 代码文件 ≤400 行/≤160 字符 |
+
+检索逐题与分组指标：`.dsh-dev/deepening/b5-rework/retrieval.json`。
+最终完整检查：`.dsh-dev/deepening/b5-rework/check-final.log`；仅限制 worker 数，没有增加 timeout 或减少测试。
+单独复测原先两个 JSON 写超时文件为 18 passed；静态检索 fixture 改批量种数后，全套内也通过。
+I33 命中 p95=0.00796ms、重算=11.5101ms，均达标；冷恢复/重建超过 2 秒目标。
+完整收据：`.dsh-dev/deepening/b5-performance-1792999945079/summary.json`；H 最终退出 1。
+默认堆种数曾被信号终止，保留 4673 条已提交前缀后续跑；最终测量子进程均为 512 MiB 堆上限。
+原始失败与续跑日志完整保留；建议后续优化重放复杂度，并保持本轮独立日志作为比较基线。
+四组 E 需要编排方在允许 loopback/Chromium 的环境重跑；选择器修复尚无浏览器点击证据。
+本轮仍不关闭 M4 自动共享、精确 rc.2 CLI、完整 CLI 启动性能与完整 P0 缺口。
+
+## B5-rework-2：写入成本与记忆 UI（2026-10-27）
+
+基于当前未提交工作区执行；28 个增量文件及完整命令见 [二次返工报告](B5-rework-2.md)。
+未修改 pnpm-workspace.yaml、依赖、lockfile 或参考源码；未 commit/push、访问真实数据或调用模型。
+先采 CPU/表计时：旧万条日志单次提交 413.718ms，三次全文件写占 97.4%；冷恢复 5.717s。
+改用公开 per-record、可恢复布局转换、不可变 radix 投影；常规提交不再全量扫描/写快照。
+状态合并、radio 标签/尺寸、逐条限定输入与校验、摘要折叠、原生导航状态等待/有界重试已实现。
+
+| 验收 | 结果 |
+| --- | --- |
+| 定向 U | PASS；11 文件 / 34 测试；含未知提交、转换中断、遗忘、DOM 与草稿 |
+| 10000 次独立写入 | FAIL；p50=13.130ms、p95=49.004ms；后段仍变慢，P0 OPEN |
+| 30 新进程冷恢复 / 完整重建 | FAIL / PASS；p95=2091.839 / 185.776ms；投影全部一致 |
+| n=500/5000 回归 | PASS；CPU 比 0.8000、真实写入中位数比 0.9827，不替代后段趋势 |
+| E 四组 / H(forget) | FAIL(environment)；loopback EPERM，0 截图，不以 DOM 替代 |
+| 完整 check | FAIL(environment)；822 passed、3 expected fail、5 EPERM 与 1 网络超时 |
+| strict / lint / 尺寸 | PASS；23 代码文件 ≤400 行/≤160 字符，694 UI locale 键一致 |
+
+最终性能：`.dsh-dev/deepening/b5-performance-1793155441045/summary.json`；逐千段及全部原始样本保留。
+旧布局首次转换速度未证明；继续剖析原生持久 I/O，浏览器/Host 网络验收交编排方沙箱外复跑。

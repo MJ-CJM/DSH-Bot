@@ -22,7 +22,7 @@ import { MemoryAdmission } from '../lib/host/memory/admission.js';
 import { openBotStores } from '../lib/host/store.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
-const memoryToolNames = ['memory_forget', 'memory_list', 'memory_save', 'memory_search'];
+const memoryToolNames = ['bot_memory_forget', 'bot_memory_list', 'bot_memory_save', 'bot_memory_search'];
 const botToolNames = ['bot_delegate', 'bot_manage', ...memoryToolNames].sort();
 const botIds = ['alpha', 'beta', 'disabled', 'readonly'];
 
@@ -52,7 +52,7 @@ async function runtime(ctx: Context, root: string) {
   ctx.effect(() => () => memoryAdmission.close());
   for (const id of botIds) {
     await stores.bots.create({ id, name: id, memory: { enabled: id !== 'disabled', injectLimit: 20 },
-      tools: { deny: id === 'readonly' ? ['memory_save'] : [] } });
+      tools: { deny: id === 'readonly' ? ['bot_memory_save'] : [] } });
   }
   // The registry-facing fixture is deliberately small. Memory operations use
   // the production service and Store, with no in-memory persistence substitute.
@@ -116,7 +116,7 @@ function wireSystem(body: unknown): unknown {
 }
 
 describe('Bot memory through the production Agent loop and local Messages mock', () => {
-  it('executes memory_save from an HTTP model response and refreshes required memory context on the next request', async () => withRuntime(async ({
+  it('executes bot_memory_save from an HTTP model response and refreshes required memory context on the next request', async () => withRuntime(async ({
     ctx, stores, create, memoryText,
   }) => {
     const fact = 'T06_WIRE_MEMORY: The user explicitly prefers answers in Simplified Chinese.';
@@ -126,7 +126,7 @@ describe('Bot memory through the production Agent loop and local Messages mock',
         host: '127.0.0.1', port: 0, randomSeed: 6,
         sequence: ['tool_call_success', 'tool_call_success', 'success', 'success', 'success'],
         apiKey: 't06-local-mock-key', successText: 'T06_MEMORY_LOOP_OK',
-        toolName: 'memory_save',
+        toolName: 'bot_memory_save',
         toolArguments: JSON.stringify({ content: fact, kind: 'preference', tags: ['language'], pinned: true }),
       });
       return () => mock.close();
@@ -196,18 +196,18 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     for (const agent of [disabled.agent, plain]) expect(await memoryText(agent)).toBeUndefined();
     expect(memoryFor.mock.calls.map(([id]) => id)).not.toContain('disabled');
     expect(ctx.tools.schemas(readonly.agent).map((tool) => tool.name).sort())
-      .toEqual(botToolNames.filter((name) => name !== 'memory_save'));
-    expect((await execute(readonly.agent, 'memory_save', { content: 'Must not be stored.' })).isError).toBe(true);
+      .toEqual(botToolNames.filter((name) => name !== 'bot_memory_save'));
+    expect((await execute(readonly.agent, 'bot_memory_save', { content: 'Must not be stored.' })).isError).toBe(true);
     expect(stores.memories.listByBot('readonly', { limit: 20 })).toEqual([]);
     expect(await memoryText(first.agent)).toContain('Alpha private');
     expect(await memoryText(first.agent)).not.toContain('Beta private');
     expect(await memoryText(beta.agent)).toContain('Beta private');
     expect(await memoryText(beta.agent)).not.toContain('Alpha private');
-    const listing = await execute(beta.agent, 'memory_list', {});
+    const listing = await execute(beta.agent, 'bot_memory_list', {});
     expect(listing.isError).toBe(false);
     expect(JSON.stringify(listing.value)).toContain('Beta private');
     expect(JSON.stringify(listing.value)).not.toContain('Alpha private');
-    const forget = await execute(beta.agent, 'memory_forget', { id: alphaMemory.id });
+    const forget = await execute(beta.agent, 'bot_memory_forget', { id: alphaMemory.id });
     expect(forget.isError).toBe(true);
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toHaveLength(1);
 
@@ -258,7 +258,7 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     expect(renderPrompt(completeAssembly)).toBe('beta persona');
     expect(completeAssembly.contexts.find(c => c.name === 'dsh-bot:memory')?.text).toContain(literal);
     expect(ctx.tools.schemas(complete.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
-    const listing = await execute(complete.agent, 'memory_list', {});
+    const listing = await execute(complete.agent, 'bot_memory_list', {});
     expect(listing.isError).toBe(false);
     expect(JSON.stringify(listing.value)).toContain(literal);
   }));

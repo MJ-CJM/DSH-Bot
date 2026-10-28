@@ -2,16 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import type { ForgetChoice, ForgetPreview as Preview, ForgetSelection, CleanupStatus } from '../../shared/memory-forget.js';
 import type { MemoryPanelProps } from './MemoryPanel.js';
 import styles from '../styles/bots.module.css';
+import previewStyles from '../styles/forget.module.css';
 
 export interface ForgetActions {
   preview(selection: ForgetSelection): Promise<Preview>;
   choose(choice: ForgetChoice): Promise<CleanupStatus>;
   retry(id: string): Promise<unknown>;
 }
-export function ForgetPreview({ memoryId, actions, close, t }: {
-  memoryId: string; actions: ForgetActions; close(): void; t: MemoryPanelProps['t'];
+export function ForgetPreview({ memoryId, actions, close, t, contribution = false }: {
+  contribution?: boolean; memoryId: string; actions: ForgetActions; close(): void; t: MemoryPanelProps['t'];
 }) {
-  const [mode, setMode] = useState<ForgetSelection['mode']>('version');
+  const [mode, setMode] = useState<ForgetSelection['mode']>(contribution ? 'related' : 'version');
   const [preview, setPreview] = useState<Preview>();
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   const life = useRef(0), active = useRef(false);
@@ -37,17 +38,24 @@ export function ForgetPreview({ memoryId, actions, close, t }: {
     finally { if (current === life.current) { active.current = false; setBusy(false); } }
   }
   return <fieldset className={styles.notice} aria-label={t('forget.title')}>
-    <legend>{t('forget.title')}</legend>
-    <label><input type="radio" checked={mode === 'version'} disabled={busy}
+    <legend>{t(contribution ? 'shared.forgetContribution' : 'forget.title')}</legend>
+    {contribution && <p>{t('shared.contributionNotice')}</p>}
+    <label className={previewStyles.option}><input type="radio" checked={mode === 'version'} disabled={busy || contribution}
       onChange={() => { setMode('version'); setPreview(undefined); }} />{t('forget.version')}</label>
-    <label><input type="radio" checked={mode === 'related'} disabled={busy}
+    <label className={previewStyles.option}><input type="radio" checked={mode === 'related'} disabled={busy || contribution}
       onChange={() => { setMode('related'); setPreview(undefined); }} />{t('forget.related')}</label>
     <p>{t('forget.previewNotice')}</p>
     {preview && <div>
+      <p>{t('forget.summary', { versions: preview.versions, sessions: preview.sessionIds.length })}</p>
+      <details><summary>{t('forget.details')}</summary>
+      <p>{t('forget.exclusions')}</p>
+      {preview.affectedBots !== undefined && <p>{t('forget.impact', {
+        bots: preview.affectedBots, derivatives: preview.derivatives ?? 0 })}</p>}
       <p>{t('forget.counts', { versions: preview.versions, sessions: preview.sessionIds.length,
         history: preview.historyNodes, summaries: preview.summaries, copies: preview.copies, pending: preview.pendingMessages })}</p>
       {preview.conservative && <p>{t('forget.conservative')}</p>}
       {preview.rootInstructions && <p>{t('forget.rootBlocked')}</p>}
+      </details>
     </div>}
     {failed && <p className={styles.error} role="alert">{t('forget.changed')}</p>}
     <div className={styles.actions}>

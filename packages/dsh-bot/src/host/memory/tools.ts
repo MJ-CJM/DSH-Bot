@@ -4,7 +4,7 @@ import { defineTool, type ToolRunContext, type ValueSchemaSpec } from '@deepseek
 import { DshBotError } from '../errors.js';
 import type { BotMemoryService } from './service.js';
 
-export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_save', 'memory_search', 'memory_list', 'memory_forget'];
+export const MEMORY_TOOL_NAMES: readonly string[] = ['bot_memory_save', 'bot_memory_search', 'bot_memory_list', 'bot_memory_forget'];
 
 const recordSchema = {
   type: 'object',
@@ -18,6 +18,7 @@ const recordSchema = {
     pinned: { type: 'boolean', required: true },
     createdAt: { type: 'integer', required: true },
     updatedAt: { type: 'integer', required: true },
+    scope: { type: 'string', enum: ['private', 'shared'] },
     source: {
       type: 'object',
       additionalProperties: false,
@@ -43,7 +44,7 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
   };
   return [
     defineTool({
-      name: 'memory_save',
+      name: 'bot_memory_save',
       description:
         'Save explicit user preferences or durable facts for this Bot. Do not save one-off information, secrets, or API keys.',
       parameters: {
@@ -81,8 +82,8 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       },
     }),
     defineTool({
-      name: 'memory_search',
-      description: "Search this Bot's saved preferences and durable facts before asking the user again.",
+      name: 'bot_memory_search',
+      description: "Search this Bot's private memories and published user-shared facts before asking the user again.",
       parameters: {
         query: { type: 'string', required: true },
         limit: { type: 'integer', description: 'Maximum results, from 1 to 200.' },
@@ -94,8 +95,8 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       },
     }),
     defineTool({
-      name: 'memory_list',
-      description: "List this Bot's durable memories, optionally filtered by tag or pinned status.",
+      name: 'bot_memory_list',
+      description: "List this Bot's private memories and published shared facts; candidates and conflicts are excluded.",
       parameters: {
         tag: { type: 'string' },
         pinned: { type: 'boolean' },
@@ -108,7 +109,7 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       },
     }),
     defineTool({
-      name: 'memory_forget',
+      name: 'bot_memory_forget',
       description: 'Stop using a memory belonging to this Bot. Affected sessions stay blocked until history and copy cleanup is verified.',
       parameters: { id: { type: 'string', required: true } },
       output: { schema: { type: 'null' }, render: () => [{ type: 'text',

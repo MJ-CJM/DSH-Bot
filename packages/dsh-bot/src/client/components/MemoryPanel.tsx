@@ -1,3 +1,4 @@
+import { SharedMemoryPanel, type SharedMemoryBinding } from './SharedMemoryPanel.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { type FormEvent, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { type BotRecord, type MemoryPatch, type MemoryRecord, memoryAddSchema } from '../../shared/schema.js';
@@ -21,6 +22,7 @@ export interface MemoryPanelProps {
   onUpdate(id: string, patch: Pick<MemoryPatch, 'content' | 'kind' | 'tags' | 'pinned'>): unknown | Promise<unknown>;
   onRemove(id: string): unknown | Promise<unknown>;
   forgetting?: ForgetActions;
+  shared?: SharedMemoryBinding;
   onOpenSession(id: string): unknown | Promise<unknown>;
   t: PropsLocale<'dsh-bot'>['t'];
 }
@@ -28,7 +30,9 @@ export interface MemoryPanelProps {
 /** The owning page binds each action to this Bot and refreshes the catalog after
  * mutations. No Context, Host service, portal or additional modal is needed here.
  */
-export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, forgetting, t }: MemoryPanelProps) {
+export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, forgetting, shared, t }: MemoryPanelProps) {
+  const [managedOpened, setManagedOpened] = useState(false);
+  const [scope, setScope] = useState<'legacy' | 'private' | 'shared' | 'quarantine'>('legacy');
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
   const [search, setSearch] = useState(snapshot.query);
   const [draft, setDraft] = useState<Draft>();
@@ -145,7 +149,16 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
       {!bot.memory.enabled && <p className={styles.notice}>{t('memory.disabled')}</p>}
       {bot.memory.enabled && bot.persona.complete && <p className={styles.notice}>{t('memory.complete')}</p>}
       <p className={styles.hint}>{t('memory.sessionNotice')}</p>
+      {shared && <div className={styles.actions} role="tablist" aria-label={t('shared.scopes')}>
+        {(['legacy', 'private', 'shared', 'quarantine'] as const).map(value => <button type="button" role="tab" key={value}
+          className={styles.button} aria-selected={scope === value}
+          onClick={() => { if (value !== 'legacy') setManagedOpened(true); setScope(value); }}>{t(`shared.scope.${value}`)}</button>)}
+      </div>}
       <RootInstructionsWarning roots={snapshot.roots} t={t} />
+      {shared && managedOpened && <div hidden={scope === 'legacy'}>
+        <SharedMemoryPanel binding={shared} scope={scope === 'legacy' ? 'shared' : scope} botId={bot.id} statuses={snapshot.cleanups} t={t} />
+      </div>}
+      <div hidden={scope !== 'legacy'}>
       {forgetting && <MemoryCleanupStatus statuses={snapshot.cleanups ?? []} retry={id => perform(
         () => forgetting.retry(id), 'memory.removeError')} t={t} />}
       {forgetId && forgetting && <ForgetPreview key={forgetId} memoryId={forgetId} actions={forgetting}
@@ -230,6 +243,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
           <span className={styles.hint}>{t('memory.pageNotice')}</span>
         </div>
       )}
+      </div>
     </section>
   );
 }

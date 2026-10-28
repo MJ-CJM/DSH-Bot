@@ -1,3 +1,5 @@
+import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryConfirmSchema,
+  memoryResolveSchema, memoryPageSchema } from './memory-management.js';
 /** Hand-authored, browser-safe contract for the locked DSH release's public Typert API. */
 import type { RemoteResult, RemoteStreamHandle, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import { z } from 'zod';
@@ -222,6 +224,34 @@ export const dshBotRemoteSpec = {
         },
       ],
       result: codec('void', z.void()),
+    },
+    'dshBot.memory/query': {
+      ...memoryOwner, parameters: [parameter('input', 'queryInput', memoryQuerySchema)],
+      result: activityResultCodec('ManagedMemoryPage', memoryPageSchema),
+    },
+    'dshBot.memory/createManaged': {
+      ...memoryOwner, parameters: [parameter('input', 'createManagedInput', memoryCreateSchema)],
+      result: activityResultCodec('MemoryId', z.uuid()),
+    },
+    'dshBot.memory/revise': {
+      ...memoryOwner, parameters: [parameter('input', 'reviseInput', memoryReviseSchema)],
+      result: activityResultCodec('void', z.void()),
+    },
+    'dshBot.memory/confirm': {
+      ...memoryOwner, parameters: [parameter('input', 'confirmInput', memoryConfirmSchema)],
+      result: activityResultCodec('MemoryId', z.uuid()),
+    },
+    'dshBot.memory/resolve': {
+      ...memoryOwner, parameters: [parameter('input', 'resolveInput', memoryResolveSchema)],
+      result: activityResultCodec('void', z.void()),
+    },
+    'dshBot.memory/previewContribution': {
+      ...memoryOwner, parameters: [parameter('input', 'previewContributionInput', z.uuid())],
+      result: activityResultCodec('ForgetPreview', forgetPreviewSchema),
+    },
+    'dshBot.memory/previewShared': {
+      ...memoryOwner, parameters: [parameter('input', 'previewSharedInput', forgetSelectionSchema)],
+      result: activityResultCodec('ForgetPreview', forgetPreviewSchema),
     },
     'dshBot.memory/list': {
       ...memoryOwner,

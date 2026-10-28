@@ -1,3 +1,6 @@
+import { migrateMemoryDeny } from '../shared/memory-tool-names.js';
+import { MemoryManagement } from './memory/facade.js';
+import { retireShard } from './memory/shards.js';
 import { isDeepStrictEqual } from 'node:util';
 import type {} from '@deepseek-ai/dsh-workspace';
 import { Remote } from '@deepseek-ai/dsh-typert-protocol';
@@ -63,6 +66,13 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
         }),
       this.config.memoryListLimit,
     );
+  }
+
+  async manageMemory<T>(operation: (memory: MemoryManagement) => T | Promise<T>): Promise<T> {
+    return this.enqueue(() => {
+      if (!this.memoryKernel) throw new Error('Memory kernel unavailable');
+      return operation(new MemoryManagement(this.memoryKernel, this.stores.bots, this.config.journalDays));
+    });
   }
 
   /** Management-only total includes orphaned legacy rows that have no current Bot panel. */
@@ -284,6 +294,7 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
   async update(id: string, patch: BotPatch): Promise<BotRecord> {
     const updated = await this.enqueue(async () => {
       const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
+      if (fields.tools) fields.tools = { ...fields.tools, deny: migrateMemoryDeny(fields.tools.deny) };
       const previous = this.stores.bots.get(id);
       const candidate = parseInput(botSchema, { ...previous, ...fields });
       await validateDefaultCwd(candidate.defaultCwd);
@@ -324,8 +335,9 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
     return this.enqueue(async () => {
       const key = parseInput(botIdSchema, id);
       const fields = parseInput(botRemoveOptionsSchema, options ?? {});
-      this.stores.bots.get(key);
+      const removedBot = this.stores.bots.get(key);
       if (fields.deleteMemories) await this.stores.memories.removeByBot(key);
+      if (this.memoryKernel) await retireShard(this.memoryKernel, { botId: key, botCreatedAt: removedBot.createdAt });
       const removeHome = fields.deleteHome ? await this.homes.prepareRemoval(key) : undefined;
       await this.transition(key, undefined, () => this.stores.bots.remove(key, fields));
       this.changed(key, 'remove');

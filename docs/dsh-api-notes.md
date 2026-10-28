@@ -1,5 +1,64 @@
 # DSH API 核实记录
 
+## DP B5-rework-2：公开 per-record 布局与可恢复转换（2026-10-27）
+
+根因剖析、全部命令/失败历史及逐项验收见 [二次返工报告](deepening/B5-rework-2.md)。
+参考树仍为 rc.2 / `687f282e`；本轮没有新增依赖、runtime peer 或修改宿主存储配置。
+
+- `DomainSpec.layout: 'per-record'` 来自公开 storage-domain 根入口，
+  只读 `packages/storage/storage-domain/src/spec.ts:41-47,160`。
+  JSON 后端按 descriptor 选择独立记录文件，`storage-json/src/index.ts:69-71`；
+  每次写入仍由原生 atomic.ts 保证 temp/fsync/rename/directory fsync。
+  没有导入 single-unit/per-record-unit/format 等内部模块或自行改写 medium。
+- 原生 per-record bootstrap 留下旧 single 文件，部分新文件会阻止再次 bootstrap，
+  只读 `storage-json/src/per-record-unit.ts:100,123-160`。
+  本包在既有 owner lease 内，通过公开 Domain/KvTable 重复制至 copied、清空旧领域、再写 ready；
+  copied 后的重试不从旧领域覆盖新数据。未 ready 时不暴露 kernel。
+  UNIT 验证部分 bootstrap、旧副本清理失败重试和 cold reopen；首次万条旧布局转换速度未实测。
+- 常规提交仅持久 payload/op，ops 仍是唯一提交点，未知提交仍冻结并重开核实。
+  不再逐次写全量投影或扫描全部日志；projection 水位仅在 recovery/forget maintenance 更新。
+  不可变 radix Map/Set 是本包内存投影实现，不是新存储后端；完整 replay 始终从 ops 校验重建。
+- Client 继续使用公开 Remote/slot，没有新增 Remote 方法。冲突限定改普通文本后，
+  同源 resolve codec 额外校验非空限定键/值与长度；中英 UI、重复状态和可折叠预览有 DOM 证据。
+  四组真实 Web E 和 H(forget) 在 loopback listen EPERM 受阻，DOM 不替代浏览器/Host 证据。
+
+旧 single 布局首次转换需要逐条复制/清理，不纳入 ready 后的 30 进程冷恢复基线；
+也不把原生 per-record 对损坏文件的容错行为解读为物理擦除或任意损坏下的数据完整性保证。
+
+## DP B5：双时态、手动共享管理与工具命名（2026-10-26）
+
+完整实现、逐项验收、命令和限制见 [B5 报告](deepening/B5.md)。版本保持 0.3.2，未新增依赖或 runtime peer。
+参考源码 HEAD/tag 仍为 `687f282e8625c6b8d11ff58211a90524be2e4317`；实际包装 CLI 为 rc.3。
+
+- 复用同一 `dsh_bot_memory` v2 日志与准入队列；没有新增 shared 存储或模型共享入口。
+  `recordedBefore/commitBefore` 与有效时间分开查询；当前墓碑和退休私有分片始终优先。
+  历史修订在有效区间之外可回落到当时有效的旧修订；未来边界会使 context 缓存失效。
+- 管理 Remote 新增 query/createManaged/revise/confirm/resolve/previewShared/previewContribution，
+  沿用公开 Typert decorator/spec/strict codec，输入拒绝 Host provenance、trust、owner、epoch 等字段。
+  手动来源以 sourceRefs.managementOpId 引用同次持久 op；不是凭空生成或冒充 M4 可信用户入口收据。
+  用户确认复制准确正文及展示的结构字段，不复制私有 legacy tags/pinned/sourceExcerpt/confirmation。
+  来源名称与鲸鱼样式快照位于可删除 payload，操作头只保留引用。
+- `tools.get(name, agent)` 是公开可见性查找；rc.2 `packages/core/tools/src/index.ts:1238`。
+  未知名仍经过原生策略流水线，见同文件 `:1409`。现有公开 `tools.guard` 只为未知旧名给出更新指引，
+  不注册别名、不拦截实际存在的社区旧名工具，也不绕过原生 deny/ask。
+- 正式工具统一为 bot_memory_save/search/list/forget；仅精确旧 deny 名在本包 Bot 配置中持久迁移。
+  source prompt、队友只读表、遗忘后的读取白名单、原生工具/loop 测试同步更新。
+- private/shared 默认预留 2400/1600 字符，共用 framing 计入私有预算，未用预算可借。
+  journal 使用 Config.journalShare/journalDays；默认最多共享分配预算的 25%，近 30 天；超期仍可检索。
+  保持原生 required literal systemPrompt.context，每次请求及重试读取已发布投影，不改 LLM 请求体。
+- JSON single 后端每次 put 会重写领域文件，源码 `packages/storage/storage-json/src/single-unit.ts`。
+  可重建 projection cache 改为单快照，避免每次提交逐条写 N 份全文件；权威仍为 ops。
+  使用公开 KvTable 和 JSON 后端，未编辑后端私有文件格式。提交统一移除 JSON 不保留的 undefined，保证热冷结构一致。
+
+UNIT rc.2：160 合成标注案例 / 16 类；明确改口 30/30，candidate 覆盖 0，disputed 注入 0。
+词法基线 10 个合成检索题 Recall@5=1、MRR=1，只是该小语料的基线，不是回答质量。
+中英 DOM 各 100 次刷新无行重挂载、焦点或草稿丢失。
+10 个真实 Bot 记录 / 10000 条记忆 / 30 个新进程的 npm rc.2 JSON 基线达标，详见报告数字。
+种子为 1 个 bootstrap op，不把它当成 10000 次逐条修改的长期日志性能证明。
+CLI rc.3 Web 夹具 READY；Chromium MachPort 拒绝，8 组截图均 FAIL(environment)，0 张。
+完整 CLI 启动性能基线、精确 rc.2 CLI、任意 provider serializer、M4 自动共享与完整 P0 均未因此通过。
+
+
 ## DP B4-rework：清理后放行与真实 Web 验收（2026-10-25）
 
 完整结果见 [B4 返工报告](deepening/B4-rework.md)。以下覆盖 B4 初轮的“所有路径始终阻断”。

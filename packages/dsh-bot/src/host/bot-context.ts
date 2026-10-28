@@ -17,6 +17,7 @@ import { DshBotError } from './errors.js';
 import { registerMemoryContext } from './memory/context.js';
 import { rootInstructionNotice } from './memory/root-instructions.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './memory/tools.js';
+import { retiredMemoryGuidance } from './memory/tool-guidance.js';
 import { BOT_MANAGE_TOOL_NAME, registerBotPresetManage } from './tools/bot-manage.js';
 import { registerBotPresetActivity } from './activity/tracker.js';
 import { BOT_DELEGATE_TOOL_NAME, registerDelegateTool } from './delegate/tool.js';
@@ -168,6 +169,7 @@ export function apply(ctx: Context, config: Config): void {
             }),
           );
           if (memory) {
+            releases.push(retiredMemoryGuidance(agent));
             // restrict() only hides inherited tools in rc.2. Omit denied local
             // definitions so schema lookup and dispatch agree for memory tools.
             for (const tool of createMemoryTools(memory, agent)) {

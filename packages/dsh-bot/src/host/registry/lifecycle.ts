@@ -164,6 +164,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
             await this.tail;
           },
         });
+        await this.stores.bots.migrateMemoryTools();
         if (!this.stores.memoryKernel) throw new Error('Memory kernel did not initialize');
         this.memoryAdmission.start(this.stores.memoryKernel);
         // Workspace storage may be temporarily unavailable. Bot management and

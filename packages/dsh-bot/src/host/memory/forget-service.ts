@@ -64,6 +64,11 @@ export class MemoryForgetting {
     return this.previews.create(selection);
   }
   choose(choice: ForgetChoice) { return this.runner.choose(choice); }
+  previewShared(selection: ForgetSelection) {
+    const v = this.registry.memoryKernel?.snapshot.versions.get(selection.memoryId);
+    if (v?.scope !== 'shared') throw new Error('Shared memory not found');
+    return this.previews.create(selection);
+  }
   roots() { return detectRootInstructions(this.root); }
   private async inventory() {
     const kernel = this.registry.memoryKernel;
@@ -86,7 +91,7 @@ export class MemoryForgetting {
     const roots = await this.roots(), graph = this.ctx.get('dshBotReferenceMemory');
     const copies = graph ? await graph.forgetInventory() : undefined;
     return {
-      sessionIds, historyNodes: agents.reduce((n, a) => n + a.session.surface.nodes.length, 0),
+      sessionIds, bots: this.registry.directorySnapshot().length, historyNodes: agents.reduce((n, a) => n + a.session.surface.nodes.length, 0),
       summaries: agents.reduce((n, a) => n + a.session.snapshotEvents().filter(e => e.sourceEventSeqs?.length).length, 0),
       copies: copies?.count ?? 0, pendingMessages: agents.reduce((n, a) => n + a.inbox.nextStep.length + a.inbox.nextTurn.length, 0),
       conservative: true, rootInstructions: roots.files.some(f => f.state !== 'absent'),

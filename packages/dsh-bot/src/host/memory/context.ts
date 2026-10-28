@@ -1,7 +1,9 @@
-import { sameBot, type BotKey } from '../../shared/identity.js';
+import type { BotKey } from '../../shared/identity.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { MemoryKernel } from './op-log.js';
 import type { MemoryAdmission } from './admission.js';
+import { temporalView } from './temporal.js';
+import { adjudicate } from './conflicts.js';
 
 export interface ContextPolicy { maxInjectChars: number; privateShare: number; journalShare: number; journalDays: number }
 const chars = (text: string) => [...text].length;
@@ -17,7 +19,7 @@ export function nextDayBoundary(now: number, timeZone: string): number {
   }
   return to;
 }
-/** Sync provider reads only the published in-memory projection. Shared reads stay empty until M3. */
+/** Sync provider reads only the published projection. No file, network, timer or model activity. */
 export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: ContextPolicy, injectLimit: number,
   clock = Date.now, observed: (ids: string[]) => void = () => {}) {
   let cached: { key: string; from: number; until: number; text: string; ids: string[] } | undefined;
@@ -27,33 +29,49 @@ export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: Conte
     const key = JSON.stringify([kernel.scope.scope.id, owner, state.seq, state.epoch, kernel.scope.policyRevision, policy, injectLimit]);
     if (cached && cached.key === key && now >= cached.from && now < cached.until) { observed(cached.ids); return cached.text; }
     let until = nextDayBoundary(now, kernel.scope.quotaTimeZone);
-    const rows: { line: string; id: string; pinned: boolean; at: number; sortId: string }[] = [];
-    for (const version of state.versions.values()) {
-      if (version.scope !== 'private' || !sameBot(version.ownerBotKey, owner) || version.status !== 'active' ||
-        version.labels.readers === 'shared' || !version.labels.readers.some(reader => sameBot(reader, owner)) ||
-        version.labels.restrictions.some(r => r === 'revoked' || r === 'pending-cleanup')) continue;
-      const p = kernel.domain.table('payloads').get(version.contentRef);
-      if (!p) throw new Error('Memory payload missing');
+    const view = temporalView(kernel, { at: now }), all = view.facts;
+    until = Math.min(until, view.boundary);
+    const facts = adjudicate(all, now, owner).filter(f => f.state === 'active');
+    // Future/expired entries must also invalidate the cache at their validity boundary.
+    for (const { version, payload: p } of all) {
       for (const boundary of [p.valid.from, p.valid.to]) if (boundary !== null && boundary > now) until = Math.min(until, boundary);
-      if ((p.valid.from !== null && now < p.valid.from) || (p.valid.to !== null && now >= p.valid.to)) continue;
-      rows.push({ id: version.versionId, sortId: p.legacy?.id ?? version.memoryId,
-        pinned: p.legacy?.pinned ?? false, at: p.legacy?.updatedAt ?? version.recordedAt,
-        line: `- ${p.legacy?.pinned ? '[pinned] ' : ''}[${version.legacyKind ?? version.kind}] ${JSON.stringify(p.content)}` });
+      if (version.scope === 'shared' && version.kind === 'user_event') {
+        const expiry = (p.valid.from ?? version.recordedAt) + policy.journalDays * 86400000;
+        if (expiry > now) until = Math.min(until, expiry);
+      }
     }
+    const rows = facts.map(({ version: v, payload: p }) => ({ id: v.versionId, scope: v.scope, kind: v.kind,
+      sortId: p.legacy?.id ?? v.memoryId, pinned: p.legacy?.pinned ?? false, at: p.legacy?.updatedAt ?? v.recordedAt,
+      eventAt: p.valid.from ?? v.recordedAt,
+      line: v.scope === 'shared' ? `- [shared/${v.kind}] ${JSON.stringify(p.content)}` :
+        `- ${p.legacy?.pinned ? '[pinned] ' : ''}[${v.legacyKind ?? v.kind}] ${JSON.stringify(p.content)}` }));
     rows.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.at - a.at || (a.sortId < b.sortId ? -1 : a.sortId > b.sortId ? 1 : 0));
-    const candidates = rows.filter(r => r.pinned).concat(rows.filter(r => !r.pinned).slice(0, injectLimit));
-    // Base budgets are 2400 private / 1600 shared at defaults. Empty shared lends its unused budget.
-    const privateBudget = Math.floor(policy.maxInjectChars * policy.privateShare);
-    const sharedBudget = policy.maxInjectChars - privateBudget;
-    const budget = privateBudget + sharedBudget, lines: string[] = [], ids: string[] = [];
-    // TODO(I34 / B5): rename memory_search with the complete bot_memory_* tool contract.
-    const footer = '[More memories available via memory_search]';
-    for (const row of candidates) if (chars([header, ...lines, row.line, footer].join('\n')) <= budget) {
-      lines.push(row.line); ids.push(row.id);
-    }
-    let text = lines.length ? [header, ...lines, ...(lines.length < candidates.length ? [footer] : [])].join('\n')
-      : candidates.length && chars(footer) <= budget ? footer : '';
-    if (chars(text) > budget) text = '';
+    const privateRows = rows.filter(r => r.scope === 'private');
+    const privateCandidates = privateRows.filter(r => r.pinned).concat(privateRows.filter(r => !r.pinned).slice(0, injectLimit));
+    const shared = rows.filter(r => r.scope === 'shared' && (r.kind !== 'user_event' ||
+      r.eventAt <= now && now < r.eventAt + policy.journalDays * 86400000));
+    const footer = '[More memories available via bot_memory_search]';
+    const framing = chars(header) + chars(footer) + 2;
+    const available = Math.max(0, policy.maxInjectChars - framing);
+    // Common framing is charged to the private reservation; the shared reservation remains 1600 at defaults.
+    const privateBudget = Math.max(0, Math.floor(policy.maxInjectChars * policy.privateShare) - framing);
+    const sharedBudget = available - privateBudget;
+    const pack = (items: typeof rows, budget: number) => {
+      const chosen: typeof rows = []; let used = 0;
+      for (const row of items) if (used + chars(row.line) + 1 <= budget) { chosen.push(row); used += chars(row.line) + 1; }
+      return { chosen, used };
+    };
+    const pFirst = pack(privateCandidates, privateBudget);
+    const sharedAllocation = sharedBudget + privateBudget - pFirst.used;
+    const journalBudget = Math.floor(sharedAllocation * policy.journalShare);
+    const journal = pack(shared.filter(r => r.kind === 'user_event'), journalBudget);
+    const stable = pack(shared.filter(r => r.kind !== 'user_event'), sharedAllocation - journal.used);
+    const pFinal = pack(privateCandidates, available - journal.used - stable.used);
+    const selected = [...pFinal.chosen, ...stable.chosen, ...journal.chosen];
+    const more = selected.length < privateCandidates.length + shared.length;
+    const text = selected.length ? [header, ...selected.map(r => r.line), ...(more ? [footer] : [])].join('\n')
+      : more && chars(footer) <= policy.maxInjectChars ? footer : '';
+    const ids = selected.map(r => r.id);
     cached = { key, from: now, until, text, ids }; observed(ids); return text;
   };
 }

@@ -1,13 +1,13 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { join } from 'node:path';
-import { memoryDomain } from './domain-v2.js';
+import { openMemoryDomain } from './layout-upgrade.js';
 import { acquireMemoryOwner } from './owner-lease.js';
 import { MemoryKernel } from './op-log.js';
 
 export async function openMemoryKernel(ctx: Context, dataDir: string, timeZone?: string) {
   const lease = await acquireMemoryOwner(join(dataDir, 'memory-owner'));
   try {
-    const domain = await ctx.storageDomain.open(memoryDomain);
+    const domain = await openMemoryDomain(ctx);
     const kernel = new MemoryKernel(domain, lease.assertOwner);
     try { await kernel.recover(timeZone); }
     catch (error) { await domain.close(); throw error; }

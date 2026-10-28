@@ -236,15 +236,28 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
       save: ['alpha', { content: 'Codec result' }], count: ['alpha'], quarantineCount: [],
       previewForget: ['alpha', { memoryId: target.id, mode: 'version' }], cleanupStatuses: [], rootInstructions: [],
     };
+    let managedId = '', publishedId = '';
     let saved: MemoryRecord | undefined;
     for (const descriptor of TYPERT.invocations.filter(({ namespace }) => namespace === 'dshBot.memory')) {
       if (descriptor.result.mode !== 'strict') throw new Error('Expected strict result');
       const method = descriptor.implementation ?? descriptor.method;
+      const kernel = registry.memoryKernel; if (!kernel) throw new Error('Missing kernel');
+      Object.assign(cases, {
+        query: [{ botId: 'alpha', scope: 'shared', view: 'all' }],
+        createManaged: [{ botId: 'alpha', scope: 'shared', kind: 'user_fact', content: 'MANAGED', subject: 'user',
+          factKey: 'preference', valid: { from: 1, to: null, basis: 'explicit' }, expectedRevision: kernel.seq }],
+        revise: [{ id: managedId, expectedRevision: kernel.seq, patch: { content: 'MANAGED_EDIT' } }],
+        confirm: [{ id: target.id, botId: 'alpha', scope: 'shared', expectedRevision: kernel.seq }],
+        resolve: [{ ids: [managedId], selected: managedId, choice: 'select', expectedRevision: kernel.seq }],
+        previewContribution: [publishedId], previewShared: [{ memoryId: publishedId, mode: 'related' }],
+      });
       const args = descriptor.method === 'update' ? ['alpha', saved?.id, { pinned: true }]
         : descriptor.method === 'delete' ? ['alpha', saved?.id] : cases[descriptor.method];
       if (!args) throw new Error(`Missing case for ${method}`);
       const result = await Reflect.apply(Reflect.get(remote, method), remote, args);
       expect(descriptor.result.create().parse(result)).toEqual(result);
+      if (descriptor.method === 'createManaged') managedId = result as string;
+      if (descriptor.method === 'confirm') publishedId = result as string;
       if (descriptor.method === 'previewForget') cases.chooseForget = [{
         previewRevision: (result as { previewRevision: string }).previewRevision, choice: 'stop',
       }];

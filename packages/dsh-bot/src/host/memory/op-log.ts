@@ -5,6 +5,7 @@ import { payloadSchema, type MemoryPayload, type MemoryVersion } from '../../sha
 import type { MemoryDomain } from './domain-v2.js';
 import { applyOp, emptyProjection, rebuild, persistProjection, type Projection } from './projection.js';
 
+const jsonValue = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export type Commit = Omit<MemoryOp, 'seq' | 'versions' | 'payloadRefs' | 'receiptRefs'> & {
   versions?: MemoryVersion[]; payloads?: Record<string, MemoryPayload>;
 };
@@ -59,17 +60,17 @@ export class MemoryKernel {
     return this.serial(async () => {
       this.assertReadable();
       this.assertOwner();
-      const payloads = Object.fromEntries(Object.entries(input.payloads ?? {}).map(([id, p]) => [id, payloadSchema.parse(p)]));
+      const payloads = Object.fromEntries(Object.entries(input.payloads ?? {}).map(([id, p]) => [id, jsonValue(payloadSchema.parse(p))]));
       const old = this.domain.table('ops').get(input.opId);
       const { payloads: _payloads, ...header } = input;
-      const op = opSchema.parse({ ...header, seq: old?.seq ?? this.state.seq + 1,
-        versions: input.versions ?? [], payloadRefs: Object.keys(payloads), receiptRefs: [] });
+      const op = jsonValue(opSchema.parse({ ...header, seq: old?.seq ?? this.state.seq + 1,
+        versions: input.versions ?? [], payloadRefs: Object.keys(payloads), receiptRefs: [] }));
       if (old) {
         if (!isDeepStrictEqual(old, op) || Object.entries(payloads).some(([id, p]) =>
           !isDeepStrictEqual(this.domain.table('payloads').get(id), p))) throw new Error('Memory opId reused with different or erased parameters');
         return structuredClone(old);
       }
-      if (this.blocked && !['forget', 'cleanup'].includes(op.kind)) throw new Error('Memory cleanup pending; writes blocked');
+      if (this.blocked && !['forget', 'cleanup', 'retire_shard'].includes(op.kind)) throw new Error('Memory cleanup pending; writes blocked');
       if (input.forgetEpoch !== this.state.epoch + Number(input.kind === 'forget')) throw new Error('Stale memory epoch');
       if (input.expectedRevision !== this.state.seq) throw new Error('Memory revision conflict');
       await beforeCommit?.();
@@ -109,7 +110,10 @@ export class MemoryKernel {
         } catch (cause) { this.publish(); throw new Error('Forget committed; barrier recovery required', { cause }); }
       }
       this.publish();
-      try { await persistProjection(this.domain, next); } catch { this.cacheFailures++; }
+      try {
+        // A disposable watermark is useful only at recovery/erasure, never on the ordinary commit path.
+        if (op.kind === 'forget') await persistProjection(this.domain, next);
+      } catch { this.cacheFailures++; }
       return structuredClone(op);
     });
   }
