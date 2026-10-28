@@ -34,8 +34,11 @@ export class AutoShareQuota {
     });
   }
   status() {
-    const p = this.policy;
-    return { configured: p.enabled, effectiveAutoShare: false as const, reason: nativeIngressCapability.reason,
+    const p = this.policy, charges = [...this.kernel.snapshot.quota.values()];
+    const latest = charges.reduce<QuotaCharge | undefined>((a, b) => !a || a.at < b.at ? b : a, undefined);
+    const now = Math.max(this.clock(), latest?.at ?? 0);
+    const domainUsed = latest && now < latest.end ? charges.filter(c => c.bucket === latest.bucket).length : 0;
+    return { domainUsed, configured: p.enabled, effectiveAutoShare: false as const, reason: nativeIngressCapability.reason,
       botDaily: p.botDaily, domainDaily: p.domainDaily, timeZone: p.timeZone, revision: p.revision };
   }
   private charge(botId: string): QuotaCharge {

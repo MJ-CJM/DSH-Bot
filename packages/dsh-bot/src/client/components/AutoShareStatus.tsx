@@ -9,15 +9,19 @@ export function AutoShareStatus({ binding, t }: { binding: SharedMemoryBinding; 
   const lifetime = useRef(0), active = useRef(false);
   const [error, setError] = useState(false);
   useEffect(() => {
-    const life = ++lifetime.current; active.current = false; setBusy(false);
+    const life = ++lifetime.current; active.current = false; setBusy(false); setError(false);
     void binding.remote().autoShareStatus().then(result => {
-      if (lifetime.current === life && result.ok) setStatus(result.value);
+      if (lifetime.current !== life) return;
+      if (result.ok) setStatus(old => !old || result.value.revision >= old.revision ? result.value : old);
+      else setError(true);
     }).catch(() => { if (lifetime.current === life) setError(true); });
     return () => { lifetime.current++; };
   }, [binding]);
   return <aside className={styles.notice} aria-label={t('autoShare.title')}>
     <p>{t('autoShare.unavailable')}</p>
+    <p>{t('autoShare.egressBlocked')}</p>
     {status && <>
+      {status.domainUsed !== undefined && <p>{t('autoShare.usage', { used: status.domainUsed })}</p>}
       <p>{t('autoShare.quotas', { bot: status.botDaily, domain: status.domainDaily, timeZone: status.timeZone })}</p>
       <button type="button" className={styles.button} disabled={busy} onClick={() => {
         if (active.current) return;

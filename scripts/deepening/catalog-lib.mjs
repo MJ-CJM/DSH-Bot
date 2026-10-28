@@ -52,18 +52,26 @@ export function extract(sources, texts) {
   }
   return rows;
 }
+// Git objects are immutable. Cache only revision-qualified blobs, never working files/snapshots.
+const blobs = new Map();
+export function frozenBlob(revision, path) {
+  if (!/^[a-f0-9]{40}$/.test(revision)) throw new Error('Expected frozen full Git SHA');
+  const key = `${revision}:${path}`;
+  if (!blobs.has(key)) blobs.set(key, git('show', key));
+  return blobs.get(key);
+}
 export async function frozenTexts(input) {
   const texts = new Map();
   for (const source of input.sources) {
-    const text = source.snapshot ? await read(source.snapshot) : git('show', `${source.revision}:${source.path}`);
+    const text = source.snapshot ? await read(source.snapshot) : frozenBlob(source.revision, source.path);
     if (sha256(text) !== source.sha256) throw new Error(`Frozen source hash mismatch: ${source.path}`);
     if (text.split(/\r?\n/).length !== source.lineCount) throw new Error(`Frozen source lines: ${source.path}`);
     texts.set(source.path, text);
   }
   return texts;
 }
-export async function catalog(input) {
-  const texts = await frozenTexts(input);
+export async function catalog(input, texts) {
+  texts ??= await frozenTexts(input);
   const candidates = extract(input.sources, texts);
   if (JSON.stringify(candidates) !== JSON.stringify(input.candidates)) throw new Error('Frozen candidate inventory mismatch');
   const live = await discover();

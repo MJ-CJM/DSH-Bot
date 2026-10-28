@@ -1,3 +1,5 @@
+import { groupInput } from './data-flow.js';
+import { outlets } from '../data-flow/tool-guard.js';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { groupSendSchema, type GroupKey, type GroupTurn } from '../../shared/groups.js';
 import { OperationError, digest, need, parse } from '../common/operations.js';
@@ -75,7 +77,10 @@ export class GroupTurns {
         [],
         this.state.registry.config.groupContextMaxBytes,
       );
-      await this.state.putTurn(turn);
+      const flowId = await groupInput(this.state, g, root.agent, JSON.stringify(message), id);
+      const flow = outlets(this.state.registry);
+      if (flowId) await need(flow).persist(flowId, () => this.state.putTurn(turn));
+      else await this.state.putTurn(turn);
       try {
         const statuses = await this.state.registry.status();
         for (const [ordinal, m] of selected.entries()) {
@@ -94,7 +99,8 @@ export class GroupTurns {
             state: 'pending',
           });
         }
-        const event = root.agent.session.append('user/message', message, { surfaceOp: 'append' });
+        const send = () => root.agent.session.append('user/message', message, { surfaceOp: 'append' });
+        const event = flowId ? await need(flow).dispatch(flowId, send) : send();
         await this.roots.flush(root);
         const accepted = await this.state.putTurn({ ...turn, inputSeq: Number(event.seq) });
         const previous = this.state.chains.get(g.id) ?? Promise.resolve();

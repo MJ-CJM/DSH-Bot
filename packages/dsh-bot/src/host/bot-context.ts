@@ -1,3 +1,4 @@
+import { protectDataFlow } from './data-flow/tool-guard.js';
 import { registerMessageTool } from './messaging/tool.js';
 import { registerNotifyTool } from './notifications/tool.js';
 import type {} from './connectors/service.js';
@@ -177,6 +178,7 @@ export function apply(ctx: Context, config: Config): void {
             releases.push(registerMemoryContext(agent, binding, kernel, admission, ctx.dshBots.config, memoryPolicy.injectLimit));
           }
           bindings.set(agent, binding);
+          protectDataFlow(agent, binding, ctx.dshBots);
           const safety = agent.ctx.get('dshBotMessagingSafety');
           if (safety) safety.protect(agent);
           if (safety && ctx.dshBots.config.messagingEnabled) {

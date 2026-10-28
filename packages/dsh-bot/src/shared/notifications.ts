@@ -56,6 +56,7 @@ export const notificationState = z.enum([
 export const notificationSchema = z.strictObject({
   id: resourceId,
   operationId: resourceId,
+  flowId: z.uuid().optional(),
   owner: botKeySchema,
   policyId: resourceId,
   policyRevision: z.number().int(),

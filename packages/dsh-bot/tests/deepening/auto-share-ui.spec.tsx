@@ -35,6 +35,14 @@ describe('B6a capability notice and radio accessibility (DOM only)', () => {
       await act(async () => radios[1]?.click()); expect(radios[1]?.checked).toBe(true); expect(radios[0]?.checked).toBe(false);
       const button = [...div.querySelectorAll('button')].find(b => b.textContent === dictionary['autoShare.disable']);
       if (!button) throw new Error('Missing disable');
+      const identity = div.querySelector('aside'); button.focus();
+      for (let i = 0; i < 100; i++) await act(async () => root.render(<>
+        <AutoShareStatus binding={binding} t={t} />
+        <ForgetPreview memoryId="synthetic" t={t} close={() => {}}
+          actions={{ preview: vi.fn(), choose: vi.fn(), retry: vi.fn() }} />
+      </>));
+      expect(div.querySelector('aside')).toBe(identity); expect(document.activeElement).toBe(button);
+      expect(remote.autoShareStatus).toHaveBeenCalledTimes(1);
       await act(async () => { button.click(); button.click(); });
       expect(remote.setAutoShare).toHaveBeenCalledTimes(1);
       expect(remote.setAutoShare).toHaveBeenCalledWith({ enabled: false, expectedRevision: 2 });

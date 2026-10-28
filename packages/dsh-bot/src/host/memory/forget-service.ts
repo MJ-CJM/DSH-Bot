@@ -1,3 +1,4 @@
+import { outletInventory, eraseOutletCopies } from '../data-flow/managed-copies.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { isDeepStrictEqual } from 'node:util';
 import { Session } from '@deepseek-ai/dsh-session';
@@ -52,6 +53,7 @@ export class MemoryForgetting {
         const graph = ctx.get('dshBotReferenceMemory');
         if (!graph) throw new Error('Reference memory unavailable; cleanup pending');
         await graph.forgetCleanup();
+        await eraseOutletCopies(ctx, kernel);
       },
       verifyInventory: job => this.verify(job),
     });
@@ -90,12 +92,13 @@ export class MemoryForgetting {
     const sessionIds = [...new Set([...known, ...reads.map(([, r]) => r.sessionId)])].sort();
     const roots = await this.roots(), graph = this.ctx.get('dshBotReferenceMemory');
     const copies = graph ? await graph.forgetInventory() : undefined;
+    const outlets = outletInventory(this.ctx);
     return {
       sessionIds, bots: this.registry.directorySnapshot().length, historyNodes: agents.reduce((n, a) => n + a.session.surface.nodes.length, 0),
       summaries: agents.reduce((n, a) => n + a.session.snapshotEvents().filter(e => e.sourceEventSeqs?.length).length, 0),
-      copies: copies?.count ?? 0, pendingMessages: agents.reduce((n, a) => n + a.inbox.nextStep.length + a.inbox.nextTurn.length, 0),
+      copies: (copies?.count ?? 0) + outlets.count, pendingMessages: agents.reduce((n, a) => n + a.inbox.nextStep.length + a.inbox.nextTurn.length, 0),
       conservative: true, rootInstructions: roots.files.some(f => f.state !== 'absent'),
-      stamp: { inventoryAvailable: !!query, roots, copies: copies?.stamp, reads, sessions: agents.map(a => ({ id: a.session.id,
+      stamp: { inventoryAvailable: !!query, roots, copies: copies?.stamp, outlets: outlets.stamp, reads, sessions: agents.map(a => ({ id: a.session.id,
         seqs: a.session.snapshotEvents().map(e => e.seq), inbox: [...a.inbox.nextStep, ...a.inbox.nextTurn] })) },
     };
   }

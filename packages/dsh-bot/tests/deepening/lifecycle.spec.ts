@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { Context } from '@deepseek-ai/cordis';
 import Storage from '@deepseek-ai/dsh-storage';
@@ -55,9 +55,12 @@ describe('I13 owner lifecycle', () => {
     } finally { child.kill('SIGKILL'); await done; await f.close(); }
   });
   it('joins 20 actual Cordis effect unloads and releases the owner before every reload', async () => {
-    const f = await v2Fixture(), ctx = new Context(), dataDir = join(f.root, 'effect-data');
+    // 20 durable fsync/open/unload cycles need an explicit I/O budget under concurrent workers.
+    // This test needs a directory, not another migrated kernel and two seeded Bots.
+    const base = resolve('../../.dsh-dev/deepening'); await mkdir(base, { recursive: true });
+    const root = await mkdtemp(join(base, 'effect-cycle-')), ctx = new Context(), dataDir = join(root, 'data');
     try {
-      await ctx.plugin(Storage).await(); await ctx.plugin(storageJson, { root: join(f.root, 'effect-storage') }).await();
+      await ctx.plugin(Storage).await(); await ctx.plugin(storageJson, { root: join(root, 'storage') }).await();
       await ctx.plugin(storageDomain, { backend: 'json' }).await();
       let scope: string | undefined;
       for (let cycle = 0; cycle < 20; cycle++) {
@@ -72,6 +75,6 @@ describe('I13 owner lifecycle', () => {
         await fork.dispose(); expect(ctx.storageDomain.get('dsh_bot_memory')).toBeUndefined();
         const lease = await acquireMemoryOwner(join(dataDir, 'memory-owner')); await lease.close();
       }
-    } finally { await ctx.fiber.dispose(); await f.close(); }
-  });
+    } finally { await ctx.fiber.dispose(); await rm(root, { recursive: true, force: true }); }
+  }, 30000);
 });

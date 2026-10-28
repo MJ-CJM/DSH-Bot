@@ -1,3 +1,5 @@
+import { groupChild, groupResult } from './data-flow.js';
+import { outlets } from '../data-flow/tool-guard.js';
 import { nextRoundRobinMember } from './round-robin.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
@@ -112,7 +114,9 @@ export class GroupTurnRunner {
           },
           content: [...result.output],
         });
-        const event = prepared.root.agent.session.append('user/message', message, { surfaceOp: 'append' });
+        const event = await groupResult(this.state, g, d.bot, childId, prepared.root.agent,
+          JSON.stringify(message), `${deliveryId}:result`,
+          () => prepared.root.agent.session.append('user/message', message, { surfaceOp: 'append' }), signal);
         await this.roots.flush(prepared.root);
         output = { outputMessageId: message.id, outputSeq: Number(event.seq) };
       }
@@ -154,11 +158,16 @@ export class GroupTurnRunner {
       const prepared = await this.prepareDelivery(t, d0.id, controller.signal);
       if (!prepared) return;
       // A member can be removed while native startup awaits: signal remains authoritative.
-      activation = await this.state.ctx.subagents.startActivation({
+      const g = this.state.record(t.group);
+      const flow = outlets(this.state.registry);
+      const input = await groupChild(this.state, g, prepared.root.agent, prepared.d.bot,
+        prepared.context.text, d0.id, controller.signal);
+      const start = (dispatchSignal = controller.signal) => this.state.ctx.subagents.startActivation({
+        ...(input ? { childId: input.childId } : {}),
         provider: 'spawn',
         delivery: 'caller',
         label: prepared.bot.name,
-        signal: controller.signal,
+        signal: dispatchSignal,
         request: {
           parent: prepared.root.agent,
           agentPreset: prepared.d.presetId,
@@ -167,6 +176,7 @@ export class GroupTurnRunner {
           maxDepth: this.state.registry.config.groupMaxDepth,
         },
       });
+      activation = input ? await need(flow).dispatch(input.id, (_envelope, signal) => start(signal), controller.signal) : await start();
       this.state.activations.set(d0.id, activation);
       if (controller.signal.aborted) stopNative();
       const currentBot = await this.state.bot(prepared.d.bot);

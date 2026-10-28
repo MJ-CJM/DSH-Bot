@@ -1,5 +1,25 @@
 # DSH API 核实记录
 
+## DP B6b：受管出口与 caller delivery（2026-10-27）
+
+完整实现、收据与未关闭门禁见 [B6b](deepening/B6b.md)。无新增依赖、runtime peer 或 Remote。
+只读参考 HEAD/tag 仍为 rc.2 `687f282e`；本轮真实包装 CLI 为 rc.3，七组 H 均在 webserver listen EPERM 受阻。
+
+- 公开 `SubagentActivationSpec.childId`、`delivery:'caller'` 与 `SubagentActivation.result`：
+  `packages/subagent/subagent/src/types.ts:31–61`；`manager.ts:383–391,412–465`。
+  先登记预留 childId 的标签再启动，caller 禁止原生提前投递父结果。本包再单独检查回报。
+  SOURCE + native service double/真实 JSON UNIT；本轮不声称真实 rc.3 子结果已通过。
+- 连接器继续使用公开 Agent `tools.guard` 与 `tools/execute` waterfall，保留 native deny/ask。
+  参数/实际 assignment generation/目标在真实派发前复检；通用工具执行批准不等于精确数据出站批准。
+  本轮未开放未审计 file/network/session-query/run_code 或模型直接 Graph 调用。
+- 原生 `approval.request` 仍要求 open turn，只有 allowed-once 可消费；额外的数据审批正文走双语 locale。
+  grantUse 仍写既有 v2 ops 提交点。`flows/flow_sessions` 是同领域的持久运输/taint 收据，不是另一个共享记忆日志。
+  冷恢复 dispatching=unknown，丢失的进程内授权不会恢复；持久/实际 dispatch 双检查。
+- Reference copy/cleanup 的准确 Host callId 能力只在 try/finally 内有效；不修改 MCP 库或已发布 server-memory。
+  旧 stage 绑定 epoch；受管消息/通知副本进入保守遗忘预览、排空、正文擦除与核验。
+- 标签 UNIT 清册为60攻击/60对照，54合法策略对照成功，6自动正例继续 FAIL(capability)。
+  Host 核心合成捕获、原生运输与浏览器证据不合并；完整 native transport 攻击矩阵仍未完成。
+
 ## DP B6a-rework：原生事件定位与审批 waterfall（2026-10-27）
 
 本次无新增产品 API、依赖或 runtime peer。完整证据见 [B6a 返工](deepening/B6a.md#b6a-rework2026-10-27)。

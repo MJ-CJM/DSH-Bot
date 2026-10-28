@@ -3,7 +3,7 @@ import { readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { catalog, frozenTexts, git, inputPath, inside, manifestPath, pattern, read, readJson, sha256,
+import { catalog, frozenTexts, frozenBlob, inputPath, inside, manifestPath, pattern, read, readJson, sha256,
   writeJson } from './catalog-lib.mjs';
 
 // Use the existing exact Zod dependency from the owning workspace package. No new dependency,
@@ -30,17 +30,17 @@ export async function validateBundle(bundle, { receipts = false } = {}) {
   check(manifest.input === inputPath && manifest.inputSha256 === sha256(await read(inputPath)), 'Frozen input digest');
   check(manifest.baselineSha === input.baselineSha, 'Baseline SHA mismatch');
   check(isDeepStrictEqual(input.pattern, pattern), 'Candidate matching rule changed');
-  const inventory = await catalog(input);
+  const texts = await frozenTexts(input);
+  const inventory = await catalog(input, texts);
   check(manifest.actualCandidates === inventory.candidates, 'Candidate count mismatch');
   const expectedSources = input.sources.map(({ path, revision, sha256 }) => ({ path, revision, sha256 }));
   check(isDeepStrictEqual(manifest.sources, expectedSources), 'Frozen source inventory mismatch');
-  const texts = await frozenTexts(input);
   unique(manifest.supplementalSources.map(source => source.path), 'supplemental source');
   for (const source of manifest.supplementalSources) {
     check(!texts.has(source.path), 'Supplemental source duplicates frozen source');
     inside(source.path);
     check(source.revision === manifest.baselineSha, 'Unfrozen supplemental revision');
-    const text = git('show', `${source.revision}:${source.path}`);
+    const text = frozenBlob(source.revision, source.path);
     check(sha256(text) === source.sha256, `Supplemental source digest: ${source.path}`);
     texts.set(source.path, text);
   }

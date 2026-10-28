@@ -102,6 +102,8 @@ export class V2MemoryStore {
     if (record.source?.by === 'model' && record.source.sessionId) {
       const lineage = new MemoryLineage(this.kernel), seen = lineage.seen(record.source.sessionId);
       if (seen.length) version.labels = mergeLabels(version.labels, lineage.label(seen));
+      const session = this.kernel.domain.table('flow_sessions').get(record.source.sessionId);
+      if (session) version.labels = mergeLabels(version.labels, session.label);
     }
     await this.kernel.commit({ opId: randomUUID(), kind: previous ? 'revise' : 'propose', subjectIds: [record.id],
       expectedRevision: this.kernel.seq, forgetEpoch: this.kernel.epoch, versions: [version], payloads: { [version.contentRef]: payload } });

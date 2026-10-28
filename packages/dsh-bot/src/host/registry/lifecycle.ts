@@ -14,6 +14,7 @@ import { Config } from '../registry-config.js';
 import type { Lease } from './types.js';
 import { messageOf } from './identity.js';
 import { MemoryConfirmation } from '../memory/confirmation.js';
+import { ManagedOutlets } from '../data-flow/outlets.js';
 import { EgressChecker } from '../data-flow/egress.js';
 import { sameBot } from '../../shared/identity.js';
 import { AutoShareQuota } from '../memory/quota.js';
@@ -43,6 +44,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
   memoryForget?: MemoryForgetting;
   memoryConfirmation?: MemoryConfirmation;
   memoryEgress?: EgressChecker;
+  memoryOutlets?: ManagedOutlets;
   get memoryKernel() { return this.stores?.memoryKernel; }
   mainSessions?: MainSessions;
   protected stores!: Awaited<ReturnType<typeof openBotStores>>;
@@ -141,8 +143,10 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
       const shutdown = () =>
         (shutdownTask ??= (async () => {
           this.stopping = true;
+          this.memoryOutlets?.stop();
           this.memoryEgress?.close(); this.memoryConfirmation?.close();
           await this.memoryAdmission.close();
+          await this.memoryOutlets?.close();
           await this.tail;
           const errors: unknown[] = [];
           for (const lease of [...this.leases.values()].reverse()) {
@@ -181,6 +185,8 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
           .some(b => sameBot({ botId: b.id, botCreatedAt: b.createdAt }, key));
         this.memoryConfirmation = new MemoryConfirmation(this.stores.memoryKernel, currentBot, this.config.memoryGrantTtlMs);
         this.memoryEgress = new EgressChecker(this.stores.memoryKernel, this.memoryConfirmation.grants, currentBot);
+        this.memoryOutlets = new ManagedOutlets(this.memoryEgress);
+        await this.memoryOutlets.recover();
         this.memoryAdmission.start(this.stores.memoryKernel);
         // Workspace storage may be temporarily unavailable. Bot management and
         // preset registration still work, while the launch Remote can retry.

@@ -1,3 +1,6 @@
+import { ManagedOutlets } from '../lib/host/data-flow/outlets.js';
+import { EgressChecker } from '../lib/host/data-flow/egress.js';
+import { OnceGrants } from '../lib/host/data-flow/grants.js';
 import { required } from './fixtures/required.js';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -57,10 +60,15 @@ async function runtime(ctx: Context, root: string) {
   // The registry-facing fixture is deliberately small. Memory operations use
   // the production service and Store, with no in-memory persistence substitute.
   const memoryFor = vi.fn((botId: string) => new BotMemoryService(stores.memories, botId));
+  const kernel = required(stores.memoryKernel);
+  const memoryOutlets = new ManagedOutlets(new EgressChecker(kernel, new OnceGrants(kernel),
+    key => stores.bots.list().some(b => b.id === key.botId && b.createdAt === key.botCreatedAt)));
+  await memoryOutlets.recover();
+  ctx.effect(() => async () => { await memoryOutlets.close(); memoryOutlets.checker.close(); });
   ctx.provide('dshBots', {
     config: RegistryConfig({}),
     presetBot: (botId: string) => stores.bots.get(botId),
-    memoryFor, memoryAdmission, memoryKernel: stores.memoryKernel,
+    memoryFor, memoryAdmission, memoryOutlets, memoryKernel: stores.memoryKernel,
   } as unknown as Context['dshBots']);
   let owner!: Context;
   await ctx.plugin({

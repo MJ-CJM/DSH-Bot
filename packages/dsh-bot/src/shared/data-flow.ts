@@ -13,6 +13,8 @@ export type DataLabel = z.output<typeof dataLabelSchema>;
 export const egressTargetSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('bot'), bot: botKeySchema }),
   z.strictObject({ kind: z.literal('shared') }),
+  z.strictObject({ kind: z.literal('group'), groupId: z.string().min(1), groupCreatedAt: z.number().int().nonnegative(),
+    members: z.array(botKeySchema).min(1) }),
   z.strictObject({ kind: z.literal('external'), destination: z.string().min(1).max(512) }),
 ]);
 export type EgressTarget = z.output<typeof egressTargetSchema>;
@@ -39,6 +41,7 @@ export const quotaChargeSchema = z.strictObject({
 export type AutoSharePolicy = z.output<typeof autoSharePolicySchema>;
 export type QuotaCharge = z.output<typeof quotaChargeSchema>;
 export const autoShareStatusSchema = z.strictObject({
+  domainUsed: z.number().int().nonnegative().optional(),
   configured: z.boolean(), effectiveAutoShare: z.literal(false), reason: z.literal('unverifiable-user-input'),
   botDaily: z.number().int().min(0).max(10000), domainDaily: z.number().int().min(0).max(100000),
   timeZone: autoShareSettingsSchema.shape.timeZone, revision: z.number().int().positive(),

@@ -9,7 +9,7 @@ import { MemoryLineage } from './lineage.js';
 
 export interface EgressEnvelope { binding: FlowBinding; content: string; label: DataLabel }
 export interface DispatchTicket { readonly id: string; state: 'admitted' | 'dispatching' | 'delivered' | 'unknown' | 'cancelled' }
-/** Core contract only. B6b must persist envelopes in each actual outlet, and use BOTH checkpoints. */
+/** Shared policy checker. ManagedOutlets persists actual outlet envelopes and checkpoints. */
 export class EgressChecker {
   private stopped = false;
   private readonly tickets = new Map<DispatchTicket, { envelope: EgressEnvelope; grant?: OnceGrant; opId: string }>();
@@ -24,25 +24,32 @@ export class EgressChecker {
       this.kernel.snapshot.retired.has(JSON.stringify(b.bot))) throw new Error('Stale egress identity, epoch or policy');
     if (b.target.kind === 'bot' && (!this.currentBot(b.target.bot) ||
       this.kernel.snapshot.retired.has(JSON.stringify(b.target.bot)))) throw new Error('Stale egress target');
-    if (!isDeepStrictEqual([...new Set(l.sourceVersions)].sort(), [...new Set(b.sourceVersions)].sort()) ||
-      !b.sourceVersions.length) throw new Error('Unknown egress lineage');
+    if (b.target.kind === 'group' && b.target.members.some(key => !this.currentBot(key) ||
+      this.kernel.snapshot.retired.has(JSON.stringify(key)))) throw new Error('Stale group audience');
+    if (!isDeepStrictEqual([...new Set(l.sourceVersions)].sort(), [...new Set(b.sourceVersions)].sort()))
+      throw new Error('Unknown egress lineage');
     const sessionId = b.invocation.split('/')[0];
     if (!sessionId || new MemoryLineage(this.kernel).seen(sessionId).some(id => !b.sourceVersions.includes(id)))
       throw new Error('Egress omitted previously observed session lineage');
+    const sessionLabel = sessionId ? this.kernel.domain.table('flow_sessions').get(sessionId)?.label : undefined;
+    if (!b.sourceVersions.length && !sessionLabel) throw new Error('Unknown egress lineage');
     const live = [...this.kernel.snapshot.versions.values()];
     if (b.sourceVersions.some(id => !live.some(v => v.versionId === id && this.kernel.domain.table('payloads').get(v.contentRef))))
       throw new Error('Egress source version changed or disappeared');
     const refs = live.filter(v => b.sourceVersions.includes(v.versionId)).flatMap(v => v.sourceRefs);
     if (!isDeepStrictEqual(refs, b.sourceRefs)) throw new Error('Egress source references changed');
-    const lineage = new MemoryLineage(this.kernel).label(b.sourceVersions);
-    const effective = mergeLabels(l, lineage);
-    if (lineage.sourceVersions.length !== b.sourceVersions.length ||
+    const lineage = b.sourceVersions.length ? new MemoryLineage(this.kernel).label(b.sourceVersions) : sessionLabel;
+    if (!lineage) throw new Error('Unknown egress lineage');
+    const effective = mergeLabels(l, lineage, ...(sessionLabel ? [sessionLabel] : []));
+    if (lineage.sourceVersions.some(id => !b.sourceVersions.includes(id)) ||
+      effective.sourceVersions.some(id => !b.sourceVersions.includes(id)) ||
       effective.restrictions.some(r => ['revoked', 'pending-cleanup', 'secret'].includes(r))) throw new Error('Restricted egress source');
     // A supplied grant must match even when the route would otherwise be allowed.
     if (grant) this.grants.check(grant, b, envelope.content, admitted);
     const readable = b.target.kind === 'bot' && canReadLabel(effective, b.target.bot);
+    const group = b.target.kind === 'group' && b.target.members.every(key => canReadLabel(effective, key));
     const inDomain = b.target.kind === 'shared' && effective.readers === 'shared';
-    if (!readable && !inDomain && !grant) throw new Error('Egress requires exact-content user authorization');
+    if (!readable && !group && !inDomain && !grant) throw new Error('Egress requires exact-content user authorization');
     // no-egress forbids external export unless this exact payload/destination was explicitly approved.
     if (b.target.kind === 'external' && !grant) throw new Error('Shared is not public');
   }

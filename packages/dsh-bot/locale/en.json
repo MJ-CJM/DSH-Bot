@@ -4,6 +4,7 @@
     "description": "Your personal agent workspace for DeepSeek Harness. Create multiple personal agents, each with its own persona, long-term memory, tools and skills, working alongside you over time."
   },
   "tools": {
+    "dataFlow.export.approval": "Authorize this exact data export to {target}?\n{content}",
     "bot_manage.approval.create": "Create Bot {id} named {name} and register its preset?",
     "bot_manage.approval.update": "Update Bot {id}? Changed top-level fields: {fields}. New and cold-restored sessions use the updated configuration; live sessions keep their current configuration.{selfWarning}",
     "bot_manage.approval.delete": "Delete Bot {id} and its preset? {memoryWarning} Session history remains, but cannot resume until this Bot id exists again.{selfWarning}",
@@ -718,6 +719,8 @@
     "forget.exclusions": "Raw event logs, external backups and already sent data are excluded.",
     "autoShare.title": "Automatic sharing",
     "autoShare.unavailable": "This DSH version cannot verify direct user input. Automatic sharing is temporarily unavailable.",
+    "autoShare.egressBlocked": "Restricted or unknown sources are held. Tool approval alone does not authorize data export.",
+    "autoShare.usage": "Automatic contributions used today: {used}",
     "autoShare.quotas": "Daily limits: {bot} per Bot / {domain} per user domain ({timeZone}).",
     "autoShare.disable": "Turn off automatic sharing",
     "autoShare.enable": "Enable policy (currently unavailable)"

@@ -62,6 +62,10 @@ export async function persistWatermark(domain: MemoryDomain, state: Projection):
 }
 /** Recovery/forget maintenance only: remove abandoned and erased attachments, including old revisions. */
 export async function persistProjection(domain: MemoryDomain, state: Projection): Promise<void> {
+  // Erase obsolete outlet attachments too. Unknown in-flight effects remain unknown, never replayable.
+  for (const [id, row] of domain.table('flows').entries()) if (row.envelope && row.envelope.binding.epoch < state.epoch) {
+    await domain.table('flows').put(id, { id, state: row.state === 'dispatching' || row.state === 'unknown' ? 'unknown' : 'cancelled' });
+  }
   const cache = domain.table('projections');
   await persistWatermark(domain, state);
   for (const [id] of cache.entries()) if (id !== 'snapshot') await cache.delete(id);

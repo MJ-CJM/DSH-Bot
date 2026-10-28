@@ -444,3 +444,29 @@ B6a 最终定向：10文件/77 passed（6个新增核心套件49项），含真�
 - FAIL(environment)：完整 check 为887 passed、6失败、3 expected fail；最终定向4文件39 passed，strict和lint独立通过。
 
 等待编排方沙箱外重跑两组 H、E(forget) 与完整 check；本次没有重跑另外三个已获编排方 PASS 的浏览器套件。
+
+
+## B6b（2026-10-27）
+
+基于 e099b7e 执行，完整文件/命令/逐项验收见 [B6b](B6b.md)。版本0.3.2，无依赖/lockfile/peer变更。
+保留 pnpm-workspace.yaml 原有改动、.codex/ 与任务单；未 commit/push/嵌套 Codex/操作桌面或真实凭据。
+
+- 任务0：修 catalog 重复 Git I/O、SIGKILL pipe flush 竞态、无关内核初始化与局部 MCP 冷启动预算。
+  五轮×双份 Vitest：每份34项，30通过/4 listen EPERM；非监听项连续10份通过，完整文件仍 FAIL(environment)。
+- I41–I45：同 v2 域持久 flows/session taint、准入/实际派发双检查、unknown不重放。
+  消息/群/委派/通知/MCP与连接器接线；委派改caller，子输入先继承，子结果先检查。
+  受管消息和通知正文副本进入遗忘清理；未审计通用工具保持拒绝。
+- I46：双语能力/配额/用量/阻断解释；DOM中英各100刷新无重挂或焦点丢失；R5 effectiveAutoShare=false。
+- I47：60策略攻击拒绝、54策略合法对照通过、6自动正例 FAIL(capability)；真实 native transport 60+60仍未完成。
+  不将策略回调或 Host核心合成捕获当原生出口证明。
+- 七组 rc.3 H 全部 FAIL(environment)，version/initialize/install成功，Host Web Server listen EPERM。
+  E(auto-share) 同样受阻，8组/0截图；真实模型/系统通知/IM调用0。
+- 全量 C 的完整历史、最终静态/定向收据与代码尺寸见报告；环境失败未跳过。
+
+下一步：在允许loopback/Chromium的环境重跑H/E/C与稳定性，补完整原生运输攻击矩阵；可信入口缺口仍需上游能力。
+
+
+B6b 最终收据：`b6b-check-release-review.log`，101文件/965项：956 PASS、6环境失败、3 expected fail，exit1。
+独立 strict/lint exit0；51修改代码文件尺寸全部通过，中英701 UI/17 tools键一致。
+新增通知审批期间撤销的实际 port.send 前复检，18项相关回归通过；卸载取消相关71项通过。
+任务0完整文件、I41–I46真实H/E、R5合法自动共享、I47完整原生运输矩阵仍按报告标FAIL，未宣称B6b全部完成。

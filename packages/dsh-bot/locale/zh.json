@@ -4,6 +4,7 @@
     "description": "你的 Personal Agent 工作台。在 DeepSeek Harness 里创建多个专属个人智能体，各自拥有人设、长期记忆、工具与技能，长期陪你处理工作与生活。"
   },
   "tools": {
+    "dataFlow.export.approval": "是否授权将以下准确内容发送至 {target}？\n{content}",
     "bot_manage.approval.create": "创建 ID 为 {id}、名称为 {name} 的 Bot 并注册预设？",
     "bot_manage.approval.update": "更新 Bot {id}？修改的顶层字段：{fields}。新建及冷恢复的会话使用更新后的配置，活跃会话保留当前配置。{selfWarning}",
     "bot_manage.approval.delete": "删除 Bot {id} 和它的预设？{memoryWarning} 会话历史保留，但需要重新创建相同 ID 的 Bot 后才能恢复。{selfWarning}",
@@ -718,6 +719,8 @@
     "forget.exclusions": "清理范围不含原始事件日志、外部备份和已发送数据。",
     "autoShare.title": "自动共享",
     "autoShare.unavailable": "当前 DSH 版本无法验证用户直接输入，自动共享暂不可用",
+    "autoShare.egressBlocked": "受限或来源不明的数据会被阻断。工具审批本身不代表数据出站授权。",
+    "autoShare.usage": "今日已自动共享：{used} 条",
     "autoShare.quotas": "每日限额：每 Bot {bot} 条 / 本用户域 {domain} 条（{timeZone}）。",
     "autoShare.disable": "关闭自动共享",
     "autoShare.enable": "开启策略（当前暂不可用）"

@@ -8,7 +8,7 @@ import { openSidebarSession, openBotsPanel } from './sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../../packages/dsh-bot/scripts/screenshot-support.ts';
 const args = process.argv.slice(2);
 assert.equal(args.length, 3); assert.equal(args[0], '--suite'); assert.equal(args[2], '--mock-only');
-assert.ok(['forget', 'root-warning', 'memory-list', 'memory-conflicts'].includes(args[1]));
+assert.ok(['forget', 'root-warning', 'memory-list', 'memory-conflicts', 'auto-share'].includes(args[1]));
 const root = process.cwd(), home = resolve(root, '.dsh-dev'); assert.equal(process.env.DSH_HOME, home);
 const dir = resolve(home, 'deepening', `b4-browser-${args[1]}-rework-${Date.now()}`);
 await mkdir(dir, { recursive: true });
@@ -69,7 +69,8 @@ try {
       await bots.getByText(`SYNTHETIC_BROWSER_TARGET_${id}`, { exact: true }).waitFor();
       await page.setViewportSize({ width, height: 1000 });
       const shot = async state => {
-        const element = state.startsWith('memory-') ? bots.locator('[data-shared-memory-panel]:visible')
+        const element = state === 'auto-share' ? bots.getByLabel(t['autoShare.title'])
+          : state.startsWith('memory-') ? bots.locator('[data-shared-memory-panel]:visible')
           : state === 'root-warning' ? bots.getByLabel(t['forget.rootTitle'])
           : state === 'preview' ? bots.getByRole('group', { name: t['forget.title'], exact: true }) : bots.getByRole('status').last();
         await element.scrollIntoViewIfNeeded();
@@ -110,6 +111,17 @@ try {
           await editor.focus(); assert.ok(await editor.evaluate(element => document.activeElement === element));
         }
         await shot(args[1]);
+      } else if (args[1] === 'auto-share') {
+        const panel = bots.getByLabel(t['autoShare.title']);
+        await panel.getByText(t['autoShare.unavailable'], { exact: true }).waitFor();
+        await panel.getByText(t['autoShare.egressBlocked'], { exact: true }).waitFor();
+        await panel.getByRole('button', { name: t['autoShare.disable'], exact: true }).click();
+        await panel.getByRole('button', { name: t['autoShare.enable'], exact: true }).waitFor();
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await panel.getByRole('button', { name: t['autoShare.enable'], exact: true }).waitFor();
+        await shot('auto-share');
+        await panel.getByRole('button', { name: t['autoShare.enable'], exact: true }).click();
+        await panel.getByRole('button', { name: t['autoShare.disable'], exact: true }).waitFor();
       } else if (args[1] === 'root-warning') await shot('root-warning');
       else {
         await bots.getByRole('button', { name: t['actions.delete'], exact: true }).click();

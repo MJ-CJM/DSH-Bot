@@ -1,3 +1,5 @@
+import { withGraphCapability } from '../data-flow/graph-capability.js';
+import { outlets } from '../data-flow/tool-guard.js';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -228,7 +230,16 @@ export class ReferenceWriter {
         callId,
         signal,
       });
-      const result = cleanup ? await this.registry.memoryAdmission.cleanupRead(l.agent, callId, execute) : await execute();
+      const managed = () => withGraphCapability(l.agent, callId, execute);
+      const flow = outlets(this.registry);
+      let result: Awaited<ReturnType<typeof execute>>;
+      if (cleanup) result = await this.registry.memoryAdmission.cleanupRead(l.agent, callId, managed);
+      else if (flow && !['read_graph', 'search_nodes', 'open_nodes'].includes(tool)) {
+        const envelope = flow.draft('mcp-copy', l.bot, l.agent.session.id, callId, { kind: 'bot', bot: l.bot },
+          JSON.stringify({ identity: l.identity, tool, args }));
+        const id = await flow.admit(envelope, undefined, signal);
+        result = await flow.dispatch(id, managed, signal);
+      } else result = await managed();
       if (result.isError) throw new OperationError('unavailable');
       const value = parse(
         z.object({

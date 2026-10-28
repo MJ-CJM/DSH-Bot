@@ -16,6 +16,7 @@ export const copyRowSchema = z.strictObject({
   receipt: copyReceiptSchema,
   snapshot: z.array(memorySchema),
   previousMode: graphBindingSchema.shape.mode,
+  flowEpoch: z.number().int().nonnegative().optional(),
 });
 export const referenceMemoryDomain = defineDomain({
   name: 'dsh_bot_reference_memory',
