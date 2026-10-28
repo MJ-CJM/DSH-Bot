@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { runner } from './b3-runner.mjs';
+import { mockProfilePatch } from './mock-profile.mjs';
+import { pairs } from '../../packages/dsh-bot/tests/deepening/b6b-cases.ts';
 const root = process.cwd(), suite = process.argv[3];
 assert.equal(process.env.DSH_HOME, resolve(root, '.dsh-dev'));
 assert.ok(['message-egress', 'group-egress', 'delegate-egress', 'notify-egress', 'mcp-egress', 'auto-share', 'redteam'].includes(suite));
 const dir = resolve(root, '.dsh-dev/deepening', `b6b-${suite}-${Date.now()}`);
 await mkdir(resolve(dir, 'receipts'), { recursive: true });
-const run = await runner(dir, 0, 'DP_B6B');
+const run = await runner(dir, 0, 'DP_B6B', { timeoutMs: suite === 'redteam' ? 720000 : 90000 });
 const save = (name, value) => writeFile(resolve(dir, name), `${JSON.stringify(value, null, 2)}\n`);
 let cliVersion, phase = 'version';
 try {
@@ -21,21 +23,8 @@ try {
   await run.command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
   phase = 'install';
   await run.command(['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'install');
-  const patch = [
-    '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(dir, 'storage'))}`,
-    '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(dir, 'sessions'))}`,
-    '- id: credentials-local', '  config:', `    path: ${JSON.stringify(resolve(dir, 'synthetic-credentials.yml'))}`, '    watch: false',
-    '- id: dsh-bot', '  config:', '    seedExamples: false', '    messagingEnabled: true',
-    `    dataDir: ${JSON.stringify(resolve(dir, 'bots'))}`,
-    '- id: agent-default-model', '  config:', '    provider: dp-b6b', '    model: fixture',
-    '- id: user-approval', '  config:', '    policy: ask',
-    ...['llm-deepseek', 'llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry',
-      'session-log-deepseek', 'session-telemetry-otel', 'desktop-product-telemetry'].flatMap(id => [`- id: ${id}`, '  disabled: true']),
-    '- insert:', '    - id: dp-b6b-probe',
-    `      name: ${JSON.stringify(resolve(root, 'packages/dsh-bot/tests/deepening/b6b-profile.mjs'))}`,
-    '      config:', `        outputDir: ${JSON.stringify(dir)}`, `        suite: ${suite}`,
-  ].join('\n');
-  await writeFile(resolve(run.env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);
+  const patch = mockProfilePatch(dir, 'packages/dsh-bot/tests/deepening/b6b-profile.mjs', { outputDir: dir, suite });
+  await writeFile(resolve(run.env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), patch);
   phase = 'host';
   await run.command(['--profile', profile, '--no-open', '--host', '127.0.0.1', '--port', '0'], 'host', true);
   const result = JSON.parse(await readFile(resolve(dir, 'receipts/result.json')));
@@ -48,6 +37,18 @@ try {
   const status = environment ? 'FAIL (environment)' : 'FAIL';
   const readReceipt = name => readFile(resolve(dir, `receipts/${name}.json`), 'utf8').then(JSON.parse).catch(() => undefined);
   const progress = await readReceipt('progress'), result = await readReceipt('result');
+  if (suite === 'redteam') {
+    const rows = [];
+    for (const pair of pairs) for (const variant of ['control', 'attack']) {
+      const id = `${pair.id}-${variant}`, old = await readReceipt(id);
+      const receipt = old ?? { ...pair, id, variant, status: `${status} (NOT_RUN)`,
+        reason: `Host did not finish the actual route: ${phase}/${progress?.phase ?? 'no probe'}`,
+        evidenceLevel: 'PARENT_TERMINAL_RECEIPT / NO_TRANSPORT_EVIDENCE', realModelRequests: 0 };
+      if (!old) await writeFile(resolve(dir, `receipts/${id}.json`), JSON.stringify(receipt, null, 2), { flag: 'wx' });
+      rows.push(receipt);
+    }
+    await save('native-matrix.json', { status, rows, actualNativeCasesPassed: rows.filter(row => row.status === 'PASS').length });
+  }
   // A killed/unstarted probe cannot write its own terminal result. The parent always leaves one.
   if (!result) await save('receipts/result.json', { status, suite, phase, probePhase: progress?.phase,
     origin: 'parent-runner', error: String(error), command: run.commands.at(-1), realModelRequests: 0 });

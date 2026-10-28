@@ -53,5 +53,27 @@ export function retrievalRank<T extends SearchRow>(rows: readonly T[], query: st
     // require a majority, so OLD_JOURNAL does not also return RECENT_JOURNAL on the generic tail alone.
     return { row, score: covered >= observedTerms * config.minCoverage ? score : 0 };
   }).filter(r => r.score > 0);
-  return scored.sort((a, b) => b.score - a.score || compare(a.row, b.row)).slice(0, limit).map(r => r.row);
+  scored.sort((a, b) => b.score - a.score || compare(a.row, b.row));
+  // Bound reranking cost independently of the requested page size. Preserve every fact, including numeric variants.
+  // Numeric queries retain exact BM25 ordering; diversity is for ambiguous broad searches.
+  if (!config.diversityPenalty || /\p{N}/u.test(query)) return scored.slice(0, limit).map(r => r.row);
+  const pending = scored.slice(0, config.diversityWindow).map(item => ({ ...item,
+    body: new Set(fields(item.row.payload, config)[0]?.terms.keys()), similarity: 0 }));
+  const selected: T[] = [];
+  while (pending.length) {
+    let best = 0;
+    const adjusted = (index: number) => {
+      const item = pending[index];
+      return item ? item.score * (1 - config.diversityPenalty * item.similarity) : -Infinity;
+    };
+    for (let i = 1; i < pending.length; i++) if (adjusted(i) > adjusted(best)) best = i;
+    const item = pending.splice(best, 1)[0]; if (!item) break;
+    selected.push(item.row);
+    for (const candidate of pending) {
+      let common = 0; for (const term of item.body) if (candidate.body.has(term)) common++;
+      const overlap = common / Math.max(1, Math.min(item.body.size, candidate.body.size));
+      if (overlap >= config.diversityThreshold) candidate.similarity = Math.max(candidate.similarity, overlap);
+    }
+  }
+  return [...selected, ...scored.slice(config.diversityWindow).map(r => r.row)].slice(0, limit);
 }

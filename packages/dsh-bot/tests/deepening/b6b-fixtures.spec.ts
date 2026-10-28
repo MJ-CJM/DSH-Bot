@@ -1,11 +1,18 @@
 import { Context } from '@deepseek-ai/cordis';
 import LlmRuntime from '@deepseek-ai/dsh-llm';
 import { describe, expect, it } from 'vitest';
+import { graphRequestSchema } from '../../src/shared/reference-memory.js';
 
 const adapterPath = './b6b-adapter.mjs';
 const { B6bAdapter, registerIsolatedAdapter } = await import(adapterPath);
 
 describe('B6b adapter bootstrap with real npm rc.2 LlmRuntime (UNIT)', () => {
+  it('requires explicit confirmation on the actual graph commit request contract', () => {
+    const request = { action: 'commit', bot: { botId: 'alpha', botCreatedAt: 1 }, copyId: 'copy:synthetic' };
+    expect(graphRequestSchema.safeParse(request).success).toBe(false);
+    expect(graphRequestSchema.parse({ ...request, confirmed: true })).toMatchObject({ confirmed: true });
+    expect(graphRequestSchema.safeParse({ ...request, confirmed: false }).success).toBe(false);
+  });
   it('checks isolation before registering itself, then withdraws its route on disposal', async () => {
     const ctx = new Context();
     try {

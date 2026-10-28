@@ -20,7 +20,8 @@ assert.ok(source.startsWith(`${root}/.dsh-dev/deepening/b5-performance-`));
 const seed = JSON.parse(await readFile(join(source, 'seed.json')));
 assert.equal(seed.seeded, 10000);
 const logMode = seed.ops === 10000 ? 'independent' : 'bootstrap';
-const dir = resolve(root, `.dsh-dev/deepening/b5s/performance-${logMode}`);
+const dir = resolve(process.argv[3] ?? resolve(root, `.dsh-dev/deepening/b5s/performance-${logMode}`));
+assert.ok(dir.startsWith(`${root}/.dsh-dev/deepening/`));
 await mkdir(dir, { recursive: true });
 // Copy only synthetic benchmark data: never mutate a pre-existing benchmark or real profile.
 const { cp } = await import('node:fs/promises');

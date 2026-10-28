@@ -82,4 +82,14 @@ describe('B5s bounded vocabulary, normalization and ranking regression', () => {
     const docs = [row('old', { content: 'OLD_JOURNAL' }), row('new', { content: 'RECENT_JOURNAL' })];
     expect(rankFacts(docs, 'OLD_JOURNAL').map(r => r.version.memoryId)).toEqual(['old']);
   });
+  it('diversifies repeated evidence without deleting facts or changing numeric-query order', () => {
+    const docs = [row('fact', { content: 'I take the train for travel', factKey: 'commute' }, 1),
+      ...Array.from({ length: 6 }, (_, i) => row(`catalog-${i}`, { content: `train catalogue listing ${i}` }, i + 2))];
+    const ranked = rankFacts(docs, 'train', 20);
+    expect(ranked.slice(0, 5).some(r => r.version.memoryId === 'fact')).toBe(true);
+    expect(new Set(ranked.map(r => r.version.memoryId)).size).toBe(docs.length);
+    const disabled = { ...Config({}).memoryRetrieval, diversityPenalty: 0 };
+    expect(rankFacts(docs, 'train 3', 20)).toEqual(rankFacts(docs, 'train 3', 20, disabled));
+    expect(() => Config({ memoryRetrieval: { diversityWindow: 4 } })).toThrow();
+  });
 });

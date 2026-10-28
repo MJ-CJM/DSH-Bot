@@ -5,7 +5,7 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { prepareAutomaticShare } from '../../lib/host/memory/auto-share.js';
-import { hostPolicyPairs } from './b6b-host-policy.mjs';
+import { nativeTransportPairs } from './native-redteam.mjs';
 import { B6bAdapter, registerIsolatedAdapter } from './b6b-adapter.mjs';
 import { bounded } from './b6a-support.mjs';
 export const name = 'dp-b6b-probe';
@@ -26,7 +26,7 @@ export function apply(ctx, config) {
         request.toolName.startsWith('dsh_bot_export_')) return 'allowed-once';
       return 'rejected';
     }, { prepend: true }));
-    const timer = setTimeout(() => lifetime.abort(new Error(`B6b deadline: ${phase}`)), 60000);
+    const timer = setTimeout(() => lifetime.abort(new Error(`B6b deadline: ${phase}`)), config.suite === 'redteam' ? 600000 : 60000);
     const run = bounded(async () => {
       await mark('loader-ready'); await ctx.loader.await();
       await mark('provider-isolation');
@@ -100,7 +100,7 @@ export function apply(ctx, config) {
         const graph = ctx.dshBotReferenceMemory, bot = keys.alpha;
         const preview = await graph.request({ action: 'preview', bot }); assert.ok(preview.copy);
         await graph.request({ action: 'stage', bot, copyId: preview.copy.id });
-        await graph.request({ action: 'commit', bot, copyId: preview.copy.id });
+        await graph.request({ action: 'commit', bot, copyId: preview.copy.id, confirmed: true });
         const read = await graph.request({ action: 'tool', bot, call: { tool: 'read_graph', arguments: {} } });
         assert.ok(JSON.stringify(read.graph).includes('B6B_COPY'));
         detail = { nativeMcpCopy: true, connectors: 'separate loopback tests; no external servers enabled' };
@@ -109,7 +109,7 @@ export function apply(ctx, config) {
         assert.equal((await registry.autoShareStatus()).effectiveAutoShare, false);
         detail = { status: 'FAIL (capability)', automaticLegalPath: false };
       } else {
-        detail = await hostPolicyPairs(registry, keys);
+        detail = await nativeTransportPairs(ctx, adapter, config, signal);
       }
       signal.throwIfAborted();
       await save('result', { status: 'PASS', suite: config.suite, evidenceLevel: 'HOST_SYNTHETIC_ADAPTER',

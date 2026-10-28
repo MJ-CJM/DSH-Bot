@@ -1,5 +1,28 @@
 # DSH API 核实记录
 
+## DP B7：崩溃探针、检索多样性与未关闭门禁（2026-10-27）
+
+完整命令、逐项判定及收据见 [B7](deepening/B7.md)。没有新增产品依赖、runtime peer 或 Remote。
+fast-check@4.3.0 的 online/offline 安装均失败，manifest/lock 未被改写；5000+5000 序列未运行。
+TLC jar/hash 未提供；模型、正配置和去掉 epoch 检查的负控制均未执行，不称形式化通过。
+
+- B6b MCP 失败是夹具 commit 缺 `confirmed:true`。沿用既有 graphRequestSchema，服务校验保持；
+  UNIT 正反例通过，真实 CLI H(mcp-egress) 仍在 webserver listen EPERM 受阻。
+- 崩溃探针仅通过公开 KvTable.put、SessionStore.flush、sessionController.create、tools.execute
+  暂停在真实异步边界。`storageDomain.get(name)` 是公开诊断入口，rc.2
+  `packages/storage/storage-domain/src/index.ts:182`；仅夹具访问其公开 table，不作为产品内部状态依赖。
+  父进程核对 nonce/PID/持久 barrier 后 SIGKILL，确认退出，再启动另一进程；没有用 throw 当强杀。
+  npm rc.2 服务进程与完整 CLI Host 分列；前者不替代真实 Session/MCP/主会话/schedule 冷恢复。
+- 原生 schedule 公开历史方法为 `history({sessionId,id,limit})`，不是 deliveryHistory；只读 rc.2
+  `packages/schedule/schedule/src/index.ts:303`、`src/types.ts:442`。本轮 Host 被环境阻断，未验证此组合。
+- 检索仍复用既有权限/双时态过滤、BM25 与管理/工具路径；新增有界多样性排序仅重排，不删记录。
+  Config.memoryRetrieval 导出 penalty/threshold/window，默认 0.6/0.8/50，数字查询保留 BM25 顺序。
+  tune 后冻结算法、最终 held-out 仅一次；语料没有改变，不把小合成集的召回当真实回答质量。
+- 真实 JSON I/O 剖析仅在测试进程包装 Node 公开 fs.open/FileHandle.sync 与 KvTable.put；
+  保留原生 temp/fsync/rename/directory-fsync，未替换存储实现、降低持久性或修改参考源码。
+
+完整 CLI 崩溃矩阵、native redteam、自动共享合法路径和完整 P0 均未因此关闭。
+
 ## DP B6b-rework：adapter计数与异步服务（2026-10-27）
 
 完整根因、文件与收据见 [B6b返工](deepening/B6b.md#b6b-rework2026-10-27)。无新增依赖、API或runtime peer。

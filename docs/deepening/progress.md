@@ -487,3 +487,28 @@ B6b 最终收据：`b6b-check-release-review.log`，101文件/965项：956 PASS�
 - stability 5×2含P34沿用编排方本任务给出的沙箱外PASS，本次未重跑；R5及I47未完成门禁保持原判定。
 
 编排方继续用原命令沙箱外重跑7组H、E(auto-share)及check；先检查新增provider-isolation/services收据，再核对运输与8张截图。
+
+
+## B7：I48–I61、B6b遗留与检索/性能（2026-10-27）
+
+基线0105416；完整文件、命令、原始收据和逐项FAIL见 [B7报告](B7.md)。**本批未全部通过**。
+保留已有workspace/.codex/任务文件；无commit/push、参考树/桌面/全局修改、真实模型或真实会话读取。
+
+| 项目 | 判定 | 当前实际结果 |
+| --- | --- | --- |
+| B6b MCP请求根因 | PASS(SOURCE/UNIT)；FAIL(真实H environment) | commit缺confirmed:true；严格schema未放宽，真实H仍listen EPERM |
+| B6b native 60+60 | FAIL(environment/NOT_RUN) | 增加实际路线与逐条终态；真实native PASS=0，六自动正例仍FAIL(capability) |
+| I48/I49 | FAIL(dependency/NOT_RUN) | fast-check online DNS失败、offline无metadata；完整序列数0，依赖未成功声明/锁定 |
+| I50 | PASS(NPM service process) | 3/3 nonce/PID/barrier核验、父进程SIGKILL、新PID恢复 |
+| I51/I52/I53/I57/I58 | FAIL(完整CLI Host environment) | 每窗口另有真实JSON/npm恢复3/3；不替代真实Host，I53实际adapter=0 |
+| I54/I55/I56/I59 | FAIL(environment/NOT_RUN) | surface、MCP、pointer及main/schedule共6子窗口各3轮，未进入实际窗口 |
+| I60/I61 | FAIL(NOT_RUN) | TLA+源/配置/负控制已写，缺官方jar/hash，没有模型检查证据 |
+| 检索 | PASS(合成集) | tune干扰0.286→1；唯一held-out干扰0.4→1，总体0.733→0.933 |
+| 性能最终复测 | PASS(真实JSON服务进程) | 重新独立1万写p95=14.966ms，30冷恢复1.063s，context重算20.885ms |
+| 完整C | FAIL | 965 PASS/8 FAIL/3 expected fail；6环境、2缺fast-check；根strict/lint另跑PASS |
+
+产品仅增加有界词法多样性排序与导出配置，没有改持久路径或减fsync。
+旧49ms/2.09s退化本轮未复现，不能将达标归因为某次产品优化；两个独立轮次均达标，分段/fsync及最终检索耗时见B7报告。
+正式依赖/lock/版本均未变化。固定命令回归2项不充当10000序列。
+后续需有网络成功锁定fast-check、编排方提供官方TLC及hash，并在允许loopback的环境跑完整F/H。
+R5、完整P0、业务去重/真实schedule强杀、精确rc.2 CLI和真实模型证据仍未关闭。

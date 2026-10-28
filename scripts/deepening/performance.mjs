@@ -9,7 +9,8 @@ const commands = [], datasets = [];
 async function run(mode, dataDir, outputDir, logMode) {
   const args = ['--max-old-space-size=512', 'packages/dsh-bot/tests/deepening/performance.mjs', mode, dataDir, outputDir, logMode];
   const child = spawn(process.execPath, args, {
-    cwd: root, env: { PATH: process.env.PATH, DSH_HOME: process.env.DSH_HOME }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: root, env: { PATH: process.env.PATH, DSH_HOME: process.env.DSH_HOME,
+      DSH_BOT_PERF_PROFILE: process.env.DSH_BOT_PERF_PROFILE }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
   for (const stream of [child.stdout, child.stderr]) stream.on('data', b => {
@@ -48,6 +49,9 @@ try {
       hitP95ms: p95(measured.hits), recomputeP95ms: p95(measured.recomputes), coldP95ms: p95(cold.map(r => r.recovered)),
       rebuildP95ms: p95(cold.map(r => r.rebuildMs)), replayEquivalent: true,
       writeP95ms, writeRatio5000to500: writeRatio, writeSegments: seed.segments, independentWriteSamples: seed.writes?.length,
+      ioProfile: Object.fromEntries(Object.entries(seed.ioProfile ?? {}).map(([name, values]) =>
+        [name, { samples: values.length, p95ms: values.length ? p95(values) : null,
+          totalMs: values.reduce((a, b) => a + b, 0) }])),
       npmRuntimeReadyP95ms: p95(cold.map(r => r.runtimeReady)), fullCliHostStartup: 'NOT_RUN', realModelRequests: 0 };
     const pass = summary.hitP95ms <= 5 && summary.recomputeP95ms <= 50 && summary.coldP95ms <= 2000 && summary.rebuildP95ms <= 2000 &&
       (logMode !== 'independent' || writeP95ms !== undefined && writeP95ms <= 20 && writeRatio <= 2);

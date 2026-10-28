@@ -1,3 +1,4 @@
+import { ioProfile, profileTables } from './io-profile.mjs';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
@@ -31,6 +32,7 @@ try {
   opened = await openMemoryKernel(ctx, join(dir, 'owner'), 'Asia/Shanghai');
   const recovered = performance.now() - start, runtimeReady = performance.now() - ready;
   const kernel = opened.kernel;
+  profileTables(kernel);
   if (mode === 'seed') {
     let versions = [], payloads = {};
     const seedStart = performance.now(), now = Date.parse('2026-10-25T12:00:00Z');
@@ -69,7 +71,7 @@ try {
     }
     const seed = { logMode, seeded: kernel.snapshot.versions.size, bots: 10, ops: kernel.seq,
       startingOps, startingMemories, commitPath: 'MemoryKernel.commit / public KvTable / actual JSON backend',
-      seedMs: performance.now() - seedStart, writes, segments };
+      seedMs: performance.now() - seedStart, writes, segments, ioProfile };
     assert.equal(seed.seeded, 10000); assert.equal(seed.ops, logMode === 'independent' ? 10000 : 1);
     await writeFile(join(dir, 'seed.json'), JSON.stringify(seed, null, 2));
   } else {
