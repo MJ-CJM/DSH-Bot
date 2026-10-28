@@ -565,3 +565,27 @@ TLC两正配置通过/负控制出反例；旧B7r check 984PASS+3expected fail�
 性质实际20–50步未覆盖设计20–200；TLC有限状态；不宣称自动提醒任意业务exactly-once或真实模型回答质量。
 
 后续由编排方沙箱外重跑同一新包H(release-upgrade/lifecycle)、E(release)、S与C，检查实际拒绝原因、20循环及390px新截图。
+
+
+## V041（2026-10-28）
+
+基线 phase/deepening@33e7acf；执行 tasks/DP/V041.md，完整文件/命令/逐项验收见 [V041](V041.md)。
+保留已有 workspace 修改、.codex 和未跟踪任务单；无 commit/push/嵌套 Codex/真实模型或数据访问。
+
+- PASS(DOM)：单击选择详情，按钮/Enter/Space/双击才激活；方向键与 ARIA 保留，窄屏返回恢复焦点。
+  窄屏用 300ms 保留原生双击窗口；组件卸载清理计时器。9 个相关文件 104/104 PASS。
+- PASS(native Node)：真实 tgz 的 fresh/legacy/mixed/link-error/other-cache/replaced-entry 六用例通过。
+  0.3.2 schema 缓存→0.4.0 的 memoryFields 错误实际复现；0.4.1 双语拒绝且不访问 Host 服务。
+  正式引导保留模块 URL、核对 171 个 namespace 版本及文件摘要，不让错误类/服务产生额外实例。
+- FAIL(environment)：同 PID 完整 CLI Host 热升级在 webserver listen EPERM 阻断；仅旧包安装通过。
+  固定路径覆盖和强制新入口均为显式夹具，不冒充原生 UI/HMR 证明；若宿主复用旧入口仍需完全退出重开。
+- PASS(pack/install)：版本 0.4.1，527 文件真实审计、六发布 profile 与 lifecycle 安装通过；frozen offline install PASS。
+  SHA256 `3675fdb29a16f679aa5cfc1097afb839a54b1c8d8d8c78ad19d44f4f66f2f9eb`。
+- FAIL(environment)：新 bots-list 8 组合以及完整 release E 六套件 64 组合均在 host-setup EPERM，0 张新图。
+  lifecycle 20 循环及发布冷恢复/Fence 等 Host 阶段未执行；当前包装 CLI 为 rc.3，精确 rc.2 仍待验收。
+- FAIL(environment，check)：最终 117 文件/1018 项，1009 PASS、6 监听相关 FAIL、3 expected fail。
+  strict/lint/代码尺寸/diff 独立 PASS；没有跳过测试或放宽超时。
+
+最终收据：b8-release-upgrade-1793179730598、b8-lifecycle-1793179307560、
+b8-screens/summary-1793179369367.json、b4-browser-bots-list-rework-1793179488824。
+编排方用同一 hash 沙箱外重跑 Host/E/check；保留运行验收与旧入口缓存边界，不据构建/DOM 宣称完整通过。

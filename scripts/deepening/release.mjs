@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { hotUpgrade } from './hot-upgrade.mjs';
 import { runner } from './b3-runner.mjs';
 import { mockProfilePatch } from './mock-profile.mjs';
 import { auditArtifact, auditInstalled, sha256 } from '../p34-artifact.mjs';
@@ -19,10 +20,10 @@ async function check(name, action) {
 }
 try {
   await check('artifact', async () => {
-    audit = await auditArtifact(root, resolve(root, 'dist/dsh-bot-0.4.0.tgz'), dir);
-    assert.equal(audit.version, '0.4.0');
+    audit = await auditArtifact(root, resolve(root, 'dist/dsh-bot-0.4.1.tgz'), dir);
+    assert.equal(audit.version, '0.4.1');
     assert.ok(audit.files.every(row => !/(?:^|\/)(?:evals|tests|scripts|spikes)(?:\/|$)/.test(row.file)));
-    await writeFile(resolve(root, 'dist/dsh-bot-0.4.0.tgz.sha256'), `${audit.sha256}  dsh-bot-0.4.0.tgz\n`);
+    await writeFile(resolve(root, 'dist/dsh-bot-0.4.1.tgz.sha256'), `${audit.sha256}  dsh-bot-0.4.1.tgz\n`);
     return { sha256: audit.sha256, files: audit.files.length };
   });
   cliVersion = (await run.command(['--version'], 'version')).match(/\b0\.2\.1-rc\.\d+/)?.[0]; assert.ok(cliVersion);
@@ -34,7 +35,7 @@ try {
     await check(phase, async () => {
       assert.ok(audit); const profile = `b8-${id}`, old = ['legacy', 'fence'].includes(id);
       await run.command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], `${id}-initialize`);
-      const artifact = resolve(root, `dist/dsh-bot-${old ? '0.3.2' : '0.4.0'}.tgz`);
+      const artifact = resolve(root, `dist/dsh-bot-${old ? '0.3.2' : '0.4.1'}.tgz`);
       await run.command(['plugin', '--profile', profile, 'add', artifact], `${id}-install`);
       const installed = resolve(run.env.DSH_HOME, 'profiles', profile, 'node_modules/dsh-bot');
       if (!old) await auditInstalled(run.env.DSH_HOME, profile, audit);
@@ -43,6 +44,10 @@ try {
       }
       profiles.set(id, { profile, installed }); return { artifactHash: sha256(await readFile(artifact)), installed };
     });
+  }
+  if (suite === 'release-upgrade') {
+    phase = 'hot-upgrade';
+    await check('hot-upgrade', () => hotUpgrade(resolve(dir, 'hot-upgrade')));
   }
   phase = 'loopback-listen';
   const listening = await check('loopback', async () => {

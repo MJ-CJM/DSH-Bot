@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 const root = process.cwd(), dir = resolve(root, '.dsh-dev/deepening/b8-screens');
 assert.equal(process.env.DSH_HOME, resolve(root, '.dsh-dev')); await mkdir(dir, { recursive: true });
-const suites = ['memory-list', 'memory-conflicts', 'forget', 'root-warning', 'auto-share'];
+const suites = ['bots-list', 'memory-list', 'memory-conflicts', 'forget', 'root-warning', 'auto-share'];
 const runs = [];
 for (const suite of suites) {
   const child = spawn(process.execPath, ['scripts/deepening/e2e.mjs', '--suite', suite, '--mock-only'], {
@@ -26,6 +26,6 @@ for (const suite of suites) {
   } else runs.push({ suite, code, status: 'FAIL(NOT_RUN)', error: output });
 }
 const summary = { status: runs.every(row => row.status === 'PASS') ? 'PASS' : 'FAIL', runs,
-  realModelRequests: 0, artifact: 'dist/dsh-bot-0.4.0.tgz', dir };
+  realModelRequests: 0, artifact: 'dist/dsh-bot-0.4.1.tgz', dir };
 await writeFile(resolve(dir, `summary-${Date.now()}.json`), JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary)); if (summary.status !== 'PASS') process.exitCode = 1;

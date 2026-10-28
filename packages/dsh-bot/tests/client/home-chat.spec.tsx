@@ -4,7 +4,7 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
-import { bot, button, click, field, fill, mountClient, submit, workspace } from './helpers.js';
+import { bot, button, click, doubleClick, field, fill, mountClient, submit, workspace } from './helpers.js';
 function required<T>(value: T | null): T { if (value === null) throw new Error('Missing fixture node'); return value; }
 const apps: Awaited<ReturnType<typeof mountClient>>[] = [];
 async function mount(language: 'en' | 'zh') {
@@ -22,7 +22,8 @@ describe('single main conversation launch', () => {
       if (surface === 'footer') await click(button(container, t['sidebar.sessions']));
       const start = surface === 'right' ? required(container.querySelector<HTMLElement>('[role="option"]'))
         : button(container, surface === 'page' ? t['bots.newSession'] : t['sidebar.newSession'].replace('{name}', 'Alpha Bot'));
-      await click(start);
+      if (surface === 'right') await doubleClick(start);
+      else await click(start);
       expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
       expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
       expect(app.createSession).not.toHaveBeenCalled(); expect(app.createWorkspace).not.toHaveBeenCalled(); expect(app.openWorkspace).not.toHaveBeenCalled();
@@ -39,7 +40,9 @@ describe('single main conversation launch', () => {
   });
   it('ignores late open completion after the page unmounts', async () => {
     const app = await mount('en'); let finish!: () => void;
-    app.remote.methods.openConversation.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ ok: true, value: { sessionId: 'late' } }); }));
+    app.remote.methods.openConversation.mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => resolve({ ok: true, value: { sessionId: 'late' } });
+    }));
     await click(button(app.container, en.ui['bots.newSession']));
     await app.unmountPage(); await act(async () => finish());
     expect(app.openSession).not.toHaveBeenCalled();
@@ -52,7 +55,7 @@ describe('single main conversation launch', () => {
         ? resolve({ ok: true, value: { sessionId: 'late-main' } })
         : reject(new Error('Late migration failure'));
     }));
-    await click(required(app.container.querySelector<HTMLElement>('[role="option"]')));
+    await click(button(app.container, en.ui['bots.newSession']));
     expect(button(app.container, en.ui['bots.newSession']).disabled).toBe(true);
     const edit = button(app.container, en.ui['card.edit']);
     expect(edit.disabled).toBe(false);
@@ -130,8 +133,9 @@ describe('single main conversation launch', () => {
     expect(app.container.querySelector('dialog')).not.toBeNull();
     expect(app.openSession).not.toHaveBeenCalled();
   });
-  it('clicking a Bot row opens its main conversation', async () => {
+  it('clicking a Bot row selects details without opening its main conversation', async () => {
     const app = await mount('en'); await click(required(app.container.querySelector<HTMLElement>('[role="option"]')));
-    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.remote.methods.openConversation).not.toHaveBeenCalled();
+    expect(app.container.querySelector('[data-bot-detail="alpha-bot"]')).not.toBeNull();
   });
 });

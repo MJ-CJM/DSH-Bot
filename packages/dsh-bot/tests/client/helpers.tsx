@@ -381,3 +381,9 @@ export async function submit(container: ParentNode) {
   if (!form) throw new Error('No form is mounted');
   await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
 }
+
+export async function doubleClick(element: HTMLElement) {
+  await click(element);
+  await click(element);
+  await act(async () => { element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
+}

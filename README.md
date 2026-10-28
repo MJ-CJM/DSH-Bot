@@ -4,9 +4,9 @@
 
 Personal agents for DeepSeek Harness: create multiple personal agents, each with its own persona, long-term memory, tools and skills.
 
-当前交付版本为 **0.4.0**，参考运行时锁定 **DeepSeek Harness 0.2.1-rc.2**。
+当前交付版本为 **0.4.1**，参考运行时锁定 **DeepSeek Harness 0.2.1-rc.2**。
 包声明兼容范围为 `>=0.2.1-rc.2 <0.3.0`；当前包装 CLI 为 rc.3，精确 rc.2 Host 尚未实测。
-安装包为 `dist/dsh-bot-0.4.0.tgz`，同目录 `.sha256` 用于校验。
+安装包为 `dist/dsh-bot-0.4.1.tgz`，同目录 `.sha256` 用于校验。
 统一记忆日志、手动共享、离线评测与发布门禁见 [深化验收](docs/acceptance/deepening.md)。
 自动共享受可信入口能力限制；主动检查与离线整理默认关闭。
 历史互通验证见 [0.3.2 验收](docs/acceptance/V032-bot-to-bot.md)。
@@ -18,17 +18,17 @@ Personal agents for DeepSeek Harness: create multiple personal agents, each with
 桌面版安装由用户或编排方手动执行：
 
 1. 打开 DeepSeek Harness，进入 **插件 → 添加插件 → 安装第三方插件**。
-2. 选择 `dist/dsh-bot-0.4.0.tgz`；若界面要求输入安装来源，填写该 tgz 的绝对路径。
+2. 选择 `dist/dsh-bot-0.4.1.tgz`；若界面要求输入安装来源，填写该 tgz 的绝对路径。
 3. 等待安装完成并确认插件已启用，使用 **Cmd+Q 完全退出**，然后重新打开应用。
 4. 在侧栏确认鲸鱼图标与 **Bots** 入口；首次启用且没有既有 Bot 数据时会创建通用助手和研究员两个示例。
 
-从旧版本升级时，先在插件页**卸载旧版 DSH-Bot → 安装 0.4.0 tgz → Cmd+Q 完全退出并重开**。升级过程保持原来的 `DSH_HOME`、profile 和存储后端配置，不删除数据目录、不重置 profile，也不要用“删除 Bot”代替卸载插件。插件卸载会释放注册和运行资源，已有 Bot、记忆及文件数据保留；重装后从同一数据位置读取。切换到另一套 `DSH_HOME` 或存储根会看到另一套数据。
+从旧版本升级时，先在插件页**卸载旧版 DSH-Bot → 安装 0.4.1 tgz → Cmd+Q 完全退出并重开**。升级过程保持原来的 `DSH_HOME`、profile 和存储后端配置，不删除数据目录、不重置 profile，也不要用“删除 Bot”代替卸载插件。插件卸载会释放注册和运行资源，已有 Bot、记忆及文件数据保留；重装后从同一数据位置读取。切换到另一套 `DSH_HOME` 或存储根会看到另一套数据。
 
 CLI 是桌面安装的备用方法。先启动过桌面版以初始化 `desktop` profile，再完全退出应用。在仓库根目录，由用户或编排方确认原桌面实例的 `DSH_HOME` 后手动运行：
 
 ```sh
 DSH_HOME="<桌面实例原有 DSH_HOME 的绝对路径>" \
-  scripts/dsh plugin --profile desktop add "$PWD/dist/dsh-bot-0.4.0.tgz"
+  scripts/dsh plugin --profile desktop add "$PWD/dist/dsh-bot-0.4.1.tgz"
 ```
 
 升级前对应的卸载命令为 `scripts/dsh plugin --profile desktop remove dsh-bot`，同样需要原 `DSH_HOME` 且桌面版已完全退出。完成后重新打开桌面版。`scripts/dsh` 包装桌面版内置 CLI；普通 npm CLI 不能管理 `desktop` profile，CLI 也不能启动或 dump 该 profile。以上是正式安装说明，仓库开发和自动验收不执行这些桌面操作，也不修改 `~/.dsh` 或应用安装内容。

@@ -1,4 +1,4 @@
-# DSH-Bot 0.4.0 / 个人智能体
+# DSH-Bot 0.4.1 / 个人智能体
 
 Personal agents, persistent Bot conversations, per-Bot MCP connectors, in-app notifications,
 deterministic group discussions, native Team task boards and optional reference memory.
@@ -6,9 +6,9 @@ deterministic group discussions, native Team task boards and optional reference 
 个人智能体、持久主会话、每 Bot MCP 连接器、应用内通知、确定性群聊、原生 Team 任务板和可选参考图谱。
 
 Requires DeepSeek Harness `0.2.1-rc.2`; declared compatibility: `>=0.2.1-rc.2 <0.3.0`.
-The plugin version 0.4.0 does not imply support for Harness 0.3.0.
+The plugin version 0.4.1 does not imply support for Harness 0.3.0.
 
-Install the prebuilt `dsh-bot-0.4.0.tgz` from Harness Plugins → Add plugin.
+Install the prebuilt `dsh-bot-0.4.1.tgz` from Harness Plugins → Add plugin.
 This release is a local artifact; no npm or online market publication is claimed.
 IM inbound/outbound is disabled until the external-consumer gate is verified.
 OS notifications are unsupported through the current public Host API.
@@ -49,3 +49,11 @@ Shared facts remain after deleting their contributing Bot. Use the separate cont
 The shadow scaffold is report-only. Real evaluation, real logs and external judges have no executable adapter.
 升级迁移后旧插件被 Migration Fence 拒绝；不要把旧 tgz 直接装回同一存储继续写入。
 完整强遗忘/provider 编码、自动共享、精确 rc.2 Host 等开放门禁见仓库 `docs/acceptance/deepening.md`。
+
+### 0.4.1 升级 / Upgrade
+
+单击 Bot 选择详情；详情按钮、Enter/Space 或双击打开对话。窄屏保留 300ms 双击窗口。
+若提示模块陈旧，请 Cmd+Q 完全退出 DSH 后重开，保留原有 profile 和数据目录。
+
+Click a Bot to inspect its details. Use the detail button, Enter/Space or double-click to open its conversation.
+If modules are stale, fully quit and reopen DSH, keeping the same profile and data directories.

@@ -5,12 +5,13 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { webHost } from './b4-web-host.mjs';
 import { openSidebarSession, openBotsPanel } from './sidebar-session.mjs';
+import { botsListCase } from './bots-list-case.mjs';
 import { assertMemoryViewport } from './viewport.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../../packages/dsh-bot/scripts/screenshot-support.ts';
 const args = process.argv.slice(2);
 assert.equal(args.length, 3); assert.equal(args[0], '--suite'); assert.equal(args[2], '--mock-only');
 if (args[1] === 'release') { await import('./release-screens.mjs'); process.exit(process.exitCode ?? 0); }
-assert.ok(['forget', 'root-warning', 'memory-list', 'memory-conflicts', 'auto-share'].includes(args[1]));
+assert.ok(['forget', 'root-warning', 'memory-list', 'memory-conflicts', 'auto-share', 'bots-list'].includes(args[1]));
 const root = process.cwd(), home = resolve(root, '.dsh-dev'); assert.equal(process.env.DSH_HOME, home);
 const dir = resolve(home, 'deepening', `b4-browser-${args[1]}-rework-${Date.now()}`);
 await mkdir(dir, { recursive: true });
@@ -24,7 +25,7 @@ const states = args[1] === 'forget' ? ['preview', 'stopped', 'strong'] : [args[1
 const matrix = ['en', 'zh'].flatMap(language => ['light', 'dark'].flatMap(theme => [1360, 390].flatMap(width =>
   states.map(state => ({ language, theme, width, state, status: 'FAIL', reason: 'NOT_RUN' })))));
 try {
-  host = await webHost(dir, args[1], process.env.DP_RELEASE_SCREENSHOTS === '1' ? resolve(root, 'dist/dsh-bot-0.4.0.tgz') : undefined);
+  host = await webHost(dir, args[1], process.env.DP_RELEASE_SCREENSHOTS === '1' ? resolve(root, 'dist/dsh-bot-0.4.1.tgz') : undefined);
   phase = 'browser-launch';
   const cache = resolve(homedir(), 'Library/Caches/ms-playwright');
   const releases = await readdir(cache).catch(() => []);
@@ -75,10 +76,11 @@ try {
         if (shared) await bots.getByRole('tab', { name: t['shared.scope.shared'], exact: true })
           .and(page.locator(':visible:enabled')).click();
       };
-      await openMemory(args[1] === 'auto-share');
+      if (args[1] !== 'bots-list') await openMemory(args[1] === 'auto-share');
       await page.setViewportSize({ width, height: 1000 });
       const shot = async state => {
-        const element = state === 'auto-share' ? bots.getByLabel(t['autoShare.title'])
+        const element = state === 'bots-list' ? bots.locator('[data-bot-detail]:visible')
+          : state === 'auto-share' ? bots.getByLabel(t['autoShare.title'])
           : state.startsWith('memory-') ? bots.locator('[data-shared-memory-panel]:visible')
           : state === 'root-warning' ? bots.getByLabel(t['forget.rootTitle'])
           : state === 'preview' ? bots.getByRole('group', { name: t['forget.title'], exact: true }) : bots.getByRole('status').last();
@@ -101,7 +103,9 @@ try {
         Object.assign(matrix.find(row => row.language === language && row.theme === theme && row.width === width &&
           row.state === state), result, { reason: undefined });
       };
-      if (args[1].startsWith('memory-')) {
+      if (args[1] === 'bots-list') {
+        await botsListCase({ page, bots, fixture, id, width, t, shot });
+      } else if (args[1].startsWith('memory-')) {
         await bots.getByRole('tab', { name: t['shared.scope.shared'], exact: true }).and(page.locator(':visible:enabled')).click();
         const managed = bots.locator('[data-shared-memory-panel]:visible');
         if (args[1] === 'memory-conflicts') {

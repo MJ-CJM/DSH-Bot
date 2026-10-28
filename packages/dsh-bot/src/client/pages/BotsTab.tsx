@@ -8,7 +8,10 @@ import styles from '../styles/bots.module.css';
 import type { BotsPageProps } from './bots-page-types.js';
 import type { BotsPageModel } from './use-bots-page.js';
 import { BotSessionHistory } from './BotSessionHistory.js';
+import { useEffect, useRef } from 'react';
 export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageModel }) {
+  const detailTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(detailTimer.current), []);
   const { onStart, routines, onOpenSession, t } = page;
   const {
     tab,
@@ -52,7 +55,14 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
                 setMore(false);
                 setToast(undefined);
               }}
+              onShowDetail={() => {
+                clearTimeout(detailTimer.current);
+                // Keep the narrow row mounted through the native double-click window.
+                if (compact) detailTimer.current = setTimeout(() => setShowDetail(true), 300);
+                else setShowDetail(true);
+              }}
               onActivate={(id) => {
+                clearTimeout(detailTimer.current);
                 setShowDetail(true);
                 void navigate((signal) => onStart(id, signal), 'errors.start');
               }}

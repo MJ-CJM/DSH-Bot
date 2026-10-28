@@ -1,5 +1,23 @@
 # DSH API 核实记录
 
+## V041：引导入口与模块缓存（2026-10-28）
+
+完整变更和分层实测见 [V041](deepening/V041.md)。未新增 DSH API、依赖、peer 或 Remote。
+只读参考 tag 仍为 rc.2；包装 CLI 实际 rc.3。
+公开 Cordis ctx.plugin/fork.await/dispose 用于升级夹具，正式注册仍由原 Host 的 ctx.effect 管理。
+Loader 的公开 import 行为参考 `vendor/loader/src/config/tree.ts:112–128`，不使用 internal loadCache 或自行改宿主 HMR。
+
+0.4.1 入口改为动态业务导入前的安装摘要/171 模块版本戳检查，每次 apply 再检查磁盘版本。
+保留模块 URL，避免查询串改变错误类与共享服务身份；静态导入链接期错误无法由旧入口内部捕获。
+若宿主完全沿用旧入口 namespace，新引导没有执行机会，仍须完全退出重开。
+加载边界在 locale 未就绪时直接提供固定双语提示，不输出原 SyntaxError/cause，不调用业务 apply 或迁移。
+Schemastery 自身解析错误仍在此动态边界之外。
+
+真实 tgz 的 6 个 Node 子进程用例和 104 项相关回归通过；原生 Node 不是完整 CLI Host。
+同 PID 升级夹具使用 CLI 安装加固定规范路径部署，明确区别于原生 UI/HMR；实际 Host 因 listen EPERM 未到 ready。
+新 bots-list 的 8 张截图及生命周期 20 循环同样 FAIL(environment)，新截图 0。
+
+
 ## DP B8 / B8-rework：离线层与发布夹具（2026-10-28）
 
 完整命令、包 hash 与逐项验收见 [B8](deepening/B8.md)、[M1–M5 验收](acceptance/deepening.md)。

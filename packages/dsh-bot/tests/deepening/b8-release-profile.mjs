@@ -53,7 +53,7 @@ export function apply(ctx, config) {
         await save({ status: 'PASS', bot: bots[0], memories, requests: 0 }); return;
       }
       const { VERSION } = await import(pathToFileURL(resolve(config.installed, 'lib/shared/version.js')).href);
-      assert.equal(VERSION, '0.4.0');
+      assert.equal(VERSION, '0.4.1');
       assert.deepEqual(bots[0].tools.deny, ['bot_memory_forget']);
       if (config.phase !== 'fresh') {
         const legacy = JSON.parse(await readFile(resolve(config.outputDir, 'receipts/legacy.json'), 'utf8'));
