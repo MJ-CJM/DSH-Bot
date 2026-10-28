@@ -17,7 +17,8 @@ export async function botsListCase({ page, bots, fixture, id, width, t, shot }) 
     await detail.waitFor();
     assert.ok(await bots.isVisible(), 'Single click must retain Bots page');
     assert.equal(calls.length, 0, 'Single click must not request a conversation');
-    if (width === 1360) assert.equal(await selectedSession(fixture.sessions[id]).count(), 1, 'Single click must not navigate');
+    // On the Bots page no sidebar session is selected; navigating would select the target's main session.
+    assert.equal(await selectedSession(fixture.sessions[target]).count(), 0, 'Single click must not navigate');
     await shot('bots-list');
     for (const action of ['button', 'Enter', 'Space', 'double']) {
       const before = calls.length;
