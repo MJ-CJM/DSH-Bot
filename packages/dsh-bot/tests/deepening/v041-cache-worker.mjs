@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { Context } from '@deepseek-ai/cordis';
 const [root, dir, mode] = process.argv.slice(2);
 const installed = resolve(dir, 'package');
 const artifact = version => resolve(root, `dist/dsh-bot-${version}.tgz`);
@@ -57,5 +58,16 @@ else {
     assert.equal(error.cause, undefined); return true;
   });
   assert.equal(touched, 0);
+  if (mode !== 'replaced-entry') {
+    const ctx = new Context(); let fork;
+    try {
+      await assert.rejects(async () => { fork = ctx.plugin(plugin, {}); await fork.await(); }, error => {
+        assert.match(error.message, /请完全退出并重新打开 DSH/);
+        assert.match(error.message, /Fully quit and reopen DSH/);
+        assert.doesNotMatch(String(error), /SyntaxError|memoryFields|missing/);
+        assert.equal(error.cause, undefined); return true;
+      });
+    } finally { await fork?.dispose(); await ctx.fiber.dispose(); }
+  }
 }
 console.log(JSON.stringify({ status: 'PASS', mode, nativeEsm: true, fullHost: false, pid: process.pid }));

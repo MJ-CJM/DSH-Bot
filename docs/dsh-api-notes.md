@@ -1,5 +1,15 @@
 # DSH API 核实记录
 
+## V041-rework：真实安装目录与激活边界（2026-10-28）
+
+完整证据见 [V041 返工](deepening/V041.md#v041-rework2026-10-28基于-da0371f)。未新增依赖、peer 或 Remote。
+夹具直接通过 CLI pnpm 安装同 profile node_modules，移除 tar 部署副本；通过公开 `ctx.loader.import`
+加载新引导，再用 `ctx.plugin`/`fork.await` 验证 Config 激活拒绝。rc.2 `vendor/cordis/src/registry.ts:178–185`
+明确配置/启动错误会拒绝；`fiber.ts:50–61` 使用 Config 的 Standard Schema 验证。真实 npm Cordis 的 Node 回归通过。
+公开 Host `webServer` 只用于 probe 的 inject 就绪依赖；运行 Host 必须先成功监听，避免启动失败期间执行探针。
+新增同 profile 新 PID 的冷启动迁移/数据检查。完整 Host 仍 listen EPERM，没有 hot-ready/hot-result/cold-result；
+Node Config 拒绝结果不替代 Host 或原生 UI/HMR 验收，未修改 HMR 或使用内部缓存 API。
+
 ## V041：引导入口与模块缓存（2026-10-28）
 
 完整变更和分层实测见 [V041](deepening/V041.md)。未新增 DSH API、依赖、peer 或 Remote。

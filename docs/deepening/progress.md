@@ -589,3 +589,20 @@ TLC两正配置通过/负控制出反例；旧B7r check 984PASS+3expected fail�
 最终收据：b8-release-upgrade-1793179730598、b8-lifecycle-1793179307560、
 b8-screens/summary-1793179369367.json、b4-browser-bots-list-rework-1793179488824。
 编排方用同一 hash 沙箱外重跑 Host/E/check；保留运行验收与旧入口缓存边界，不据构建/DOM 宣称完整通过。
+
+## V041-rework（2026-10-28）
+
+基线 da0371f，执行 tasks/DP/V041-rework.md，完整命令/逐项结果见 [V041 返工](V041.md#v041-rework2026-10-28基于-da0371f)。
+移除 canonical-deployment 解包/复制，直接 CLI pnpm 安装同 profile 的 node_modules/dsh-bot；
+保留 Host PID 和业务模块 URL，强制安装 realpath 一致。双语拒绝、无 SyntaxError/数据写入断言保留并加强，
+增加公开 Cordis Config 激活检查，以及同 profile 新 PID 的完整冷启动/数据/v2 迁移断言。
+probe 显式等待 webServer；HMR 仍关闭，新入口查询串仍属夹具，不宣称原生 UI/HMR 通过。
+
+- PASS：原生 Node 六用例（含四个真实 Cordis Config 拒绝回归）、strict、lint、语法/尺寸/diff。
+- PASS(SOURCE/install)：旧包真实 profile 安装，六发布 profile 安装和 527 文件审计；tgz SHA256 未变。
+- FAIL(environment)：同 PID 热安装/拒绝/数据摘要和新 PID 冷激活均未执行；最终 required webserver listen EPERM。
+- FAIL(environment，check)：1009 PASS、6 监听相关 FAIL、3 expected fail；未改超时或跳过。
+
+最终收据 `.dsh-dev/deepening/b8-release-upgrade-1793180428640/summary.json`；
+没有 hot-ready/hot-result/cold-result，编排方需沙箱外重跑 release-upgrade。任务单提供的沙箱外
+check 1015+3xf、bots-list 8/8 和 lifecycle PASS 与本轮证据分列，未重新标为本轮实测。
