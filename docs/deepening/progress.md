@@ -470,3 +470,20 @@ B6b 最终收据：`b6b-check-release-review.log`，101文件/965项：956 PASS�
 独立 strict/lint exit0；51修改代码文件尺寸全部通过，中英701 UI/17 tools键一致。
 新增通知审批期间撤销的实际 port.send 前复检，18项相关回归通过；卸载取消相关71项通过。
 任务0完整文件、I41–I46真实H/E、R5合法自动共享、I47完整原生运输矩阵仍按报告标FAIL，未宣称B6b全部完成。
+
+## B6b-rework（2026-10-27）
+
+基于cc4e83c执行本次返工，完整根因、文件、命令和逐项验收见 [B6b返工小节](B6b.md#b6b-rework2026-10-27)。
+只改测试夹具/导航与文档，无产品、依赖或版本变动；保留pnpm-workspace.yaml等原有工作区改动。
+
+- PASS(SOURCE+UNIT)：正式Host提供四个同名服务，profile已link并加载bundle；原pending为暂态诊断。
+  真正的1!==0来自先注册自身adapter再断言零provider。修正顺序，保留隔离检查，增加阶段与服务收据。
+  真实npm rc.2 LlmRuntime验证注册/注销及已有provider拒绝。
+- PASS(HTML+DOM)：原浏览器停在默认私有页，没有能力面板。E先切User shared，reload后重开完整导航再核对保存策略。
+  中英正式Client组件导航/重建回归通过；不能替代真实浏览器、Host持久化或亮暗截图。
+- 定向3文件7 PASS；最终完整check为960 PASS、6环境失败、3 expected fail，exit1；独立strict/lint exit0。
+  初轮2个新DOM测试错误假设切页会卸载组件，修正并保留失败历史。
+- FAIL(environment)：七组rc.3 H全部在webserver listen EPERM失败；E在host-setup同样受阻，8项未执行、0PNG。
+- stability 5×2含P34沿用编排方本任务给出的沙箱外PASS，本次未重跑；R5及I47未完成门禁保持原判定。
+
+编排方继续用原命令沙箱外重跑7组H、E(auto-share)及check；先检查新增provider-isolation/services收据，再核对运输与8张截图。

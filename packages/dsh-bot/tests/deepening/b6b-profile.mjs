@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { prepareAutomaticShare } from '../../lib/host/memory/auto-share.js';
 import { hostPolicyPairs } from './b6b-host-policy.mjs';
-import { B6bAdapter } from './b6b-adapter.mjs';
+import { B6bAdapter, registerIsolatedAdapter } from './b6b-adapter.mjs';
 import { bounded } from './b6a-support.mjs';
 export const name = 'dp-b6b-probe';
 export const inject = ['loader', 'llm', 'agents', 'dshBots', 'sessionController', 'dshBotMessaging',
@@ -20,7 +20,7 @@ export function apply(ctx, config) {
     const until = async check => {
       while (true) { signal.throwIfAborted(); const value = await check(); if (value) return value; await delay(20, undefined, { signal }); }
     };
-    const releases = [ctx.llm.registerAdapter(['dp-b6b'], adapter)];
+    const releases = [];
     releases.push(ctx.on('approval/request', async request => {
       if (request.toolName === 'bot_message' || request.toolName === 'bot_delegate' ||
         request.toolName.startsWith('dsh_bot_export_')) return 'allowed-once';
@@ -28,13 +28,20 @@ export function apply(ctx, config) {
     }, { prepend: true }));
     const timer = setTimeout(() => lifetime.abort(new Error(`B6b deadline: ${phase}`)), 60000);
     const run = bounded(async () => {
-      assert.equal(ctx.llm.listProviders().length, 0);
-      await mark('loader-ready'); await ctx.loader.await(); await ctx.dshBots.waitUntilReady();
+      await mark('loader-ready'); await ctx.loader.await();
+      await mark('provider-isolation');
+      releases.push(registerIsolatedAdapter(ctx.llm, adapter));
+      await save('services', { provider: 'dsh-bot', services: inject.filter(name => name.startsWith('dshBot')),
+        registeredProviders: ctx.llm.listProviders(), synthetic: true });
+      await mark('registry-ready'); await ctx.dshBots.waitUntilReady();
+      await mark('main-sessions-ready');
       await until(() => ctx.dshBots.mainSessions);
       const agents = {}, keys = {};
       for (const id of (config.suite === 'message-egress' ? ['alpha', 'beta', 'gamma'] : ['alpha', 'beta'])) {
+        await mark(`create-${id}`);
         const b = await ctx.dshBots.create({ id, name: id, template: 'minimal',
           model: { provider: 'dp-b6b', model: 'fixture' }, persona: { prefix: 'Synthetic B6b fixture.' } });
+        await mark(`open-${id}`);
         const main = await ctx.dshBots.openConversation(id), resolved = await ctx.sessionController.resolveAgent(main.sessionId);
         assert.ok(resolved.agent); agents[id] = resolved.agent; keys[id] = { botId: id, botCreatedAt: b.createdAt };
       }

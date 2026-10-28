@@ -226,3 +226,111 @@ DSH_HOME="$PWD/.dsh-dev" scripts/pnpm check
 - `scripts/deepening/host.mjs`
 - `scripts/deepening/stability.mjs`
 - `scripts/deepening/validate-cases.mjs`
+
+## B6b-rework（2026-10-27）
+
+基于 `cc4e83c44fda8ad4349485abff5500a8f2352c3d`，仅修本次任务指定的 H 启动断言与 E 导航。
+没有产品 Host/Client 实现、依赖、lockfile 或版本变更；保留原有 pnpm-workspace.yaml、.codex/ 和任务单。
+未嵌套 Codex、commit/push、修改参考树/桌面/全局 profile，也未调用真实模型。
+
+### 1. H：服务提供方与真正失败点
+
+四个服务均由正式 `src/host/index.ts` 提供，名称与探针 inject 一致：
+
+| 服务 | 正式提供位置 | 启用条件 |
+| --- | --- | --- |
+| dshBotNotifications | index.ts:99–100 | registry 初始化、integration stores 打开及 recover 完成 |
+| dshBotMessaging | index.ts:109–114 | messagingEnabled=true；探针 profile 已显式设置 |
+| dshBotReferenceMemory | index.ts:158–161 | 正式 reference memory 领域打开成功 |
+| dshBotGroups | index.ts:185–192 | 正式群领域打开与 groups.start 完成 |
+
+原失败目录 `b6b-message-egress-1793165056643/home/profiles/b6b-message-egress/package.json`
+包含 `dsh-bot` 的本地 link 和 profile bundles 中的 `dsh-bot`。安装日志也显示正式 0.3.2 link 成功。
+`cordis.yml` 本身为 `[]` 是原生 patch 组合方式；bundle 的 `cordis.patch.yml` 插入正式 Host，未漏装提供方。
+
+registry 在 `loader.await()` 后才初始化，以上服务又在 registry 就绪后异步提供。
+原日志中的 pending 是启动时的暂态诊断；同次运行已经进入探针 apply 的 effect，才会执行原第31行断言。
+不能把这条较早的 warning 当成四个名称错误或服务永久缺失。
+
+确定的失败是探针先执行 `registerAdapter(['dp-b6b'], adapter)`，然后断言 `listProviders().length===0`。
+公开 LlmRuntime 会把合成 adapter 自身也列入 provider，所以实际为1。
+只读 rc.2 `packages/llm/llm/src/index.ts:401–417,483–485` 核对了立即注册与枚举语义；
+真实 npm rc.2 LlmRuntime UNIT 重现了这个计数，并验证修复后的注销及已有其他 provider 时仍拒绝。
+
+修复为 loader settlement 后、注册自身之前验证零 provider。保留原生四服务 inject，继续使用正式插件实例；
+没有删除隔离断言，也没有用 double 补齐缺失服务。增加 provider-isolation、registry-ready、main-sessions-ready、
+create/open 每个 Bot 的阶段，以及成功激活后写出的 `receipts/services.json`。
+本沙箱的新 Host 在 webserver 启动时即失败，未生成这份探针内部收据，仍由父 runner 补终态失败收据。
+
+### 2. E：默认私有页没有挂载自动共享面板
+
+原取证 `b4-browser-auto-share-rework-1793165077699/en-light-1360-failure.html` 显示
+Management → Memory & transfer → 当前 Bot 私有页及目标正文，没有 Automatic sharing 的 aside。
+`MemoryPanel` 默认 scope=legacy；只有点击受管 scope 后才挂载 SharedMemoryPanel 和 AutoShareStatus。
+这不是等待时间不足，故不增加20秒超时。
+
+E 先核对准确 Bot 的私有 canary，再点击 User shared，随后等待能力/阻断文案和策略按钮。
+reload 会重建组件局部 tab/scope 状态，因此刷新后重新打开原生会话、Bots、Management、Memory 和 User shared，
+再验证此前禁用策略的按钮状态。导航使用宽屏完成，随后恢复本次390/1360宽度做截图与溢出检查。
+保留原有亮暗颜色阈值、8组截图要求和失败页面取证；新增 open-memory 阶段诊断。
+
+新增中英 DOM 回归通过正式 Client slot/Management/MemoryPanel 进入页面，验证默认未挂载、切页挂载，
+以及重建整个 Client 后从保存策略的 Remote double 读回禁用状态。DOM 不计为真实 reload、Host 持久化或视觉证据。
+初轮回归错误地假设切换 Management 子页会卸载内存组件；实际组件保留，改为显式重建 Client 后通过。
+
+### 命令与实际结果
+
+所有日志路径以下均相对 `.dsh-dev/`。DSH 命令均从根设置 `DSH_HOME="$PWD/.dsh-dev"`，
+子进程沿用既有 runner 的本次独立 home/storage/sessions/credentials 路径；真实模型、系统通知、IM 发送均0。
+
+| 命令/批次 | exit | 结果与收据 |
+| --- | --- | --- |
+| 规则/API/PLAN/设计/进度/任务、原始失败、profile 安装与只读参考 tag 检查 | 0 | 参考 HEAD/tag 均为687f282e；服务名称与正式提供方一致 |
+| 定向 UNIT 首轮 | 1 | b6b-rework-unit-first.log：5 PASS/2 FAIL；上述 DOM 卸载假设错误，保留失败历史 |
+| 定向 UNIT 最终 | 0 | b6b-rework-unit-final.log：3文件/7 PASS，真实 LlmRuntime 2项、导航中英2项、既有UI 3项 |
+| 完整 check 首轮 | 1 | b6b-rework-check.log：958 PASS/8 FAIL/3 expected fail；包含尚未修正的2个新DOM测试 |
+| `DSH_HOME="$PWD/.dsh-dev" scripts/pnpm check` 最终 | 1 | b6b-rework-check-final.log：103文件/969项，960 PASS/6 FAIL(environment)/3 expected fail |
+| 独立 `scripts/pnpm -F dsh-bot typecheck` | 0 | b6b-rework-typecheck.log |
+| 独立 `scripts/pnpm lint` | 0 | b6b-rework-lint.log：436文件，仅原有 quota-process info |
+| 修改代码定向 `scripts/pnpm exec biome lint` | 0 | b6b-rework-lint-targeted.log：5文件，无问题 |
+| H 七组，入口和参数同本报告上文 | 全部1 | b6b-rework-host-*.log；version/initialize/install全部0，rc.3 webserver listen EPERM |
+| E(auto-share)，入口和参数同上文 | 1 | b6b-rework-browser.log；host-setup listen EPERM，8组未执行、0 PNG |
+| `node --check` 三个修改mjs、`git diff --check`、尺寸检查 | 0 | b6b-rework-size.json：5代码文件均≤400行/≤160字符 |
+
+最终 check 的6项环境失败为 integration-connectors 的4项、memory-loop 的1项 listen EPERM，
+以及 network-guard 的1项等待超时。后者的 listen Promise 没有 error/reject 分支，结合源码及同环境监听失败定位为环境限制；
+该项日志本身仅报告5000ms超时，不将它描述为已完成网络拦截验证。
+check 在 test 处退出，typecheck/lint 已独立执行；没有跳过失败用例或放宽超时。
+定向 UNIT 命令使用 `scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts`
+加 `tests/deepening/{b6b-fixtures.spec.ts,auto-share-navigation.spec.tsx,auto-share-ui.spec.tsx}`。
+
+H 汇总为 `b6b-rework-host-summary.json`；7个目录均保留 manifest、commands、host.log、summary 与 terminal result。
+例如 `deepening/b6b-message-egress-1793165350678/`，其他6个由汇总中的 dir 精确定位。
+E 收据为 `deepening/b4-browser-auto-share-rework-1793165419754/summary.json`。
+本轮 CLI 为0.2.1-rc.3，未取得精确rc.2 Host或修复后的真实轮次证据。
+
+### 本次改动文件
+
+- `packages/dsh-bot/tests/deepening/b6b-adapter.mjs`
+- `packages/dsh-bot/tests/deepening/b6b-profile.mjs`
+- `packages/dsh-bot/tests/deepening/b6b-fixtures.spec.ts`（新增）
+- `packages/dsh-bot/tests/deepening/auto-share-navigation.spec.tsx`（新增）
+- `scripts/deepening/e2e.mjs`
+- `docs/deepening/B6b.md`
+- `docs/deepening/progress.md`
+- `docs/dsh-api-notes.md`
+
+### 逐项验收与遗留
+
+| 返工项 | 判定 | 证据与下一步 |
+| --- | --- | --- |
+| 1 提供方/名称/profile 与计数根因 | PASS(SOURCE+UNIT) | 正式插件四服务与inject匹配；注册自身前检查隔离；真实rc.3七组H仍FAIL(environment) |
+| 2 E定位与导航修复 | PASS(HTML取证+DOM) | 默认私有页未挂载；切到User shared、刷新后重开；真实8组E仍FAIL(environment) |
+| 3 stability 5×2及P34 | PASS(编排方本任务提供的沙箱外结果) | 本次未重跑、不冒充本地结果，未修改这些测试 |
+| C 完整check | FAIL(environment) | 960 PASS/6环境失败/3 expected fail；独立strict/lint PASS |
+| I46 合法自动共享 | FAIL(capability) | R5不变，effectiveAutoShare=false |
+| I47 完整原生运输矩阵 | FAIL(NOT_RUN，原有未完成项) | 本次仅返工明确失败点，没有扩大为完成全部B6b |
+
+编排方在允许loopback/Chromium的环境重跑7组H及E(auto-share)，继续使用原有命令。
+先看 provider-isolation 和 services 收据是否通过，再检查每个原生出口结果；E要求完整8张截图与reload策略读回。
+本次没有把真实服务或浏览器替换成double，也没有据UNIT关闭原有运行门禁。

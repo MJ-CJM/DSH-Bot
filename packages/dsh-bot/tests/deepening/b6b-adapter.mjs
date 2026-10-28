@@ -1,4 +1,11 @@
 import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm';
+import assert from 'node:assert/strict';
+
+/** Check isolation before adding our own route, which listProviders() also counts. */
+export function registerIsolatedAdapter(llm, adapter) {
+  assert.deepEqual(llm.listProviders(), [], 'B6b requires zero pre-existing provider routes');
+  return llm.registerAdapter(['dp-b6b'], adapter);
+}
 export class B6bAdapter extends LlmAdapter {
   plans = new Map(); requests = 0;
   async listModels(provider) { return [{ provider, id: 'fixture', name: 'Synthetic B6b (no provider)' }]; }

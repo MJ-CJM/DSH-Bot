@@ -62,11 +62,18 @@ try {
         } catch (error) { saved.captureError = redact(String(error)); }
       });
       const bots = page.locator('[data-bots-page]');
-      await bots.getByRole('tab', { name: t['manage.title'], exact: true }).and(page.locator(':visible:enabled')).first().click();
-      await bots.getByRole('tab', { name: t['manage.memoryTools'], exact: true }).click();
-      for (const select of await bots.locator('select:visible').all())
-        if (await select.locator(`option[value="${id}"]`).count()) await select.selectOption(id);
-      await bots.getByText(`SYNTHETIC_BROWSER_TARGET_${id}`, { exact: true }).waitFor();
+      const openMemory = async (shared = false) => {
+        diagnostics.push({ id, step: 'open-memory', shared });
+        await bots.getByRole('tab', { name: t['manage.title'], exact: true }).and(page.locator(':visible:enabled')).first().click();
+        await bots.getByRole('tab', { name: t['manage.memoryTools'], exact: true }).click();
+        for (const select of await bots.locator('select:visible').all())
+          if (await select.locator(`option[value="${id}"]`).count()) await select.selectOption(id);
+        await bots.getByText(`SYNTHETIC_BROWSER_TARGET_${id}`, { exact: true }).waitFor();
+        // Management starts on legacy private entries. The capability panel mounts only in managed scopes.
+        if (shared) await bots.getByRole('tab', { name: t['shared.scope.shared'], exact: true })
+          .and(page.locator(':visible:enabled')).click();
+      };
+      await openMemory(args[1] === 'auto-share');
       await page.setViewportSize({ width, height: 1000 });
       const shot = async state => {
         const element = state === 'auto-share' ? bots.getByLabel(t['autoShare.title'])
@@ -118,6 +125,14 @@ try {
         await panel.getByRole('button', { name: t['autoShare.disable'], exact: true }).click();
         await panel.getByRole('button', { name: t['autoShare.enable'], exact: true }).waitFor();
         await page.reload({ waitUntil: 'domcontentloaded' });
+        // Memory scope/Management tabs are component state, so explicitly reopen them after reload.
+        await dismissFirstRunOverlays(page, () => {}, 'b4-reload');
+        await page.setViewportSize({ width: 1360, height: 1000 });
+        await openSidebarSession(page, fixture.sessions[id]);
+        await page.locator(`[data-conversation-content][data-conversation-session="${fixture.sessions[id]}"]:visible`).waitFor();
+        await openBotsPanel(page, t['bots.title']);
+        await openMemory(true);
+        await page.setViewportSize({ width, height: 1000 });
         await panel.getByRole('button', { name: t['autoShare.enable'], exact: true }).waitFor();
         await shot('auto-share');
         await panel.getByRole('button', { name: t['autoShare.enable'], exact: true }).click();

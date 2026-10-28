@@ -1,5 +1,16 @@
 # DSH API 核实记录
 
+## DP B6b-rework：adapter计数与异步服务（2026-10-27）
+
+完整根因、文件与收据见 [B6b返工](deepening/B6b.md#b6b-rework2026-10-27)。无新增依赖、API或runtime peer。
+只读rc.2 `packages/llm/llm/src/index.ts:401–417,483–485`：registerAdapter立即注册路由，
+listProviders也包含测试adapter自身。真实npm rc.2 UNIT验证零路由检查必须在注册之前；已有其他路由仍拒绝，注销后清空。
+这修复原rc.3探针的1!==0，不冒充本次真实Host轮次通过。
+
+四个受管服务均由正式Host index.ts的ctx.provide提供，与探针inject一致；原profile已link并加载dsh-bot bundle。
+registry等待loader settlement后初始化，异步服务发布前的pending警告不等于永久缺失；原探针后来已执行到自身断言。
+本次七组rc.3 H仍在webserver listen EPERM失败；E(auto-share)也在host-setup失败，运行门禁未关闭。
+
 ## DP B6b：受管出口与 caller delivery（2026-10-27）
 
 完整实现、收据与未关闭门禁见 [B6b](deepening/B6b.md)。无新增依赖、runtime peer 或 Remote。
