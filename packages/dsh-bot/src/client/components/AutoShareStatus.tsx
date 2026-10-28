@@ -20,6 +20,12 @@ export function AutoShareStatus({ binding, t }: { binding: SharedMemoryBinding; 
   return <aside className={styles.notice} aria-label={t('autoShare.title')}>
     <p>{t('autoShare.unavailable')}</p>
     <p>{t('autoShare.egressBlocked')}</p>
+    <p>{t('shadow.offline')}</p>
+    {status?.shadow && <p>{t('shadow.status', {
+      shadow: t(status.shadow.shadowEnabled ? 'shadow.reportOnly' : 'shadow.off'),
+      organize: t(status.shadow.offlineOrganizeEnabled ? 'shadow.reportOnly' : 'shadow.off'),
+      opportunities: status.shadow.opportunities, candidates: status.shadow.candidates,
+    })}</p>}
     {status && <>
       {status.domainUsed !== undefined && <p>{t('autoShare.usage', { used: status.domainUsed })}</p>}
       <p>{t('autoShare.quotas', { bot: status.botDaily, domain: status.domainDaily, timeZone: status.timeZone })}</p>

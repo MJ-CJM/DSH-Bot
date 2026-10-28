@@ -1,5 +1,26 @@
 # DSH API 核实记录
 
+## DP B8 / B8-rework：离线层与发布夹具（2026-10-28）
+
+完整命令、包 hash 与逐项验收见 [B8](deepening/B8.md)、[M1–M5 验收](acceptance/deepening.md)。
+没有新增 DSH runtime 依赖、peer 或 Remote 方法；保留 B8 原有版本与锁定依赖，未改 workspace/lockfile。
+
+- 公开 `AgentPresetRegistry.list(): Promise<AgentPreset[]>`，参考 rc.2
+  `packages/preset/agent-preset-registry/src/index.ts:177–197`；只有 Remote roster 返回 `{presets}`。
+  rc.3 旧生命周期 probe 的 `list().map` 实跑报 TypeError；两处均改 await，新的完整 Host 循环因 listen EPERM 未运行。
+- Fence 拒绝来自公开 storageDomain 的 schema 验证：rc.2
+  `packages/storage/storage-domain/src/index.ts:197–208`，invalid-record 带 table/key。
+  只读实际 0.3.2 tgz 安装产物确认其 registry 将原因转换为字符串，不保留 cause。
+  发布 probe 对实际 bot/unavailable + 精确领域/表/Fence 键/schema 错误断言并存 receipt；父进程另核对 0 adapter 请求。
+  不再要求 stdout 打印 Fence 键，也不把任意启动拒绝当 Fence 通过。新 Host 验证仍 FAIL(environment)。
+- shadow 仅类型引用公开 `ScheduleDeliveryRecord.scheduledAt`，沿用原生投递身份与既有通知策略规则。
+  合成 due 不调用 schedule.create/runNow，不创建 Agent/通知/模型请求；两开关默认 OFF，整理只有状态脚手架。
+  状态由公开 storageDomain/KvTable 与 ctx.effect 持有，借既有 autoShareStatus codec 展示，不新增运行入口。
+- eval 的 mock/replay 与整数合成成本账本不使用 provider/session API，不读真实日志/凭据；真实模式提前拒绝。
+  每模式固定 64 条、含失败与 unknown 预留；100 合成机会结果只证明策略机制，不是实际 proactive/模型质量。
+- UI qualifiers 仍经原有 strict record codec，键/值行只改变 Client 草稿表示；双语配置偏好与 effectiveAutoShare=false 分开呈现。
+  新包真实主题/390px 面板几何检查未运行，不把 DOM 或 CSS 静态检查称作浏览器通过。
+
 ## DP B7：崩溃探针、检索多样性与未关闭门禁（2026-10-27）
 
 完整命令、逐项判定及收据见 [B7](deepening/B7.md)。没有新增产品依赖、runtime peer 或 Remote。

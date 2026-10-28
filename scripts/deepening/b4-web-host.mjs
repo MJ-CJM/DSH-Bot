@@ -4,9 +4,10 @@ import { createServer } from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { auditArtifact, auditInstalled } from '../p34-artifact.mjs';
 
 /** Real DSH Web profile and shipped Client; all data and credentials paths are isolated under .dsh-dev. */
-export async function webHost(dir, suite) {
+export async function webHost(dir, suite, artifact) {
   const root = process.cwd(), commands = [], children = new Set(), profile = 'b4-browser';
   const env = { PATH: process.env.PATH, USER: 'synthetic', SHELL: process.env.SHELL,
     HOME: resolve(dir, 'environment-home'), DSH_HOME: resolve(dir, 'home'), TMPDIR: resolve(dir, 'tmp'),
@@ -57,7 +58,8 @@ export async function webHost(dir, suite) {
   };
   try {
     await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-    await command(['plugin', '--profile', profile, 'add', resolve(root, 'packages/dsh-bot')], 'install');
+    await command(['plugin', '--profile', profile, 'add', artifact ?? resolve(root, 'packages/dsh-bot')], 'install');
+    if (artifact) await auditInstalled(env.DSH_HOME, profile, await auditArtifact(root, artifact, dir));
     const patch = [
       '- id: storage-json', '  config:', `    root: ${JSON.stringify(resolve(dir, 'storage'))}`,
       '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(dir, 'sessions'))}`,

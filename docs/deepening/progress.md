@@ -535,3 +535,33 @@ R5、完整P0、业务去重/真实schedule强杀、精确rc.2 CLI和真实模�
   独立strict/lint、代码尺寸和diff检查PASS；依赖/lock未变。
 
 编排方重跑两个F、H(redteam)、扩展F(main-schedule)与C；R5、自动业务去重、完整P0等门禁保留。
+
+## B8 / B8-rework（2026-10-28）
+
+基线31b4315，继承未提交B8；完整文件、命令、历史结果与限制见 [B8报告](B8.md)，
+M1–M5 每项目标/实测/判定/证据见 [深化验收](../acceptance/deepening.md)。整体仍FAIL，未关闭P0与发布运行门禁。
+保留所有原有修改/未跟踪文件；本次未写pnpm-workspace.yaml或lockfile，无commit/push/嵌套Codex/真实数据或模型访问。
+
+- PASS(SOURCE)：Fence从真实旧registry拒绝中取receipt，精确匹配bot/unavailable及dsh_bot/memories/Fence键的schema错误，
+  再核对rejected与adapterRequests=0；不再依赖stdout。旧包不保留cause，未假设可读DomainError链。
+- PASS(SOURCE)：生命周期baseline及卸载后均await公开异步list；保留20装卸和资源/旧调用断言。
+- PASS(DOM/构建)：限定条件改名称/值行，增删、非空/长度/重名校验、稳定行身份；中英草稿/CAS回归通过。
+  自动共享按钮明确显示开/关偏好与当前不可用；R5实际能力仍false。
+- FAIL(environment，视觉)：记忆面板换行/宽度约束已修，E新增内部容器与控件几何检查；新包0图，旧56张不充当新图。
+- PASS(I62–I65离线)：mock/replay各64项，真实调用和I/O为0；成本64/64预留、unknown保留；100合成影子机会通过。
+  真实模型最小集、真实影子质量和整理执行器均FAIL(NOT_RUN)，两开关默认OFF。
+- PASS(I67)：frozen offline install/pack，526文件审计与隔离安装通过。新tgz SHA256：
+  `361481e8a623a5473bb897553f9508346dcfa39014c7506ddda788d93b1498b1`。
+- FAIL(environment，I66/I68/I69)：六发布profile及lifecycle安装成功；loopback listen EPERM，Host阶段和56截图项未运行。
+  收据release-upgrade-1793173812601、lifecycle-1793173813768；新S summary-1793173937028.json。
+- FAIL(environment，C)：最终114文件/1008项，999PASS、6环境失败、3expected fail；独立strict/lint/尺寸与locale检查PASS。
+  `.dsh-dev/deepening/b8-rework/`保存命令与失败历史；未跳过失败或放宽timeout。
+
+编排方任务单提供的沙箱外历史结果已与本地收据分列：B7r九组强杀PASS；native redteam 60攻击/54合法PASS，另6自动合法capability FAIL；
+TLC两正配置通过/负控制出反例；旧B7r check 984PASS+3expected fail。
+性能最终写p95=14.966ms/30进程冷恢复1.063s/context重算20.885ms；检索B5s held-out=0.7333，B7r新干扰盲测=0.3333。
+旧B8 hash `74ddf9565ce68c84811b587cf60d7bf2dfa0d55721c954ce476c03bc3f79c4cd` 发布13/14、生命周期FAIL、截图56/56，
+均不转记为新hash通过。完整来源路径在B8报告；精确rc.2 Host、provider编码与完整P0仍开放。
+性质实际20–50步未覆盖设计20–200；TLC有限状态；不宣称自动提醒任意业务exactly-once或真实模型回答质量。
+
+后续由编排方沙箱外重跑同一新包H(release-upgrade/lifecycle)、E(release)、S与C，检查实际拒绝原因、20循环及390px新截图。

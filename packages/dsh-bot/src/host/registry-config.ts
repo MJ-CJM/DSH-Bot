@@ -1,9 +1,10 @@
 import { Config as RetrievalConfig } from './memory/retrieval-config.js';
 import { messagingConfigFields, validateMessagingConfig, type MessagingConfig } from './messaging/config.js';
 import Schema from '@deepseek-ai/schemastery';
+import { shadowConfigFields, type ShadowConfig } from './shadow/config.js';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
 
-export interface Config extends MessagingConfig {
+export interface Config extends MessagingConfig, ShadowConfig {
   memoryGrantTtlMs: number;
   autoShareEnabled: boolean;
   autoShareBotDaily: number;
@@ -47,6 +48,7 @@ const activityLimit = (name: string, fallback: number) =>
   }).default(fallback);
 const baseConfig = Schema.object({
   ...messagingConfigFields,
+  ...shadowConfigFields,
   memoryGrantTtlMs: Schema.number().min(1000).max(3600000).step(1).default(300000),
   autoShareEnabled: Schema.boolean().default(true),
   autoShareBotDaily: Schema.number().min(0).max(10000).step(1).default(5),

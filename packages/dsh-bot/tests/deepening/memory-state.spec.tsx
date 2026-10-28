@@ -98,4 +98,33 @@ describe('I29 real polling catalog, volatile drafts and stable React rows (DOM e
       expect(f.catalog.getSnapshot().revision).toBe(before.revision);
     } finally { await f.close(); }
   });
+  it.each(['en', 'zh'] as const)('edits plain qualifier rows, rejects incomplete/duplicate keys and preserves the CAS draft (%s)', async lang => {
+    const f = await setup(lang);
+    try {
+      await click(button(f.container, f.dict['memory.edit'] ?? ''));
+      await click(button(f.container, f.dict['shared.qualifier.add'] ?? ''));
+      const rows = () => [...f.container.querySelectorAll('[data-qualifier-row]')];
+      const submit = async () => { await act(async () => {
+        f.container.querySelector(`form[aria-label="${f.dict['shared.editor']}"]`)
+          ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }); };
+      await submit(); expect(f.revise).not.toHaveBeenCalled();
+      expect(f.container.textContent).toContain(f.dict['shared.qualifier.invalid']);
+      const inputs = (index: number) => rows()[index]?.querySelectorAll('input');
+      await fill(inputs(0)?.[0] as HTMLInputElement, 'context');
+      await fill(inputs(0)?.[1] as HTMLInputElement, 'Work account');
+      await submit(); expect(f.revise).toHaveBeenLastCalledWith(expect.objectContaining({
+        patch: expect.objectContaining({ qualifiers: { context: 'Work account' } }),
+      }));
+      await click(button(f.container, f.dict['shared.qualifier.add'] ?? ''));
+      await fill(inputs(1)?.[0] as HTMLInputElement, ' context ');
+      await fill(inputs(1)?.[1] as HTMLInputElement, 'Another value');
+      await submit(); expect(f.revise).toHaveBeenCalledTimes(1);
+      await act(async () => { await f.catalog.refresh(); });
+      expect(inputs(0)?.[1]?.value).toBe('Work account');
+      const remove = rows()[1]?.querySelector('button');
+      if (!remove) throw new Error('Missing qualifier removal'); await click(remove);
+      await submit(); expect(f.revise).toHaveBeenCalledTimes(2);
+    } finally { await f.close(); }
+  });
 });

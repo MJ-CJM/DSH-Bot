@@ -73,15 +73,17 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
   async autoShareStatus() {
     return this.enqueue(() => {
       if (!this.memoryKernel) throw new Error('Memory kernel unavailable');
-      return new AutoShareQuota(this.memoryKernel).status();
+      return { ...new AutoShareQuota(this.memoryKernel).status(), shadow: this.shadow?.status() };
     });
   }
+  shadow?: import('./shadow/planner.js').ShadowPlanner;
   async setAutoShare(input: import('zod').z.input<typeof autoShareToggleSchema>) {
     const f = autoShareToggleSchema.parse(input);
     return this.enqueue(async () => {
       if (!this.memoryKernel) throw new Error('Memory kernel unavailable');
       const quota = new AutoShareQuota(this.memoryKernel), { revision: _revision, ...policy } = quota.policy;
-      await quota.configure({ ...policy, enabled: f.enabled }, f.expectedRevision); this.invalidate(); return quota.status();
+      await quota.configure({ ...policy, enabled: f.enabled }, f.expectedRevision); this.invalidate();
+      return { ...quota.status(), shadow: this.shadow?.status() };
     });
   }
 

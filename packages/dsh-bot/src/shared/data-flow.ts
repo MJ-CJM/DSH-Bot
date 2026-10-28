@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { shadowStatusSchema } from './shadow.js';
 import { botIdSchema } from './ids.js';
 import { botKeySchema } from './identity.js';
 
@@ -41,6 +42,7 @@ export const quotaChargeSchema = z.strictObject({
 export type AutoSharePolicy = z.output<typeof autoSharePolicySchema>;
 export type QuotaCharge = z.output<typeof quotaChargeSchema>;
 export const autoShareStatusSchema = z.strictObject({
+  shadow: shadowStatusSchema.optional(),
   domainUsed: z.number().int().nonnegative().optional(),
   configured: z.boolean(), effectiveAutoShare: z.literal(false), reason: z.literal('unverifiable-user-input'),
   botDaily: z.number().int().min(0).max(10000), domainDaily: z.number().int().min(0).max(100000),

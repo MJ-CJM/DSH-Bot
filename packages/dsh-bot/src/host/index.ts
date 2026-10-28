@@ -26,6 +26,7 @@ import { AUTOMATION_HOST, AutomationStatusRemote } from './automation/remote.js'
 import type { AutomationStatus } from '../shared/automation-contract.js';
 import { MainSessions } from './main-session.js';
 import { startAutomation } from './automation/coordinator.js';
+import { startShadow } from './shadow/service.js';
 export { Config, DshBotRegistry };
 export const name = 'dsh-bot';
 export const inject = [
@@ -65,6 +66,7 @@ export function apply(ctx: Context, config: Config): void {
     .waitUntilReady()
     .then(async () => {
       if (stopping) return;
+      registry.shadow = await startShadow(ctx, registry.config);
       const sidecars = await openIntegrationStores(ctx);
       const connectors = new Connectors(ctx, sidecars, registry, registry.config.connectorApplyTimeoutMs, () =>
         registry.invalidate(),
@@ -214,6 +216,7 @@ export function apply(ctx: Context, config: Config): void {
       await ready;
       const errors: unknown[] = [];
       for (const close of [
+        () => registry.shadow?.close(),
         () => registry.memoryForget?.runner.close(),
         () => messaging?.close(),
         () => referenceMemory?.close(),

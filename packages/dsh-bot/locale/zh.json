@@ -682,7 +682,12 @@
     "shared.content": "记忆正文",
     "shared.subject": "事实主体",
     "shared.factKey": "事实属性",
-    "shared.qualifiers": "限定条件（JSON 对象）",
+    "shared.qualifier.key": "条件名称",
+    "shared.qualifier.value": "条件值",
+    "shared.qualifier.add": "添加条件",
+    "shared.qualifier.remove": "移除条件",
+    "shared.qualifier.invalid": "每条条件需填写不重复的名称（最多 64 字符）和非空的值（最多 200 字符）。",
+    "shared.qualifiers": "限定条件",
     "shared.from": "生效时间（ISO 日期，可空）",
     "shared.to": "失效时间（ISO 日期，可空）",
     "shared.kind": "记忆类型",
@@ -722,7 +727,11 @@
     "autoShare.egressBlocked": "受限或来源不明的数据会被阻断。工具审批本身不代表数据出站授权。",
     "autoShare.usage": "今日已自动共享：{used} 条",
     "autoShare.quotas": "每日限额：每 Bot {bot} 条 / 本用户域 {domain} 条（{timeZone}）。",
-    "autoShare.disable": "关闭自动共享",
-    "autoShare.enable": "开启策略（当前暂不可用）"
+    "autoShare.disable": "自动共享偏好：开（当前不可用）— 设为关闭",
+    "autoShare.enable": "自动共享偏好：关 — 设为开启（当前不可用）",
+    "shadow.offline": "仅离线评测；不会调用模型、发送通知或修改记忆。",
+    "shadow.status": "影子检查：{shadow}；离线整理：{organize}。机会：{opportunities}；候选：{candidates}。",
+    "shadow.reportOnly": "仅报告",
+    "shadow.off": "关闭"
   }
 }

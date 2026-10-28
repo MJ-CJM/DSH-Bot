@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { DshBotMemoryRemoteMethods } from '../../shared/remote-contract.js';
 import type { MemoryQuery, ManagedMemoryRow, MemoryResolve } from '../../shared/memory-management.js';
 import type { SharedMemoryCatalog } from '../shared-memory-state.js';
-import { memoryDraft, memoryDrafts, type ManagedDraft } from '../memory-drafts.js';
+import { draftQualifiers, memoryDraft, memoryDrafts, type ManagedDraft } from '../memory-drafts.js';
 import type { MemoryPanelProps } from './MemoryPanel.js';
 import { AutoShareStatus } from './AutoShareStatus.js';
 import { SharedMemoryList } from './SharedMemoryList.js';
@@ -49,7 +49,7 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
   async function save() {
     if (!draft) return;
     await perform(async () => {
-      const qualifiers = JSON.parse(draft.qualifiers), from = draft.from ? Date.parse(draft.from) : null;
+      const qualifiers = draftQualifiers(draft.qualifiers), from = draft.from ? Date.parse(draft.from) : null;
       const to = draft.to ? Date.parse(draft.to) : null;
       const patch = { content: draft.content, subject: draft.subject || undefined, factKey: draft.factKey || undefined,
         qualifiers, valid: { from, to, basis: from === null && to === null ? 'unknown' as const : 'explicit' as const } };

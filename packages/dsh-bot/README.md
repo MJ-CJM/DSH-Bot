@@ -1,4 +1,4 @@
-# DSH-Bot 0.3.2 / 个人智能体
+# DSH-Bot 0.4.0 / 个人智能体
 
 Personal agents, persistent Bot conversations, per-Bot MCP connectors, in-app notifications,
 deterministic group discussions, native Team task boards and optional reference memory.
@@ -6,9 +6,9 @@ deterministic group discussions, native Team task boards and optional reference 
 个人智能体、持久主会话、每 Bot MCP 连接器、应用内通知、确定性群聊、原生 Team 任务板和可选参考图谱。
 
 Requires DeepSeek Harness `0.2.1-rc.2`; declared compatibility: `>=0.2.1-rc.2 <0.3.0`.
-The plugin version 0.3.2 does not imply support for Harness 0.3.0.
+The plugin version 0.4.0 does not imply support for Harness 0.3.0.
 
-Install the prebuilt `dsh-bot-0.3.2.tgz` from Harness Plugins → Add plugin.
+Install the prebuilt `dsh-bot-0.4.0.tgz` from Harness Plugins → Add plugin.
 This release is a local artifact; no npm or online market publication is claimed.
 IM inbound/outbound is disabled until the external-consumer gate is verified.
 OS notifications are unsupported through the current public Host API.
@@ -27,7 +27,7 @@ Cold recovery reconciles native input IDs; uncertain work is never automatically
 ### 共享记忆与工具改名（B5，不兼容变更）
 
 现有记忆管理面板提供当前 Bot 私有、私有候选与历史、用户共享及待归属旧记忆。
-共享正文只由用户明确新增、修订、确认或裁决；本批不提供模型自动共享。
+共享正文只由用户明确新增、修订、确认或裁决；当前宿主缺可信人工输入证明，自动共享暂不可用。
 共享可供本域之后新建的 Bot 读取，候选和冲突不进入共享 context。
 删除 Bot 会退休其分片并保留已发布共享贡献；“遗忘该 Bot 的贡献”通过原有两级遗忘预览处理。
 根指令、原生原始事件和外部备份仍不属于可承诺物理擦除的范围。
@@ -39,5 +39,13 @@ Cold recovery reconciles native input IDs; uncertain work is never automatically
 同名社区插件仍拥有其旧名工具；不存在该工具时，旧调用会返回改名指引。
 
 English: this is a breaking tool-name change with no legacy aliases. Use the four `bot_memory_*` tools.
-Manual management alone publishes exact shared content; automatic sharing is deferred to M4.
+Manual management alone publishes exact shared content; automatic sharing remains unavailable without verified human ingress.
 Shared facts remain after deleting their contributing Bot. Use the separate contribution-forgetting preview to remove them.
+
+### 0.4.0 离线层 / Offline scaffold
+
+`shadowEnabled=false`、`offlineOrganizeEnabled=false` 为默认值。即使启用，也只生成合成机会报告，
+不会创建活跃原生 schedule、调用模型、发送通知或改写记忆。UI 展示离线状态和计数，没有真实运行按钮。
+The shadow scaffold is report-only. Real evaluation, real logs and external judges have no executable adapter.
+升级迁移后旧插件被 Migration Fence 拒绝；不要把旧 tgz 直接装回同一存储继续写入。
+完整强遗忘/provider 编码、自动共享、精确 rc.2 Host 等开放门禁见仓库 `docs/acceptance/deepening.md`。

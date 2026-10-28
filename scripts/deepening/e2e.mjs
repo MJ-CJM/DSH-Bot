@@ -5,9 +5,11 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { webHost } from './b4-web-host.mjs';
 import { openSidebarSession, openBotsPanel } from './sidebar-session.mjs';
+import { assertMemoryViewport } from './viewport.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../../packages/dsh-bot/scripts/screenshot-support.ts';
 const args = process.argv.slice(2);
 assert.equal(args.length, 3); assert.equal(args[0], '--suite'); assert.equal(args[2], '--mock-only');
+if (args[1] === 'release') { await import('./release-screens.mjs'); process.exit(process.exitCode ?? 0); }
 assert.ok(['forget', 'root-warning', 'memory-list', 'memory-conflicts', 'auto-share'].includes(args[1]));
 const root = process.cwd(), home = resolve(root, '.dsh-dev'); assert.equal(process.env.DSH_HOME, home);
 const dir = resolve(home, 'deepening', `b4-browser-${args[1]}-rework-${Date.now()}`);
@@ -22,7 +24,7 @@ const states = args[1] === 'forget' ? ['preview', 'stopped', 'strong'] : [args[1
 const matrix = ['en', 'zh'].flatMap(language => ['light', 'dark'].flatMap(theme => [1360, 390].flatMap(width =>
   states.map(state => ({ language, theme, width, state, status: 'FAIL', reason: 'NOT_RUN' })))));
 try {
-  host = await webHost(dir, args[1]);
+  host = await webHost(dir, args[1], process.env.DP_RELEASE_SCREENSHOTS === '1' ? resolve(root, 'dist/dsh-bot-0.4.0.tgz') : undefined);
   phase = 'browser-launch';
   const cache = resolve(homedir(), 'Library/Caches/ms-playwright');
   const releases = await readdir(cache).catch(() => []);
@@ -90,6 +92,8 @@ try {
         if (theme === 'dark') assert.ok(channels.reduce((a, b) => a + b, 0) < 384, 'Dark must be visibly dark');
         else assert.ok(channels.reduce((a, b) => a + b, 0) > 384, 'Light must be visibly light');
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Viewport overflow');
+        const managed = bots.locator('[data-shared-memory-panel]:visible');
+        if (await managed.count()) diagnostics.push({ id, state, geometry: await assertMemoryViewport(managed, width) });
         const file = `${id}-${state}.png`;
         await page.screenshot({ path: resolve(dir, file), fullPage: true });
         const result = { language, theme, width, state, status: 'PASS', file, colors, realDshClient: true };
@@ -108,12 +112,17 @@ try {
           await managed.getByRole('button', { name: t['memory.edit'], exact: true }).first().click();
           const editor = managed.getByRole('textbox', { name: t['shared.content'], exact: true });
           await editor.fill('SYNTHETIC_UNSAVED_DRAFT');
+          await managed.getByRole('button', { name: t['shared.qualifier.add'], exact: true }).click();
+          const qualifier = managed.locator('[data-qualifier-row]').last();
+          await qualifier.getByRole('textbox', { name: t['shared.qualifier.key'], exact: true }).fill('context');
+          await qualifier.getByRole('textbox', { name: t['shared.qualifier.value'], exact: true }).fill('Work account');
           const row = managed.locator('[data-memory-id]').first();
           const handle = await row.elementHandle();
           for (let i = 0; i < 100; i++) {
             await managed.getByRole('button', { name: t['shared.refresh'], exact: true }).click();
           }
           assert.equal(await editor.inputValue(), 'SYNTHETIC_UNSAVED_DRAFT');
+          assert.equal(await qualifier.getByRole('textbox', { name: t['shared.qualifier.value'], exact: true }).inputValue(), 'Work account');
           assert.ok(await row.evaluate((element, previous) => element === previous, handle));
           await editor.focus(); assert.ok(await editor.evaluate(element => document.activeElement === element));
         }

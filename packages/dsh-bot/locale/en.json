@@ -682,7 +682,12 @@
     "shared.content": "Memory content",
     "shared.subject": "Subject",
     "shared.factKey": "Fact key",
-    "shared.qualifiers": "Qualifiers (JSON object)",
+    "shared.qualifier.key": "Qualifier name",
+    "shared.qualifier.value": "Qualifier value",
+    "shared.qualifier.add": "Add qualifier",
+    "shared.qualifier.remove": "Remove qualifier",
+    "shared.qualifier.invalid": "Enter a unique name (up to 64 characters) and a nonempty value (up to 200 characters) for each qualifier.",
+    "shared.qualifiers": "Qualifiers",
     "shared.from": "Valid from (ISO date, optional)",
     "shared.to": "Valid until (ISO date, optional)",
     "shared.kind": "Memory type",
@@ -722,7 +727,11 @@
     "autoShare.egressBlocked": "Restricted or unknown sources are held. Tool approval alone does not authorize data export.",
     "autoShare.usage": "Automatic contributions used today: {used}",
     "autoShare.quotas": "Daily limits: {bot} per Bot / {domain} per user domain ({timeZone}).",
-    "autoShare.disable": "Turn off automatic sharing",
-    "autoShare.enable": "Enable policy (currently unavailable)"
+    "autoShare.disable": "Automatic sharing preference: on (currently unavailable) — turn off",
+    "autoShare.enable": "Automatic sharing preference: off — turn on (currently unavailable)",
+    "shadow.offline": "Offline evaluation only. No models, notifications or memory changes.",
+    "shadow.status": "Shadow: {shadow}; organization: {organize}. Opportunities: {opportunities}; candidates: {candidates}.",
+    "shadow.reportOnly": "report only",
+    "shadow.off": "off"
   }
 }
