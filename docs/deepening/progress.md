@@ -212,7 +212,6 @@ U(schema/op-log/rebuild/context/lifecycle/migration-copy)、H(fence/admission/mi
 最新收据索引为 `.dsh-dev/deepening/b3/commands.json`；失败历史、旧 tgz SHA256 与每项证据边界见 B3 报告。
 下一批仍需编排方审查后派发；B3 没有提供解除未验证屏障的操作。
 
-
 ## B3-rework：审查返工（2026-10-25）
 
 执行 tasks/DP/B3-rework.md 的六项要求（含最高优先级追加），基线 ce8e2ebe。
@@ -256,7 +255,6 @@ Fence 拒绝收据：
 
 遗留：编排方提供精确 rc.2 CLI 后重跑相同 H；M3 处理隔离归属，B4 处理完整强遗忘。
 
-
 ## B4：两级遗忘（2026-10-25）
 
 基线 15de71c4，执行 tasks/DP/B4.md；版本仍为 0.3.2。
@@ -288,7 +286,6 @@ Fence 拒绝收据：
 最终 C：.dsh-dev/deepening/b4-check-delivery.log；安装 frozen-lockfile exit=0，lockfile 未变。
 E(forget)、E(root-warning) 各 exit=1，脚本保留供编排方在沙箱外重跑。
 早期测试/fixture/strict 失败收据保留，实际修正和复跑记录见 B4 报告。
-
 
 ## B4-rework：常见路径放行、MCP 重挂载与真实 Web（2026-10-25）
 
@@ -397,3 +394,7 @@ I33 命中 p95=0.00796ms、重算=11.5101ms，均达标；冷恢复/重建超过
 
 最终性能：`.dsh-dev/deepening/b5-performance-1793155441045/summary.json`；逐千段及全部原始样本保留。
 旧布局首次转换速度未证明；继续剖析原生持久 I/O，浏览器/Host 网络验收交编排方沙箱外复跑。
+
+## B5s（2026-10-27）
+
+[报告](B5s.md)：held-out Recall@5 0.2333→0.7333、MRR 0.2619→0.7619；I33/U PASS；check 环境 FAIL，真实连接器 flaky 根因与修复仍 FAIL。

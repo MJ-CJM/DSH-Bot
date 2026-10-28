@@ -155,7 +155,8 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
       this.releaseResources = shutdown;
       try {
         this.stores = await openBotStores(this.ctx, {
-          memoryV2: { dataDir: this.memoryOwnerDir, timeZone: this.config.quotaTimeZone },
+          memoryV2: { dataDir: this.memoryOwnerDir, timeZone: this.config.quotaTimeZone,
+            retrievalConfig: this.config.memoryRetrieval },
           assertOwner: this.assertOwner,
           activityMaxSessionsPerBot: this.config.activityMaxSessionsPerBot,
           activityMaxSessionsTotal: this.config.activityMaxSessionsTotal,

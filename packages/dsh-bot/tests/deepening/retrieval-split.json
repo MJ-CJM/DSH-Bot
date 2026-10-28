@@ -1,0 +1,116 @@
+{
+  "seed": "B5s-stratified-20261027-v1",
+  "method": "SHA256(seed:category:id), first 7 tune, remaining 5 held-out per category",
+  "baselineRef": "b431c1a063037301075f0a2627cd994533dd13d8",
+  "supplementSha256": "e1cccf33e0bbfc4ba3b63c80e9e1c283d7054524cbe18053d46f4b994ae6255d",
+  "categories": {
+    "exact": {
+      "tune": [
+        "contact-exact",
+        "meeting-exact",
+        "diet-exact",
+        "commute-exact",
+        "budget-exact",
+        "exercise-exact",
+        "editor-exact"
+      ],
+      "held-out": [
+        "extra-exact-commute",
+        "coffee-exact",
+        "travel-exact",
+        "extra-exact-coffee",
+        "reading-exact"
+      ]
+    },
+    "synonym": {
+      "tune": [
+        "exercise-synonym",
+        "extra-synonym-budget",
+        "budget-synonym",
+        "contact-synonym",
+        "meeting-synonym",
+        "commute-synonym",
+        "editor-synonym"
+      ],
+      "held-out": [
+        "reading-synonym",
+        "extra-synonym-reading",
+        "diet-synonym",
+        "travel-synonym",
+        "coffee-synonym"
+      ]
+    },
+    "colloquial": {
+      "tune": [
+        "extra-colloquial-contact",
+        "contact-colloquial",
+        "exercise-colloquial",
+        "commute-colloquial",
+        "budget-colloquial",
+        "reading-colloquial",
+        "extra-colloquial-exercise"
+      ],
+      "held-out": [
+        "diet-colloquial",
+        "meeting-colloquial",
+        "editor-colloquial",
+        "coffee-colloquial",
+        "travel-colloquial"
+      ]
+    },
+    "cross": {
+      "tune": [
+        "meeting-cross",
+        "extra-cross-diet",
+        "travel-cross",
+        "commute-cross",
+        "editor-cross",
+        "coffee-cross",
+        "budget-cross"
+      ],
+      "held-out": [
+        "exercise-cross",
+        "contact-cross",
+        "diet-cross",
+        "extra-cross-travel",
+        "reading-cross"
+      ]
+    },
+    "temporal": {
+      "tune": [
+        "city-temporal-50",
+        "work-temporal-56",
+        "work-temporal-58",
+        "work-temporal-57",
+        "city-temporal-54",
+        "work-temporal-59",
+        "city-temporal-52"
+      ],
+      "held-out": [
+        "extra-temporal-work",
+        "extra-temporal-city",
+        "city-temporal-53",
+        "work-temporal-55",
+        "city-temporal-51"
+      ]
+    },
+    "distractor": {
+      "tune": [
+        "coffee-distractor",
+        "reading-distractor",
+        "exercise-distractor",
+        "diet-distractor",
+        "budget-distractor",
+        "commute-distractor",
+        "travel-distractor"
+      ],
+      "held-out": [
+        "contact-distractor",
+        "editor-distractor",
+        "extra-distractor-editor",
+        "meeting-distractor",
+        "extra-distractor-reading"
+      ]
+    }
+  }
+}

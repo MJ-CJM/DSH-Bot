@@ -1,3 +1,4 @@
+import { defaultRetrievalConfig, type Config as RetrievalConfig } from './retrieval-config.js';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { metaSchema, opSchema, type MemoryOp } from '../../shared/memory-ops.js';
@@ -17,7 +18,8 @@ export class MemoryKernel {
   stopped = false;
   cacheFailures = 0;
   readonly listeners = new Set<() => void>();
-  constructor(readonly domain: MemoryDomain, private readonly assertOwner: () => void) {}
+  constructor(readonly domain: MemoryDomain, private readonly assertOwner: () => void,
+    readonly retrievalConfig: RetrievalConfig = defaultRetrievalConfig) {}
 
   async recover(timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone): Promise<void> {
     await this.serial(async () => {

@@ -1,8 +1,10 @@
+import { Config as RetrievalConfig } from './memory/retrieval-config.js';
 import { messagingConfigFields, validateMessagingConfig, type MessagingConfig } from './messaging/config.js';
 import Schema from '@deepseek-ai/schemastery';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
 
 export interface Config extends MessagingConfig {
+  memoryRetrieval: import('./memory/retrieval-config.js').Config;
   referenceMemoryTimeoutMs: number;
   referenceMemoryMaxFileBytes: number;
   groupMaxMembers: number;
@@ -41,6 +43,7 @@ const activityLimit = (name: string, fallback: number) =>
   }).default(fallback);
 const baseConfig = Schema.object({
   ...messagingConfigFields,
+  memoryRetrieval: RetrievalConfig,
   referenceMemoryTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
   referenceMemoryMaxFileBytes: Schema.number().min(1024).max(67108864).step(1).default(8388608),
   groupMaxMembers: Schema.number().min(2).max(16).step(1).default(8),
@@ -96,7 +99,8 @@ const baseConfig = Schema.object({
     return value;
   }).default(20),
 });
-export const Config: Schema<Partial<Config>, Config> = Schema.transform(baseConfig, (value) => {
+type ConfigInput = Omit<Partial<Config>, 'memoryRetrieval'> & { memoryRetrieval?: Partial<Config['memoryRetrieval']> };
+export const Config: Schema<ConfigInput, Config> = Schema.transform(baseConfig, (value) => {
   const config = value as unknown as Config;
   if (Math.abs(config.privateShare + config.sharedShare - 1) > 1e-9) throw new TypeError('Memory shares must sum to one');
   return validateMessagingConfig(config);

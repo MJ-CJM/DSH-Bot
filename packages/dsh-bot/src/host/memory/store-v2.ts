@@ -57,7 +57,7 @@ export class V2MemoryStore {
   readableByBot(botId: string, options: MemoryListOptions): (MemoryRecord & { scope?: 'private' | 'shared' })[] {
     const f = parseInput(memoryListOptionsSchema, options), owner = this.owner(botId);
     const facts = readableFacts(this.kernel, owner, { at: Date.now() });
-    return rankFacts(facts, f.query ?? '', 10000).flatMap(({ version: v, payload: p }) => {
+    return rankFacts(facts, f.query ?? '', 10000, this.kernel.retrievalConfig).flatMap(({ version: v, payload: p }) => {
       const record = p.legacy ? memorySchema.parse({ ...p.legacy, id: v.memoryId, content: p.content, botId }) : memorySchema.parse({
         id: v.memoryId, botId, content: p.content, kind: 'fact', tags: [], pinned: false,
         createdAt: v.recordedAt, updatedAt: v.recordedAt,

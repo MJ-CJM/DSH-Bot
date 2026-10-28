@@ -25,7 +25,7 @@ export {
 export async function openBotStores(
   ctx: Context,
   options: ActivityStoreOptions & { beforeClose?: () => Promise<void>; assertOwner?: () => void;
-    memoryV2?: { dataDir: string; timeZone?: string } } = {},
+    memoryV2?: { dataDir: string; timeZone?: string; retrievalConfig?: import('./memory/retrieval-config.js').Config } } = {},
 ): Promise<{
   bots: BotStore;
   memories: MemoryPort;
@@ -38,7 +38,8 @@ export async function openBotStores(
   try {
     const release = ctx.effect(async () => {
       options.assertOwner?.();
-      const memory = options.memoryV2 ? await openMemoryKernel(ctx, options.memoryV2.dataDir, options.memoryV2.timeZone) : undefined;
+      const v2 = options.memoryV2;
+      const memory = v2 ? await openMemoryKernel(ctx, v2.dataDir, v2.timeZone, v2.retrievalConfig) : undefined;
       const legacy = await ctx.storageDomain.open(options.memoryV2 ? migrationBotDomain : botDomain)
         .catch(async error => { await memory?.close(); throw error; });
       // The migration-only union is never exposed to legacy memory writers.

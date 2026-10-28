@@ -54,7 +54,7 @@ export class MemoryManagement {
           f.view === 'candidates' ? r.state === 'proposed' || r.version.trust === 'candidate' && r.state === 'active' : r.state === 'disputed'))));
     if (f.view === 'journal' && !f.query?.trim()) rows = rows.filter(r =>
       (r.payload.valid.from ?? r.version.recordedAt) >= time.at - this.journalDays * 86400000);
-    rows = rankFacts(rows, f.query ?? '', Number.MAX_SAFE_INTEGER);
+    rows = rankFacts(rows, f.query ?? '', Number.MAX_SAFE_INTEGER, this.kernel.retrievalConfig);
     const total = rows.length;
     if (f.cursor) {
       const index = rows.findIndex(r => r.version.memoryId === f.cursor);
