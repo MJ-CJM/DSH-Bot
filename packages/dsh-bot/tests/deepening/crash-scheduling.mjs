@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { checkpoint } from './crash-checkpoint.mjs';
+import { crashBusiness } from './crash-business.mjs';
 
 export async function crashScheduling(ctx, config, adapter) {
   const registry = ctx.dshBots, crash = config.phase === 'crash', file = resolve(config.outputDir, 'identity.json');
@@ -33,6 +34,7 @@ export async function crashScheduling(ctx, config, adapter) {
   const main = await registry.openConversation('alpha');
   const resolved = await ctx.sessionController.resolveAgent(main.sessionId); assert.ok(resolved.agent);
   const agent = resolved.agent;
+  if (config.window === 'business-submission') return crashBusiness(ctx, config, adapter, agent, await registry.get('alpha'));
   if (config.window.startsWith('main-')) {
     const old = JSON.parse(await readFile(file));
     if (config.window === 'main-flush') assert.equal(main.sessionId, old.created);

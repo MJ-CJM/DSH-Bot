@@ -246,7 +246,8 @@ export class RunService {
         updatedAt: now,
         ...(isTerminalRun(target) ? { endedAt: now, slotHeld: false, step: 'settled' as const } : {}),
         ...(target === 'skipped' ? { decision: 'skip' as const } : {}),
-        ...(target === 'recovery_needed' ? { step: 'unknown' as const } : {}),
+        ...(target === 'recovery_needed' ? { step: 'unknown' as const,
+          lastConfirmedStep: current.lastConfirmedStep ?? current.step } : {}),
       });
     });
   }
@@ -284,6 +285,7 @@ export async function openAutomationStores(ctx: Context, options: AutomationOpti
             ...r,
             status: 'recovery_needed',
             step: 'unknown',
+            lastConfirmedStep: r.lastConfirmedStep ?? r.step,
             updatedAt: stamp(state, r.updatedAt),
             revision: r.revision + 1,
             errorCode: 'restart/unconfirmed',

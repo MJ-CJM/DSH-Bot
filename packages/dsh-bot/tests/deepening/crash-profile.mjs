@@ -11,7 +11,7 @@ import { crashMemory, memoryWindows } from './crash-memory.mjs';
 import { crashSurfaces } from './crash-surfaces.mjs';
 import { crashScheduling } from './crash-scheduling.mjs';
 export const name = 'dp-b7-crash-probe';
-export const inject = ['loader', 'storageDomain', 'llm', 'dshBots', 'sessions', 'sessionController', 'sessionPersistence'];
+export const inject = ['loader', 'storageDomain', 'llm', 'dshBots', 'sessions', 'sessionController', 'sessionPersistence', 'sessionQuery'];
 export function apply(ctx, config) {
   ctx.effect(() => {
     const adapter = new B6bAdapter(), lifetime = new AbortController(); let off, kernel, legacy;
@@ -28,7 +28,7 @@ export function apply(ctx, config) {
         kernel = new MemoryKernel(await ctx.storageDomain.open({ ...memoryDomain, name: 'dp_b7_memory' }), () => {});
         await kernel.recover('UTC');
         detail = await crashMemory({ kernel, legacy }, { ...config, level: 'CLI_HOST_SERVICE_FIXTURE' });
-      } else if (['main-create', 'main-flush', 'schedule-delivery'].includes(config.window))
+      } else if (['main-create', 'main-flush', 'schedule-delivery', 'business-submission'].includes(config.window))
         detail = await crashScheduling(ctx, config, adapter);
       else detail = await crashSurfaces(ctx, config, adapter);
       await writeFile(resolve(config.outputDir, 'recovery.json'), JSON.stringify({ status: 'PASS', pid: process.pid,

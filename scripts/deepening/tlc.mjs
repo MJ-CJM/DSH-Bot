@@ -8,6 +8,7 @@ assert.equal(process.env.DSH_HOME, resolve('.dsh-dev'));
 await mkdir(dir, { recursive: true });
 const results = [], tool = '.dsh-dev/tools/tla2tools.jar';
 async function execute(args, name) {
+  const started = Date.now();
   const child = spawn('java', args, { cwd: root, env: { PATH: process.env.PATH }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; for (const stream of [child.stdout, child.stderr]) stream.on('data', bytes => { output += bytes; });
   let spawnError;
@@ -15,7 +16,7 @@ async function execute(args, name) {
   const timeout = setTimeout(() => child.kill('SIGKILL'), 120000);
   const result = await new Promise(accept => child.once('close', (code, signal) => accept({ code, signal })));
   clearTimeout(timeout); await writeFile(resolve(dir, `${name}.log`), output);
-  return { ...result, spawnError, output, args };
+  return { ...result, spawnError, output, args, durationMs: Date.now() - started };
 }
 try {
   const manifest = await readFile('formal/TOOLS.sha256', 'utf8');
@@ -27,13 +28,15 @@ try {
   assert.equal(actual, expected, 'TLC tool digest mismatch');
   const java = await execute(['-version'], 'java'); assert.equal(java.code, 0, 'NOT_RUN: Java unavailable');
   for (const config of ['bot_message', 'memory_forget', 'stale_grant_negative']) {
-    const result = await execute(['-Xmx1g', '-cp', resolve(tool), 'tlc2.TLC', '-workers', '1', '-metadir',
+    const result = await execute(['-Xmx1g', `-Djava.io.tmpdir=${dir}`, '-XX:+UseParallelGC', '-cp', resolve(tool), 'tlc2.TLC',
+      '-noGenerateSpecTE', '-workers', '1', '-metadir',
       resolve(dir, config), '-config', `formal/${config}.cfg`, 'formal/bot_message.tla'], config);
     const negative = config.endsWith('negative'), counterexample = /Invariant NoStaleGrant is violated/.test(result.output);
     const pass = negative ? result.code !== 0 && counterexample && /State \d+:/.test(result.output)
       : result.code === 0 && /Model checking completed. No error has been found/.test(result.output);
     results.push({ config, negative, status: pass ? 'PASS' : 'FAIL', code: result.code, signal: result.signal,
-      args: result.args, counterexample, states: result.output.match(/[\d,]+ states generated[^\n]*/)?.[0] });
+      args: result.args, counterexample, durationMs: result.durationMs,
+      states: result.output.match(/[\d,]+ states generated[^\n]*/)?.[0] });
   }
   const status = results.every(row => row.status === 'PASS') ? 'PASS' : 'FAIL';
   await writeFile(resolve(dir, 'summary.json'), JSON.stringify({ status, tool, actual, results }, null, 2));

@@ -25,13 +25,17 @@ export function egressCommand(action, slot) {
       const external = slot % 2 === 0, target = external ? { kind: 'external', destination: 'synthetic:capture' } : { kind: 'bot', bot: beta };
       const envelope = state.flow.draft('message', alpha, model.session, `call-${model.steps}`, target, 'SYNTHETIC_BODY');
       const grant = external ? state.grants.issue(envelope.binding, envelope.content) : undefined;
-      try { const id = await state.flow.admit(envelope, grant);
-        model.pending.push({ id, external, at: model.now, session: model.session, tainted: model.tainted.has(model.session) }); }
-      catch { assert.ok(model.births.get('alpha') !== 1 || model.births.get('beta') !== 2 || model.tainted.has(model.session)); }
+      const shouldAdmit = model.births.get('alpha') === 1 && (external || model.births.get('beta') === 2) &&
+        !model.tainted.has(model.session);
+      let id, error;
+      try { id = await state.flow.admit(envelope, grant); } catch (failure) { error = failure; }
+      assert.equal(Boolean(id), shouldAdmit, `Unexpected admission outcome: ${error}`);
+      if (id) model.pending.push({ id, external, at: model.now, session: model.session, tainted: model.tainted.has(model.session) });
     } else if (action === 2 && model.pending.length) {
       const row = model.pending.shift(), before = model.sent;
-      const shouldSend = !row.expired && !row.cold && !row.tainted && !row.erased &&
-        model.births.get('alpha') === 1 && model.births.get('beta') === 2 && (!row.external || model.now < row.at + 100);
+      const shouldSend = !row.cold && !row.tainted && !row.erased && !row.policyChanged &&
+        model.births.get('alpha') === 1 && (row.external || model.births.get('beta') === 2) &&
+        (!row.external || model.now < row.at + 100);
       try {
         await state.flow.dispatch(row.id, () => { model.sent++; }); assert.equal(shouldSend, true);
       } catch (error) { if (model.sent !== before || shouldSend) throw error; }
@@ -47,7 +51,10 @@ export function egressCommand(action, slot) {
       model.births.set(slot % 2 ? 'alpha' : 'beta', 99);
     } else if (action === 6) {
       const quota = state.quota, owner = { botId: slot % 2 ? 'alpha' : 'beta', botCreatedAt: 1 };
-      if (!kernel.snapshot.autoPolicy) await quota.configure({ enabled: true, botDaily: 2, domainDaily: 3, timeZone: 'UTC' });
+      if (!kernel.snapshot.autoPolicy) {
+        await quota.configure({ enabled: true, botDaily: 2, domainDaily: 3, timeZone: 'UTC' });
+        for (const row of model.pending) row.policyChanged = true;
+      }
       const previous = [...kernel.snapshot.quota.values()], same = previous.filter(c => c.botId === owner.botId).length;
       const op = accounting(runtime, owner), allowed = same < 2 && previous.length < 3;
       try { await quota.commit(op.opId, owner, kernel.policyRevision, () => op); assert.ok(allowed); }

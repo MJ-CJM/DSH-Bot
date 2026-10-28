@@ -11,7 +11,7 @@ assert.deepEqual([args[0], args[2], args[4]], ['--window', '--repeat', '--mock-o
 assert.equal(args.length, 5); assert.equal(args[3], '3');
 const window = args[1], memory = ['payload', 'op-projection', 'forget-barrier', 'migration-cutover', 'forget-rollback'];
 assert.ok(['harness', ...memory, 'surface-flush', 'mcp-cleanup', 'copy-pointer', 'main-schedule'].includes(window));
-const windows = window === 'main-schedule' ? ['main-create', 'main-flush', 'schedule-delivery'] : [window];
+const windows = window === 'main-schedule' ? ['main-create', 'main-flush', 'schedule-delivery', 'business-submission'] : [window];
 const dir = resolve('.dsh-dev/deepening', `b7-crash-${window}-${Date.now()}`); await mkdir(dir, { recursive: true });
 const results = [];
 for (const point of windows) for (let iteration = 1; iteration <= 3; iteration++) {

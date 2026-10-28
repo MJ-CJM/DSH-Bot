@@ -512,3 +512,26 @@ B6b 最终收据：`b6b-check-release-review.log`，101文件/965项：956 PASS�
 正式依赖/lock/版本均未变化。固定命令回归2项不充当10000序列。
 后续需有网络成功锁定fast-check、编排方提供官方TLC及hash，并在允许loopback的环境跑完整F/H。
 R5、完整P0、业务去重/真实schedule强杀、精确rc.2 CLI和真实模型证据仍未关闭。
+
+
+## B7-rework（2026-10-27）
+
+基于95665dd；完整文件、命令、状态数、失败历史和后续验收见 [B7返工小节](B7.md#b7-rework2026-10-27基于-95665dd)。
+本次整体未全部通过；无提交/推送/真实模型/全局写入，原有workspace/.codex/任务文件保留。
+
+- PASS(UNIT)：I49原seed反例为模型误把external绑定无关beta生日；固化22步收缩序列及四边界回归。
+  准入双向断言加强，首次policy变化使旧envelope失效，正式checker未放宽。
+  最终I48/I49各5000完整序列，合计344170步，seed=2026102701/2026102702。
+- PASS(SOURCE/UNIT)：两个崩溃恢复probe缺sessionQuery inject已补；notify/connector配置ID按variant隔离，保留正式CAS。
+  FAIL(environment)：F(surface-flush/mcp-cleanup)各3轮、H(redteam)仍listen EPERM，未进入本次真实出口/恢复。
+- PASS(TLC)：独立供给jar的hash核验通过；修模型析取语法和仓库临时目录。
+  bot_message/memory_forget分别631392/358160生成状态，无反例；去epoch负控制18380状态出现五状态反例，exit12。
+- PASS(JSON/NPM进程)：复用执行账本，unknown保留lastConfirmedStep；3/3真实SIGKILL、新PID、各10次重交无业务重放。
+  FAIL(environment/capability)：完整F(main-schedule)四子窗口×3受监听阻断；新真实runNow→站内通知→unknown路径待沙箱外验证。
+  不宣称自动提醒的任意业务副作用已去重，不建第二套调度引擎。
+- PASS(评测执行)：12个新主题/84条新语料冻结后仅评分一次，Recall@5=0→0.3333，MRR=0.1429→0.2619。
+  8个英文题仍rank7，4个中文题rank2；质量仍有明显缺口，旧0.4→1不是新盲测证据。
+- frozen offline install PASS；完整C仍FAIL：110文件/987项，978PASS/6环境失败/3expected fail。
+  独立strict/lint、代码尺寸和diff检查PASS；依赖/lock未变。
+
+编排方重跑两个F、H(redteam)、扩展F(main-schedule)与C；R5、自动业务去重、完整P0等门禁保留。

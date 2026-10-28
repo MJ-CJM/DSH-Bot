@@ -1205,3 +1205,26 @@ Client 建议用无 runtime imports 的公开 `@deepseek-ai/dsh-typert-protocol/
 | `store/unavailable` | already-open、closed、后端读写/关闭失败、持久记录校验失败等存储故障；原始错误保留于 cause |
 
 运行验证：`tests/store.spec.ts` 的 **24 项**测试使用公开 npm 包和真实 JSON 后端，通过 CRUD、严格校验、字节边界、多实例竞争、同毫秒 CAS、中文检索、隔离、分页、对象副本、落盘/重开和生命周期检查。评审补充覆盖默认级联与同 id 重建、显式保留、跨 Bot update/remove、可选字段清空后严格对象一致性、trim/字段上限/列表上限、分页只深克隆返回记录；在公开 KvUnit 上注入读写失败，验证 cause、未提交更新不改变内存、级联中途失败保留 Bot 及重试成功。各测试使用并清理独立仓库内 `.dsh-dev/t03-store-*`，不触碰 T02 的领域文件。独立服务测试不替代 Desktop 或完整 Web profile 验收；本轮未启动这些环境或真实模型会话。
+
+
+## DP B7-rework：性质谓词、恢复依赖与执行阶段（2026-10-27）
+
+完整逐项判定、状态数和命令见 [B7返工](deepening/B7.md#b7-rework2026-10-27基于-95665dd)。
+未新增DSH API/依赖/peer/Remote；参考HEAD/tag现场仍为687f282e，只读。
+
+- crash-profile使用的sessionQuery与sessionPersistence属于同一Host依赖声明；恢复末尾真实readSurface不可省略。
+  修复的是夹具inject；本次完整Host仍listen EPERM，不能据此称两个强杀窗口已通过。
+- 原生Notifications/Connectors配置CAS是正确约束；redteam控制/攻击的配置ID必须按Bot/variant唯一。
+  实际运输矩阵本次受Host环境阻断；真实JSON配置回归不等于出口checker运行证据。
+- I49 external许可与无关beta生日无关；Bot目标仍复检目标生日，所有路由仍复检发送者/epoch/policy/正文/grant。
+  修正模型并加强准入双向断言后，两组5000完整序列通过；内存后端不是磁盘持久证明。
+- I59继续复用既有RunService/MainSessionDelivery及nativeSchedule.runNow，不新建调度引擎。
+  runRecord增加可选Host字段lastConfirmedStep，进入unknown前记录submitting等原阶段；共用严格codec自动覆盖。
+  旧行可读，旧严格插件读取新增字段的降级兼容未验证。
+  真实JSON/NPM三组SIGKILL验证相同operationId冷恢复后不再次调用Controller double，最后阶段保留。
+  新完整CLI通知副作用组合未能启动，不推广为自动提醒任意业务exactly-once。
+- schedule.history确认Session Inbox投递，不确认业务完成；rc.2公开types.ts:196-218、runtime.ts:125-140。
+  TLC有限两正配置与去epoch反例已实际运行，但不代替上述Host/原生运输验收。
+- 新12题干扰项评分在算法/语料哈希冻结后仅一次；Recall@5=0→0.3333，旧公开集不再称新held-out。
+
+六个自动合法路径的R5与完整P0均保持开放。

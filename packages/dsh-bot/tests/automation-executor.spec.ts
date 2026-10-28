@@ -12,7 +12,8 @@ import { botCreateSchema, botSchema } from '../src/shared/schema.js';
 
 async function facility(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<void>) {
   const f = await setup();
-  try { await test(f); } finally { await f.sender.close(); await f.stores.close(); await f.ctx.fiber.dispose(); await rm(f.root, { recursive: true, force: true }); }
+  try { await test(f); }
+  finally { await f.sender.close(); await f.stores.close(); await f.ctx.fiber.dispose(); await rm(f.root, { recursive: true, force: true }); }
 }
 async function setup() {
   await mkdir('../../.dsh-dev/r05', { recursive: true }); const root = await mkdtemp('../../.dsh-dev/r05/delivery-');
@@ -46,9 +47,24 @@ describe('main-session explicit delivery (real JSON receipts)', () => {
   it('keeps uncertain delivery for reconciliation and never retries or cancels the shared conversation', async () => facility(async f => {
     f.prompt.mockRejectedValueOnce(new Error('transport lost after admission'));
     const result = await f.sender.submit(f.request);
-    expect(result.status).toBe('recovery_needed');
+    expect(result).toMatchObject({ status: 'recovery_needed', lastConfirmedStep: 'submitting' });
     await f.sender.submit(f.request); await f.sender.close();
     expect(f.prompt).toHaveBeenCalledTimes(1); expect(f.cancel).not.toHaveBeenCalled();
+  }));
+  it('retains the durable last phase across repeated cold opens and rejects replay of uncertain business input', async () => facility(async f => {
+    const queued = await f.stores.runs.enqueue(f.request);
+    const reserved = await f.stores.runs.reserve(queued.id);
+    await f.stores.runs.transition(reserved.id, 'running', reserved.revision, { step: 'submitting', sessionId: 'main-alpha' });
+    await f.stores.close();
+    for (let i = 0; i < 2; i++) {
+      const reopened = await openAutomationStores(f.ctx, { resolveBot: f.resolveBot });
+      const sender = new MainSessionDelivery(f.ctx, f.bots as unknown as Context['dshBots'], reopened.runs);
+      try {
+        const rows = await Promise.all(Array.from({ length: 10 }, () => sender.submit(f.request)));
+        expect(rows.every(r => r.id === queued.id && r.status === 'recovery_needed' && r.lastConfirmedStep === 'submitting')).toBe(true);
+        expect(f.prompt).not.toHaveBeenCalled();
+      } finally { await sender.close(); await reopened.close(); }
+    }
   }));
   it('rejects changed operation payload and same-id replacement before submission', async () => facility(async f => {
     await f.sender.submit(f.request);

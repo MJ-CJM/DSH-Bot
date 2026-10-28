@@ -52,8 +52,8 @@ Dispatch(m) == /\ ~crashed /\ ~barrier /\ dispatchState[m] = "admitted"
   /\ dispatchState' = [dispatchState EXCEPT ![m] = "dispatching"]
   /\ quota' = quota + 1
   /\ botQuota' = [botQuota EXCEPT ![owner[m]] = @ + 1]
-  /\ staleDispatch' = staleDispatch \/ approvalEpoch[m] # epoch
-  /\ crossBirth' = crossBirth \/ approvalBirth[m] # birth[owner[m]]
+  /\ staleDispatch' = (staleDispatch \/ approvalEpoch[m] # epoch)
+  /\ crossBirth' = (crossBirth \/ approvalBirth[m] # birth[owner[m]])
   /\ UNCHANGED <<epoch, birth, payloadPresent, forgotten, barrier,
     approvalEpoch, approvalBirth, source, owner, log, projection, crashed>>
 Complete(m) == /\ ~crashed /\ dispatchState[m] = "dispatching"

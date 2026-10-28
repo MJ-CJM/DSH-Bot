@@ -33,7 +33,7 @@ export async function nativeRoute(ctx, registry, adapter, row, ids, keys, agents
     return { transport: 'native subagents.startActivation(delivery=caller) + checked followup' };
   }
   if (row.outlet.startsWith('notify-')) {
-    const policyId = `${row.id}-local`;
+    const policyId = `${ids.a}-local`;
     await ctx.dshBotNotifications.savePolicy({ id: policyId, owner: keys.a, channel: 'in-app', enabled: true,
       timezone: 'UTC', dailyLimit: 20, cooldownSec: 0, authorization: { mode: 'ask' } }, 0, true);
     await prompt({ name: 'bot_notify', arguments: { policyId, text: 'B7_NATIVE_NOTIFICATION' } });
@@ -51,11 +51,11 @@ export async function nativeRoute(ctx, registry, adapter, row, ids, keys, agents
   }
   if (row.outlet === 'connector') {
     const service = ctx.get('dshBotConnectors'); assert.ok(service);
-    const connectorId = `${row.id}-stdio`;
+    const connectorId = `${ids.a}-stdio`;
     await service.saveDefinition({ id: connectorId, label: connectorId, transport: 'stdio', serverName: 'stdio', enabled: true,
       command: process.execPath, args: [resolve('spikes/p34/src/stdio-fixture.ts'), resolve(outputDir, `${connectorId}-pid.json`)],
       credentialBindings: [] }, 0);
-    await service.saveAssignment({ id: `${row.id}-assignment`, bot: keys.a, connectorId, enabled: true }, 0);
+    await service.saveAssignment({ id: `${ids.a}-assignment`, bot: keys.a, connectorId, enabled: true }, 0);
     await service.applyIdle(keys.a);
     assert.ok(service.runtime().some(r => r.sessionId === agents.a.session.id && r.state === 'ready'));
     await prompt({ name: 'mcp__stdio__stdio', arguments: {} });
