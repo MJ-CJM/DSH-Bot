@@ -13,6 +13,10 @@ import type { MainSessions } from '../main-session.js';
 import { Config } from '../registry-config.js';
 import type { Lease } from './types.js';
 import { messageOf } from './identity.js';
+import { MemoryConfirmation } from '../memory/confirmation.js';
+import { EgressChecker } from '../data-flow/egress.js';
+import { sameBot } from '../../shared/identity.js';
+import { AutoShareQuota } from '../memory/quota.js';
 import { MemoryAdmission } from '../memory/admission.js';
 import type { MemoryForgetting } from '../memory/forget-service.js';
 
@@ -37,6 +41,8 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
   readonly config: Config;
   readonly memoryAdmission: MemoryAdmission;
   memoryForget?: MemoryForgetting;
+  memoryConfirmation?: MemoryConfirmation;
+  memoryEgress?: EgressChecker;
   get memoryKernel() { return this.stores?.memoryKernel; }
   mainSessions?: MainSessions;
   protected stores!: Awaited<ReturnType<typeof openBotStores>>;
@@ -135,6 +141,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
       const shutdown = () =>
         (shutdownTask ??= (async () => {
           this.stopping = true;
+          this.memoryEgress?.close(); this.memoryConfirmation?.close();
           await this.memoryAdmission.close();
           await this.tail;
           const errors: unknown[] = [];
@@ -167,6 +174,13 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
         });
         await this.stores.bots.migrateMemoryTools();
         if (!this.stores.memoryKernel) throw new Error('Memory kernel did not initialize');
+        const quota = new AutoShareQuota(this.stores.memoryKernel);
+        await quota.configureHost({ enabled: this.config.autoShareEnabled,
+          botDaily: this.config.autoShareBotDaily, domainDaily: this.config.autoShareDomainDaily, timeZone: this.config.quotaTimeZone });
+        const currentBot = (key: import('../../shared/identity.js').BotKey) => this.stores.bots.list()
+          .some(b => sameBot({ botId: b.id, botCreatedAt: b.createdAt }, key));
+        this.memoryConfirmation = new MemoryConfirmation(this.stores.memoryKernel, currentBot, this.config.memoryGrantTtlMs);
+        this.memoryEgress = new EgressChecker(this.stores.memoryKernel, this.memoryConfirmation.grants, currentBot);
         this.memoryAdmission.start(this.stores.memoryKernel);
         // Workspace storage may be temporarily unavailable. Bot management and
         // preset registration still work, while the launch Remote can retry.

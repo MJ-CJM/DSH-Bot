@@ -28,7 +28,9 @@ async function setup(language: 'en' | 'zh' = 'en') {
   let page: ManagedMemoryPage = { revision: 1, total: 1, rows: [row] };
   const query = vi.fn(async (_input: MemoryQuery) => ({ ok: true as const, value: structuredClone(page) }));
   const revise = vi.fn(async () => ({ ok: false as const, error: { code: 'bot/conflict' } }));
-  const remote = { query, revise, cleanupStatuses: async () => ({ ok: true, value: [] }) } as unknown as DshBotMemoryRemoteMethods;
+  const remote = { query, revise, autoShareStatus: async () => ({ ok: true, value: { configured: true,
+    effectiveAutoShare: false, reason: 'unverifiable-user-input', botDaily: 5, domainDaily: 20, timeZone: 'UTC', revision: 2 } }),
+    cleanupStatuses: async () => ({ ok: true, value: [] }) } as unknown as DshBotMemoryRemoteMethods;
   ctx.provide('remote.dshBot.memory', remote);
   const catalog = createSharedMemoryCatalog(ctx, 'alpha'), binding = { catalog, remote: () => remote, refresh: () => catalog.refresh() };
   const container = document.createElement('div'); document.body.append(container); const root = createRoot(container);

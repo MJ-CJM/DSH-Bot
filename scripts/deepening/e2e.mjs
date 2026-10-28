@@ -115,6 +115,27 @@ try {
         await bots.getByRole('button', { name: t['actions.delete'], exact: true }).click();
         await bots.getByRole('button', { name: t['forget.preview'], exact: true }).click();
         await bots.getByRole('button', { name: t['forget.clean'], exact: true }).waitFor();
+        for (const label of ['forget.version', 'forget.related']) {
+          const radio = bots.getByRole('radio', { name: t[label], exact: true });
+          await radio.waitFor({ state: 'visible' });
+          const appearance = await radio.evaluate(el => {
+            const rect = el.getBoundingClientRect(), caption = el.closest('label')?.querySelector('span');
+            const style = getComputedStyle(el), text = caption && getComputedStyle(caption);
+            return { width: rect.width, height: rect.height, appearance: style.appearance,
+              text: caption?.textContent, visible: text?.visibility, display: text?.display, fontSize: text?.fontSize };
+          });
+          diagnostics.push({ id, radio: label, appearance });
+          // Persist measurements before asserting, so failed geometry is reviewable too.
+          await writeFile(resolve(dir, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
+          const detail = `${id}/${label}: ${JSON.stringify(appearance)}`;
+          assert.ok(appearance.width >= 12 && appearance.width <= 24, `radio.width: ${detail}`);
+          assert.ok(appearance.height >= 12 && appearance.height <= 24, `radio.height: ${detail}`);
+          assert.equal(appearance.appearance, 'auto', `radio.appearance: ${detail}`);
+          assert.equal(appearance.text, t[label], `radio.caption: ${detail}`);
+          assert.notEqual(appearance.visible, 'hidden', `radio.visibility: ${detail}`);
+          assert.notEqual(appearance.display, 'none', `radio.display: ${detail}`);
+          assert.ok(Number.parseFloat(appearance.fontSize) >= 12, `radio.fontSize: ${detail}`);
+        }
         await shot('preview');
         await bots.getByRole('button', { name: t['forget.stop'], exact: true }).click();
         await bots.getByText(t['forget.stopped'], { exact: true }).waitFor(); await shot('stopped');

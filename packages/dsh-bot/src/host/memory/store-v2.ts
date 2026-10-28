@@ -1,3 +1,5 @@
+import { MemoryLineage } from '../data-flow/lineage.js';
+import { mergeLabels } from '../data-flow/labels.js';
 import { randomUUID } from 'node:crypto';
 import { sameBot, type BotKey } from '../../shared/identity.js';
 import { memoryAddSchema, memoryPatchSchema, memoryListOptionsSchema, memorySchema, normalizeMemoryContent,
@@ -92,6 +94,15 @@ export class V2MemoryStore {
     const { version, payload } = privateVersion(this.kernel, record, owner, { memoryId: record.id,
       versionId: randomUUID(), contentRef: randomUUID(), revision: (previous?.revision ?? 0) + 1 },
       record.source?.by === 'model' ? 'model' : 'management');
+    if (previous) {
+      version.labels = mergeLabels(version.labels, previous.labels);
+      version.labels.sourceVersions = [...new Set([...version.labels.sourceVersions, previous.versionId])];
+      version.sourceRefs = [...previous.sourceRefs, ...version.sourceRefs, { parentVersionId: previous.versionId }];
+    }
+    if (record.source?.by === 'model' && record.source.sessionId) {
+      const lineage = new MemoryLineage(this.kernel), seen = lineage.seen(record.source.sessionId);
+      if (seen.length) version.labels = mergeLabels(version.labels, lineage.label(seen));
+    }
     await this.kernel.commit({ opId: randomUUID(), kind: previous ? 'revise' : 'propose', subjectIds: [record.id],
       expectedRevision: this.kernel.seq, forgetEpoch: this.kernel.epoch, versions: [version], payloads: { [version.contentRef]: payload } });
   }

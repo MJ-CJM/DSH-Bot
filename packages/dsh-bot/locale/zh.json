@@ -18,7 +18,8 @@
     "bot_notify.description": "使用已绑定策略记录通知。外推需要原生审批或用户显式预授权。",
     "bot_notify.approval": "通过 {channel} 向 {target} 发送通知（授权范围 {digest}）：\n{text}",
     "bot_message.description": "在队友本人的主会话中交换文本。list 查看目录；send 需 to/content/mode（ask 或 notify），可设 priority；reply 需 replyTo/content。返回 queued，不等待队友；run_code 内禁用。",
-    "bot_message.approval": "{from} → {to}；{mode}，{priority}。批准本线程及下游只读协作。打断将请求取消当前任务，保留排队输入，不能撤销已完成操作。正文：{content} 下游只读协作目标：{targets}。"
+    "bot_message.approval": "{from} → {to}；{mode}，{priority}。批准本线程及下游只读协作。打断将请求取消当前任务，保留排队输入，不能撤销已完成操作。正文：{content} 下游只读协作目标：{targets}。",
+    "bot_memory.confirm.approval": "将以下准确正文及结构字段确认为本用户域所有 Bot 可见的用户事实。来源及限制仍然保留。"
   },
   "ui": {
     "bots.title": "Bots",
@@ -714,6 +715,11 @@
     "shared.appliesTo": "限定对象",
     "forget.summary": "涉及 {versions} 个版本、{sessions} 个会话。",
     "forget.details": "查看影响范围与限制",
-    "forget.exclusions": "清理范围不含原始事件日志、外部备份和已发送数据。"
+    "forget.exclusions": "清理范围不含原始事件日志、外部备份和已发送数据。",
+    "autoShare.title": "自动共享",
+    "autoShare.unavailable": "当前 DSH 版本无法验证用户直接输入，自动共享暂不可用",
+    "autoShare.quotas": "每日限额：每 Bot {bot} 条 / 本用户域 {domain} 条（{timeZone}）。",
+    "autoShare.disable": "关闭自动共享",
+    "autoShare.enable": "开启策略（当前暂不可用）"
   }
 }

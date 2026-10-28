@@ -1,3 +1,4 @@
+import type { MemoryRecord } from '../../shared/schema.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { defineTool, type ToolRunContext, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools';
@@ -37,7 +38,7 @@ const listOutput = {
 };
 
 /** Definitions bind both the trusted Bot service and the owning Agent, never model arguments. */
-export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
+export function createMemoryTools(memory: BotMemoryService, owner: Agent, observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}) {
   const authorize = (exec: ToolRunContext) => {
     if (exec.agent !== owner) throw new DshBotError('bot/invalid', 'Memory tool belongs to another agent');
     exec.signal.throwIfAborted();
@@ -91,7 +92,7 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       output: listOutput,
       async execute(args, exec) {
         authorize(exec);
-        return memory.search(args, exec.signal);
+        return memory.search(args, exec.signal, observed);
       },
     }),
     defineTool({
@@ -105,7 +106,7 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       output: listOutput,
       async execute(args, exec) {
         authorize(exec);
-        return memory.list(args, exec.signal);
+        return memory.list(args, exec.signal, observed);
       },
     }),
     defineTool({

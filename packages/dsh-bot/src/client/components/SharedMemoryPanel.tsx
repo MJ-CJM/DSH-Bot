@@ -4,6 +4,7 @@ import type { MemoryQuery, ManagedMemoryRow, MemoryResolve } from '../../shared/
 import type { SharedMemoryCatalog } from '../shared-memory-state.js';
 import { memoryDraft, memoryDrafts, type ManagedDraft } from '../memory-drafts.js';
 import type { MemoryPanelProps } from './MemoryPanel.js';
+import { AutoShareStatus } from './AutoShareStatus.js';
 import { SharedMemoryList } from './SharedMemoryList.js';
 import { ManagedMemoryEditor } from './ManagedMemoryEditor.js';
 import { MemoryConflicts } from './MemoryConflicts.js';
@@ -78,6 +79,7 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
     },
   };
   return <section aria-label={t('shared.title')} data-shared-memory-panel="">
+    <AutoShareStatus binding={binding} t={t} />
     <p className={styles.notice}>{t('shared.manualOnly')}</p>
     <div className={styles.actions} role="tablist" aria-label={t('shared.views')}>
       {(['facts', 'journal', 'candidates', 'conflicts', 'all'] as const).map(view => <button type="button" role="tab" key={view}

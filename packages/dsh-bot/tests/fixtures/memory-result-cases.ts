@@ -4,7 +4,11 @@ export function memoryResultCases(memory: MemoryRecord): Record<string, [unknown
   const preview = { previewRevision: uuid, memoryId: '00000000-0000-4000-8000-000000000002',
     mode: 'version', revision: 1, targets: [], sessionIds: [], versions: 1, historyNodes: 0, summaries: 0,
     copies: 0, pendingMessages: 0, conservative: true, rootInstructions: false };
+  const status = { configured: true, effectiveAutoShare: false, reason: 'unverifiable-user-input',
+    botDaily: 5, domainDaily: 20, timeZone: 'Asia/Shanghai', revision: 2 };
   return {
+    autoShareStatus: [status, { ...status, effectiveAutoShare: true }],
+    setAutoShare: [status, { ...status, reason: 'verified' }],
     list: [[memory], [{ ...memory, unknown: true }]], search: [[memory], [{ id: 'bad' }]],
     save: [{ id: 'memory-1', deduplicated: false }, { id: 'memory-1', deduplicated: 'false' }],
     update: [memory, { ...memory, source: { by: 'untrusted', at: 1 } }],

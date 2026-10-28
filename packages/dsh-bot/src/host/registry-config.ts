@@ -4,6 +4,10 @@ import Schema from '@deepseek-ai/schemastery';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
 
 export interface Config extends MessagingConfig {
+  memoryGrantTtlMs: number;
+  autoShareEnabled: boolean;
+  autoShareBotDaily: number;
+  autoShareDomainDaily: number;
   memoryRetrieval: import('./memory/retrieval-config.js').Config;
   referenceMemoryTimeoutMs: number;
   referenceMemoryMaxFileBytes: number;
@@ -43,6 +47,10 @@ const activityLimit = (name: string, fallback: number) =>
   }).default(fallback);
 const baseConfig = Schema.object({
   ...messagingConfigFields,
+  memoryGrantTtlMs: Schema.number().min(1000).max(3600000).step(1).default(300000),
+  autoShareEnabled: Schema.boolean().default(true),
+  autoShareBotDaily: Schema.number().min(0).max(10000).step(1).default(5),
+  autoShareDomainDaily: Schema.number().min(0).max(100000).step(1).default(20),
   memoryRetrieval: RetrievalConfig,
   referenceMemoryTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
   referenceMemoryMaxFileBytes: Schema.number().min(1024).max(67108864).step(1).default(8388608),
@@ -102,6 +110,8 @@ const baseConfig = Schema.object({
 type ConfigInput = Omit<Partial<Config>, 'memoryRetrieval'> & { memoryRetrieval?: Partial<Config['memoryRetrieval']> };
 export const Config: Schema<ConfigInput, Config> = Schema.transform(baseConfig, (value) => {
   const config = value as unknown as Config;
+  if (![config.autoShareBotDaily, config.autoShareDomainDaily, config.memoryGrantTtlMs].filter(v => v !== undefined).every(Number.isSafeInteger))
+    throw new TypeError('Automatic sharing quotas must be safe integers');
   if (Math.abs(config.privateShare + config.sharedShare - 1) > 1e-9) throw new TypeError('Memory shares must sum to one');
   return validateMessagingConfig(config);
 }).default(baseConfig({}) as Config);

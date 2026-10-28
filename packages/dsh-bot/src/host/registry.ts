@@ -1,3 +1,5 @@
+import { AutoShareQuota } from './memory/quota.js';
+import { autoShareToggleSchema } from '../shared/data-flow.js';
 import { migrateMemoryDeny } from '../shared/memory-tool-names.js';
 import { MemoryManagement } from './memory/facade.js';
 import { retireShard } from './memory/shards.js';
@@ -66,6 +68,21 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
         }),
       this.config.memoryListLimit,
     );
+  }
+
+  async autoShareStatus() {
+    return this.enqueue(() => {
+      if (!this.memoryKernel) throw new Error('Memory kernel unavailable');
+      return new AutoShareQuota(this.memoryKernel).status();
+    });
+  }
+  async setAutoShare(input: import('zod').z.input<typeof autoShareToggleSchema>) {
+    const f = autoShareToggleSchema.parse(input);
+    return this.enqueue(async () => {
+      if (!this.memoryKernel) throw new Error('Memory kernel unavailable');
+      const quota = new AutoShareQuota(this.memoryKernel), { revision: _revision, ...policy } = quota.policy;
+      await quota.configure({ ...policy, enabled: f.enabled }, f.expectedRevision); this.invalidate(); return quota.status();
+    });
   }
 
   async manageMemory<T>(operation: (memory: MemoryManagement) => T | Promise<T>): Promise<T> {

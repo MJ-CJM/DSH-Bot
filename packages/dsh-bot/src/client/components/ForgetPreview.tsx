@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ForgetChoice, ForgetPreview as Preview, ForgetSelection, CleanupStatus } from '../../shared/memory-forget.js';
 import type { MemoryPanelProps } from './MemoryPanel.js';
 import styles from '../styles/bots.module.css';
 import previewStyles from '../styles/forget.module.css';
+import previewCss from '../styles/forget.module.css?inline';
 
 export interface ForgetActions {
   preview(selection: ForgetSelection): Promise<Preview>;
@@ -12,6 +13,7 @@ export interface ForgetActions {
 export function ForgetPreview({ memoryId, actions, close, t, contribution = false }: {
   contribution?: boolean; memoryId: string; actions: ForgetActions; close(): void; t: MemoryPanelProps['t'];
 }) {
+  const group = useId();
   const [mode, setMode] = useState<ForgetSelection['mode']>(contribution ? 'related' : 'version');
   const [preview, setPreview] = useState<Preview>();
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
@@ -39,11 +41,12 @@ export function ForgetPreview({ memoryId, actions, close, t, contribution = fals
   }
   return <fieldset className={styles.notice} aria-label={t('forget.title')}>
     <legend>{t(contribution ? 'shared.forgetContribution' : 'forget.title')}</legend>
+    <style data-dsh-bot-forget-styles="">{previewCss}</style>
     {contribution && <p>{t('shared.contributionNotice')}</p>}
-    <label className={previewStyles.option}><input type="radio" checked={mode === 'version'} disabled={busy || contribution}
-      onChange={() => { setMode('version'); setPreview(undefined); }} />{t('forget.version')}</label>
-    <label className={previewStyles.option}><input type="radio" checked={mode === 'related'} disabled={busy || contribution}
-      onChange={() => { setMode('related'); setPreview(undefined); }} />{t('forget.related')}</label>
+    <label className={previewStyles.option}><input name={group} type="radio" checked={mode === 'version'} disabled={busy || contribution}
+      onChange={() => { setMode('version'); setPreview(undefined); }} /><span>{t('forget.version')}</span></label>
+    <label className={previewStyles.option}><input name={group} type="radio" checked={mode === 'related'} disabled={busy || contribution}
+      onChange={() => { setMode('related'); setPreview(undefined); }} /><span>{t('forget.related')}</span></label>
     <p>{t('forget.previewNotice')}</p>
     {preview && <div>
       <p>{t('forget.summary', { versions: preview.versions, sessions: preview.sessionIds.length })}</p>

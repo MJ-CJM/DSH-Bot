@@ -1,3 +1,4 @@
+import { autoShareStatusSchema, autoShareToggleSchema } from './data-flow.js';
 import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryConfirmSchema,
   memoryResolveSchema, memoryPageSchema } from './memory-management.js';
 /** Hand-authored, browser-safe contract for the locked DSH release's public Typert API. */
@@ -224,6 +225,13 @@ export const dshBotRemoteSpec = {
         },
       ],
       result: codec('void', z.void()),
+    },
+    'dshBot.memory/autoShareStatus': {
+      ...memoryOwner, parameters: [], result: activityResultCodec('AutoShareStatus', autoShareStatusSchema),
+    },
+    'dshBot.memory/setAutoShare': {
+      ...memoryOwner, parameters: [parameter('input', 'AutoShareToggle', autoShareToggleSchema)],
+      result: activityResultCodec('AutoShareStatus', autoShareStatusSchema),
     },
     'dshBot.memory/query': {
       ...memoryOwner, parameters: [parameter('input', 'queryInput', memoryQuerySchema)],

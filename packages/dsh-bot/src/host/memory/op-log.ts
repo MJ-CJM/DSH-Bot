@@ -58,8 +58,12 @@ export class MemoryKernel {
   serial<T>(operation: () => Promise<T> | T): Promise<T> {
     const result = this.tail.then(operation); this.tail = result.catch(() => {}); return result;
   }
+  get policyRevision(): number { return this.state.autoPolicy?.revision ?? this.scope.policyRevision; }
+  transact(build: () => Commit): Promise<MemoryOp> { return this.serial(() => this.commitNow(build())); }
   async commit(input: Commit, beforeCommit?: () => Promise<void>): Promise<MemoryOp> {
-    return this.serial(async () => {
+    return this.serial(() => this.commitNow(input, beforeCommit));
+  }
+  private async commitNow(input: Commit, beforeCommit?: () => Promise<void>): Promise<MemoryOp> {
       this.assertReadable();
       this.assertOwner();
       const payloads = Object.fromEntries(Object.entries(input.payloads ?? {}).map(([id, p]) => [id, jsonValue(payloadSchema.parse(p))]));
@@ -72,7 +76,9 @@ export class MemoryKernel {
           !isDeepStrictEqual(this.domain.table('payloads').get(id), p))) throw new Error('Memory opId reused with different or erased parameters');
         return structuredClone(old);
       }
-      if (this.blocked && !['forget', 'cleanup', 'retire_shard'].includes(op.kind)) throw new Error('Memory cleanup pending; writes blocked');
+      const disabling = op.kind === 'policy' && op.autoPolicy?.enabled === false;
+      if (this.blocked && !disabling && !['forget', 'cleanup', 'retire_shard'].includes(op.kind))
+        throw new Error('Memory cleanup pending; writes blocked');
       if (input.forgetEpoch !== this.state.epoch + Number(input.kind === 'forget')) throw new Error('Stale memory epoch');
       if (input.expectedRevision !== this.state.seq) throw new Error('Memory revision conflict');
       await beforeCommit?.();
@@ -117,7 +123,6 @@ export class MemoryKernel {
         if (op.kind === 'forget') await persistProjection(this.domain, next);
       } catch { this.cacheFailures++; }
       return structuredClone(op);
-    });
   }
   private publish(): void { for (const listener of this.listeners) listener(); }
   async close(): Promise<void> { this.stopped = true; this.publish(); await this.tail; await this.domain.close(); }

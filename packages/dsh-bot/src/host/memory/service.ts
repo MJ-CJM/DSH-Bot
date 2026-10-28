@@ -71,28 +71,26 @@ export class BotMemoryService {
     );
   }
 
-  async search(input: MemorySearchInput, signal?: AbortSignal): Promise<MemoryRecord[]> {
+  async search(input: MemorySearchInput, signal?: AbortSignal,
+    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}): Promise<MemoryRecord[]> {
     const fields = parseInput(memorySearchInputSchema, input);
-    return this.run(
-      () =>
-        (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
-          ...fields,
-          limit: fields.limit ?? this.defaultListLimit,
-        }),
-      signal,
-    );
+    return this.run(async () => {
+      const rows = (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
+        ...fields, limit: fields.limit ?? this.defaultListLimit,
+      });
+      await observed(rows); return rows;
+    }, signal);
   }
 
-  async list(input: MemoryListInput = {}, signal?: AbortSignal): Promise<MemoryRecord[]> {
+  async list(input: MemoryListInput = {}, signal?: AbortSignal,
+    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}): Promise<MemoryRecord[]> {
     const fields = parseInput(memoryListInputSchema, input);
-    return this.run(
-      () =>
-        (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
-          ...fields,
-          limit: fields.limit ?? this.defaultListLimit,
-        }),
-      signal,
-    );
+    return this.run(async () => {
+      const rows = (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
+        ...fields, limit: fields.limit ?? this.defaultListLimit,
+      });
+      await observed(rows); return rows;
+    }, signal);
   }
 
   async forget(input: MemoryForgetInput, signal?: AbortSignal): Promise<void> {

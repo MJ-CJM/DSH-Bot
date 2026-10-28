@@ -398,3 +398,49 @@ I33 命中 p95=0.00796ms、重算=11.5101ms，均达标；冷恢复/重建超过
 ## B5s（2026-10-27）
 
 [报告](B5s.md)：held-out Recall@5 0.2333→0.7333、MRR 0.2619→0.7619；I33/U PASS；check 环境 FAIL，真实连接器 flaky 根因与修复仍 FAIL。
+
+
+## B6a：I35–I40（2026-10-27）
+
+执行 `tasks/DP/B6a.md`，基于 `phase/deepening@762b0f4`。
+完整 53 文件清单、命令/退出码、失败历史及限制见 [B6a 报告](B6a.md)。
+保留原有 pnpm-workspace.yaml、.codex/、任务单；未改依赖、lockfile、版本或参考源码。
+没有嵌套 Codex、commit/push、真实模型调用、真实数据访问或对外消息。
+
+| 验收 | 结果 |
+| --- | --- |
+| 0 radio | PASS(中英 DOM/结构)；FAIL(environment，真实主题视觉)，PNG 0 |
+| I35 | PASS(UNIT rc.2，核心)；100跳不提权，依赖冷恢复/模型保存/修订保留限制 |
+| I36 | FAIL(capability)，没有公开人工入口证明；rc.3 Host FAIL(environment)；已附上游草案 |
+| I37 | PASS(精确片段/窄语法/拒绝 UNIT)；合法自动路径 FAIL(capability)，不铸造可信 receipt |
+| I38 | PASS(真实 JSON/独立进程)；5/100、20/100；新进程真实删建同 ID Bot 后0/100，已收费5 |
+| I39 | PASS(真实 npm AgentLoop/ApprovalService)；rc.3 Host FAIL(environment)；仅 allowed-once、一次提交 |
+| I40 | PASS(checker UNIT)；准入和 dispatch 双检查，unknown不自动重试；具体出口留给 B6b |
+| C | FAIL(environment)；889用例：880 passed/6网络失败/3 expected fail，历轮头像波动记录保留 |
+| strict/lint/尺寸/locale | PASS；47代码文件≤400行/≤160字符；UI 699/tools 16双语键一致 |
+
+R5 生效：策略默认开，effectiveAutoShare=false，UI 明示当前 DSH 版本无法验证直接用户输入并支持持久开关。
+原生 prompt 的 owner API 也生成 source.kind=user；SOURCE/UNIT 不代替真实人工入口证据。
+两组 H 的 version/initialize/install 成功，CLI 0.2.1-rc.3；Host webserver listen EPERM，未完成真实冒充/确认路径。
+E(forget) 在 host-setup 的 loopback listen EPERM；8组、24状态截图项未执行，不以DOM替代。
+B6b仍需接线消息/群聊/委派/通知/MCP/自动发布的持久envelope、通用工具输入标签及60对攻击/合法对照。
+本轮不关闭M4自动共享、精确rc.2 CLI、具体出口和完整P0门禁。
+
+B6a 最终定向：10文件/77 passed（6个新增核心套件49项），含真实原生审批卸载取消、过期和晚到许可负例。
+最终完整C：`.dsh-dev/b6a-check-lifecycle.log`；静态检查随后顺序执行，typecheck/lint各exit=0。
+全部53改动文件及执行命令已列入报告；未把保护中的原有工作区文件算入改动。
+
+## B6a-rework（2026-10-27）
+
+本次只返工三处失败，完整文件、原始失败、命令/退出码和后续步骤见 [B6a 返工小节](B6a.md#b6a-rework2026-10-27)。
+保留已有工作区；pnpm-workspace.yaml 与开始时摘要一致，无提交、依赖改动、真实模型或全局写入。
+
+- PASS(UNIT)：按本次原生 RPC ID/准确正文定位输入，runtime-context/缺失/重复全部拒绝；API 冒充门禁保持关闭。
+- PASS(UNIT/收据)：原 null 是 host 在90秒期限被 SIGKILL；测试应答器按准确 Agent/tool 前置到 Web 审批桥之前。
+  原生审批仍执行。新增阶段/deadline/卸载收据，父进程补终态结果并记录 pid/code/signal/耗时/卡点。
+- PASS(DOM/构建)：原 HTML 有 forget_option 而无规则，补上组件拥有的 inline CSS 挂载；E 先落实测再按名字断言。
+- FAIL(environment)：H(trusted-ingress)、H(confirm) 在 webserver listen EPERM 失败；E(forget) 同样无法启动监听，24项未执行、0 PNG。
+- FAIL(capability)：当前公开能力仍不能证明人工直接输入，effectiveAutoShare=false。
+- FAIL(environment)：完整 check 为887 passed、6失败、3 expected fail；最终定向4文件39 passed，strict和lint独立通过。
+
+等待编排方沙箱外重跑两组 H、E(forget) 与完整 check；本次没有重跑另外三个已获编排方 PASS 的浏览器套件。

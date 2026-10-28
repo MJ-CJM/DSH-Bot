@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { memoryVersionSchema, randomId, safeCounter, userScopeSchema } from './memory-v2.js';
+import { autoSharePolicySchema, quotaChargeSchema } from './data-flow.js';
 import { botKeySchema } from './identity.js';
 
 export const opSchema = z.strictObject({
@@ -9,6 +10,7 @@ export const opSchema = z.strictObject({
   subjectIds: z.array(randomId), payloadRefs: z.array(randomId), expectedRevision: safeCounter,
   forgetEpoch: safeCounter, versions: z.array(memoryVersionSchema), receiptRefs: z.array(randomId),
   owner: botKeySchema.optional(),
+  autoPolicy: autoSharePolicySchema.optional(), quotaCharge: quotaChargeSchema.optional(), grantUse: randomId.optional(),
 });
 export const barrierSchema = z.strictObject({ id: randomId, epoch: safeCounter.positive(), targets: z.array(randomId),
   affectedSessionIds: z.array(z.string()), state: z.enum(['intent', 'stopped', 'cleaning', 'blocked', 'verified']),

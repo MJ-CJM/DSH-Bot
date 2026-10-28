@@ -43,18 +43,8 @@ export const Config: Schema<Config> = Schema.object({
   botId: Schema.string().pattern(BOT_ID_PATTERN).required(),
 });
 
-/** Identity belongs to one live agent, without mutating DSH's Agent object. */
-export interface BotBinding {
-  readonly botId: string;
-  readonly botCreatedAt: number;
-}
-
-const bindings = new WeakMap<Agent, BotBinding>();
-
-/** Public Host-side identity lookup for later Bot memory/tool contributions. */
-export function getBotBinding(agent: Agent): BotBinding | undefined {
-  return bindings.get(agent);
-}
+export { getBotBinding, type BotBinding } from './data-flow/agent-binding.js';
+import { bindings } from './data-flow/agent-binding.js';
 
 /** Mounted inside a preset; its closure is retained with that preset generation. */
 export function apply(ctx: Context, config: Config): void {
@@ -172,7 +162,14 @@ export function apply(ctx: Context, config: Config): void {
             releases.push(retiredMemoryGuidance(agent));
             // restrict() only hides inherited tools in rc.2. Omit denied local
             // definitions so schema lookup and dispatch agree for memory tools.
-            for (const tool of createMemoryTools(memory, agent)) {
+            for (const tool of createMemoryTools(memory, agent, async rows => {
+              const kernel = ctx.dshBots.memoryKernel;
+              if (!kernel || !admission) throw new Error('Memory lineage is unavailable');
+              await admission.recordRead(agent.session.id, rows.map(row => {
+                const version = kernel.snapshot.versions.get(row.id);
+                if (!version) throw new Error('Memory changed during read'); return version.versionId;
+              }));
+            })) {
               if (!deniedMemory.has(tool.name)) releases.push(agent.ctx.tools.register(tool));
             }
             const kernel = ctx.dshBots.memoryKernel;

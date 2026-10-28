@@ -26,7 +26,7 @@ export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: Conte
   return () => {
     kernel.assertReadable();
     const state = kernel.snapshot, now = clock();
-    const key = JSON.stringify([kernel.scope.scope.id, owner, state.seq, state.epoch, kernel.scope.policyRevision, policy, injectLimit]);
+    const key = JSON.stringify([kernel.scope.scope.id, owner, state.seq, state.epoch, kernel.policyRevision, policy, injectLimit]);
     if (cached && cached.key === key && now >= cached.from && now < cached.until) { observed(cached.ids); return cached.text; }
     let until = nextDayBoundary(now, kernel.scope.quotaTimeZone);
     const view = temporalView(kernel, { at: now }), all = view.facts;

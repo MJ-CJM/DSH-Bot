@@ -14,12 +14,8 @@ export const sourceRefSchema = z.strictObject({
   sessionId: z.string().optional(), eventSeq: safeCounter.optional(), callId: z.string().optional(),
   parentVersionId: randomId.optional(), entryReceiptId: randomId.optional(), managementOpId: randomId.optional(),
 });
-export const labelSchema = z.strictObject({
-  readers: z.union([z.literal('shared'), z.array(botKeySchema)]),
-  originTrust: z.enum(['candidate', 'user_stated', 'user_confirmed']),
-  sourceVersions: z.array(randomId), restrictions: z.array(z.enum(['secret', 'no-egress', 'pending-cleanup', 'revoked'])),
-  grants: z.array(randomId),
-});
+export { dataLabelSchema as labelSchema } from './data-flow.js';
+import { dataLabelSchema as labelSchema } from './data-flow.js';
 export const payloadSchema = z.strictObject({
   content: memoryFields.shape.content,
   subject: z.string().optional(), factKey: z.string().optional(), qualifiers: z.record(z.string(), z.string()).optional(),

@@ -232,6 +232,7 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     registry.memoryForget = new MemoryForgetting(ctx, registry);
     const target = await registry.memoryFor('alpha').save({ content: 'Synthetic forget target' });
     const cases: Record<string, unknown[]> = {
+      autoShareStatus: [],
       list: ['alpha', {}], search: ['alpha', { query: 'absent' }],
       save: ['alpha', { content: 'Codec result' }], count: ['alpha'], quarantineCount: [],
       previewForget: ['alpha', { memoryId: target.id, mode: 'version' }], cleanupStatuses: [], rootInstructions: [],
@@ -243,6 +244,7 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
       const method = descriptor.implementation ?? descriptor.method;
       const kernel = registry.memoryKernel; if (!kernel) throw new Error('Missing kernel');
       Object.assign(cases, {
+        setAutoShare: [{ enabled: false, expectedRevision: kernel.policyRevision }],
         query: [{ botId: 'alpha', scope: 'shared', view: 'all' }],
         createManaged: [{ botId: 'alpha', scope: 'shared', kind: 'user_fact', content: 'MANAGED', subject: 'user',
           factKey: 'preference', valid: { from: 1, to: null, basis: 'explicit' }, expectedRevision: kernel.seq }],

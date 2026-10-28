@@ -18,7 +18,8 @@
     "bot_notify.description": "Record a notification using an existing policy. External delivery needs native approval unless explicitly preapproved.",
     "bot_notify.approval": "Send notification via {channel} to {target} (scope {digest}):\n{text}",
     "bot_message.description": "Exchange text with a teammate in their own main conversation. list: directory; send: to/content/mode (ask or notify), optional priority; reply: replyTo/content. Returns queued, never waits for peer. No nested run_code calls.",
-    "bot_message.approval": "{from} → {to}; {mode}, {priority}. Approve this thread and downstream read-only collaboration. Interrupt requests cancel the current task, keep queued inputs and cannot undo completed effects. Text: {content} Read-only downstream targets: {targets}."
+    "bot_message.approval": "{from} → {to}; {mode}, {priority}. Approve this thread and downstream read-only collaboration. Interrupt requests cancel the current task, keep queued inputs and cannot undo completed effects. Text: {content} Read-only downstream targets: {targets}.",
+    "bot_memory.confirm.approval": "Confirm this exact content and fields as a user fact visible to all Bots in this user domain. Source and restrictions remain attached."
   },
   "ui": {
     "bots.title": "Bots",
@@ -714,6 +715,11 @@
     "shared.appliesTo": "Applies to",
     "forget.summary": "Affects {versions} versions across {sessions} sessions.",
     "forget.details": "View impact and limits",
-    "forget.exclusions": "Raw event logs, external backups and already sent data are excluded."
+    "forget.exclusions": "Raw event logs, external backups and already sent data are excluded.",
+    "autoShare.title": "Automatic sharing",
+    "autoShare.unavailable": "This DSH version cannot verify direct user input. Automatic sharing is temporarily unavailable.",
+    "autoShare.quotas": "Daily limits: {bot} per Bot / {domain} per user domain ({timeZone}).",
+    "autoShare.disable": "Turn off automatic sharing",
+    "autoShare.enable": "Enable policy (currently unavailable)"
   }
 }

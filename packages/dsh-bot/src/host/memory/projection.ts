@@ -1,10 +1,13 @@
+import { validateCharge } from './quota-replay.js';
+import type { AutoSharePolicy, QuotaCharge } from '../../shared/data-flow.js';
 import type { MemoryOp } from '../../shared/memory-ops.js';
 import type { MemoryVersion } from '../../shared/memory-v2.js';
 import type { MemoryDomain } from './domain-v2.js';
 import { PersistentMap, PersistentSet } from './persistent-map.js';
 
 export interface Projection { seq: number; epoch: number; versions: PersistentMap<MemoryVersion>;
-  forgotten: PersistentSet; retired: PersistentSet }
+  forgotten: PersistentSet; retired: PersistentSet; autoPolicy?: AutoSharePolicy;
+  quota: PersistentMap<QuotaCharge>; grantUses: PersistentSet }
 function freezeValue(value: unknown): void {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
   for (const item of Object.values(value)) freezeValue(item);
@@ -15,12 +18,19 @@ function publish(state: Projection): Projection {
   return Object.freeze(state);
 }
 export const emptyProjection = (): Projection => publish({ seq: 0, epoch: 0,
-  versions: new PersistentMap(), forgotten: new PersistentSet(), retired: new PersistentSet() });
+  quota: new PersistentMap(), grantUses: new PersistentSet(), versions: new PersistentMap(), forgotten: new PersistentSet(), retired: new PersistentSet() });
 export function applyOp(current: Projection, op: MemoryOp): Projection {
   if (op.seq !== current.seq + 1 || op.expectedRevision !== current.seq || op.forgetEpoch < current.epoch)
     throw new Error('Invalid memory log order');
   if (op.kind === 'forget' ? op.forgetEpoch !== current.epoch + 1 : op.forgetEpoch !== current.epoch)
     throw new Error('Invalid memory epoch');
+  if (op.autoPolicy && (op.kind !== 'policy' || op.autoPolicy.revision !== (current.autoPolicy?.revision ?? 1) + 1))
+    throw new Error('Invalid automatic sharing policy');
+  validateCharge(current, op);
+  if (op.grantUse && current.grantUses.has(op.grantUse)) throw new Error('Grant already consumed');
+  const autoPolicy = op.autoPolicy ?? current.autoPolicy; freezeValue(autoPolicy); freezeValue(op.quotaCharge);
+  const quota = op.quotaCharge ? current.quota.with(op.opId, op.quotaCharge) : current.quota;
+  const grantUses = op.grantUse ? current.grantUses.with(op.grantUse) : current.grantUses;
   let versions = current.versions;
   let forgotten = current.forgotten, retired = current.retired;
   for (const id of op.kind === 'forget' ? op.subjectIds : []) { forgotten = forgotten.with(id); versions = versions.without(id); }
@@ -32,7 +42,7 @@ export function applyOp(current: Projection, op: MemoryOp): Projection {
     const value = structuredClone(version); freezeValue(value);
     versions = versions.with(version.memoryId, value);
   }
-  return publish({ seq: op.seq, epoch: op.forgetEpoch, versions, forgotten, retired });
+  return publish({ seq: op.seq, epoch: op.forgetEpoch, versions, forgotten, retired, autoPolicy, quota, grantUses });
 }
 export function rebuild(domain: MemoryDomain): Projection {
   let state = emptyProjection();

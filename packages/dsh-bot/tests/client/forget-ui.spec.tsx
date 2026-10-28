@@ -9,6 +9,11 @@ import { MemoryPanel, type MemoryPanelProps } from '../../src/client/components/
 import type { MemoryCatalogSnapshot } from '../../src/client/memory-state.js';
 import type { CleanupStatus, ForgetPreview } from '../../src/shared/memory-forget.js';
 
+// Vitest stubs CSS imports by default; supply the real text to check the render-owned style lifecycle.
+vi.mock('../../src/client/styles/forget.module.css?inline', async () => ({
+  default: await (await import('node:fs/promises')).readFile('src/client/styles/forget.module.css', 'utf8'),
+}));
+
 const id = '00000000-0000-4000-8000-000000000001';
 async function mount(lang: 'en' | 'zh') {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -52,6 +57,10 @@ describe('I19/I20 DOM evidence, separate from Chromium', () => {
       await app.click('actions.delete'); await app.click('actions.cancel');
       expect(app.actions.preview).not.toHaveBeenCalled(); expect(app.actions.choose).not.toHaveBeenCalled();
       await app.click('actions.delete'); await app.click('forget.preview');
+      const css = app.container.querySelector('style[data-dsh-bot-forget-styles]')?.textContent;
+      expect(css).toContain("input[type='radio']");
+      expect(css).toContain('appearance: auto');
+      expect(css).toContain('width: 16px');
       expect(app.actions.preview).toHaveBeenCalledWith({ memoryId: id, mode: 'version' });
       await app.click('forget.stop');
       expect(app.actions.choose).toHaveBeenCalledWith({ previewRevision: id, choice: 'stop' });

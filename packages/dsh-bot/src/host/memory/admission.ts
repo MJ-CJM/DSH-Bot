@@ -1,3 +1,4 @@
+import { MemoryLineage } from '../data-flow/lineage.js';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { Context } from '@deepseek-ai/cordis';
@@ -77,7 +78,13 @@ export class MemoryAdmission {
     this.kernel.assertReadable();
     this.kernel.assertOwnership();
   }
-  observed(sessionId: string, versionIds: string[]): void { this.seen.set(sessionId, [...versionIds]); }
+  observed(sessionId: string, versionIds: string[]): void {
+    this.seen.set(sessionId, [...new Set([...(this.seen.get(sessionId) ?? []), ...versionIds])]);
+  }
+  async recordRead(sessionId: string, versionIds: string[]): Promise<void> {
+    if (!this.kernel) throw new Error('Memory lineage unavailable');
+    await new MemoryLineage(this.kernel).record(sessionId, versionIds); this.observed(sessionId, versionIds);
+  }
   /** This effect is intentionally not returned to the preset/Host: it lasts until Agent disposal. */
   protect(agent: Agent): void {
     const id = agent.session.id;
@@ -145,7 +152,7 @@ export class MemoryAdmission {
         if (epoch !== kernel.epoch) throw new Error('Stale memory request epoch');
         // Every managed request records its actual context dependencies before dispatch.
         await kernel.domain.table('receipts').put(id, { id, epoch, sessionId: agent.session.id,
-          versionIds: this.seen.get(agent.session.id) ?? [], state: 'read' });
+          versionIds: [...new Set([...new MemoryLineage(kernel).seen(agent.session.id), ...(this.seen.get(agent.session.id) ?? [])])], state: 'read' });
         this.assertAllowed();
         this.leases.set(id, { agent, done, finish });
       });

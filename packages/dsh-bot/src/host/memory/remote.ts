@@ -33,6 +33,10 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
     super(ctx, 'dshBotMemory', { namespace: 'dshBot.memory' });
   }
   @Remote
+  async autoShareStatus() { return this.ctx.dshBots.autoShareStatus(); }
+  @Remote
+  async setAutoShare(input: { enabled: boolean; expectedRevision: number }) { return this.ctx.dshBots.setAutoShare(input); }
+  @Remote
   async query(input: MemoryQuery) { return this.ctx.dshBots.manageMemory(m => m.query(input)); }
   @Remote
   async createManaged(input: MemoryCreate) {

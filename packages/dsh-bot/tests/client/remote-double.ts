@@ -66,7 +66,14 @@ export function remoteDouble(initial: BotRecord[] = []) {
 			return { ok: true, value: next };
 		}),
 	};
+  const autoStatus = { configured: true, effectiveAutoShare: false as const, reason: 'unverifiable-user-input' as const,
+    botDaily: 5, domainDaily: 20, timeZone: 'Asia/Shanghai', revision: 2 };
 	const memory = {
+    autoShareStatus: vi.fn(async () => ({ ok: true as const, value: { ...autoStatus } })),
+    setAutoShare: vi.fn(async (input: { enabled: boolean; expectedRevision: number }) => {
+      autoStatus.configured = input.enabled; autoStatus.revision++;
+      return { ok: true as const, value: { ...autoStatus } };
+    }),
     previewForget: vi.fn<DshBotRemoteMethods['memory']['previewForget']>(async (_botId, selection) => {
       forgetTarget = selection.memoryId;
       return { ok: true, value: { previewRevision: '00000000-0000-4000-8000-000000000001', ...selection,

@@ -184,7 +184,7 @@ describe('built bundle contract', () => {
         'bot_manage.approval.combined', 'bot_manage.approval.create', 'bot_manage.approval.delete',
         'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories',
         'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',
-        'bot_message.approval', 'bot_message.description', 'bot_notify.approval', 'bot_notify.description', 'schedule.guidance',
+        'bot_memory.confirm.approval', 'bot_message.approval', 'bot_message.description', 'bot_notify.approval', 'bot_notify.description', 'schedule.guidance',
       ]);
       for (const value of Object.values(dictionary)) expect(value.trim()).not.toBe('');
     }
@@ -307,6 +307,7 @@ describe('built bundle contract', () => {
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
         'dshBot.memory/previewForget', 'dshBot.memory/chooseForget', 'dshBot.memory/cleanupStatuses',
         'dshBot.memory/retryCleanup', 'dshBot.memory/rootInstructions',
+        'dshBot.memory/autoShareStatus', 'dshBot.memory/setAutoShare',
         'dshBot.memory/query', 'dshBot.memory/createManaged', 'dshBot.memory/revise', 'dshBot.memory/confirm',
         'dshBot.memory/resolve', 'dshBot.memory/previewContribution', 'dshBot.memory/previewShared',
       ].sort());

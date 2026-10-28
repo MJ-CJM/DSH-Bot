@@ -1,5 +1,42 @@
 # DSH API 核实记录
 
+## DP B6a-rework：原生事件定位与审批 waterfall（2026-10-27）
+
+本次无新增产品 API、依赖或 runtime peer。完整证据见 [B6a 返工](deepening/B6a.md#b6a-rework2026-10-27)。
+只读 rc.2 `core/agent-loop/src/agent.ts:411–439` 会在输入后追加 user role 的 runtime-context；
+夹具改用 `sessionController.prompt` 生成的 `source.rpcId` 加准确正文定位本次输入，仍严格断言 kind=user。
+owner RPC 不能成为人工证明，生产 candidate/自动共享关闭门禁未改变。
+
+`api/remotes/src/index.ts:64–79,137–163` 将 approval/request waterfall 转给 Web 并等待结果。
+测试夹具使用公开 Cordis `on(...,{prepend:true})`，在准确 Agent effect 内仅回答指定确认工具，其他请求继续 next；
+保留原生 ApprovalService open turn/never/审计/取消。真实 npm rc.2 UNIT 验证前方挂起桥与一次提交。
+真实 rc.3 H 仍因 webserver listen EPERM 未进入轮次，不能把 UNIT 当 Host 通过。
+
+## DP B6a：标签、可信入口门禁、配额、原生确认与 checker（2026-10-27）
+
+完整文件、命令/退出码及分层验收见 [B6a 报告](deepening/B6a.md)。版本保持 0.3.2；无新增依赖、peer 或 lockfile 修改。
+参考 HEAD/tag 仍为 `687f282e`；包装 CLI 实测 `0.2.1-rc.3`。
+
+- `sessionController.prompt` 仍统一生成 `source.kind='user'`，owner principal 省略；只读 rc.2
+  `packages/api/session-controller/src/index.ts:462-485`。Client 的 `send/sendSession` 也是公开可编程入口，
+  `packages/client/ui-conversation/src/client/service.ts:209,229`。没有发现可用于人工证明的公开签名。
+  本包不铸造可信 receipt；所有 native prompt 分类为 candidate，effectiveAutoShare=false。
+  [上游需求草案](deepening/trusted-ingress-upstream.md) 尚未发送；真实 rc.3 Host 冒充负例受 webserver EPERM 阻断。
+- 实际审批服务名为 `approval`，由 `agent.ctx.get('approval')` 获取；包入口仅类型导入，无新增 runtime peer。
+  `@deepseek-ai/dsh-user-approval` rc.2 `src/index.ts:156,215-239,277-305`：真实 open turn、asked/decided 审计、
+  never 优先、取消和晚到答复处理。UNIT 使用真实 AgentLoop 与 ApprovalService；只有 allowed-once 产生 Host 内存 grant。
+  grant 绑定准确可发布字段、来源、scope、目标、BotKey、调用、epoch、policyRevision 和过期时间；随机 grantUse 随 promote op 一次提交。
+- 标签沿用原有 label 字段，抽到共享 strict schema；合并读许可交集、限制/来源并集、较低 trust，grant 不做并集。
+  context 与记忆工具读取累计原有 receipts；工具读取在 registry 队列内先持久登记再返回正文。
+  model save 和私有 revise 保留已知依赖/限制。其他出口和通用工具的标签接线留给 B6b，未宣称全链数据流已覆盖。
+- 复用公开 storageDomain/KvTable 与同一 v2 ops 提交点；autoPolicy、quotaCharge、grantUse 都是可选日志字段。
+  配额与策略从 ops 重建，Host 时区默认持久化；时钟高水位、时区延后切换、botId 桶跨生日、遗忘不退款均独立验证。
+  Config 增加 autoShareEnabled/BotDaily/DomainDaily 与 memoryGrantTtlMs；同一 Host 配置重启不会覆盖 UI 已保存的关闭选择。
+- checker 在同一 kernel 队列的持久准入前及 transport 调用前检查；不改原生工具 deny/ask，不注册旁路。
+  本批仅提供 Host 核心契约，消息/群聊/委派/通知/MCP 的持久 envelope 与具体出口接线属于 I41–I47。
+  源码/UNIT/DOM、rc.3 Host 与浏览器证据分别记录；EPERM 和入口能力缺失不能记成自动共享通过。
+
+
 ## DP B5-rework-2：公开 per-record 布局与可恢复转换（2026-10-27）
 
 根因剖析、全部命令/失败历史及逐项验收见 [二次返工报告](deepening/B5-rework-2.md)。
