@@ -1,0 +1,29 @@
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-block: 8px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.option > span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.option > input[type='radio'] {
+  all: revert;
+  appearance: auto;
+  display: inline-block;
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 3px 0 0;
+  padding: 0;
+  accent-color: var(--dsw-alias-state-business-primary);
+}

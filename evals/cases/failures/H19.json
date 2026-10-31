@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H19",
+  "kind": "history",
+  "rootCause": "test-carrier-uses-a-second-scope-module-instance",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/acceptance/P1-T05.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      107,
+      107
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Fixture imports a dev-only agent/scope copy while running in Host.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Use the Host public dependency instance for scoped carriers.",
+  "observed": {
+    "original": "The test waterfall widened to global despite correct prompt, tools and binding.",
+    "beforeFix": "The test waterfall widened to global despite correct prompt, tools and binding.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

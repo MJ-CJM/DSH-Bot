@@ -240,6 +240,7 @@ function DeliveryHistory({ actions, record, t }: { actions: RoutineActions; reco
           <p>
             {t('routine.scheduledAt')}: {formatTime(r.scheduledAt, t)}
           </p>
+          <p data-routine-outcome={r.outcome?.state ?? 'unobserved'}>{t(`routine.outcome.${r.outcome?.state ?? 'unobserved'}`)}</p>
           <p className={styles.prompt}>{r.prompt ?? t('native.promptUnavailable')}</p>
         </article>
       ))}

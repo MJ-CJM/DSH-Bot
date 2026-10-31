@@ -4,3 +4,4 @@ import { vi } from 'vitest';
 // not validate the host's CSS, SVG artwork or menu placement. Real platform
 // rendering is exercised separately by scripts/screenshot.mjs.
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => import('./platform-primitives.js'));
+vi.mock('@deepseek-ai/dsh-client-ui-input-trigger/client', () => import('./platform-input-trigger.js'));

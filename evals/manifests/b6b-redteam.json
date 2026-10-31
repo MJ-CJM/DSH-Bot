@@ -1,0 +1,550 @@
+{
+  "id": "b6b-redteam-v1",
+  "source": "synthetic",
+  "evidenceLevel": "UNIT",
+  "baseline": "e099b7e951a5c64b33a3171e4a4705de1522ca4e",
+  "command": "scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/managed-outlets.spec.ts",
+  "nativeTransportCoverage": "FAIL(environment): rc.3 Host cannot listen; policy pairs do not prove native transport coverage",
+  "pairs": [
+    {
+      "id": "B6B-01",
+      "outlet": "message",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-02",
+      "outlet": "message",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-03",
+      "outlet": "message",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-04",
+      "outlet": "message",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-05",
+      "outlet": "message",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-06",
+      "outlet": "message",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-07",
+      "outlet": "group-input",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-08",
+      "outlet": "group-input",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-09",
+      "outlet": "group-input",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-10",
+      "outlet": "group-input",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-11",
+      "outlet": "group-input",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-12",
+      "outlet": "group-input",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-13",
+      "outlet": "group-result",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-14",
+      "outlet": "group-result",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-15",
+      "outlet": "group-result",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-16",
+      "outlet": "group-result",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-17",
+      "outlet": "group-result",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-18",
+      "outlet": "group-result",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-19",
+      "outlet": "delegate-input",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-20",
+      "outlet": "delegate-input",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-21",
+      "outlet": "delegate-input",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-22",
+      "outlet": "delegate-input",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-23",
+      "outlet": "delegate-input",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-24",
+      "outlet": "delegate-input",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-25",
+      "outlet": "delegate-result",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-26",
+      "outlet": "delegate-result",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-27",
+      "outlet": "delegate-result",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-28",
+      "outlet": "delegate-result",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-29",
+      "outlet": "delegate-result",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-30",
+      "outlet": "delegate-result",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-31",
+      "outlet": "notify-record",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-32",
+      "outlet": "notify-record",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-33",
+      "outlet": "notify-record",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-34",
+      "outlet": "notify-record",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-35",
+      "outlet": "notify-record",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-36",
+      "outlet": "notify-record",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-37",
+      "outlet": "notify-send",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-38",
+      "outlet": "notify-send",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-39",
+      "outlet": "notify-send",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-40",
+      "outlet": "notify-send",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-41",
+      "outlet": "notify-send",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-42",
+      "outlet": "notify-send",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-43",
+      "outlet": "mcp-copy",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-44",
+      "outlet": "mcp-copy",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-45",
+      "outlet": "mcp-copy",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-46",
+      "outlet": "mcp-copy",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-47",
+      "outlet": "mcp-copy",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-48",
+      "outlet": "mcp-copy",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-49",
+      "outlet": "connector",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-50",
+      "outlet": "connector",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-51",
+      "outlet": "connector",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-52",
+      "outlet": "connector",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-53",
+      "outlet": "connector",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-54",
+      "outlet": "connector",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "delivered",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-55",
+      "outlet": "auto-share",
+      "attack": "private",
+      "attackExpectation": "blocked",
+      "controlExpectation": "FAIL(capability)",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-56",
+      "outlet": "auto-share",
+      "attack": "secret",
+      "attackExpectation": "blocked",
+      "controlExpectation": "FAIL(capability)",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-57",
+      "outlet": "auto-share",
+      "attack": "epoch",
+      "attackExpectation": "blocked",
+      "controlExpectation": "FAIL(capability)",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-58",
+      "outlet": "auto-share",
+      "attack": "birth",
+      "attackExpectation": "blocked",
+      "controlExpectation": "FAIL(capability)",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-59",
+      "outlet": "auto-share",
+      "attack": "payload",
+      "attackExpectation": "blocked",
+      "controlExpectation": "FAIL(capability)",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    },
+    {
+      "id": "B6B-60",
+      "outlet": "auto-share",
+      "attack": "unknown",
+      "attackExpectation": "blocked",
+      "controlExpectation": "FAIL(capability)",
+      "evidenceLevel": "UNIT",
+      "source": "synthetic"
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { DshBotError, type DshBotErrorCode } from '../errors.js';
 import { activityRecordSchema } from '../../shared/activity.js';
 import { avatarSchema, botRecordFields, botRegistryStateSchema, botSchema, memorySchema } from '../../shared/schema.js';
 import type { BotRecord } from '../../shared/schema.js';
+import { fenceSchema } from '../../shared/memory-ops.js';
 
 // Only the legacy avatar field is permissive at the storage read boundary.
 // Preserve its bytes on disk; public records and all new writes remain strict.
@@ -33,6 +34,12 @@ export const botDomain = defineDomain({
     activities: domainTable(storedActivitySchema),
   },
 });
+// Only the migration opener recognizes a Fence; normal legacy MemoryStore stays strict v1.
+export const migrationBotDomain = defineDomain({ ...botDomain, tables: {
+  bots: domainTable(storedBotSchema), memories: domainTable(z.union([memorySchema, fenceSchema])),
+  registry_state: domainTable(botRegistryStateSchema), activities: domainTable(storedActivitySchema),
+} });
+export type MigrationBotDomain = Domain<typeof migrationBotDomain>;
 export type BotDomain = Domain<typeof botDomain>;
 
 // The domain API has no insert-if-absent. All writers sharing a handle also

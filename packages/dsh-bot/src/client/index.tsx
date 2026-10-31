@@ -1,4 +1,10 @@
+import { matchesCreation, restoreRecentPreferences } from './pages/recent-conversations.js';
+import { CAPABILITIES_REMOTE } from '../shared/capabilities-contract.js';
+import { createModelCatalog } from './model-catalog-state.js';
 import { sharedPollingScheduler } from './polling-scheduler.js';
+import { createBackgroundActions } from './background-work-state.js';
+import NATIVE_SUBAGENTS_REMOTE from '@deepseek-ai/dsh-subagent/remote';
+import NATIVE_PERMISSION_REMOTE from '@deepseek-ai/dsh-permission-presets/remote';
 import { MESSAGING_REMOTE, messageOverviewSchema } from '../shared/messaging-contract.js';
 import { registerMessaging } from './messaging.js';
 import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
@@ -7,6 +13,7 @@ import { createWorkspaceActions } from './workspace-state.js';
 import { GROUPS_REMOTE } from '../shared/groups-contract.js';
 import { createGroupActions } from './groups-state.js';
 import { GroupSessionBadge } from './components/GroupSessionBadge.js';
+import { registerWorkspaceGroups } from './workspace-group.js';
 import { COLLABORATION_REMOTE } from '../shared/collaboration-contract.js';
 import { createCollaborationActions } from './collaboration-state.js';
 import { INTEGRATIONS_REMOTE } from '../shared/integrations-contract.js';
@@ -34,11 +41,17 @@ import type { DshBotRemoteMethods } from '../shared/remote-contract.js';
 import { Config } from './config.js';
 import { registerBotsRightTab } from './right-tab.js';
 import { BotsPage, type BotsPageInjected } from './pages/BotsPage.js';
+import { BotComposerIdentity } from './components/BotComposerIdentity.js';
+import { createOnboardingTransport } from './onboarding-transport.js';
+import { registerOnboardingNotice } from './onboarding-notice.js';
+import type { StartOnboardingInput } from '../shared/onboarding.js';
+import { FirstChatHint } from './components/FirstChatHint.js';
 import { SessionBotBadge } from './components/SessionBotBadge.js';
 import { WhaleGlyph } from './components/WhaleGlyph.js';
 import { SessionBotLeading, SessionBotHover, type SessionBotRowInjected } from './components/SessionBotLeading.js';
 import { BotSessionsSidebar, type BotSessionsSidebarInjected } from './components/BotSessionsSidebar.js';
-import { createMemoryCatalog, type MemoryCatalog } from './memory-state.js';
+import type { MemoryCatalog } from './memory-state.js';
+import { memoryPanelFactory } from './memory-panel.js';
 import { createBotDetailSource } from './detail-state.js';
 import { createBotCatalog } from './state.js';
 import { createActivityCatalog } from './activity-state.js';
@@ -51,6 +64,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     'dsh-bot': keyof typeof en.ui;
   }
+}
+
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap { dshBotPersona: unknown }
 }
 
 // Standard Web/Desktop composition includes locale (dsh-v0.2.1-rc.2:
@@ -69,10 +86,19 @@ function unwrap<T>(result: RemoteResult<T>): T {
 
 export async function apply(ctx: Context, options: Partial<Config> = {}): Promise<void> {
   const config = Config(options);
+  ctx.effect(() => {
+    let storage: Storage | undefined;
+    try { storage = window.localStorage; } catch { /* Browser storage can be disabled. */ }
+    return restoreRecentPreferences(storage, window.location.pathname);
+  }, 'dsh-bot: recent conversation preferences');
   await ctx.effect(async () => await ctx.remote.$mount(TYPERT_REMOTE), 'dsh-bot: Remote contribution');
   // Standard Web already mounts this public namespace; slim clients may not.
   if (!ctx.get('remote.schedule'))
     await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SCHEDULE_REMOTE), 'dsh-bot: native schedule Remote');
+  if (!ctx.get('remote.subagents'))
+    await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SUBAGENTS_REMOTE), 'dsh-bot: native subagent Remote');
+  if (!ctx.get('remote.permissionPresets'))
+    await ctx.effect(async () => await ctx.remote.$mount(NATIVE_PERMISSION_REMOTE), 'dsh-bot: native permission Remote');
   await ctx.effect(async () => await ctx.remote.$mount(AUTOMATION_REMOTE), 'dsh-bot: automation Remote');
   await ctx.effect(async () => await ctx.remote.$mount(INTEGRATIONS_REMOTE), 'dsh-bot: integration Remote');
   await ctx.effect(async () => await ctx.remote.$mount(COLLABORATION_REMOTE), 'dsh-bot: collaboration Remote');
@@ -88,6 +114,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   );
   const t = ctx.locale.bind(namespace);
   await ctx.effect(async () => await ctx.remote.$mount(MESSAGING_REMOTE), 'dsh-bot: messaging Remote');
+  await ctx.effect(async () => await ctx.remote.$mount(CAPABILITIES_REMOTE), 'dsh-bot: capabilities Remote');
+  const models = createModelCatalog(ctx, config);
   const catalog = createBotCatalog(ctx, config);
   const activity = createActivityCatalog(ctx, config);
   const routines = createRoutineActions(ctx, config);
@@ -99,6 +127,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   // this entry runs only on the Client and uses its public service contract.
   const sessions = ctx.sessions as unknown as ISessions;
   const detail = createBotDetailSource(ctx);
+  const onboardingTransport = createOnboardingTransport();
+  ctx.effect(() => () => onboardingTransport.dispose(), 'dsh-bot: onboarding transport diagnostics');
   registerMessaging(ctx, (botId) => { detail.open(botId); ctx.layout.selectPanel('dsh-bot' as MainPanelId); });
   const memories = new Set<MemoryCatalog>();
   // Client memory only: shared by page/sidebar, cleared on plugin unload.
@@ -150,13 +180,23 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ctx.uiWorkspace.openSession(id as SessionId);
     }
   };
-  const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void) => {
+  registerWorkspaceGroups(ctx, groups, catalog, openSession, models);
+  registerOnboardingNotice(ctx);
+  const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void, operationId?: string) => {
     if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
     const { sessionId } = unwrap(await remote().openConversation(id));
     if (!active || signal?.aborted || navigation.aborted) return;
     beforeOpen?.(sessionId as SessionId);
     ctx.uiWorkspace.openSession(sessionId as SessionId);
+    if (operationId && active) {
+      // A model failure must leave the native conversation open and editable.
+      // Status is read by FirstChatHint; only navigation failures reject create.
+      const intent = { botId: id, operationId, sessionId };
+      void remote().startOnboarding(intent).then(unwrap).then(() => {
+        if (active) onboardingTransport.clear(intent);
+      }, () => { if (active) onboardingTransport.failed(intent); });
+    }
     if (active) await refresh();
   };
   // Compatibility for existing injected callers: every launch resolves the same Host-owned main.
@@ -167,7 +207,11 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     beforeOpen?: (id: SessionId) => void,
   ) => startBot(id, signal, beforeOpen);
   const page: BotsPageInjected = {
-    messages: { subscribe(refresh) { return ctx.effect(() => sharedPollingScheduler(ctx, config).register({ polling: true, refresh: async () => { await refresh(); return undefined; } }), 'dsh-bot: message overview'); }, async request(input) {
+    models,
+    background: createBackgroundActions(ctx, config),
+    messages: { subscribe(refresh) { return ctx.effect(() => sharedPollingScheduler(ctx, config).register({
+      polling: true, refresh: async () => { await refresh(); return undefined; },
+    }), 'dsh-bot: message overview'); }, async request(input) {
       const remote = ctx.get('remote.dshBot.messaging');
       if (!active || !remote) throw new Error(t('messages.disabled'));
       return messageOverviewSchema.parse(unwrap(await remote.request(input)));
@@ -187,28 +231,9 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onOpenSession: (id, signal) => openSession(id, undefined, signal),
     onDetailConsumed: detail.consume,
     onCountMemories: async (id) => unwrap(await memoryRemote().count(id)),
-    createMemoryPanel: (id) => {
-      const memory = createMemoryCatalog(ctx, id, {
-        pollIntervalMs: catalog.getSnapshot().pollIntervalMs,
-        pageSize: config.memoryPageSize,
-      });
-      memories.add(memory);
-      const write = async (operation: () => Promise<RemoteResult<unknown>>) => {
-        unwrap(await operation());
-        await memory.refresh();
-      };
-      return {
-        catalog: memory,
-        dispose: () => {
-          memories.delete(memory);
-          memory.dispose();
-        },
-        onSave: (input) => write(() => memoryRemote().save(id, input)),
-        onUpdate: (memoryId, patch) => write(() => memoryRemote().update(id, memoryId, patch)),
-        onRemove: (memoryId) => write(() => memoryRemote().delete(id, memoryId)),
-        onOpenSession: openSession,
-      };
-    },
+    createMemoryPanel: memoryPanelFactory(ctx, memories, () => ({
+      pollIntervalMs: catalog.getSnapshot().pollIntervalMs, pageSize: config.memoryPageSize,
+    }), memoryRemote, openSession),
     onRefresh: refresh,
     getPreferredWorkspace: () => preferredWorkspace,
     onPollInterval: (value) => {
@@ -219,12 +244,45 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       integrations.catalog.setPollIntervalMs(interval);
       collaboration.im.setPollIntervalMs(interval);
       groups.catalog.setPollIntervalMs(interval);
+      models.catalog.setPollIntervalMs(interval);
       for (const memory of memories) memory.setPollIntervalMs(interval);
     },
-    onCreate: (input) => mutate(() => remote().create(input)),
+    onCreate: async (input) => {
+      try { await mutate(() => remote().create(input)); }
+      catch (error) {
+        await catalog.refresh();
+        // The Host may have committed before the transport failed; only recognize
+        // this exact generated identity and complete intent, never an arbitrary ID collision.
+        if (!catalog.getSnapshot().entries.some(entry => matchesCreation(input, entry.bot))) throw error;
+      }
+    },
+    onCreateForChat: async (bot, operationId, language) => {
+      unwrap(await remote().createForChat({ bot, operationId, language }));
+      await refresh();
+    },
+    onStartCreated: (id, operationId, signal) => startBot(id, signal, undefined, operationId),
+    onEditPersona: async (bot) => {
+      const navigation = ctx.layout.beginNavigation();
+      const current = unwrap(await remote().get(bot.id));
+      if (current.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
+      const { sessionId } = unwrap(await remote().openConversation(bot.id));
+      const conversation = ctx.get('conversation');
+      if (!active || navigation.aborted || !conversation) throw new Error(t('errors.unavailable'));
+      await sessions.using(sessionId as SessionId, { source: 'dshBotPersona' }, async reference => {
+        const binding = await reference.ready;
+        if (!active || navigation.aborted) return;
+        const latest = unwrap(await remote().get(bot.id));
+        if (!active || navigation.aborted) return;
+        if (latest.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
+        const result = conversation.input.requestDraftInitialization(binding, { prompt: t('persona.prompt') });
+        ctx.uiWorkspace.openSession(sessionId as SessionId);
+        if (result !== 'applied') throw new Error(t('persona.draftBlocked'));
+      });
+    },
     onUpdate: (id, patch) => mutate(() => remote().update(id, patch)),
     onDuplicate: (id, newId) => mutate(() => remote().duplicate(id, newId)),
-    onDelete: (id, deleteMemories, deleteHome) => mutate(() => remote().delete(id, { deleteMemories, deleteHome })),
+    onDelete: (id, deleteMemories, deleteHome, expected) => mutate(() => remote().delete(id, { deleteMemories, deleteHome,
+      expectedCreatedAt: expected.createdAt, expectedUpdatedAt: expected.updatedAt })),
     onEnsureHome: async (id) => unwrap(await remote().ensureHome(id)).path,
     onEnsureBotsWorkspace: async () => unwrap(await remote().ensureBotsWorkspace()).path,
     onPickDirectory:
@@ -247,6 +305,31 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     },
     { open: openSession, start: startBot, startInWorkspace: startBotInWorkspace },
   );
+  const firstChatInjected = () => ({
+    hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity },
+    onMarkRead: activity.markRead,
+    onOpenBot: (id: string) => {
+      if (!active) return;
+      detail.open(id); ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+    },
+    onboardingTransport,
+    onOnboardingStatus: async (id: string) => unwrap(await remote().onboardingStatus(id)),
+    onRetryOnboarding: async (input: StartOnboardingInput) => {
+      try {
+        const result = unwrap(await remote().retryOnboarding(input));
+        if (active) onboardingTransport.clear(input);
+        return result;
+      } catch (error) { if (active) onboardingTransport.failed(input); throw error; }
+    },
+  });
+  ctx.effect(() => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities', id: 'dsh-bot-first-chat', locale: namespace,
+    inject: firstChatInjected,
+  }, FirstChatHint)), 'dsh-bot: first chat guidance');
+  ctx.effect(() => ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock', id: 'dsh-bot-empty-identity', order: -20, locale: namespace,
+    inject: firstChatInjected,
+  }, BotComposerIdentity)), 'dsh-bot: empty conversation identity');
   ctx.effect(
     () =>
       ctx.slots.inject('conversation.session.header.utilities', () =>

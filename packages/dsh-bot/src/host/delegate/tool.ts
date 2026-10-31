@@ -1,3 +1,4 @@
+import { startDelegate } from '../data-flow/delegation.js';
 import type { SubagentActivation } from '@deepseek-ai/dsh-subagent';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
@@ -134,18 +135,19 @@ export function registerDelegateTool(owner: Agent): () => void {
                 if (prior.args !== serialized) throw new HarnessError('Invocation changed', 'automation/conflict');
                 return await prior.receipt;
               }
-              const pending = native.startActivation({
+              const pending = startDelegate(registry, owner, binding,
+                { botId: target.id, botCreatedAt: target.createdAt }, `${step}:${key}`, {
                 provider: 'spawn',
                 label: args.title ?? target.name,
                 delivery: 'parent',
                 signal: AbortSignal.any([exec.signal, lifetime.signal]),
                 request: { parent: owner, agentPreset: status.presetId, prompt: [{ type: 'text', text: args.task }] },
-              });
+              }, lifetime.signal);
               starts.add(pending);
               const receipt = pending
                 .then(async (activation) => {
                   active.add(activation);
-                  // Native settlement delivers the result and owns normal teardown.
+                  // Native settlement owns teardown; managed caller delivery checks the result separately.
                   void activation.result
                     .catch(() => ctx.logger.warn('[dsh-bot] native delegate result unavailable'))
                     .finally(() => active.delete(activation));

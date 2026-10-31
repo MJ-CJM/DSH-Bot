@@ -1,0 +1,148 @@
+{
+  "id": "b8-synthetic-v1",
+  "datasetVersion": "1",
+  "seed": 2026102801,
+  "mode": "replay",
+  "adapterVersion": "1",
+  "authorization": null,
+  "source": "synthetic",
+  "limits": {
+    "calls": 100,
+    "input": 10000,
+    "output": 10000,
+    "money": 100000
+  },
+  "priceSnapshot": {
+    "version": "synthetic-v1",
+    "source": "synthetic",
+    "model": "synthetic",
+    "call": 10,
+    "input": 1,
+    "output": 2
+  },
+  "catalog": {
+    "path": "evals/manifests/failures.json",
+    "sha256": "f434875a0ef671b2eeba01bbb7de438bba14a8e905c2f071c3e45caa53cad842"
+  },
+  "caseIds": [
+    "memory-00",
+    "memory-01",
+    "memory-02",
+    "memory-03",
+    "memory-04",
+    "memory-05",
+    "memory-06",
+    "memory-07",
+    "memory-08",
+    "memory-09",
+    "memory-10",
+    "memory-11",
+    "memory-12",
+    "memory-13",
+    "memory-14",
+    "memory-15",
+    "memory-16",
+    "memory-17",
+    "memory-18",
+    "memory-19",
+    "workflow-00",
+    "workflow-01",
+    "workflow-02",
+    "workflow-03",
+    "workflow-04",
+    "workflow-05",
+    "workflow-06",
+    "workflow-07",
+    "workflow-08",
+    "workflow-09",
+    "workflow-10",
+    "workflow-11",
+    "workflow-12",
+    "workflow-13",
+    "workflow-14",
+    "workflow-15",
+    "workflow-16",
+    "workflow-17",
+    "workflow-18",
+    "workflow-19",
+    "injection-00",
+    "injection-01",
+    "injection-02",
+    "injection-03",
+    "injection-04",
+    "injection-05",
+    "injection-06",
+    "injection-07",
+    "injection-08",
+    "injection-09",
+    "injection-10",
+    "injection-11",
+    "injection-12",
+    "injection-13",
+    "injection-14",
+    "injection-15",
+    "injection-16",
+    "injection-17",
+    "injection-18",
+    "injection-19",
+    "injection-20",
+    "injection-21",
+    "injection-22",
+    "injection-23"
+  ],
+  "files": [
+    {
+      "path": "evals/cases/offline/memory-0.json",
+      "sha256": "9fe0e535914720f4b0eaf97fe52d3c1581d00acd686d76a7fed2334685c673fc"
+    },
+    {
+      "path": "evals/cases/offline/memory-1.json",
+      "sha256": "2bcea4f34a7cfaf74dbce1766e2da4b67689f8983bfb7b51e2b105023e932826"
+    },
+    {
+      "path": "evals/cases/offline/memory-2.json",
+      "sha256": "097feb9d0bd7a6a3ca7b76487355c1cd25490747c9cdbd84ff5eb6bb2e61a64a"
+    },
+    {
+      "path": "evals/cases/offline/memory-3.json",
+      "sha256": "be82d299270f584df4fb6f90437a8b8c858c8d37d2d369bef1b1c235221b45c9"
+    },
+    {
+      "path": "evals/cases/offline/memory-4.json",
+      "sha256": "f050881bc4a4ed84369caf9ba23e49cad65f37c3cde32001d4c8dfaf1a6ba26c"
+    },
+    {
+      "path": "evals/cases/offline/workflow-0.json",
+      "sha256": "d3a35feaba76453b4c646725e8ff9636553ecafde47e0fee86b3638253ba58b9"
+    },
+    {
+      "path": "evals/cases/offline/workflow-1.json",
+      "sha256": "ddd9f2953a16ac52e62a26fd8e7cbb2fad9086be69e6974fe75c9825c69307de"
+    },
+    {
+      "path": "evals/cases/offline/workflow-2.json",
+      "sha256": "9e7efa08385cbd3594b781e31d4534abb97729f3748dedc9ee23eb42c6a200a8"
+    },
+    {
+      "path": "evals/cases/offline/workflow-3.json",
+      "sha256": "dd34bbaa28032306cec1972a6f8ca5f53eaf0e34a67af4c32eb92a225d86ef8f"
+    },
+    {
+      "path": "evals/cases/offline/injection-0.json",
+      "sha256": "ffa61378a1f6bd05496ce8275e10abb6f04327cbbe8cacc18de095122d46d91d"
+    },
+    {
+      "path": "evals/cases/offline/injection-1.json",
+      "sha256": "87cea775409bd6cb83cd0404e13d0f2cabb547afc565838a015c4e7d401dd09e"
+    },
+    {
+      "path": "evals/cases/offline/injection-2.json",
+      "sha256": "e2b49230831224096daa2993014d8afed9e0478e1ca5589580acf77e16a0cad8"
+    },
+    {
+      "path": "evals/cases/offline/injection-3.json",
+      "sha256": "a280f3f8d918c27ab5a9905f3472feb637ecac599a210f62899adf2441501160"
+    }
+  ],
+  "outputCeiling": 512
+}

@@ -1,6 +1,8 @@
 import { GroupsPanel } from '../components/GroupsPanel.js';
 import { ManagementWorkspace } from '../components/ManagementWorkspace.js';
-import { Button, IconPlusOutlineRegular, IconRefreshOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useState } from 'react';
+import { RecentConversations } from './RecentConversations.js';
+import { Button, IconPlusOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import styles from '../styles/bots.module.css';
 import css from '../styles/bots.module.css?inline';
 
@@ -14,6 +16,8 @@ export function BotsPage(page: BotsPageProps) {
   const { management, groups, routines, integrations, collaboration, createMemoryPanel, onOpenSession, onRefresh, t } =
     page;
   const model = useBotsPage(page);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const text = (key: string) => t(key as Parameters<typeof t>[0]);
   const { snapshot, pageElement, compact, tab, setTab, busy, open, entries, unavailable, toast, setToast } = model;
   return (
     <section
@@ -31,64 +35,15 @@ export function BotsPage(page: BotsPageProps) {
               <p className={styles.subtitle}>{t('bots.subtitle')}</p>
             </div>
             <div className={styles.actions}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={styles.iconButton}
-                aria-label={t('bots.refresh')}
-                title={t('bots.refresh')}
-                disabled={busy || snapshot.loading}
-                onClick={() => {
-                  void onRefresh();
-                }}
-              >
-                <IconRefreshOutlineRegular size={16} />
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                className={styles.createButton}
-                icon={<IconPlusOutlineRegular size={13} />}
-                disabled={busy || !snapshot.loaded || Boolean(snapshot.error)}
-                onClick={() => open({ kind: 'create' })}
-              >
-                {t('bots.create')}
-              </Button>
+              <details><summary className={styles.button} aria-label={text('chat.new')}><IconPlusOutlineRegular size={16} /></summary>
+                <button type="button" className={styles.button} disabled={busy || !snapshot.loaded} onClick={() => open({ kind: 'create' })}>{t('bots.create')}</button>
+                {groups && <button type="button" className={styles.button} onClick={() => { setCreatingGroup(true); setTab('groups'); }}>{t('groups.create')}</button>}
+              </details>
+              <button type="button" className={styles.button} onClick={() => setTab(tab === 'management' ? 'bots' : 'management')}>{text(tab === 'management' ? 'chat.recent' : 'chat.settings')}</button>
             </div>
           </header>
-          <div role="tablist" aria-label={t('bots.title')} className={styles.managementTabs}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'bots'}
-              className={styles.button}
-              onClick={() => setTab('bots')}
-            >
-              {t('bots.title')}
-            </button>
-            {groups && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'groups'}
-                className={styles.button}
-                onClick={() => setTab('groups')}
-              >
-                {t('groups.title')}
-              </button>
-            )}
-            {(management || integrations || routines || collaboration) && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'management'}
-                className={styles.button}
-                onClick={() => setTab('management')}
-              >
-                {t('manage.title')}
-              </button>
-            )}
-          </div>
+          {tab === 'bots' && <RecentConversations page={page} model={model} />}
+          {tab === 'groups' && <button type="button" className={styles.button} onClick={() => { setTab('bots'); setCreatingGroup(false); }}>{text('chat.recent')}</button>}
           {tab === 'management' && (
             <ManagementWorkspace
               management={management}
@@ -103,6 +58,8 @@ export function BotsPage(page: BotsPageProps) {
           )}
           {groups && tab === 'groups' && (
             <GroupsPanel
+              key={creatingGroup ? 'create' : 'manage'}
+              initialCreate={creatingGroup}
               actions={groups}
               bots={entries.map((entry) => entry.bot)}
               t={t}
@@ -130,7 +87,7 @@ export function BotsPage(page: BotsPageProps) {
               {t('bots.loading')}
             </p>
           )}
-          {snapshot.loaded && !snapshot.error && snapshot.entries.length === 0 && (
+          {tab === 'bots' && snapshot.loaded && !snapshot.error && snapshot.entries.length === 0 && (
             <div className={styles.empty}>
               <h2>{t('bots.empty')}</h2>
               <p>{t('bots.emptyHint')}</p>
@@ -149,7 +106,7 @@ export function BotsPage(page: BotsPageProps) {
         </div>
       </div>
       <BotDialogs page={page} model={model} />
-      {toast && !toast.inline && (
+      {toast && (
         <div className={styles.toast} role={toast.error ? 'alert' : 'status'}>
           <span>{toast.text}</span>
           <button type="button" className={styles.button} onClick={() => setToast(undefined)}>

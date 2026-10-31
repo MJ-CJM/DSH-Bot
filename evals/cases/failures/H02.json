@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "H02",
+  "kind": "history",
+  "rootCause": "ambient-context-misclassified-as-business-input",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/acceptance/V032-bot-to-bot.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      16,
+      16
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "A wake-only claim reaches native next(), which appends runtime-context.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts -t \"H02 \"",
+  "expected": "Reject wake-only model admission while preserving mixed human input.",
+  "observed": {
+    "original": "Native runtime-context survived wake filtering and allowed an empty business turn.",
+    "beforeFix": "Review reconstruction reproduces the documented failure mechanism.",
+    "afterFix": "Current product/public Cordis boundary passes the same invariant (UNIT only)."
+  },
+  "regressions": [
+    {
+      "testId": "H02",
+      "testFile": "packages/dsh-bot/tests/deepening/contracts.spec.ts",
+      "testName": "H02 native ambient context must not wake a business model turn",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/H02.json"
+    }
+  ]
+}

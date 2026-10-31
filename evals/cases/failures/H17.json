@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "H17",
+  "kind": "history",
+  "rootCause": "markdown-emphasis-strips-intraword-underscores",
+  "mastCategory": "verification",
+  "source": {
+    "path": "packages/dsh-bot/src/shared/activity-preview.ts",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      17,
+      19
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "An assistant completion contains T08C_LOCAL_MOCK_REPLY.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts -t \"H17 \"",
+  "expected": "Preserve intraword underscores and still strip ordinary markdown emphasis.",
+  "observed": {
+    "original": "Current implementation explicitly distinguishes identifiers from markdown emphasis; the old mechanism is a review reconstruction.",
+    "beforeFix": "Review reconstruction reproduces the documented failure mechanism.",
+    "afterFix": "Current product/public Cordis boundary passes the same invariant (UNIT only)."
+  },
+  "regressions": [
+    {
+      "testId": "H17",
+      "testFile": "packages/dsh-bot/tests/deepening/contracts.spec.ts",
+      "testName": "H17 markdown preview preserves intraword underscores in identifiers",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/H17.json"
+    }
+  ]
+}

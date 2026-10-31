@@ -7,7 +7,7 @@ import type { BotKey } from '../../shared/identity.js';
 import { digest, OperationError } from '../common/operations.js';
 import type { MessagingAuthorization } from './core.js';
 // Explicitly audited local reads only. MCP, run_code and unknown tools always ask.
-const reads = new Set(['memory_search', 'memory_list']);
+const reads = new Set(['bot_memory_search', 'bot_memory_list']);
 export function teammateTurn(agent: Agent): boolean {
   const events = agent.session.snapshotEvents();
   const start = events.findLast((e) => e.type === 'turn/start')?.seq ?? -1;
@@ -19,7 +19,8 @@ export function invocation(agent: Agent, exec: ToolExecution): string {
     exec.rootCallId, exec.callId]);
 }
 export class MessagingSafety implements MessagingAuthorization {
-  private grants = new Map<string, { agent: Agent; digest: string; target: BotKey; id: string; targets: BotKey[]; signal?: AbortSignal; valid?: () => boolean }>();
+  private grants = new Map<string, { agent: Agent; digest: string;
+    target: BotKey; id: string; targets: BotKey[]; signal?: AbortSignal; valid?: () => boolean }>();
   private scopes = new Map<string, BotKey[]>();
   targets(id: string) { const targets = this.scopes.get(id); this.scopes.delete(id); return targets; }
   active = true;
@@ -29,7 +30,8 @@ export class MessagingSafety implements MessagingAuthorization {
     const grant = this.grants.get(invocation);
     this.grants.delete(invocation);
     grant?.signal?.throwIfAborted();
-    if (!this.active || !grant || grant.valid?.() === false || grant.agent !== agent || grant.digest !== digest(input) || digest(grant.target) !== digest(target))
+    if (!this.active || !grant || grant.valid?.() === false
+      || grant.agent !== agent || grant.digest !== digest(input) || digest(grant.target) !== digest(target))
       throw new OperationError('approval-denied');
     this.scopes.set(grant.id, grant.targets);
     return grant.id;

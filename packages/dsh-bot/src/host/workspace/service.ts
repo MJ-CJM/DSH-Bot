@@ -124,6 +124,7 @@ export class WorkspaceManagement {
           createdAt: _created,
           updatedAt: _updated,
           schemaVersion: _version,
+          onboarding: _onboarding,
           defaultCwd: _cwd,
           skills: _skills,
           mcpServers: _mcp,

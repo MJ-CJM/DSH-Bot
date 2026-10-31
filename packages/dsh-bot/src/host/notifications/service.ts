@@ -1,6 +1,8 @@
+import { notificationAdmission, notificationSend } from './data-flow.js';
+import { outlets } from '../data-flow/tool-guard.js';
 import { randomUUID } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
-import type { BotKey, NotificationPolicy, NotificationRecord, NotifyInput } from '../../shared/integrations.js';
+import type { BotKey, NotificationRecord, NotifyInput } from '../../shared/integrations.js';
 import {
   notificationSchema,
   notifyInputSchema,
@@ -23,25 +25,8 @@ export interface NotificationPort {
     signal: AbortSignal;
   }): Promise<{ state: 'accepted'; platformMessageId?: string } | { state: 'failed' | 'unknown' }>;
 }
-export function localTime(at: number, timezone: string) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(at);
-  const get = (key: string) => parts.find((p) => p.type === key)?.value ?? '';
-  return { day: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
-}
-export function quietAt(at: number, p: Pick<NotificationPolicy, 'quietHours' | 'timezone'>) {
-  if (!p.quietHours) return false;
-  const t = localTime(at, p.timezone).time,
-    { start, end } = p.quietHours;
-  return start === end || (start < end ? t >= start && t < end : t >= start || t < end);
-}
+export { localTime, quietAt } from './time.js';
+import { localTime, quietAt } from './time.js';
 export interface NotificationOptions {
   dailyLimit: number;
   cooldownSec: number;
@@ -184,10 +169,15 @@ export class Notifications {
         updatedAt: at,
         schemaVersion: 1,
       });
+      const flow = outlets(this.registry), flowId = await notificationAdmission(this.registry, owner, row);
+      if (flowId) row.flowId = flowId;
+      const save = async () => {
       // Intent is the authoritative ledger. Tombstone first means a partial write
       // can lose a local record but can never authorize a duplicate external send.
       await ledger.put(row.id, { id: row.id, owner, revision: 1, createdAt: at, updatedAt: at, schemaVersion: 1 });
       await this.stores.notifications.table('intents').put(row.id, row);
+      };
+      if (flowId) await need(flow).dispatch(flowId, save); else await save();
       this.changed();
       return row;
     });
@@ -239,7 +229,8 @@ export class Notifications {
       if (!p.enabled) return { record: await this.put({ ...r, state: 'suppressed', reasonCode: 'disabled' }) };
       if (signal?.aborted || this.stopping)
         return { record: await this.put({ ...r, state: 'cancelled', reasonCode: 'stopping' }) };
-      if (p.channel === 'in-app') return { record: await this.put({ ...r, state: 'recorded' }) };
+      if (p.channel === 'in-app') return { record: await notificationSend(this.ctx, this.registry, r, p, () => this.policy(r.policyId),
+        () => this.put({ ...r, state: 'recorded' }), signal ?? this.lifetime.signal) };
       if (p.authorization.mode === 'ask' && approvedScope !== r.scopeDigest)
         return { record: await this.put({ ...r, state: 'cancelled', reasonCode: 'approval-denied' }) };
       if (!this.port) return { record: await this.put({ ...r, state: 'failed', reasonCode: 'unsupported' }) };
@@ -279,7 +270,8 @@ export class Notifications {
       const deadline = new AbortController();
       try {
         result = await Promise.race([
-          need(reserved.port).send({
+          notificationSend(this.ctx, this.registry, reserved.record, reserved.policy,
+            () => this.policy(reserved.record.policyId), () => need(reserved.port).send({
             targetRef: need(reserved.policy.targetRef),
             targetDigest: reserved.policy.targetDigest,
             text: reserved.record.text,
@@ -290,7 +282,7 @@ export class Notifications {
               need(reserved.portSignal),
               deadline.signal,
             ]),
-          }),
+          }), AbortSignal.any([...(signal ? [signal] : []), this.lifetime.signal, need(reserved.portSignal), deadline.signal])),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
               deadline.abort();
@@ -356,6 +348,18 @@ export class Notifications {
         count--;
       }
     }
+  }
+  async forgetCleanup(epoch: number) {
+    await Promise.allSettled([...this.sends]);
+    await this.queue.run(async () => {
+      const flow = outlets(this.registry);
+      for (const row of this.list()) {
+        const copy = row.flowId && flow?.get(row.flowId);
+        if (copy && copy.envelope?.binding.epoch === epoch) continue;
+        await this.stores.notifications.table('intents').delete(row.id);
+      }
+      this.changed();
+    });
   }
   async close() {
     this.stopping = true;

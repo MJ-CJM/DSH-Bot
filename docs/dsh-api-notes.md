@@ -1,5 +1,339 @@
 # DSH API 核实记录
 
+## V041-rework：真实安装目录与激活边界（2026-10-28）
+
+完整证据见 [V041 返工](deepening/V041.md#v041-rework2026-10-28基于-da0371f)。未新增依赖、peer 或 Remote。
+夹具直接通过 CLI pnpm 安装同 profile node_modules，移除 tar 部署副本；通过公开 `ctx.loader.import`
+加载新引导，再用 `ctx.plugin`/`fork.await` 验证 Config 激活拒绝。rc.2 `vendor/cordis/src/registry.ts:178–185`
+明确配置/启动错误会拒绝；`fiber.ts:50–61` 使用 Config 的 Standard Schema 验证。真实 npm Cordis 的 Node 回归通过。
+公开 Host `webServer` 只用于 probe 的 inject 就绪依赖；运行 Host 必须先成功监听，避免启动失败期间执行探针。
+新增同 profile 新 PID 的冷启动迁移/数据检查。完整 Host 仍 listen EPERM，没有 hot-ready/hot-result/cold-result；
+Node Config 拒绝结果不替代 Host 或原生 UI/HMR 验收，未修改 HMR 或使用内部缓存 API。
+
+## V041：引导入口与模块缓存（2026-10-28）
+
+完整变更和分层实测见 [V041](deepening/V041.md)。未新增 DSH API、依赖、peer 或 Remote。
+只读参考 tag 仍为 rc.2；包装 CLI 实际 rc.3。
+公开 Cordis ctx.plugin/fork.await/dispose 用于升级夹具，正式注册仍由原 Host 的 ctx.effect 管理。
+Loader 的公开 import 行为参考 `vendor/loader/src/config/tree.ts:112–128`，不使用 internal loadCache 或自行改宿主 HMR。
+
+0.4.1 入口改为动态业务导入前的安装摘要/171 模块版本戳检查，每次 apply 再检查磁盘版本。
+保留模块 URL，避免查询串改变错误类与共享服务身份；静态导入链接期错误无法由旧入口内部捕获。
+若宿主完全沿用旧入口 namespace，新引导没有执行机会，仍须完全退出重开。
+加载边界在 locale 未就绪时直接提供固定双语提示，不输出原 SyntaxError/cause，不调用业务 apply 或迁移。
+Schemastery 自身解析错误仍在此动态边界之外。
+
+真实 tgz 的 6 个 Node 子进程用例和 104 项相关回归通过；原生 Node 不是完整 CLI Host。
+同 PID 升级夹具使用 CLI 安装加固定规范路径部署，明确区别于原生 UI/HMR；实际 Host 因 listen EPERM 未到 ready。
+新 bots-list 的 8 张截图及生命周期 20 循环同样 FAIL(environment)，新截图 0。
+
+
+## DP B8 / B8-rework：离线层与发布夹具（2026-10-28）
+
+完整命令、包 hash 与逐项验收见 [B8](deepening/B8.md)、[M1–M5 验收](acceptance/deepening.md)。
+没有新增 DSH runtime 依赖、peer 或 Remote 方法；保留 B8 原有版本与锁定依赖，未改 workspace/lockfile。
+
+- 公开 `AgentPresetRegistry.list(): Promise<AgentPreset[]>`，参考 rc.2
+  `packages/preset/agent-preset-registry/src/index.ts:177–197`；只有 Remote roster 返回 `{presets}`。
+  rc.3 旧生命周期 probe 的 `list().map` 实跑报 TypeError；两处均改 await，新的完整 Host 循环因 listen EPERM 未运行。
+- Fence 拒绝来自公开 storageDomain 的 schema 验证：rc.2
+  `packages/storage/storage-domain/src/index.ts:197–208`，invalid-record 带 table/key。
+  只读实际 0.3.2 tgz 安装产物确认其 registry 将原因转换为字符串，不保留 cause。
+  发布 probe 对实际 bot/unavailable + 精确领域/表/Fence 键/schema 错误断言并存 receipt；父进程另核对 0 adapter 请求。
+  不再要求 stdout 打印 Fence 键，也不把任意启动拒绝当 Fence 通过。新 Host 验证仍 FAIL(environment)。
+- shadow 仅类型引用公开 `ScheduleDeliveryRecord.scheduledAt`，沿用原生投递身份与既有通知策略规则。
+  合成 due 不调用 schedule.create/runNow，不创建 Agent/通知/模型请求；两开关默认 OFF，整理只有状态脚手架。
+  状态由公开 storageDomain/KvTable 与 ctx.effect 持有，借既有 autoShareStatus codec 展示，不新增运行入口。
+- eval 的 mock/replay 与整数合成成本账本不使用 provider/session API，不读真实日志/凭据；真实模式提前拒绝。
+  每模式固定 64 条、含失败与 unknown 预留；100 合成机会结果只证明策略机制，不是实际 proactive/模型质量。
+- UI qualifiers 仍经原有 strict record codec，键/值行只改变 Client 草稿表示；双语配置偏好与 effectiveAutoShare=false 分开呈现。
+  新包真实主题/390px 面板几何检查未运行，不把 DOM 或 CSS 静态检查称作浏览器通过。
+
+## DP B7：崩溃探针、检索多样性与未关闭门禁（2026-10-27）
+
+完整命令、逐项判定及收据见 [B7](deepening/B7.md)。没有新增产品依赖、runtime peer 或 Remote。
+fast-check@4.3.0 的 online/offline 安装均失败，manifest/lock 未被改写；5000+5000 序列未运行。
+TLC jar/hash 未提供；模型、正配置和去掉 epoch 检查的负控制均未执行，不称形式化通过。
+
+- B6b MCP 失败是夹具 commit 缺 `confirmed:true`。沿用既有 graphRequestSchema，服务校验保持；
+  UNIT 正反例通过，真实 CLI H(mcp-egress) 仍在 webserver listen EPERM 受阻。
+- 崩溃探针仅通过公开 KvTable.put、SessionStore.flush、sessionController.create、tools.execute
+  暂停在真实异步边界。`storageDomain.get(name)` 是公开诊断入口，rc.2
+  `packages/storage/storage-domain/src/index.ts:182`；仅夹具访问其公开 table，不作为产品内部状态依赖。
+  父进程核对 nonce/PID/持久 barrier 后 SIGKILL，确认退出，再启动另一进程；没有用 throw 当强杀。
+  npm rc.2 服务进程与完整 CLI Host 分列；前者不替代真实 Session/MCP/主会话/schedule 冷恢复。
+- 原生 schedule 公开历史方法为 `history({sessionId,id,limit})`，不是 deliveryHistory；只读 rc.2
+  `packages/schedule/schedule/src/index.ts:303`、`src/types.ts:442`。本轮 Host 被环境阻断，未验证此组合。
+- 检索仍复用既有权限/双时态过滤、BM25 与管理/工具路径；新增有界多样性排序仅重排，不删记录。
+  Config.memoryRetrieval 导出 penalty/threshold/window，默认 0.6/0.8/50，数字查询保留 BM25 顺序。
+  tune 后冻结算法、最终 held-out 仅一次；语料没有改变，不把小合成集的召回当真实回答质量。
+- 真实 JSON I/O 剖析仅在测试进程包装 Node 公开 fs.open/FileHandle.sync 与 KvTable.put；
+  保留原生 temp/fsync/rename/directory-fsync，未替换存储实现、降低持久性或修改参考源码。
+
+完整 CLI 崩溃矩阵、native redteam、自动共享合法路径和完整 P0 均未因此关闭。
+
+## DP B6b-rework：adapter计数与异步服务（2026-10-27）
+
+完整根因、文件与收据见 [B6b返工](deepening/B6b.md#b6b-rework2026-10-27)。无新增依赖、API或runtime peer。
+只读rc.2 `packages/llm/llm/src/index.ts:401–417,483–485`：registerAdapter立即注册路由，
+listProviders也包含测试adapter自身。真实npm rc.2 UNIT验证零路由检查必须在注册之前；已有其他路由仍拒绝，注销后清空。
+这修复原rc.3探针的1!==0，不冒充本次真实Host轮次通过。
+
+四个受管服务均由正式Host index.ts的ctx.provide提供，与探针inject一致；原profile已link并加载dsh-bot bundle。
+registry等待loader settlement后初始化，异步服务发布前的pending警告不等于永久缺失；原探针后来已执行到自身断言。
+本次七组rc.3 H仍在webserver listen EPERM失败；E(auto-share)也在host-setup失败，运行门禁未关闭。
+
+## DP B6b：受管出口与 caller delivery（2026-10-27）
+
+完整实现、收据与未关闭门禁见 [B6b](deepening/B6b.md)。无新增依赖、runtime peer 或 Remote。
+只读参考 HEAD/tag 仍为 rc.2 `687f282e`；本轮真实包装 CLI 为 rc.3，七组 H 均在 webserver listen EPERM 受阻。
+
+- 公开 `SubagentActivationSpec.childId`、`delivery:'caller'` 与 `SubagentActivation.result`：
+  `packages/subagent/subagent/src/types.ts:31–61`；`manager.ts:383–391,412–465`。
+  先登记预留 childId 的标签再启动，caller 禁止原生提前投递父结果。本包再单独检查回报。
+  SOURCE + native service double/真实 JSON UNIT；本轮不声称真实 rc.3 子结果已通过。
+- 连接器继续使用公开 Agent `tools.guard` 与 `tools/execute` waterfall，保留 native deny/ask。
+  参数/实际 assignment generation/目标在真实派发前复检；通用工具执行批准不等于精确数据出站批准。
+  本轮未开放未审计 file/network/session-query/run_code 或模型直接 Graph 调用。
+- 原生 `approval.request` 仍要求 open turn，只有 allowed-once 可消费；额外的数据审批正文走双语 locale。
+  grantUse 仍写既有 v2 ops 提交点。`flows/flow_sessions` 是同领域的持久运输/taint 收据，不是另一个共享记忆日志。
+  冷恢复 dispatching=unknown，丢失的进程内授权不会恢复；持久/实际 dispatch 双检查。
+- Reference copy/cleanup 的准确 Host callId 能力只在 try/finally 内有效；不修改 MCP 库或已发布 server-memory。
+  旧 stage 绑定 epoch；受管消息/通知副本进入保守遗忘预览、排空、正文擦除与核验。
+- 标签 UNIT 清册为60攻击/60对照，54合法策略对照成功，6自动正例继续 FAIL(capability)。
+  Host 核心合成捕获、原生运输与浏览器证据不合并；完整 native transport 攻击矩阵仍未完成。
+
+## DP B6a-rework：原生事件定位与审批 waterfall（2026-10-27）
+
+本次无新增产品 API、依赖或 runtime peer。完整证据见 [B6a 返工](deepening/B6a.md#b6a-rework2026-10-27)。
+只读 rc.2 `core/agent-loop/src/agent.ts:411–439` 会在输入后追加 user role 的 runtime-context；
+夹具改用 `sessionController.prompt` 生成的 `source.rpcId` 加准确正文定位本次输入，仍严格断言 kind=user。
+owner RPC 不能成为人工证明，生产 candidate/自动共享关闭门禁未改变。
+
+`api/remotes/src/index.ts:64–79,137–163` 将 approval/request waterfall 转给 Web 并等待结果。
+测试夹具使用公开 Cordis `on(...,{prepend:true})`，在准确 Agent effect 内仅回答指定确认工具，其他请求继续 next；
+保留原生 ApprovalService open turn/never/审计/取消。真实 npm rc.2 UNIT 验证前方挂起桥与一次提交。
+真实 rc.3 H 仍因 webserver listen EPERM 未进入轮次，不能把 UNIT 当 Host 通过。
+
+## DP B6a：标签、可信入口门禁、配额、原生确认与 checker（2026-10-27）
+
+完整文件、命令/退出码及分层验收见 [B6a 报告](deepening/B6a.md)。版本保持 0.3.2；无新增依赖、peer 或 lockfile 修改。
+参考 HEAD/tag 仍为 `687f282e`；包装 CLI 实测 `0.2.1-rc.3`。
+
+- `sessionController.prompt` 仍统一生成 `source.kind='user'`，owner principal 省略；只读 rc.2
+  `packages/api/session-controller/src/index.ts:462-485`。Client 的 `send/sendSession` 也是公开可编程入口，
+  `packages/client/ui-conversation/src/client/service.ts:209,229`。没有发现可用于人工证明的公开签名。
+  本包不铸造可信 receipt；所有 native prompt 分类为 candidate，effectiveAutoShare=false。
+  [上游需求草案](deepening/trusted-ingress-upstream.md) 尚未发送；真实 rc.3 Host 冒充负例受 webserver EPERM 阻断。
+- 实际审批服务名为 `approval`，由 `agent.ctx.get('approval')` 获取；包入口仅类型导入，无新增 runtime peer。
+  `@deepseek-ai/dsh-user-approval` rc.2 `src/index.ts:156,215-239,277-305`：真实 open turn、asked/decided 审计、
+  never 优先、取消和晚到答复处理。UNIT 使用真实 AgentLoop 与 ApprovalService；只有 allowed-once 产生 Host 内存 grant。
+  grant 绑定准确可发布字段、来源、scope、目标、BotKey、调用、epoch、policyRevision 和过期时间；随机 grantUse 随 promote op 一次提交。
+- 标签沿用原有 label 字段，抽到共享 strict schema；合并读许可交集、限制/来源并集、较低 trust，grant 不做并集。
+  context 与记忆工具读取累计原有 receipts；工具读取在 registry 队列内先持久登记再返回正文。
+  model save 和私有 revise 保留已知依赖/限制。其他出口和通用工具的标签接线留给 B6b，未宣称全链数据流已覆盖。
+- 复用公开 storageDomain/KvTable 与同一 v2 ops 提交点；autoPolicy、quotaCharge、grantUse 都是可选日志字段。
+  配额与策略从 ops 重建，Host 时区默认持久化；时钟高水位、时区延后切换、botId 桶跨生日、遗忘不退款均独立验证。
+  Config 增加 autoShareEnabled/BotDaily/DomainDaily 与 memoryGrantTtlMs；同一 Host 配置重启不会覆盖 UI 已保存的关闭选择。
+- checker 在同一 kernel 队列的持久准入前及 transport 调用前检查；不改原生工具 deny/ask，不注册旁路。
+  本批仅提供 Host 核心契约，消息/群聊/委派/通知/MCP 的持久 envelope 与具体出口接线属于 I41–I47。
+  源码/UNIT/DOM、rc.3 Host 与浏览器证据分别记录；EPERM 和入口能力缺失不能记成自动共享通过。
+
+
+## DP B5-rework-2：公开 per-record 布局与可恢复转换（2026-10-27）
+
+根因剖析、全部命令/失败历史及逐项验收见 [二次返工报告](deepening/B5-rework-2.md)。
+参考树仍为 rc.2 / `687f282e`；本轮没有新增依赖、runtime peer 或修改宿主存储配置。
+
+- `DomainSpec.layout: 'per-record'` 来自公开 storage-domain 根入口，
+  只读 `packages/storage/storage-domain/src/spec.ts:41-47,160`。
+  JSON 后端按 descriptor 选择独立记录文件，`storage-json/src/index.ts:69-71`；
+  每次写入仍由原生 atomic.ts 保证 temp/fsync/rename/directory fsync。
+  没有导入 single-unit/per-record-unit/format 等内部模块或自行改写 medium。
+- 原生 per-record bootstrap 留下旧 single 文件，部分新文件会阻止再次 bootstrap，
+  只读 `storage-json/src/per-record-unit.ts:100,123-160`。
+  本包在既有 owner lease 内，通过公开 Domain/KvTable 重复制至 copied、清空旧领域、再写 ready；
+  copied 后的重试不从旧领域覆盖新数据。未 ready 时不暴露 kernel。
+  UNIT 验证部分 bootstrap、旧副本清理失败重试和 cold reopen；首次万条旧布局转换速度未实测。
+- 常规提交仅持久 payload/op，ops 仍是唯一提交点，未知提交仍冻结并重开核实。
+  不再逐次写全量投影或扫描全部日志；projection 水位仅在 recovery/forget maintenance 更新。
+  不可变 radix Map/Set 是本包内存投影实现，不是新存储后端；完整 replay 始终从 ops 校验重建。
+- Client 继续使用公开 Remote/slot，没有新增 Remote 方法。冲突限定改普通文本后，
+  同源 resolve codec 额外校验非空限定键/值与长度；中英 UI、重复状态和可折叠预览有 DOM 证据。
+  四组真实 Web E 和 H(forget) 在 loopback listen EPERM 受阻，DOM 不替代浏览器/Host 证据。
+
+旧 single 布局首次转换需要逐条复制/清理，不纳入 ready 后的 30 进程冷恢复基线；
+也不把原生 per-record 对损坏文件的容错行为解读为物理擦除或任意损坏下的数据完整性保证。
+
+## DP B5：双时态、手动共享管理与工具命名（2026-10-26）
+
+完整实现、逐项验收、命令和限制见 [B5 报告](deepening/B5.md)。版本保持 0.3.2，未新增依赖或 runtime peer。
+参考源码 HEAD/tag 仍为 `687f282e8625c6b8d11ff58211a90524be2e4317`；实际包装 CLI 为 rc.3。
+
+- 复用同一 `dsh_bot_memory` v2 日志与准入队列；没有新增 shared 存储或模型共享入口。
+  `recordedBefore/commitBefore` 与有效时间分开查询；当前墓碑和退休私有分片始终优先。
+  历史修订在有效区间之外可回落到当时有效的旧修订；未来边界会使 context 缓存失效。
+- 管理 Remote 新增 query/createManaged/revise/confirm/resolve/previewShared/previewContribution，
+  沿用公开 Typert decorator/spec/strict codec，输入拒绝 Host provenance、trust、owner、epoch 等字段。
+  手动来源以 sourceRefs.managementOpId 引用同次持久 op；不是凭空生成或冒充 M4 可信用户入口收据。
+  用户确认复制准确正文及展示的结构字段，不复制私有 legacy tags/pinned/sourceExcerpt/confirmation。
+  来源名称与鲸鱼样式快照位于可删除 payload，操作头只保留引用。
+- `tools.get(name, agent)` 是公开可见性查找；rc.2 `packages/core/tools/src/index.ts:1238`。
+  未知名仍经过原生策略流水线，见同文件 `:1409`。现有公开 `tools.guard` 只为未知旧名给出更新指引，
+  不注册别名、不拦截实际存在的社区旧名工具，也不绕过原生 deny/ask。
+- 正式工具统一为 bot_memory_save/search/list/forget；仅精确旧 deny 名在本包 Bot 配置中持久迁移。
+  source prompt、队友只读表、遗忘后的读取白名单、原生工具/loop 测试同步更新。
+- private/shared 默认预留 2400/1600 字符，共用 framing 计入私有预算，未用预算可借。
+  journal 使用 Config.journalShare/journalDays；默认最多共享分配预算的 25%，近 30 天；超期仍可检索。
+  保持原生 required literal systemPrompt.context，每次请求及重试读取已发布投影，不改 LLM 请求体。
+- JSON single 后端每次 put 会重写领域文件，源码 `packages/storage/storage-json/src/single-unit.ts`。
+  可重建 projection cache 改为单快照，避免每次提交逐条写 N 份全文件；权威仍为 ops。
+  使用公开 KvTable 和 JSON 后端，未编辑后端私有文件格式。提交统一移除 JSON 不保留的 undefined，保证热冷结构一致。
+
+UNIT rc.2：160 合成标注案例 / 16 类；明确改口 30/30，candidate 覆盖 0，disputed 注入 0。
+词法基线 10 个合成检索题 Recall@5=1、MRR=1，只是该小语料的基线，不是回答质量。
+中英 DOM 各 100 次刷新无行重挂载、焦点或草稿丢失。
+10 个真实 Bot 记录 / 10000 条记忆 / 30 个新进程的 npm rc.2 JSON 基线达标，详见报告数字。
+种子为 1 个 bootstrap op，不把它当成 10000 次逐条修改的长期日志性能证明。
+CLI rc.3 Web 夹具 READY；Chromium MachPort 拒绝，8 组截图均 FAIL(environment)，0 张。
+完整 CLI 启动性能基线、精确 rc.2 CLI、任意 provider serializer、M4 自动共享与完整 P0 均未因此通过。
+
+
+## DP B4-rework：清理后放行与真实 Web 验收（2026-10-25）
+
+完整结果见 [B4 返工报告](deepening/B4-rework.md)。以下覆盖 B4 初轮的“所有路径始终阻断”。
+
+- 复用公开 `sessionQuery.listSessions()` 的完整目录元数据及 `SessionHeader.agentPreset/parentSession`，
+  枚举受管 Bot 会话与递归子会话，再合并已登记读取收据；目录不可用时不能完成强遗忘。
+  rc.2 只读出处：`packages/session-query/session-query/src/index.ts:174`、`packages/core/session/src/types.ts:95-132`。
+- 首节点依赖在 forget op 擦除 payload 前，结合目标所有版本、来源/读取收据及实际静态正文判定；
+  持久 job 只增加 blockedHeads 会话 ID 与 pendingInbox 依赖标记，不保存正文或正文 hash。旧未完成 job 缺该证据时保守阻断。
+  动态 context 本身不污染 system 首节点；包含目标的旧静态头部不绕过原生持久语法。
+- `sessionPersistence.open(id,'read')` 新 handle 读回后，使用公开 `Session.create(id,events,header,inheritedEventCount)`
+  重建模型 surface/toolHistory 并与 live 对比；新增 `@deepseek-ai/dsh-session` runtime peer，既有精确 rc.2 dev 保留。
+  rc.2 `packages/core/session/src/index.ts:583`；不把 live-preferred query 当持久冷读。
+- 验证控制消息仍走原生 Agent loop/systemPrompt/prepareCall；最终 `llm/stream` 只捕获完整 request，
+  不调用生产 provider、不执行工具。只接纳当前 verification input ID、原生 `isAgentLoopRequest` 与当前 surface。
+  H 将同一不可变 request 原样送 loopback 并断言 canary=0，再允许 verified 收据释放屏障；产品没有测试 adapter。
+- 屏障释放后仍拒绝未归属请求、旧 prepared/惰性请求和与当前 surface/toolHistory 不符的请求。
+  原始事件保留；遗忘后的受管 Agent 对未审计工具保持拒绝，仅允许本包记忆工具及图谱三个只读入口，
+  防止 read/bash/技能/外部连接器重新读入原始历史。这是明确的功能限制，不宣称物理擦除或任意 provider serializer 已验证。
+- 新用公开 `agent/inbox/inserted/claimed/discarded`、`agent/status`、`session/event` 和 `Inbox.splice`，
+  保留未提交为 user/message 的原始 nextStep/nextTurn 归属、顺序与输入身份。原生 pre-step reject 会消费 claim，
+  因而在屏障拒绝或提交前取消后将输入持久放回，不 clear 人类输入；所有 observer 归 retained Agent effect。
+  预览已登记的 pendingInbox 依赖持久保留，重开后队列不可见不等于完成核销；该类仍保持 blocked。
+  只读 rc.2 出处 `packages/core/agent/src/runtime-types.ts:47-106,280-320`。
+- MCP 清理后在同一 control 队列按新 identity 两次实际 mount/read_graph/close，空图谱才记 copiesVerified。
+  临时读取能力绑定具体 Agent、callId 和 `mcp__bot_memory_graph__read_graph`，finally 撤销；没有通用 bypass。
+  解除阻断后的重新配置、挂载和读回另由 H(copy-cleanup) 验证；不可达仍保留屏障。
+- E(forget)/E(root-warning) 改为隔离 profile 的真实 DSH Web 与正式 Client/Remote；沿用 screenshot-v03 的
+  locale/colorScheme 切换，要求 dark 实际深色并检查窄屏溢出。沙箱 Chromium MachPort 失败明确记 FAIL(environment)，
+  不用 DOM、白底页面或空目录冒充截图证据。
+
+## DP B4：两级遗忘、维护与副本清理（2026-10-25）
+
+完整范围、命令、文件和分级验收见 [B4 报告](deepening/B4.md)。版本保持 0.3.2。
+本轮仍只读核对 rc.2 tag；真实包装 CLI 是 rc.3，不能视作精确 rc.2 Host 证据。
+
+- 原生 Agent.cancel(keepInbox=true) → whenIdle → runMaintenance、surface 顺序 replace、
+  完整 sourceEventSeqs、sessions.flush(true) 与 sessionQuery.readSurface 复用既有公开 API。
+  当前实现保留系统首节点；原生 idle system append 的持久语法限制未绕过。
+  因此生产强遗忘始终保持 blocked，不以 B1 的测试控制步骤重投影冒充产品维护事务。
+- 原生 Agent.inbox.nextTurn / nextStep 是公开只读消息数组，源码
+  `packages/core/agent/src/runtime-types.ts:47-89`。本轮只观测并保留消息；不 clear 人类 Inbox。
+- `@deepseek-ai/dsh-compaction` 根入口的 toolPairingBalancedBefore/After 首次进入产品 runtime。
+  增加兼容 peer，既有精确 rc.2 dev 依赖保留；不调用摘要模型或 compactNow/compactRegion。
+  frozen-lockfile 安装成功，lockfile 没有变化。
+- forget preview 在同一内核队列校验 op revision、依赖/Inbox/历史/副本元数据 stamp。
+  服务端持有预览；客户端不能提交 targets、epoch 或 verified。持久 forget_jobs 为无正文阶段收据，
+  intent 先持久化，forget op 才是停用提交点；verified receipt 持久化后才写最终 barrier。
+- 本包管理 Remote 新增 previewForget / chooseForget / cleanupStatuses / retryCleanup /
+  rootInstructions，全部复用 Typert decorator/spec/strict codec。没有注册为模型工具。
+  旧 memory_forget 仅提交停用并保持屏障，输出明确“不等于强遗忘完成”。
+- ReferenceMemory 在自身 control 队列取消 stage、关闭并等待 MCP writer 后，删除全部受管
+  current/stage/previous/orphan 文件和 copies 完整快照，清除旧 import 指针并切回 internal。
+  路径/符号链接异常或依赖不可达时保留屏障；重挂载与清理后正常模型请求仍未放行验证。
+- 根指令只 lstat 原生默认候选 AGENTS.md / CLAUDE.md 与 local overlay，不打开文件正文、不删除。
+  Bot 的 required literal context 独立声明其不受共享记忆配额、冲突、遗忘规则管理，含 memory-disabled Bot。
+  自定义原生候选配置、历史子会话完整清册与全部原始读取出口没有被假定已验证。
+
+完整请求矩阵把“阻断期 adapter 为 0”与“清理后完整请求无 canary”分开计；后者没有放行证据。
+Chromium 启动受沙箱限制，E(forget)/E(root-warning) 均 FAIL(environment)，DOM 证据不替代浏览器。
+**FAIL (P0 OPEN)**：系统头部、完整历史闭包、原始读取策略、重挂载/正常 clean dispatch 与专用 provider serializer 仍有缺口。
+
+## DP B3-rework：私有迁移连续性与管理计数（2026-10-25）
+
+当前结论及收据见 [B3 返工报告](deepening/B3-rework.md)，覆盖下方 B3 初轮的“全部隔离”行为。
+现存 Bot 且旧记忆 createdAt >= Bot.createdAt 时迁为 private/active/candidate；孤儿及时间矛盾项保持 proposed。
+迁移前后的私有 context 条目、置顶和同时间排序已作 UNIT 及真实 0.3.2 tgz 升级/冷恢复比较。
+候选信任不阻断自身私有读取，也不授予共享权限。
+
+新增本包管理 Remote `dshBot.memory/quarantineCount()`，沿用公开 Typert decorator/spec/strict codec，
+由 registry 队列读取已发布投影及 migration_items，只返回所有 Bot（含孤儿）的隔离总数，不返回正文。
+Client 沿用 createPollingCatalog 的 epoch/lifetime，记忆面板中英提示计数；M3 再提供归属处理。
+该 Remote 未注册为模型工具。没有新增 DSH 产品 API、依赖或 runtime peer。
+
+required literal memory context 继续使用原生 systemPrompt.context；order 改读 Config.memorySectionOrder，
+默认仍为 100，校验范围仍为 (0,800)。memory_search 提示保留 TODO(I34/B5)，不提前改名。
+现有本地日界实现和首次持久化时区策略已补上海跨日、洛杉矶春秋 DST、缓存重算及重开测试；
+时区注入沿用 openMemoryKernel 的可选参数，不引入系统时区或全局配置修改。
+
+scripts/dsh 仍经桌面 Electron CLI 启动 rc.3。现有仓库依赖的 101 个 DSH 包没有 rc.2 CLI bin，
+rc.2 app-boot 只提供库出口。四组 Host 的 rc.3 证据与精确 rc.2 FAIL(NOT_RUN) 分列；未改桌面安装。
+
+## DP B3：记忆内核、动态 context、Fence 与最终准入（2026-10-25）
+
+范围、命令和逐项验收见 [B3 报告](deepening/B3.md)。没有新增依赖或 Host runtime peer，版本保持 0.3.2。
+参考源码和 UNIT npm 包仍为 rc.2；本轮包装脚本实测 **CLI 0.2.1-rc.3**。
+Host 收据明确记录当前 CLI 版本，不把这些结果当成精确 rc.2 CLI 验收。
+
+- `storageDomain.open/defineDomain/domainTable` 和 `KvTable.put/get/entries/delete` 沿用公开根入口。
+  新 `dsh_bot_memory` v2 的 ops 为唯一提交点；缓存可重建，未知提交冻结后重开对账。
+  旧 unit v1 的 memories 只在迁移 opener 接受 strict Fence union；真实旧 tgz 的严格 schema 实际拒绝。
+- `systemPrompt.context({required:true,interpolate:false,text:provider,order:300})` 正式替换一次性记忆 section。
+  每次请求/同一步 retry 原生刷新，provider 只同步读已发布内存，不改 LLM 请求体。
+  complete persona 保持其 system section，同时保留必需的记忆 context；双语旧提示同步修正。
+- `llm/stream` 在惰性迭代前后核对 epoch，准入与提交共享内核队列，持久依赖后才取得 lease。
+  完成/取消迭代后释放；pre-step 不是唯一检查点。无归属请求在屏障期间保守拒绝整个相关 runtime。
+- `Agent.cancel({kind:'hook',reason},{keepInbox:true})` 只发取消，不从当前工具/hook 等待自己的 idle。
+  卸载排空真实在途 lease，再关闭领域。最小 Agent effect 守卫保留到 Agent 销毁；未安全重附的旧 Bot 代际拒绝发送。
+- 原生 `tools.guard` 与 Reference Memory 入口在 pending cleanup 时拒绝读取/复制/调用，不制造摘要清理或伪造 verified。
+
+Node 排他文件/后继链只负责本机 owner，不是 DSH 新服务或跨机器数据库。
+本批 H03/S04/S06/S08 的 UNIT 修复不等于强遗忘、原生确认 grant 或完整 MCP 副本闭包通过。
+历史、摘要、Inbox、原始事件读取和当前/stage/previous MCP 清理仍属于 B4，P0 保持 OPEN。
+
+## DP B2：失败案例库与契约（2026-10-25）
+
+本轮没有新增 DSH 产品 API、runtime import、依赖或 peer。
+案例/manifest JSON schema 使用现有精确 `zod@4.4.3` 的公开 `z.fromJSONSchema` 生成校验器，
+再校验来源摘要、行号、候选去向、测试与收据引用；正例及篡改负例均作为 UNIT 执行。
+真实 Cordis peer 作用域与 JSON 存储沿用已有公开入口，不引入共享记忆替身产品实现。
+27 个历史案例及 8 个共享案例的证据边界见 [M1 案例库](deepening/failure-catalog.md)。
+H03 与共享 v2 契约继续 OPEN；B1 的完整请求/受管副本强遗忘 P0 未关闭。
+
+
+## DP B1：公开维护、系统头部与最终请求入口（2026-10-25）
+
+本轮只接 spike 与等价拆分，不接产品记忆 v2；完整证据及三级结果见 [B1 spike](spikes/DP-B1.md)。
+参考 HEAD/tag 均为 `687f282e8625c6b8d11ff58211a90524be2e4317`，仅只读核实。
+
+| 公开入口 | 本轮核实与运行边界 |
+| --- | --- |
+| Agent.cancel / whenIdle / runMaintenance | 真实生产 Agent 上先取消并等待 idle，再维护；不在当前轮 hook 等待自身 idle。清理步骤最终 adapter 请求数为 0 |
+| Session.surface.nodes / append / deriveMessages / sessions.flush | surface 顺序可能非单调；replace 两端含首尾，sourceEventSeqs 必须列全。原生 SessionPersistence 读回与两进程冷重启另作验证，不把 JSON 快照当 flush 证明 |
+| system/message 首节点 | `packages/core/session/src/surface.ts:493-505` 仅允许 system/message 精确替换系统首节点；user replacement 不可包含它。直接 idle system append 虽过 Surface/flush，持久 reader 会拒绝 open turn/step 语法，见 `session-format-v3-to-v4/src/relationships.ts:87` |
+| 原生 system projector | 复用 `packages/core/agent-loop/src/agent.ts:409-442`，撤销静态 section 后在真实原生步骤重投影，最终 llm/stream 屏障保持关闭发送，随后 flush 与 cold 读回通过；不是发布级维护事务 |
+| systemPrompt.context({required:true,interpolate:false,text:provider}) | 真实同一步 retry 重新 refreshContext；pre-step 只执行一次。动态更新不会清掉旧历史。Unit 与 loopback Host 分层记录 |
+| LlmRuntime.prepareCall / PreparedLlmCall.stream / llm/stream | prepared 与 retry 均经过最终 waterfall；惰性 iterator 开始迭代时重新检查屏障。无 sessionId 的合成 summary 请求保守拒绝，不调用模型摘要 |
+| sessionQuery.readSurface / sessionPersistence.open(id,'read').read()/close() | 仅读取本次明确 allowlist 的三个合成主会话。surface 已清理，完整原始事件仍含 canary，不能宣称物理擦除 |
+| @deepseek-ai/dsh-compaction 根的 toolPairingBalancedBefore/After | 新增精确 rc.2 devDependency，供 spike 验证完整工具对；不调用 compactNow/compactRegion 或 summarizer。产品 runtime 没有新增 import，因此不加 peer |
+| LlmAdapter / llm.registerAdapter / listProviders | 仅测试 fixture：真实 provider 列表先断言为空，再注册 dp-loopback。完整 GenerateOptions 发到明确 127.0.0.1 端口；不构建生产 provider、不读凭据 |
+
+本轮前两级 PASS；第三级 **FAIL (P0 OPEN)**：合成 replay/完整热冷请求通过，真实 provider 专用编码、
+MCP 副本清理闭包、原始历史再读门禁和完整故障矩阵仍 NOT_RUN。后续 I14/I16/I17/I21 不能沿用最小切片结果关闭 P0。
+registry 的同一写队列/effect/租约/Remote decorators 与 MemoryPanel 的草稿/lifetime 保持原行为。
+
 ## V032 Client 阻断修复（2026-10-24）
 
 `ctx.get(name)` 是 Cordis 的无 inject 探测入口，不授予后续 `ctx.name` 访问权。rc.2 Cordis 公开源码 `src/reflect.ts:135-166` 明确校验调用方 fiber 的服务依赖；`src/registry.ts` 的 `ctx.inject([...], callback)` 创建声明了依赖的子作用域。B05 原实现探测后直接读 `ctx.uiConversation.events`，在真实 peer 服务下抛出 `cannot get property "uiConversation" without inject`；此前根 Context service double 遮蔽了该故障。已用正式构建 Client 工厂及公开 npm Conversation Client 入口、peer-owned UiConversation 复现原错误，再验证修复。
@@ -920,3 +1254,124 @@ Client 建议用无 runtime imports 的公开 `@deepseek-ai/dsh-typert-protocol/
 | `store/unavailable` | already-open、closed、后端读写/关闭失败、持久记录校验失败等存储故障；原始错误保留于 cause |
 
 运行验证：`tests/store.spec.ts` 的 **24 项**测试使用公开 npm 包和真实 JSON 后端，通过 CRUD、严格校验、字节边界、多实例竞争、同毫秒 CAS、中文检索、隔离、分页、对象副本、落盘/重开和生命周期检查。评审补充覆盖默认级联与同 id 重建、显式保留、跨 Bot update/remove、可选字段清空后严格对象一致性、trim/字段上限/列表上限、分页只深克隆返回记录；在公开 KvUnit 上注入读写失败，验证 cause、未提交更新不改变内存、级联中途失败保留 Bot 及重试成功。各测试使用并清理独立仓库内 `.dsh-dev/t03-store-*`，不触碰 T02 的领域文件。独立服务测试不替代 Desktop 或完整 Web profile 验收；本轮未启动这些环境或真实模型会话。
+
+
+## DP B7-rework：性质谓词、恢复依赖与执行阶段（2026-10-27）
+
+完整逐项判定、状态数和命令见 [B7返工](deepening/B7.md#b7-rework2026-10-27基于-95665dd)。
+未新增DSH API/依赖/peer/Remote；参考HEAD/tag现场仍为687f282e，只读。
+
+- crash-profile使用的sessionQuery与sessionPersistence属于同一Host依赖声明；恢复末尾真实readSurface不可省略。
+  修复的是夹具inject；本次完整Host仍listen EPERM，不能据此称两个强杀窗口已通过。
+- 原生Notifications/Connectors配置CAS是正确约束；redteam控制/攻击的配置ID必须按Bot/variant唯一。
+  实际运输矩阵本次受Host环境阻断；真实JSON配置回归不等于出口checker运行证据。
+- I49 external许可与无关beta生日无关；Bot目标仍复检目标生日，所有路由仍复检发送者/epoch/policy/正文/grant。
+  修正模型并加强准入双向断言后，两组5000完整序列通过；内存后端不是磁盘持久证明。
+- I59继续复用既有RunService/MainSessionDelivery及nativeSchedule.runNow，不新建调度引擎。
+  runRecord增加可选Host字段lastConfirmedStep，进入unknown前记录submitting等原阶段；共用严格codec自动覆盖。
+  旧行可读，旧严格插件读取新增字段的降级兼容未验证。
+  真实JSON/NPM三组SIGKILL验证相同operationId冷恢复后不再次调用Controller double，最后阶段保留。
+  新完整CLI通知副作用组合未能启动，不推广为自动提醒任意业务exactly-once。
+- schedule.history确认Session Inbox投递，不确认业务完成；rc.2公开types.ts:196-218、runtime.ts:125-140。
+  TLC有限两正配置与去epoch反例已实际运行，但不代替上述Host/原生运输验收。
+- 新12题干扰项评分在算法/语料哈希冻结后仅一次；Recall@5=0→0.3333，旧公开集不再称新held-out。
+
+六个自动合法路径的R5与完整P0均保持开放。
+
+
+## V050：自然群聊、后台任务和能力入口（2026-10-28）
+
+开发参考仍为 `dsh-v0.2.1-rc.2`；本机真实 CLI 为 rc.3，下面区分 public contract 与实际运行证据。实现报告见 `docs/implementation/`，最终整包收据见 `docs/acceptance/V050-natural-bots.md`。
+
+- `tools.get(name, agent)` 返回准确 `ToolDefinition`；可在 Agent 初次 pre-step 固定对象并在 guard/dispatch 复验。公开对象没有 publisher 签名。本插件 `nativeToolPolicy=native` 信任已加载 Host，有限允许文件/命令/搜索/定时/原生控制工具并保留 native deny/ask；不将 MCP 名称前缀、PTC 或动态替换视为受信工具。
+- `subagents.startActivation({ provider:'spawn', delivery:'caller', childId, ... })` 启动与结果生命周期分开。启动的 tool signal 不再用于已受理工作的 checked result；插件/明确 child cancel 仍终止对应工作。子任务的原生 `approvalPolicy=never` 未被放宽。
+- `subagents.prompt`、`interruptByParent` 为公开 Client Remote；目录来自 `sessions.refreshProjections(main)` / `subagentCatalog`，运行状态优先来自公开 `uiSession.sessionStatus`。目录缺项不能推断 inactive；UI 以 unknown 显示。打开使用原生 `SubagentAddress`。停止父回复不递归取消所有 children。
+- **受管恢复约束**：rc.2 `coldResume()` 不接收 caller delivery，恢复默认 parent settlement，不能视为受检结果桥。只能在原 caller activation 租约存在时给受管 child 补充输入；Host 检查准确 Agent 与父/子身份，完成/冷恢复需回主聊发起新委派。原生 child 页面和 `send_message` 不能绕过此保护。
+- 群沿用无模型 root、每次 fresh spawn、Bot preset 与 caller结果。`group_message` 仅安装到预留 child+parent+preset准确匹配的群 worker；受理持久写入后立即返回，定向问题追加有限接续，不同步等待。skip 不记失败。普通消息、引用、早前结果由已记录因果位置投影，取消阻止晚到接续。
+- `ContentBlock` 的原生 file/image attachment refs 保真写入群原生日志。Client `fileUpload.upload(rootSessionId,file,name,signal)` 获取 receipt；Host `fileUploads.resolve(rootAgent,id)`、`bindPrompt(rootAgent,ids,requestId)` 校验精确会话并提交。只有已受理 receipt 可用于群输入，Client 不可发送任意宿主路径或 attachment refs。
+- `attachments.fileHostPath/imageHostPath` 可返回 undefined。群成果打开仅从本群消息取 ref，复用 `sessionController.workspaceDesktop()` 与 `openWorkspacePath`；无桌面 provider 时返回 unsupported。没有假设通用浏览器 file 下载 Remote。富文本复用公开 `MarkdownText`，没有内部组件 import 或自建 HTML 渲染。
+- `llm.listProviders/listModels/resolveModelInfo` 提供已注册模型/推理能力目录；不主动调用 discoverModels、凭据发现或真实生成。`skills.list({ scope: agent, cwd })` 读取原生作用域。公开技能服务无编辑 API，故仅对本 Bot 自有目录提供有限 SKILL.md 文件编辑（路径/symlink、字节限制、hash CAS），加载/解析仍由原生 scanner 负责。
+- 原生 `schedule.history` 只有投递回执。新增 `dshBotRoutineOutcomes` 纯 SessionProjection，将 source=schedule 的准确 user/message id 关联 open turn及turn/end；不保存正文。`responded` 只表示回复轮次结束，不能代替后台任务/成果成功。未消费、历史裁剪或缺投影一律不猜测执行成功。观察数量通过 `routineOutcomeLimit` 配置。
+- `browserUse` 公开服务只有 provider 注册/名称，缺逐 Session→ToolDefinition归属桥；未按前缀开放浏览器 MCP。已有受管 connector 可供用户绑定自己的 Playwright MCP，尚无实际浏览器任务证明。`speechToText.snapshot()` 仅观察原生识别器 readiness，录音/准备复用官方 Voice Input bundle；未下载模型或实际录音。
+
+真实 Host 组合已经用内存合成 LlmAdapter 验证两个 child 重叠、前台回应、独立停止、父 Stop 后回传，以及 A→B→A 群工具与真实附件上传。所有真实模型请求为 0。精确 rc.2 二进制、多端云部署、OS/移动推送、托管账号/支付/分享后端未验，不由这些本地证据推出。
+
+
+V050 收口补充：
+
+- 恢复保护最终在 `agent/created` 拒绝无原 caller 租约的执行恢复，早于 native default-parent activation 发布，避免产生未检查 settlement；准确 Agent 级 pre-step 守卫保留至 Agent 卸载，处理取消、租约撤销和插件卸载竞态。群豁免同样要求首次 startup 的精确 Agent。
+- `source.kind=schedule` 没有 scheduleId，且 native receipt 在 Inbox followup 后才持久化。不能在 pre-step 同步依靠 history 验证 receipt。仅准确 Bot 代际、无 parent 的当前 main 接受它为本 Bot candidate 范围，继续 merge 既有 sourceVersions/restrictions；它不是人工授权，不能自动委派。其他源不放宽，存量 unknown/no-egress 不清除。
+- 本包 `MainSessions.fresh` 只是公开 `sessionController.create` / native flush 的组合，加 Bot 代际和期望 main 的 CAS；用户显式确认后新建空白主会话，旧会话、记忆、子任务、定时不删除或迁移。新对话不会自动获得旧对话的结果；旧对话既有范围限制继续有效。
+
+
+## V051：工作区群聊与 Bot 删除（2026-10-29）
+
+参考 tag 仍为 `dsh-v0.2.1-rc.2`，仅只读查阅；实际包装 CLI 与 Host 为 rc.3。
+
+| 公开能力 | 核实与使用 |
+| --- | --- |
+| `workspaceRegistry.create(path,title)`、`Workspace.attachSession(sessionId)` | `packages/workspace/workspace/src/index.ts:222-244`：canonical cwd 复用原 Workspace，不覆盖用户标题。新群使用 `ensureBotsWorkspace()` 路径；打开旧群只附加原 root，不改 cwd。 |
+| `uiWorkspace.openSession()` | Client 群管理入口先调用新增严格 `groups.open(GroupKey)`，成功后导航到 Host 解析出的 root。Remote 只返回 `{sessionId,workspaceId}`，禁止客户端覆写目录/会话。 |
+| `conversation.composer` chain slot | `packages/client/ui-conversation/src/client/contract/slots.ts:511`；官方 `ui-subagent/src/client/index.ts:94-103` 展示 priority/select/locale 用法。精确群 root 使用自有群输入，其余会话走 native fallback；不替换全局会话 body、不拦截 `session.prompt`。 |
+| `ConversationNodeDefinition` target chat/exclusive、keyed `conversation.chat.node` | `ui-conversation/src/client/conversation/assembler.ts:521-545` 先汇总 target claim，再跳过同 target 的非独占定义，和注册顺序无关。仅消费准确 group source 的 Bot 消息；用户输入保持 native user node。 |
+| `sessionController.resolveAgent`、`agents.get/resume`、`AgentHandle.dispose` | `packages/api/session-controller/src/agent.ts:213-220` 复用已有 live Agent。Controller 抢先恢复时，Groups 核对身份和 preset 后仅借用；owned 与 borrowed 分开，borrowed 不 dispose。此条替代上文早期 T/U 探针对“Controller 抢先时拒绝”的产品限制。 |
+| `dshBot.delete` 既有 strict options | 增加可选 `expectedCreatedAt/expectedUpdatedAt`；UI 必传确认时的原快照，Host 在串行变更队列中先核对再进行任何删除副作用，冲突使用已有 `bot/conflict`。 |
+
+真实隔离 Host 证据：`.dsh-dev/groups-workspace/1793258456243-46087/result.json`。公开 Cordis 插件卸载/重装及 Controller 先恢复真实运行通过；旧历史与 cwd 保留、重复/并发 open、borrowed root 文件输入、archive/unload 后 borrowed Agent 存活、root 原生 prompt blocked 均通过。4 次本地合成 worker 请求、0 次根模型请求、0 次真实模型请求。最终 Web 界面及包版本证据另见 `docs/acceptance/V051-workspace-groups.md`，不能据 Host 结果推断桌面交互已验证。
+
+V051 最终工作区适配补充：真实 Web 首测确认 `ui-workspace/tree.ts:245` 隐藏非当前 blank、`rows/Rows.tsx:49,633` 强制“New Session”且不挂 leading。不能靠 leading 增加群名修复。采用公开 `agent/pre-step` + `followup/whenIdle` 执行实际群初始化：`core/agent/runtime-types.ts:112` 允许 `enter([])`，`agent-loop/src/agent.ts:307,324-329,387` 在原生 turn/start 后正常 completed，无模型、无 blocked 错误；`model-selection.ts:119-120` 保留空首步。rename/workspace attach 工作必须实际在 callback 中进行，外层结束后 flush 保留 turn/end。初始化是机器来源任务，不是 Bot 回复或用户发言；未知 source 与没有 live 单次许可的崩溃遗留输入 fail closed。最终运行证据以 V051 验收为准。
+
+V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-27324/result.json`。首次创建尚无发言即 native blank=false，setup user/message=0、step/start=0、request/header=0；加入代表原生 time/skills 的外层 context 中间件后仍无根模型调用。`agent/pre-step` 使用公开 prepend，并由 `agent/request` 再硬阻断根请求。临时 Cordis 服务名本身是共享的，依赖单群服务串行队列和精确 Agent/消息 ID/全文匹配保护；`get(name,false)` 为公开查询签名，支持 PENDING 生命周期期间检查许可，finally 撤销。
+
+## V060 创建管理与群聊精简
+
+参考源码保持 `dsh-v0.2.1-rc.2` 只读；真实隔离 CLI/Host 为 rc.3。实现及最终证据见 `docs/acceptance/V060-simplified-bots.md`。
+
+- `ui-input-trigger/src/client/index.ts` 公开 `InputTriggerService` 和 `InputTriggerController`，`contract.ts` 公开 source 注册。群输入使用独立 Cordis Context、成员 source 和 controller，复用原生查询、键盘仲裁与取消；`MenuSurface`、`observeComposition` 均来自公开 primitives。已验证真实 npm browser closure，而非把内部编辑器打包。新增 dev `@deepseek-ai/dsh-client-ui-input-trigger@0.2.1-rc.2`，Client external 为其 `/client`，manifest 声明客户端注入；没有新增同名工具或全局输入拦截。
+- `ui-conversation` 完整 InputBar/ComposerContentEditable 不属于公开导出；原生 `matchEnter` 也不覆盖所有群输入。继续使用公开 `conversation.composer` chain slot 和 `groups.send`，只接管准确群 root。公开 chat node 定义扩展新群用户消息的引用呈现，保持真实 user 作者及 `source.kind=user`，附件仍由 native `fileUploads` 回收 receipt。中间验证发现自定义 user kind 不满足原生 receipt 退休条件，已回到原生 kind 并附加群元数据。
+- 公开 `ISessions.binding(sessionId).session.loadThrough(seq)` 用于引用原文加载；先通过现有群 view 分页确定同群的精确消息和 seq，再加载原生历史并定位本插件节点。没有读取私有 session store。无原文或旧消息没有可扩展节点时显示不可定位，原生旧记录继续保留。
+- rc.2 `subagent/src/index.ts:255–290` 的预留 spawn activation 可继续接收 `prompt(request,signal)`；`:448–505` 和 `control-types.ts:94–110` 提供准确 parent/child、continuable、steer 入箱能力。群补充用严格可选 followup 目标和持久操作回执，重复请求不重复入箱；natural 独立用户工作由既有 native activations 有界执行，旧模式保持串行。`groupConcurrentTurns` 默认2、校验1至16整数。单链取消仍使用对应 activation 的原生 signal/dispose，不影响其他链。
+- `system-prompt/src/index.ts:478` 的公开 section 在 Agent scope 遮蔽 preset 的同名 persona section；使用公开 `PERSONA_PREFIX_SECTION`、`PERSONA_SUFFIX_SECTION` 和原生 order。新增 Host runtime import，因此把 `@deepseek-ai/dsh-system-prompt` 加入兼容 peer，dev 仍精确 rc.2。仅同步已提交、同 createdAt Bot 的职责，模型、工具、权限等保留原 generation。
+- 原生 AgentLoop 在 pre-step 前组装提示，不能只在 pre-step 热更新。V060 在 registry commit 后同步通知 Agent section，首次安装先订阅再读取已提交快照；complete 模式也在组装前更新。已开始组装或发送的步骤保留原快照，提交后开始组装的步骤使用新职责。继续由 `bot_manage` 原生 ask 审批写入，不把普通记忆提升为指令。注册失败回滚和用户恢复旧职责有专门回归。
+- `agentPresets.register` 的公开 name 只影响显示，群 root 保持原 id、持久会话与目录；显示名称由本包中英 locale 组成，避免暴露内部 preset ID。Bots 最近列表复用现有 catalog/activity 与原生导航；置顶/隐藏仅本浏览器 UI 偏好，按 origin/pathname 和记录代际隔离，存储失败退回内存，不保存对话正文或凭据。
+
+真实 API spike、合成 Host、DOM 和浏览器证据分开记录。所有模型请求仅隔离合成适配器，未调用真实模型或修改桌面用户数据。
+
+
+## V061 群聊输入工具栏与原生会话设置
+
+参考 API 仍以 rc.2 tag 只读核对；最终实际 Host、浏览器及打包证据见 `docs/acceptance/V061-group-toolbar.md`，不可用源码核对代替运行结果。
+
+- 群聊以公开 `conversation.composer` chain slot 接管准确 group root，因此完整原生 InputBar 的模型/权限入口随原 composer 被替换。rc.2 不公开导出 InputBar、ModelSelect、PermissionSelect；它们的子 slots 由原 composer 独占声明，不能另行声明或引用内部实现。采用公开 primitives `Menu`、`Button`、icons、`RiskConfirmation` 薄视图，连接原生服务与投影。语音、slash 与原生草稿仍需完整草稿适配，不能只挂外观按钮宣称可用。
+- 现有 models capability 以公开 `llm.listProviders/listModels/resolveModelInfo` 返回可用目录，不发现凭据、不调用模型。新增 strict `dshBot.groups/setModel` 使用 group identity + 独立 modelRevision CAS（旧记录缺省 0）；Host 用 `resolveCallConfig` 校验目录和推理等级。`GroupRecord.modelSelection` 可选，清空后回各 Bot 原模型；不写全局 `agent-default-model` 或 Bot 记录。工作完成会递增通用 group.revision 来推进群状态，不能以此作为模型冲突依据；只有模型设置写入递增 modelRevision，并继续递增通用 revision。
+- 群 work admission 将选择复制到持久 `GroupTurn`，后续排队和同轮交接保持模型快照；精确预留 child 的公开 `agentOptions` 传入 provider/model/reasoningEffort。显式 undefined 清除父上下文 reasoningEffort 继承。群 worker 的准确 binding 允许该选择优先于 Bot 首步默认；普通 Bot 私聊和无群选择的 worker 仍按 Bot 默认。已有补充不换模型。
+- `@deepseek-ai/dsh-permission-presets/client` 公开目录/投影类型，`/remote` 提供目录 metadata；添加精确 rc.2 dev dependency，Client 必要时 `ctx.remote.$mount`，由 `ctx.effect` 卸载。没有 Host runtime import，故不增加共享 peer。
+- 权限读取采用公开 `sessions.retain(root,{source})`、`reference.ready` 与 `SessionFace.projections.faceOf('permissions')`，释放引用、投影订阅、目录事件和 connection generation 回调。目录仅来自 `remote.permissionPresets.catalog()`，`permission-presets/catalog-changed` 撤销旧选择及风险确认。
+- 通过 `ctx.get('remote.permissionPresets')` / `ctx.get('remote.commands')` 取得公开 namespace facade：此插件只 inject remote，直接嵌套属性访问会被 Cordis 的未声明 inject 检查拒绝。原生 UI 已显式声明子 namespace，所以其实现不可直接照抄属性访问。真实 Cordis provider/consumer 测试与浏览器失败定位已覆盖。切换调用公开 Commands `execute(rootId, '/permission <preset>', [])`，检查 `RemoteResult.ok` 与 `value.result.kind === 'success'`。`SessionFace.command` 将结果折叠为 matched，不能证明 handler 成功；此处使用同一原生 Commands Remote writer 保留结果。当前显示只接收原生 projection，不乐观伪造权限；不写全局默认。完全权限/Auto 必须原生 RiskConfirmation 勾选确认。
+- 原生 spawn 在 child 启动时捕获 root sandbox，既有 child 不变；child approval 固定 never，不等于 root 的 ask，因此可能显示 custom。UI 在群仍有运行/排队工作时禁用权限切换，避免一个活动工作流中途改变后续 child 的环境。模型切换仍可用于新工作。
+- 原生 permission-presets 包内置默认与 base bundle 配置应区分：base 行 id 为 permission，可以提供 read-only；产品完全使用 Host 实际目录，不硬编码模式是否存在。隔离 Host fixture 显式配置只读与工作区 ask 选项来验证继承，未自动扩大正式用户权限。
+
+
+## V062 群内逐成员模型
+
+继续复用 V061 的公开 LLM 目录/resolveCallConfig、原生 spawn agentOptions、Menu/Button 与既有 group.setModel Remote；未增加依赖、Host 内部 import 或第二套模型适配器。运行证据独立见 `docs/acceptance/V062-member-models.md`。
+
+- `groups.setModel` 新增可选 memberId；缺省更新群默认，指定则仅更新准确当前成员。GroupRecord/GroupTurn 新增可选 memberModelSelections（最多16条、memberId唯一）；旧记录缺字段不迁移、不推断覆盖。继续复用独立 modelRevision CAS，成员与群默认同属模型配置，其他用户模型改动/ABA不可盲目覆盖，工作进度不会触发冲突。
+- 实际路由优先级为本群成员覆盖→群默认→Bot模型→DSH默认。成员定位使用 memberId、群创建身份与 Bot createdAt；校验当前活跃成员及 Bot 存活，原生模型异步校验后复核生日。设置只落群记录，不写 Bot registry、私聊或全局模型。
+- 工作受理时复制群默认和所有成员覆盖到 turn。每个 delivery 按 memberId 选择同轮模型，公开 spawn agentOptions 和准确 WorkerBinding 使用相同有效覆盖，防止 Bot 首步默认把它改回。排队和自然交接保留此快照，已有 worker 的补充不换模型。Bot自身配置的旧有继承行为保持，不将其所有字段宣称为群快照。
+- 成员移除会在群变更意图中移除其覆盖并增加模型版本；重加拥有新 memberId，不恢复旧覆盖。其他成员设置保持。清空单成员覆盖回到群默认，清空群默认保留成员覆盖；不设置复杂模式开关。
+- 输入区仍使用一个菜单：群默认与活跃成员行。显示生效模型、provider、推理等级及来源；未知 DSH 默认只明确显示默认来源，不虚构具体模型。普通成员只显示头像和姓名；重名才显示简短稳定身份，完整 id 仅在 title/路由中保留。
+- Client 回执只合并模型字段，不能回退新 membership/通用群状态；移除目标和切群隔离晚响应。模型元信息按 routeKey 匹配，外部模型变更不会继续展示上个模型的推理选项。失败关闭菜单，保留原CAS；冲突后需重新打开查看新设置，不自动覆盖他人配置。
+
+
+## V063 首次对话、职责并发保护与头像
+
+参考源码继续只读锁定 rc.2；实际隔离运行时为 rc.3。完整 Host API 证据及崩溃边界见 [Host 记录](implementation/v063-onboarding-host.md)，最终包/浏览器/限制见 [V063 验收](acceptance/V063-onboarding-avatars.md)。没有新增依赖或内部路径 import。
+
+- 复用 registry、原生 main Session、createUserMessage/freezeMessage、Agent.followup 与原生 LLM，不新建聊天引擎。createForChat 的资格随 Bot 单次存储写入，公开 create/patch 不接受内部 onboarding；删除先保留 retired operation，避免丢响应重试复活 Bot。Client 必须在公开 uiWorkspace.openSession 成功后显式调用 startOnboarding，普通 open/list/import/copy 不触发。
+- 独立 strict source dsh-bot-onboarding 与 receipt 绑定完整输入、Bot 生日、创建操作和准确主 Session。界面使用公开 ConversationNodeDefinition、conversation.chat.node 与 events.register 显示简短来源通知；并非假用户消息，也不依赖原生 notice 的默认 form 渲染。真正 Bot 回复仍是 native assistant 事件。notice 沿用原生 process 分组，完成后随过程区折叠，可通过原生 Completed/step disclosure 展开；未设置输入分组来改变这一语义。
+- 原生 agent/inbox/claimed、inserted、pre-step、request 覆盖 assemble/pre-admission 竞争；用户抢先输入优先，取消保留原 Inbox，重新唤醒复用原消息 ID/target。纯图片不被误判为空输入。取消/超时只作用于准确欢迎 operation，ctx.effect 清理注册与资源。
+- 独立 storage domain 保存投递回执，冷恢复只通过 SessionPersistence.open(read)/read/close 核对，不唤醒 Agent。不确定状态不重放；Host 确认未派发时才提供人工恢复。native request/header 会持久化输出上限，恢复依据最新准确欢迎 turn 的 header、route 和无更新 model/selection，不能单凭先行写入的 restored marker；正常用户请求在 header 写入前取消或跨存储崩溃仍可恢复。单次 maxTokens+超时并非固定计费次数保证。
+- bot_manage 复用原生审批，ToolExecution.token 绑定准确审批草案与代际/版本，tools/result 及卸载清理快照。正式角色路径要求 get 后带 expectedCreatedAt/expectedUpdatedAt；旧调用只保护准备审批起的快照，不能声称保护未知早期读取。prefix 修改保留 suffix/complete；工具输出剔除 Host-owned onboarding 字段。
+- 当前职责按钮通过公开 ctx.conversation.input.requestDraftInitialization(binding,{prompt}) 写入草稿，ctx.sessions.using/ready 确认准确目标并释放引用；已有草稿保留，不发消息。没有 uiConversation.input API，也未使用私有 editor。
+- rc.2 ui-workspace rows/Rows.tsx 仅对非 blank 行调用 leading slot；blank conversation 同样无 header utilities。新 Bot 空态通过公开 conversation.input.dock 显示头像/姓名/恢复提示，保留原生 composer。非空私聊的 leading/header 使用主会话绑定，历史归属要求 ActivityRecord.botCreatedAt 精确匹配；旧记录不猜生日。群图标为主题 token 控制的组合鲸鱼 SVG，无图像生成和主题硬编码。

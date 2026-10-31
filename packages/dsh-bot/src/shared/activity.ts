@@ -22,6 +22,8 @@ export const activityMessageSchema = z.strictObject({
 export const activityRecordSchema = z.strictObject({
   sessionId: activitySessionIdSchema,
   botId: botIdSchema,
+  /** Verified Agent generation; absent for legacy activity without proof. */
+  botCreatedAt: timestampSchema.optional(),
   title: summaryText.optional(),
   // Optional for older records. Empty means the first human message had no
   // visible text; a later user message must never replace that first input.

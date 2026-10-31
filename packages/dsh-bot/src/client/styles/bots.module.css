@@ -668,3 +668,13 @@
 }
 .managementTabs > button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .managementTabs > button:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
+
+.recentList { list-style: none; padding: 0; margin: 12px 0; }
+.recentRow { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--dsw-alias-border-l3); min-width: 0; }
+.recentOpen { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 14px 8px; border: 0; background: transparent; color: var(--dsw-alias-label-primary); text-align: start; cursor: pointer; font: inherit; }
+.recentOpen > span { overflow-wrap: anywhere; }
+.recentOpen:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.recentOpen:focus-visible, .recentMore summary:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
+.recentMore { flex: 0 0 auto; max-width: 45%; }
+.recentMore summary { cursor: pointer; padding: 8px; }
+.recentMore[open] { display: grid; gap: 4px; }

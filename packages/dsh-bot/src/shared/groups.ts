@@ -6,7 +6,22 @@ export const GROUP_TEXT_MAX_BYTES = 65536;
 export const GROUP_TIMELINE_LIMIT = 200;
 const rev = z.number().int().positive();
 export const groupKeySchema = z.strictObject({ groupId: resourceId, groupCreatedAt: z.number().nonnegative() });
-export const groupModeSchema = z.enum(['mention', 'round-robin']);
+export const groupModeSchema = z.enum(['natural', 'mention', 'round-robin']);
+/** A group override is optional; absent records preserve each Bot's model defaults. */
+export const groupModelSelectionSchema = z.strictObject({
+  provider: z.string().trim().min(1),
+  model: z.string().trim().min(1),
+  reasoningEffort: z.string().trim().min(1).optional(),
+});
+export const groupMemberModelSelectionsSchema = z.array(z.strictObject({
+  memberId: resourceId,
+  modelSelection: groupModelSelectionSchema,
+})).max(16).refine(rows => new Set(rows.map(row => row.memberId)).size === rows.length);
+export const groupSetModelSchema = z.strictObject({
+  expectedModelRevision: z.number().int().nonnegative(),
+  memberId: resourceId.optional(),
+  modelSelection: groupModelSelectionSchema.nullable(),
+});
 const name = botRecordFields.shape.name;
 export const groupRecordSchema = z.strictObject({
   id: resourceId,
@@ -20,6 +35,9 @@ export const groupRecordSchema = z.strictObject({
   rootPresetId: z.literal(GROUP_ROOT_PRESET),
   cwd: z.string(),
   mode: groupModeSchema,
+  modelSelection: groupModelSelectionSchema.optional(),
+  memberModelSelections: groupMemberModelSelectionsSchema.optional(),
+  modelRevision: z.number().int().nonnegative().optional(),
   nextMemberId: resourceId.optional(),
   membershipRevision: rev,
   revision: rev,
@@ -50,6 +68,15 @@ export const groupTurnSchema = z.strictObject({
   orderedMemberIds: z.array(resourceId),
   mode: groupModeSchema,
   contextThroughSeq: z.number().int(),
+  modelSelection: groupModelSelectionSchema.optional(),
+  memberModelSelections: groupMemberModelSelectionsSchema.optional(),
+  predecessorTurnIds: z.array(resourceId).optional(),
+  followups: z.array(z.strictObject({
+    operationId: resourceId, requestDigest: z.string(), deliveryId: resourceId,
+    messageId: z.string(), childMessageId: z.string().optional(),
+    state: z.enum(['dispatching', 'accepted', 'unknown']),
+  })).optional(),
+  replyTo: z.string().optional(),
   state: z.enum(['accepted', 'running', 'completed', 'partial', 'cancelled', 'recovery_needed']),
 });
 export const groupDeliverySchema = z.strictObject({
@@ -62,8 +89,12 @@ export const groupDeliverySchema = z.strictObject({
   presetId: z.string(),
   contextOutputMessageIds: z.array(z.string()),
   contextTruncated: z.boolean(),
-  state: z.enum(['pending', 'starting', 'running', 'completed', 'failed', 'cancelled', 'unknown']),
+  state: z.enum(['pending', 'starting', 'running', 'completed', 'skipped', 'failed', 'cancelled', 'unknown']),
   childSessionId: z.string().optional(),
+  triggerMessageId: z.string().optional(),
+  returnMemberId: resourceId.optional(),
+  requestDigest: z.string().optional(),
+  skipped: z.boolean().optional(),
   outputMessageId: z.string().optional(),
   outputSeq: z.number().int().optional(),
   stopReason: z.string().optional(),
@@ -91,11 +122,14 @@ export const groupSendSchema = z.strictObject({
   text: z
     .string()
     .trim()
-    .min(1)
-    .refine((s) => new TextEncoder().encode(s).length <= GROUP_TEXT_MAX_BYTES),
+    .refine((s) => new TextEncoder().encode(s).length <= GROUP_TEXT_MAX_BYTES)
+    .default(''),
+  fileReceiptIds: z.array(z.string().min(1)).max(16).default([]),
   memberIds: z.array(resourceId).max(16).default([]),
   round: z.boolean().default(false),
-});
+  followup: z.strictObject({ turnId: resourceId, deliveryId: resourceId }).optional(),
+  replyTo: z.string().min(1).optional(),
+}).refine(input => Boolean(input.text) || input.fileReceiptIds.length > 0);
 export const speakerSchema = z.strictObject({
   bot: botKeySchema,
   name,
@@ -103,13 +137,25 @@ export const speakerSchema = z.strictObject({
   avatarColor: botRecordFields.shape.avatarColor,
   avatarVariant: botRecordFields.shape.avatarVariant,
 });
+const dimensions = z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive() });
+export const groupAttachmentSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('file'), attachment: z.strictObject({ attachmentId: z.string().min(1), name: z.string(), bytes: z.number().int().nonnegative() }) }),
+  z.strictObject({ type: z.literal('image'), attachment: z.strictObject({ attachmentId: z.string().min(1),
+    mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']), bytes: z.number().int().nonnegative(),
+    width: z.number().int().positive(), height: z.number().int().positive(), name: z.string().optional(), originalDimensions: dimensions.optional() }), offloaded: z.literal(true).optional() }),
+]);
+export type GroupAttachment = z.output<typeof groupAttachmentSchema>;
 export const groupMessageSchema = z.strictObject({
   id: z.string(),
   seq: z.number().int(),
   at: z.number(),
   text: z.string(),
   hasNonText: z.boolean().optional(),
+  attachments: z.array(groupAttachmentSchema).optional(),
   turnId: z.string(),
+  replyTo: z.string().optional(),
+  authorKind: z.enum(['user', 'bot']).optional(),
+  causeId: z.string().optional(),
   speaker: speakerSchema.optional(),
   childSessionId: z.string().optional(),
   stopReason: z.string().optional(),
@@ -143,6 +189,8 @@ export const groupPageSchema = z.strictObject({
   beforeSeq: z.number().int().nonnegative().optional(),
   limit: z.number().int().min(1).max(GROUP_TIMELINE_LIMIT).default(100),
 });
+export type GroupModelSelection = z.output<typeof groupModelSelectionSchema>;
+export type GroupSetModel = z.input<typeof groupSetModelSchema>;
 export type GroupKey = z.output<typeof groupKeySchema>;
 export type GroupRecord = z.output<typeof groupRecordSchema>;
 export type GroupMember = z.output<typeof groupMemberSchema>;

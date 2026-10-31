@@ -8,7 +8,7 @@ import zh from '../../locale/zh.json';
 import type { BotsRightTabInjected } from '../../src/client/components/BotsRightTab.js';
 import { BOTS_TAB_ID, BOTS_TAB_KIND } from '../../src/client/right-tab.js';
 import type { ActivitySession } from '../../src/shared/activity.js';
-import { bot, button, click, loadBuiltClient, mountClient } from './helpers.js';
+import { bot, button, click, doubleClick, loadBuiltClient, mountClient } from './helpers.js';
 
 const apps: Awaited<ReturnType<typeof mountClient>>[] = [];
 async function mount(
@@ -95,9 +95,12 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     expect(app.core.entries('sidebar.right.pane.tab')).toHaveLength(1);
   });
 
-  it.each(['source', 'built'] as const)('opens the latest eligible Host session after markRead and follows only after destination commit (%s)', async (implementation) => {
+  it.each(['source', 'built'] as const)('opens the latest eligible Host session after markRead (%s)', async (implementation) => {
     const now = Date.now();
-    const app = await mount('en', (remote) => { remote.data.activities = [activity('older', now - 60_000), activity('latest', now), activity('evicted', now + 50_000)]; remote.data.statuses = [{ id: 'alpha-bot', presetId: 'host-selected/alpha-bot', mainSessionId: 'latest', preset: { state: 'ok' } }]; }, implementation === 'built');
+    const app = await mount('en', (remote) => {
+      remote.data.activities = [activity('older', now - 60_000), activity('latest', now), activity('evicted', now + 50_000)];
+      remote.data.statuses = [{ id: 'alpha-bot', presetId: 'host-selected/alpha-bot', mainSessionId: 'latest', preset: { state: 'ok' } }];
+    }, implementation === 'built');
     await setSessions(app, [session('older', now - 60_000), session('latest', now), session('archived', now + 1_000),
       session('subagent', now + 2_000, { origin: 'subagent' }),
       session('other-bot', now + 3_000, { projectionValues: { agentPreset: 'host-selected/other-bot' } })]);
@@ -112,11 +115,11 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
       await new Promise<void>((resolve) => { finish = resolve; });
       return original(...args);
     });
-    await click(option(tab));
+    await doubleClick(option(tab));
     expect(app.remote.methods.activity.markRead).toHaveBeenCalledExactlyOnceWith('latest');
     expect(app.openSession).not.toHaveBeenCalled();
     expect(option(tab).disabled).toBe(true);
-    await click(option(tab));
+    await doubleClick(option(tab));
     await act(async () => { finish(); });
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('latest');
     expect(app.remote.methods.activity.markRead.mock.invocationCallOrder[0]).toBeLessThan(app.openSession.mock.invocationCallOrder[0] ?? 0);
@@ -135,7 +138,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     });
     await app.setRightSession('source-session');
     const tab = await app.mountRightTab();
-    await click(option(tab));
+    await doubleClick(option(tab));
     expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
     expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
@@ -151,7 +154,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     await app.setSessions({ phase: 'pending' });
     const tab = await app.mountRightTab();
     expect(option(tab).disabled).toBe(true);
-    await click(option(tab));
+    await doubleClick(option(tab));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     expect(tab.textContent).toContain(en.ui['bots.loading']);
     await app.setSessions({ phase: 'ready' });
@@ -176,11 +179,11 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     await click(button(tab, zh.ui['bots.refresh']));
     expect(tab.querySelector('[role="alert"]')?.textContent).toContain(zh.ui['errors.load']);
     expect(tab.textContent).not.toContain('sensitive host diagnostic');
-    await click(option(tab));
+    await doubleClick(option(tab));
     expect(app.openWorkspace).not.toHaveBeenCalled();
     await click(button(tab, zh.ui['actions.retry']));
     app.remote.methods.openConversation.mockRejectedValueOnce(new Error('private workspace path'));
-    await click(option(tab));
+    await doubleClick(option(tab));
     expect(tab.querySelector('[role="alert"]')?.textContent).toContain(zh.ui['activity.openError']);
     expect(tab.textContent).not.toContain('private workspace path');
   });
@@ -196,7 +199,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     app.remote.methods.activity.markRead.mockImplementationOnce(async (...args) => {
       await new Promise<void>((resolve) => { finish = resolve; }); return original(...args);
     });
-    await click(option(tab));
+    await doubleClick(option(tab));
     if (change === 'tab-unmount') await app.unmountRightTab();
     if (change === 'plugin-unload') await app.unloadPlugin();
     if (change === 'other-navigation') await act(async () => { app.selectPanel('dsh-bot' as never); });
@@ -214,7 +217,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     app.remote.methods.status.mockImplementationOnce(async () => {
       await new Promise<void>((resolve) => { finish = resolve; }); return original();
     });
-    await click(option(tab));
+    await doubleClick(option(tab));
     if (change === 'tab-unmount') await app.unmountRightTab();
     if (change === 'plugin-unload') await app.unloadPlugin();
     if (change === 'other-navigation') await act(async () => { app.selectPanel('dsh-bot' as never); });
@@ -230,7 +233,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     const tab = await app.mountRightTab();
     // openSession runs after the plugin's beforeOpen hook has queued the target.
     app.openSession.mockImplementationOnce(() => { throw new Error('navigation failed'); });
-    await click(option(tab));
+    await doubleClick(option(tab));
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('latest');
     expect(tab.querySelector('[role="alert"]')?.textContent).toBe(en.ui['activity.openError']);
     expect(app.openRightTab).not.toHaveBeenCalled();
@@ -243,7 +246,7 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     const app = await mount('en', (remote) => { remote.data.activities = [activity('latest')]; });
     await setSessions(app, [session('latest', Date.now())]);
     const tab = await app.mountRightTab();
-    await click(option(tab));
+    await doubleClick(option(tab));
     expect(app.rightSession()).toBe('latest');
     expect(app.openRightTab).not.toHaveBeenCalled();
     await act(async () => {

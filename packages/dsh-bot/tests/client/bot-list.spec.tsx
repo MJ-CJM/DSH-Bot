@@ -80,7 +80,7 @@ describe('shared compact Bot list', () => {
     expect(document.activeElement).toBe(list);
   });
 
-  it('selects then activates a clicked Bot, restores focus, and blocks duplicate activation while disabled', async () => {
+  it('selects on click, activates on double click, restores focus and blocks disabled activation', async () => {
     const calls: string[] = [];
     const props: BotListProps = { entries: [{ bot: bot() }], activities: [], t: translate('en'), compact: true,
       onSelect: (id) => { calls.push(`select:${id}`); }, onActivate: (id) => { calls.push(`activate:${id}`); } };
@@ -89,6 +89,8 @@ describe('shared compact Bot list', () => {
     const list = app.container.querySelector<HTMLElement>('[role="listbox"]');
     if (!option || !list) throw new Error('Bot list is missing');
     await click(option);
+    expect(calls).toEqual(['select:alpha-bot']);
+    await act(async () => { option.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
     expect(calls).toEqual(['select:alpha-bot', 'activate:alpha-bot']);
     expect(document.activeElement).toBe(list);
     await app.render(<BotList {...props} disabled />);

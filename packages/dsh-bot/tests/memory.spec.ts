@@ -43,7 +43,8 @@ function record(id: string, fields: Partial<MemoryRecord> = {}): MemoryRecord {
 }
 
 describe('BotMemoryService with the published JSON storage backend', () => {
-  it('deduplicates normalized content within a Bot and merges metadata without replacing the original fact', async () => withMemories(async ({ alpha, beta }) => {
+  it('deduplicates normalized content within a Bot and merges metadata without replacing the original fact',
+    async () => withMemories(async ({ alpha, beta }) => {
     const source = { by: 'model' as const, at: 1, sessionId: 'first-session' };
     const original = await alpha.save({ content: 'Ｕｓｅ　ＣＯＦＦＥＥ\n please', kind: 'preference', tags: ['drink'] }, source);
     expect(original.deduplicated).toBe(false);
@@ -77,7 +78,8 @@ describe('BotMemoryService with the published JSON storage backend', () => {
     expect(records[0]?.updatedAt).toBeGreaterThanOrEqual((records[0]?.createdAt ?? 0) + 19);
   }));
 
-  it('rejects common credentials from models before writes or deduplication, but leaves manual policy to the caller', async () => withMemories(async ({ alpha }) => {
+  it('rejects common credentials from models before writes or deduplication, but leaves manual policy to the caller',
+    async () => withMemories(async ({ alpha }) => {
     const signatures = [
       `sk-${'a'.repeat(24)}`, `sk-proj-${'A1_'.repeat(10)}`,
       `ghp_${'a'.repeat(36)}`, `github_pat_${'a1_'.repeat(30)}`,
@@ -161,7 +163,8 @@ describe('BotMemoryService with the published JSON storage backend', () => {
     expect(await alpha.list()).toHaveLength(1);
   }));
 
-  it('uses Chinese and English retrieval, filters pins and tags, and honors the default limit', async () => withMemories(async ({ alpha, beta, store, domain }) => {
+  it('uses Chinese and English retrieval, filters pins and tags, and honors the default limit',
+    async () => withMemories(async ({ alpha, beta, store, domain }) => {
     const { id: shanghai } = await alpha.save({ content: '上海旅行时喝 COFFEE', tags: ['travel'], pinned: true });
     const { id: beijing } = await alpha.save({ content: '北京旅行时喝 tea', tags: ['travel'] });
     await beta.save({ content: '上海旅行时喝 COFFEE', tags: ['travel'], pinned: true });
@@ -182,7 +185,8 @@ describe('BotMemoryService with the published JSON storage backend', () => {
   }));
 
   // Writes more than one page of records to real JSON storage, so allow extra I/O time.
-  it('snapshots all pins and recent unpinned records beyond a storage page with stable ties', async () => withMemories(async ({ alpha, beta, domain, store }) => {
+  it('snapshots all pins and recent unpinned records beyond a storage page with stable ties',
+    async () => withMemories(async ({ alpha, beta, domain, store }) => {
     const pinned: MemoryRecord[] = [];
     const recent: MemoryRecord[] = [];
     for (let index = 0; index < 205; index++) {
@@ -260,22 +264,22 @@ describe('memory prompt snapshot text', () => {
     const long = record('long', { content: 'x'.repeat(1000), updatedAt: 50 });
     const small = record('small', { content: 'recent small', updatedAt: 40 });
     const older = record('older', { content: 'older small', updatedAt: 30 });
-    const footer = '[2 more memories available via memory_search]';
+    const footer = '[2 more memories available via bot_memory_search]';
     const pair = buildMemoryPrompt([pin, small], 4000);
     const budget = pair.length + 1 + footer.length;
     expect(buildMemoryPrompt([older, small, long, pin], budget)).toBe(`${pair}\n${footer}`);
     const withoutLast = buildMemoryPrompt([older, small, long, pin], budget - 1);
     expect(withoutLast).not.toContain('"recent small"');
     expect(withoutLast).toContain('"older small"');
-    expect(withoutLast).toContain('[2 more memories available via memory_search]');
+    expect(withoutLast).toContain('[2 more memories available via bot_memory_search]');
     const full = buildMemoryPrompt([pin, small], 4000);
     expect(buildMemoryPrompt([pin, small], full.length)).toBe(full);
-    const tinyFooter = '[1 more memories available via memory_search]';
+    const tinyFooter = '[1 more memories available via bot_memory_search]';
     expect(buildMemoryPrompt([long], tinyFooter.length)).toBe(tinyFooter);
     expect(buildMemoryPrompt([long], tinyFooter.length - 1)).toBe('');
     expect(buildMemoryPrompt([long], 200)).toBe(tinyFooter);
     expect(buildMemoryPrompt(Array.from({ length: 10 }, (_, i) => record(`row-${i}`, { content: 'x'.repeat(1000) })), 100))
-      .toBe('[10 more memories available via memory_search]');
+      .toBe('[10 more memories available via bot_memory_search]');
   });
 
   it('only shortens an intrinsically oversized pin, preserving valid JSON and Unicode at every budget', () => {
@@ -292,13 +296,13 @@ describe('memory prompt snapshot text', () => {
         const content = JSON.parse(line.slice(line.indexOf('"'))) as string;
         expect(content.endsWith('…')).toBe(true);
         expect(records[0]?.content.startsWith(content.slice(0, -1))).toBe(true);
-      } else expect(['', '[1 more memories available via memory_search]']).toContain(result);
+      } else expect(['', '[1 more memories available via bot_memory_search]']).toContain(result);
     }
     expect(buildMemoryPrompt(records, complete.length)).toBe(complete);
     const second = record('second', { content: 'second'.repeat(100) });
     const partial = buildMemoryPrompt([...records, second], 250);
     expect(partial).toContain('[truncated]');
-    expect(partial).toContain('[1 more memories available via memory_search]');
+    expect(partial).toContain('[1 more memories available via bot_memory_search]');
     const compact = buildMemoryPrompt([...records, record('small', { content: 'second' })], 250);
     expect(compact).toContain('"second"'); // Including the last row releases the footer budget.
     expect(compact).not.toContain('more memories');

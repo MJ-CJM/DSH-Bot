@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "S03",
+  "kind": "shared",
+  "rootCause": "unverified-valid-time-enters-current-fact-view",
+  "mastCategory": "specification",
+  "source": {
+    "path": "docs/deepening/implementation-design.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      89,
+      103
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "OPEN",
+  "precondition": "A model states an unverified 2099 effective date while a current user fact exists.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/shared-contracts.spec.ts -t \"S03 \"",
+  "expected": "No temporal winner is inferred from model text; current confirmed fact remains.",
+  "observed": {
+    "original": "v1 returns both strings, with no valid-time or trust arbitration.",
+    "beforeFix": "v1 returns both strings, with no valid-time or trust arbitration.",
+    "afterFix": "NOT_RUN: future v2 behavior remains OPEN."
+  },
+  "regressions": [
+    {
+      "testId": "S03",
+      "testFile": "packages/dsh-bot/tests/deepening/shared-contracts.spec.ts",
+      "testName": "S03 forged self-reported time cannot displace a current trusted fact",
+      "status": "OPEN",
+      "receipt": ".dsh-dev/deepening/b2/receipts/S03.json"
+    }
+  ]
+}

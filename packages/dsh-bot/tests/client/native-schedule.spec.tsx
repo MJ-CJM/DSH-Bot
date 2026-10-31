@@ -1,3 +1,4 @@
+import { openSettings } from './bot-ui-helpers.js';
 // @vitest-environment jsdom
 import en from '../../locale/en.json' with { type: 'json' };
 import zh from '../../locale/zh.json' with { type: 'json' };
@@ -52,7 +53,7 @@ describe('R02 shipped native task Client', () => {
       app.remote.data.routines = [task()];
       await act(async () => { app.ctx.emit('schedule/changed'); });
       const t = (language === 'zh' ? zh : en).ui;
-      await click(button(app.container, t['manage.title'])); await click(button(app.container, t['routine.title']));
+      await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['routine.title']));
       await vi.waitFor(() => expect(app.container.textContent).toContain('Native example'));
       const panel = app.container.querySelector('[data-routine-panel="overview"]'); if (!panel) throw new Error('Missing panel');
       expect(panel.textContent).not.toContain(language === 'zh' ? '暂停' : 'Pause'); expect(panel.textContent).not.toContain(t['routine.create']);

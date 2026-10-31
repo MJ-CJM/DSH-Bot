@@ -7,9 +7,10 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-user-approval';
 import { describe, expect, it, vi } from 'vitest';
-import * as botContext from '../lib/host/bot-context.js';
+import * as botContext from '../src/host/bot-context.js';
+import { workerReservations } from '../src/host/groups/worker-tool.js';
 import { Config as RegistryConfig } from '../lib/host/registry.js';
-import { registerStandardBotManage } from '../lib/host/tools/bot-manage.js';
+import { registerStandardBotManage } from '../src/host/tools/bot-manage.js';
 import { botCreateSchema, botSchema } from '../lib/shared/schema.js';
 
 async function fixture() {
@@ -33,7 +34,10 @@ async function fixture() {
   } as unknown as Context['llm']);
   const list = vi.fn(async () => structuredClone([...records.values()]));
   const ensureHome = vi.fn(async (id: string) => ({ path: `/fixture/dsh-bot/bots/${id}/home` }));
-  ctx.provide('dshBots', { presetBot, list, ensureHome, config: RegistryConfig({}) } as unknown as Context['dshBots']);
+  ctx.provide('dshBots', { presetBot, list, ensureHome, config: RegistryConfig({}),
+    personaSnapshot: (id: string, createdAt: number) => records.get(id)?.createdAt === createdAt ? records.get(id)?.persona : undefined,
+    subscribePersonaChanges: () => () => {},
+  } as unknown as Context['dshBots']);
   const requestApproval = vi.fn(async (_request: { agent: Agent; toolName: string }) => 'rejected' as const);
   ctx.provide('approval', { request: requestApproval } as unknown as Context['approval']);
   const liveAgents = new Map<string, Agent>();
@@ -625,5 +629,28 @@ describe('Bot preset context using the published scope and tool services', () =>
     const nextAssembly = await session.scope.ctx.systemPrompt.assemble({ scope: session.subject, agent: session.subject });
     expect(nextAssembly.variables).toMatchObject(selection);
     expect(await request()).toEqual(selection);
+  }));
+});
+
+describe('group override model precedence', () => {
+  it.each([true, false])('applies a reserved group override only when its child lineage matches (%s)', async matches => withFixture(async ({ ctx, records, preset, agent }) => {
+    const alpha = records.get('alpha'); if (!alpha) throw new Error('Missing alpha');
+    alpha.model = { provider: 'bot-provider', model: 'bot-model', reasoningEffort: 'high' };
+    const composition = await preset('alpha'), session = agent(composition.key);
+    Object.assign(session.subject.session.header, { parentSession: matches ? 'group-root' : undefined, agentPreset: 'bot-alpha' });
+    const selection = { provider: 'group-provider', model: 'group-model' };
+    workerReservations.set(session.subject.session.id, { rootId: 'group-root', presetId: 'bot-alpha', childId: session.subject.session.id,
+      turnId: 'turn', deliveryId: 'delivery', audience: [], modelSelection: selection, isActive: () => true });
+    const inherited: ModelSelectionRef = { current: selection, assembled: undefined };
+    session.scope.ctx.effect(() => installModelSelection(session.scope.ctx, inherited));
+    try {
+      await session.announce();
+      const assembly = await session.scope.ctx.systemPrompt.assemble({ scope: session.subject, agent: session.subject });
+      expect(assembly.variables).toMatchObject(matches ? selection : { provider: 'bot-provider', model: 'bot-model' });
+      const request = await ctx.waterfall(scopeTarget(session.subject, session.subject), 'agent/request', {
+        agent: session.subject, turn: 1, step: 1, signal: new AbortController().signal,
+      }, async () => ({ ...selection, reasoningEffort: ReasoningEffortId('high') }));
+      expect(request).toEqual(matches ? selection : alpha.model);
+    } finally { workerReservations.delete(session.subject.session.id); }
   }));
 });

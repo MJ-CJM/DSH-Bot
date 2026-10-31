@@ -26,6 +26,8 @@ const bundledDependencies = new Set([
   await realpath(resolve(dirname(surfaceEntry), 'types.js')),
   await realpath(resolve(dirname(surfaceEntry), 'known-event-types.js')),
   await realpath(require.resolve('@deepseek-ai/dsh-schedule/remote')),
+  await realpath(require.resolve('@deepseek-ai/dsh-subagent/remote')),
+  await realpath(require.resolve('@deepseek-ai/dsh-permission-presets/remote')),
   await realpath(require.resolve('@deepseek-ai/dsh-typert-protocol/remote-info')),
   // Independent Config validator (no shared resolver extensions); not a platform module.
   await realpath(schemaEntry),
@@ -44,6 +46,7 @@ const external = [
   '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-input-trigger/client',
 ];
 
 const result = await build({

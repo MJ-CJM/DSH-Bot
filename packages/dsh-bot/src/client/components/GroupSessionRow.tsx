@@ -1,6 +1,6 @@
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupActions } from '../groups-state.js';
-import { WhaleGlyph } from './WhaleGlyph.js';
+import { GroupAvatar } from './GroupAvatar.js';
 export interface GroupSessionRowInjected {
   hooks: { groups: GroupActions['catalog'] };
 }
@@ -16,7 +16,7 @@ export function GroupSessionLeading({ sessionId, useGroups, t }: Props) {
       aria-label={t('row.group', { name: group.group.name })}
       title={t('row.group', { name: group.group.name })}
     >
-      <WhaleGlyph size={18} />
+      <GroupAvatar size={16} />
     </span>
   ) : null;
 }

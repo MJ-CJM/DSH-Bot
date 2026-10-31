@@ -1,3 +1,4 @@
+import { openMaintenance } from './bot-ui-helpers.js';
 // @vitest-environment jsdom
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -67,7 +68,7 @@ describe('built Client management workspace', () => {
       }, {}, loadBuiltClient());
       const t = (language === 'en' ? en : zh).ui;
       try {
-        await click(button(app.container, t['manage.title']));
+        await openMaintenance(app, t === zh.ui ? 'zh' : 'en');
         expect(app.container.textContent).toContain(t['manage.unknown']);
         await click(button(app.container, t['manage.graph']));
         await vi.waitFor(() => expect(button(app.container, t['graph.enable']).disabled).toBe(false));
@@ -111,7 +112,7 @@ describe('built Client management workspace', () => {
     }, {}, loadBuiltClient());
     const t = (language === 'en' ? en : zh).ui;
     try {
-      await click(button(app.container, t['manage.title']));
+      await openMaintenance(app, t === zh.ui ? 'zh' : 'en');
       await click(button(app.container, t['manage.graph']));
       await click(button(app.container, t['manage.preview']));
       await vi.waitFor(() => expect(app.container.textContent).toContain(t['graph.stage']));
@@ -177,7 +178,7 @@ describe('built Client management workspace', () => {
     }, {}, loadBuiltClient());
     const t = en.ui;
     try {
-      await click(button(app.container, t['manage.title']));
+      await openMaintenance(app, t === zh.ui ? 'zh' : 'en');
       await click(button(app.container, t['manage.transfer']));
       await fill(field(app.container, t['manage.document']), JSON.stringify(document));
       await fill(field(app.container, t['manage.newId']), 'portable');

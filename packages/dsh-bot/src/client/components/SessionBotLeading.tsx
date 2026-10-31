@@ -20,11 +20,14 @@ export type SessionBotRowProps = Pick<PropsRuntime<'sidebar.session.row.leading'
 function useRowBot({ sessionId, useCatalog, useActivity }: SessionBotRowProps) {
   const catalog = useCatalog((value) => value);
   const activity = useActivity((value) => value);
-  // A retained success snapshot remains usable during a routine refresh. Never
-  // guess from a preset prefix, a session title, or an unresolved first read.
-  if (!catalog.loaded || !activity.loaded) return undefined;
-  const botId = activity.sessions.find((row) => row.sessionId === sessionId)?.botId;
-  return botId === undefined ? undefined : catalog.entries.find((entry) => entry.bot.id === botId)?.bot;
+  // Host main-session status identifies a fresh empty conversation before
+  // activity exists. Historical activity must belong to this Bot generation.
+  if (!catalog.loaded) return undefined;
+  const main = catalog.entries.find(entry => entry.status?.mainSessionId === sessionId);
+  if (main) return main.bot;
+  if (!activity.loaded) return undefined;
+  const row = activity.sessions.find(item => item.sessionId === sessionId);
+  return row ? catalog.entries.find(entry => entry.bot.id === row.botId && row.botCreatedAt === entry.bot.createdAt)?.bot : undefined;
 }
 
 /** Root-scoped decoration: reading the two shared catalogs retains no Session. */

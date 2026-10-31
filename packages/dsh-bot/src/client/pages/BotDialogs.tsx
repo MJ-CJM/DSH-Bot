@@ -15,6 +15,8 @@ export function BotDialogs({ page, model }: { page: BotsPageProps; model: BotsPa
     save,
     setDialog,
     memoryCount,
+    toast,
+    sessions,
     setCountAttempt,
     deleteMemories,
     setDeleteMemories,
@@ -27,10 +29,18 @@ export function BotDialogs({ page, model }: { page: BotsPageProps; model: BotsPa
     copyInvalid,
     setCopyId,
   } = model;
+  const deletionText = (key: 'delete.changed' | 'delete.running' | 'delete.tasks' | 'delete.workspaceRetained') => t(key as Parameters<typeof t>[0]);
+  const deleting = dialog?.kind === 'delete' ? dialog.bot : undefined;
+  const latest = deleting ? snapshot.entries.find(entry => entry.bot.id === deleting.id) : undefined;
+  const deleteChanged = !!deleting && (!latest || latest.bot.createdAt !== deleting.createdAt || latest.bot.updatedAt !== deleting.updatedAt);
+  const mainId = latest?.status?.mainSessionId;
+  const deletingRunning = !!mainId && sessions.byId[mainId as keyof typeof sessions.byId]?.running === true;
   return (
     <>
       {(dialog?.kind === 'create' || dialog?.kind === 'edit') && (
         <BotEditor
+          creationSaved={Boolean(model.createdId)}
+          models={page.models}
           avatarWarning={
             dialog.kind === 'edit' &&
             snapshot.entries.find(({ bot }) => bot.id === dialog.bot.id)?.status?.warnings?.includes('avatar/invalid')
@@ -68,6 +78,11 @@ export function BotDialogs({ page, model }: { page: BotsPageProps; model: BotsPa
         <Modal title={t('delete.title')} busy={busy} onClose={() => setDialog(undefined)} t={t}>
           <div className={styles.editorBody}>
             <p>{t('delete.description', { name: dialog.bot.name })}</p>
+            {toast?.error && <p role="alert" className={styles.error}>{toast.text}</p>}
+            {deleteChanged && <p role="alert" className={styles.error}>{deletionText('delete.changed')}</p>}
+            {deletingRunning && <p role="alert" className={styles.warning}>{deletionText('delete.running')}</p>}
+            <p>{deletionText('delete.tasks')}</p>
+            <p>{deletionText('delete.workspaceRetained')}</p>
             {memoryCount.count !== undefined ? (
               <p>{t('delete.memoryCount', { count: memoryCount.count })}</p>
             ) : memoryCount.failed ? (
@@ -110,10 +125,10 @@ export function BotDialogs({ page, model }: { page: BotsPageProps; model: BotsPa
             <button
               type="button"
               className={styles.dangerButton}
-              disabled={busy || memoryCount.count === undefined}
+              disabled={busy || memoryCount.count === undefined || deleteChanged || deletingRunning || Boolean(snapshot.error) || snapshot.loading}
               onClick={() => {
                 void perform(
-                  () => onDelete(dialog.bot.id, deleteMemories, deleteHome),
+                  () => onDelete(dialog.bot.id, deleteMemories, deleteHome, { createdAt: dialog.bot.createdAt, updatedAt: dialog.bot.updatedAt }),
                   'errors.delete',
                   deleteMemories ? 'delete.success' : 'delete.keptSuccess',
                 ).catch(() => {});

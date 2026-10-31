@@ -14,8 +14,9 @@ import type {
   MemorySaveResult,
 } from '../../shared/schema.js';
 import { parseInput } from '../errors.js';
-import type { MemoryStore } from '../store.js';
+import type { MemoryPort } from './port.js';
 import { rejectModelSecrets } from './secrets.js';
+import { failure } from '../stores/domain.js';
 
 // These strict schemas are also the tool boundary: identity and provenance are
 // supplied by the Host, never accepted from model arguments.
@@ -42,12 +43,13 @@ export class BotMemoryService {
   private readonly defaultListLimit: number;
 
   constructor(
-    private readonly store: MemoryStore,
+    private store: MemoryPort,
     botId: string,
     private readonly execute: MemoryOperationExecutor = executeImmediately,
     defaultListLimit = 20,
   ) {
     this.botId = parseInput(botIdSchema, botId);
+    this.store = store.forBot?.(botId) ?? store;
     this.defaultListLimit = parseInput(memoryListOptionsSchema.shape.limit, defaultListLimit);
   }
 
@@ -69,28 +71,26 @@ export class BotMemoryService {
     );
   }
 
-  async search(input: MemorySearchInput, signal?: AbortSignal): Promise<MemoryRecord[]> {
+  async search(input: MemorySearchInput, signal?: AbortSignal,
+    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}): Promise<MemoryRecord[]> {
     const fields = parseInput(memorySearchInputSchema, input);
-    return this.run(
-      () =>
-        this.store.listByBot(this.botId, {
-          ...fields,
-          limit: fields.limit ?? this.defaultListLimit,
-        }),
-      signal,
-    );
+    return this.run(async () => {
+      const rows = (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
+        ...fields, limit: fields.limit ?? this.defaultListLimit,
+      });
+      await observed(rows); return rows;
+    }, signal);
   }
 
-  async list(input: MemoryListInput = {}, signal?: AbortSignal): Promise<MemoryRecord[]> {
+  async list(input: MemoryListInput = {}, signal?: AbortSignal,
+    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}): Promise<MemoryRecord[]> {
     const fields = parseInput(memoryListInputSchema, input);
-    return this.run(
-      () =>
-        this.store.listByBot(this.botId, {
-          ...fields,
-          limit: fields.limit ?? this.defaultListLimit,
-        }),
-      signal,
-    );
+    return this.run(async () => {
+      const rows = (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
+        ...fields, limit: fields.limit ?? this.defaultListLimit,
+      });
+      await observed(rows); return rows;
+    }, signal);
   }
 
   async forget(input: MemoryForgetInput, signal?: AbortSignal): Promise<void> {
@@ -173,10 +173,15 @@ export class BotMemoryService {
   }
 
   private run<T>(operation: () => T | Promise<T>, signal?: AbortSignal): Promise<T> {
+    const epoch = this.store.captureEpoch?.();
     return this.execute(() => {
       // Check after waiting for the registry queue, before touching storage.
       signal?.throwIfAborted();
+      if (epoch !== undefined) this.store.assertEpoch?.(epoch);
       return operation();
+    }).catch(error => {
+      if (signal?.aborted && error === signal.reason) throw error;
+      throw failure(error);
     });
   }
 }

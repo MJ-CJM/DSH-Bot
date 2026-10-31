@@ -1,3 +1,5 @@
+import { outlets } from '../data-flow/tool-guard.js';
+import { MemoryLineage } from '../data-flow/lineage.js';
 import type { z } from 'zod';
 import { type BotKey, sameBot } from '../../shared/integrations.js';
 import {
@@ -30,6 +32,8 @@ export class MemoryCopyWorkflow extends ReferenceBackend {
   protected row(bot: BotKey, id: string) {
     const row = need(this.domain.table('copies').get(id));
     if (!sameBot(row.receipt.bot, bot)) throw new OperationError('not-found');
+    if (outlets(this.registry) && row.flowEpoch !== this.registry.memoryKernel?.epoch)
+      throw new Error('Legacy or stale graph stage held');
     return structuredClone(row);
   }
   protected async saveCopy(row: z.output<typeof copyRowSchema>) {
@@ -49,6 +53,7 @@ export class MemoryCopyWorkflow extends ReferenceBackend {
     if (old) return structuredClone(old.receipt);
     return this.saveCopy({
       snapshot: rows,
+      ...(this.registry.memoryKernel ? { flowEpoch: this.registry.memoryKernel.epoch } : {}),
       previousMode: binding?.mode ?? 'internal',
       receipt: {
         id,
@@ -79,6 +84,13 @@ export class MemoryCopyWorkflow extends ReferenceBackend {
       throw new OperationError('conflict');
     const agent = await this.main(bot);
     if (agent?.status !== 'idle' || agent.ctx.tools.get('run_code', agent)) throw new OperationError('unsupported');
+    const flow = outlets(this.registry);
+    if (flow) {
+      const versions = row.snapshot.map(r => flow.kernel.snapshot.versions.get(r.id)?.versionId);
+      if (versions.some(v => !v)) throw new Error('Unknown copy lineage');
+      const label = await new MemoryLineage(flow.kernel).record(agent.session.id, versions as string[]);
+      await flow.inherit(agent.session.id, label);
+    }
     const cancel = new AbortController();
     this.copying.set(id, cancel);
     return agent
@@ -125,7 +137,7 @@ export class MemoryCopyWorkflow extends ReferenceBackend {
         } finally {
           if (l) await this.closeLive(l);
           const binding = this.binding(bot);
-          if (binding?.mode === 'internal+reference-graph' && !this.stopping)
+          if (binding?.mode === 'internal+reference-graph' && !this.stopping && !this.registry.memoryKernel?.blocked)
             await this.mount(bot, agent, binding.fileIdentity, false);
         }
       })
@@ -173,6 +185,7 @@ export class MemoryCopyWorkflow extends ReferenceBackend {
           const { type: _type, ...value } = entity;
           verifyMemoryEntity(bot, record, value);
         }
+        this.row(bot, id);
         await this.domain.table('bindings').put(
           keyOf(bot),
           graphBindingSchema.parse({
@@ -206,6 +219,7 @@ export class MemoryCopyWorkflow extends ReferenceBackend {
     if (binding?.importId === id) {
       if (binding.revision !== row.receipt.bindingRevision + 1) throw new OperationError('conflict');
       await this.stop(bot);
+      this.row(bot, id);
       await this.domain.table('bindings').put(
         keyOf(bot),
         graphBindingSchema.parse({

@@ -21,7 +21,7 @@ afterEach(async () => {
 
 const sessionId = 'session-row-alpha' as SessionBotRowProps['sessionId'];
 const activityRow = (id: string = sessionId): ActivitySession => ({
-  sessionId: id, botId: 'alpha-bot', updatedAt: 100, unread: true,
+  sessionId: id, botId: 'alpha-bot', botCreatedAt: 1, updatedAt: 100, unread: true,
   lastMessage: { role: 'assistant', preview: 'Completed Bot reply', at: 100 },
 });
 const translate = (language: 'en' | 'zh'): SessionBotRowProps['t'] => (key, params) => {

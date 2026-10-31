@@ -1,6 +1,12 @@
+import { createForChatSchema, startOnboardingSchema, onboardingStatusSchema } from './onboarding.js';
+import { autoShareStatusSchema, autoShareToggleSchema } from './data-flow.js';
+import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryConfirmSchema,
+  memoryResolveSchema, memoryPageSchema } from './memory-management.js';
 /** Hand-authored, browser-safe contract for the locked DSH release's public Typert API. */
 import type { RemoteResult, RemoteStreamHandle, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import { z } from 'zod';
+import { forgetSelectionSchema, forgetPreviewSchema, forgetChoiceSchema, cleanupStatusSchema,
+  rootInstructionsSchema } from './memory-forget.js';
 import { botIdSchema, memoryIdSchema } from './ids.js';
 import { activityListResultSchema, activitySessionIdSchema, activitySessionSchema } from './activity.js';
 export type { ActivityRecord, ActivitySession, ActivityListResult } from './activity.js';
@@ -205,6 +211,10 @@ export const dshBotRemoteSpec = {
       parameters: [],
       result: activityResultCodec('BotsWorkspace', botsWorkspaceSchema),
     },
+    'dshBot/createForChat': { ...owner, parameters: [parameter('input', 'CreateForChatInput', createForChatSchema)], result: bot },
+    'dshBot/startOnboarding': { ...owner, parameters: [parameter('input', 'StartOnboardingInput', startOnboardingSchema)], result: activityResultCodec('OnboardingStatus', onboardingStatusSchema) },
+    'dshBot/retryOnboarding': { ...owner, parameters: [parameter('input', 'StartOnboardingInput', startOnboardingSchema)], result: activityResultCodec('OnboardingStatus', onboardingStatusSchema) },
+    'dshBot/onboardingStatus': { ...owner, parameters: [botId], result: activityResultCodec('OnboardingStatus', onboardingStatusSchema) },
     'dshBot/create': { ...owner, parameters: [parameter('input', 'BotCreateInput', botCreateSchema)], result: bot },
     'dshBot/update': { ...owner, parameters: [id, parameter('patch', 'BotPatch', botPatchSchema)], result: bot },
     'dshBot/duplicate': { ...owner, parameters: [id, parameter('newId', 'BotId', botIdSchema)], result: bot },
@@ -220,6 +230,41 @@ export const dshBotRemoteSpec = {
         },
       ],
       result: codec('void', z.void()),
+    },
+    'dshBot.memory/autoShareStatus': {
+      ...memoryOwner, parameters: [], result: activityResultCodec('AutoShareStatus', autoShareStatusSchema),
+    },
+    'dshBot.memory/setAutoShare': {
+      ...memoryOwner, parameters: [parameter('input', 'AutoShareToggle', autoShareToggleSchema)],
+      result: activityResultCodec('AutoShareStatus', autoShareStatusSchema),
+    },
+    'dshBot.memory/query': {
+      ...memoryOwner, parameters: [parameter('input', 'queryInput', memoryQuerySchema)],
+      result: activityResultCodec('ManagedMemoryPage', memoryPageSchema),
+    },
+    'dshBot.memory/createManaged': {
+      ...memoryOwner, parameters: [parameter('input', 'createManagedInput', memoryCreateSchema)],
+      result: activityResultCodec('MemoryId', z.uuid()),
+    },
+    'dshBot.memory/revise': {
+      ...memoryOwner, parameters: [parameter('input', 'reviseInput', memoryReviseSchema)],
+      result: activityResultCodec('void', z.void()),
+    },
+    'dshBot.memory/confirm': {
+      ...memoryOwner, parameters: [parameter('input', 'confirmInput', memoryConfirmSchema)],
+      result: activityResultCodec('MemoryId', z.uuid()),
+    },
+    'dshBot.memory/resolve': {
+      ...memoryOwner, parameters: [parameter('input', 'resolveInput', memoryResolveSchema)],
+      result: activityResultCodec('void', z.void()),
+    },
+    'dshBot.memory/previewContribution': {
+      ...memoryOwner, parameters: [parameter('input', 'previewContributionInput', z.uuid())],
+      result: activityResultCodec('ForgetPreview', forgetPreviewSchema),
+    },
+    'dshBot.memory/previewShared': {
+      ...memoryOwner, parameters: [parameter('input', 'previewSharedInput', forgetSelectionSchema)],
+      result: activityResultCodec('ForgetPreview', forgetPreviewSchema),
     },
     'dshBot.memory/list': {
       ...memoryOwner,
@@ -247,10 +292,33 @@ export const dshBotRemoteSpec = {
       parameters: [botId, memoryId],
       result: codec('void', z.void()),
     },
+    'dshBot.memory/quarantineCount': {
+      ...memoryOwner,
+      parameters: [],
+      result: activityResultCodec('MemoryQuarantineCount', z.number().int().nonnegative()),
+    },
     'dshBot.memory/count': {
       ...memoryOwner,
       parameters: [botId],
       result: codec('MemoryCount', z.number().int().nonnegative()),
+    },
+    'dshBot.memory/previewForget': {
+      ...memoryOwner, parameters: [botId, parameter('selection', 'ForgetSelection', forgetSelectionSchema)],
+      result: activityResultCodec('ForgetPreview', forgetPreviewSchema),
+    },
+    'dshBot.memory/chooseForget': {
+      ...memoryOwner, parameters: [parameter('choice', 'ForgetChoice', forgetChoiceSchema)],
+      result: activityResultCodec('CleanupStatus', cleanupStatusSchema),
+    },
+    'dshBot.memory/cleanupStatuses': {
+      ...memoryOwner, parameters: [], result: activityResultCodec('CleanupStatus[]', z.array(cleanupStatusSchema)),
+    },
+    'dshBot.memory/retryCleanup': {
+      ...memoryOwner, parameters: [parameter('id', 'CleanupId', z.uuid())],
+      result: activityResultCodec('CleanupStatus', cleanupStatusSchema),
+    },
+    'dshBot.memory/rootInstructions': {
+      ...memoryOwner, parameters: [], result: activityResultCodec('RootInstructions', rootInstructionsSchema),
     },
   },
 } as const satisfies TypertRemoteSpec;

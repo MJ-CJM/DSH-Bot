@@ -1,0 +1,2664 @@
+{
+  "schemaVersion": 1,
+  "baselineSha": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+  "input": "evals/inputs/failures.json",
+  "inputSha256": "415bf25256141d07122805622b45e0f830363563b9587f5394e0abc61d1a5f08",
+  "historicalEstimate": 306,
+  "actualCandidates": 310,
+  "sources": [
+    {
+      "path": ".codex/runs/PROGRESS.md",
+      "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+      "sha256": "802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef"
+    },
+    {
+      "path": "docs/acceptance/P1-T01.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "d2982964ff043597f0553608fc91061cffd7a0f8e30c3d9f47b14eb583c74a86"
+    },
+    {
+      "path": "docs/acceptance/P1-T04.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "9377a85b945692ddcf453e6b3dc9e87c5276db22a7d0dcbd4f9048b8d71e3e8a"
+    },
+    {
+      "path": "docs/acceptance/P1-T05.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "3ebf034997eb13c2dbe7b29ed50326814f3aafa7629ebc0a02d4e9755b67cf56"
+    },
+    {
+      "path": "docs/acceptance/P1-T06.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "b05dab698e667624d7fc32cc391c5a5685e717f5725c5da42fed721c94709ee2"
+    },
+    {
+      "path": "docs/acceptance/P1-T07.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "3f906ee563f4eef9ff7880e4f336a7c23b5ee8d549b745e8dd0361489d7aa31f"
+    },
+    {
+      "path": "docs/acceptance/P1-T08.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8e260b6d413693b1de49b9fdcbe65dcf4c2954683f29c5e0d797a020120934b2"
+    },
+    {
+      "path": "docs/acceptance/P1-T08b-review.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "01c287e112a3848d8472103d266a59728c3e6015565f96226bd340f89cfabe01"
+    },
+    {
+      "path": "docs/acceptance/P1-T08b.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "2ff17c3c1a724bba2fef22f33bf5a74b3991a2c6994b62583f48b2999898a8ec"
+    },
+    {
+      "path": "docs/acceptance/P1-T08c.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "f96aad7b4401e619e0f2c46f1fc43677bdcd2d5e896b91c3c99020bccd55a942"
+    },
+    {
+      "path": "docs/acceptance/P1-T08d.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "11f7ec18090f3a6a3e28b9e4054a0b8eb926f100961f4b003b3f9713fbdfa386"
+    },
+    {
+      "path": "docs/acceptance/P1-T08e.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "7364a07e43ca0015fcb47089e1dfdb3fa18e8bfe4bd01daa4a27734d858deab2"
+    },
+    {
+      "path": "docs/acceptance/P1-T08g.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "3dc7b3a3bcded370a2917ce7a04ff459ec729f7df80b1afd4905b75922bf52ef"
+    },
+    {
+      "path": "docs/acceptance/P1-T08h.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "906ce0c362d2dbb7b83c8704035b8345af4c6b36ab143a4d00857981dd97efd5"
+    },
+    {
+      "path": "docs/acceptance/P1-T08i.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "ed1eb0d582cb1e74ecdeb3ee27be62e813384add93b06fde871d7391b1129bdf"
+    },
+    {
+      "path": "docs/acceptance/P1-T08j.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "1d8b0286722b25f5fa03376c3c2dddb63d0d9a0d8b4be8d2fdf0109f44d786cb"
+    },
+    {
+      "path": "docs/acceptance/P1-T09.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "5a513678985ffa2e96c2300e9757a0b6a83fd48645b4127037f161bd89d6280c"
+    },
+    {
+      "path": "docs/acceptance/P1-T10.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "1a70973e287bbc2a98566df053626ddd3d193ae0b81fd7052d6b39696e610332"
+    },
+    {
+      "path": "docs/acceptance/P1.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "07311e8a76bb3a1c2675979e1112f9c0f9cb977d5904fe1a643a9584d973b0f2"
+    },
+    {
+      "path": "docs/acceptance/P2-R01.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "f23604cf235c0bda1a395d4340664229cd854196825fb0400946b169b512af4c"
+    },
+    {
+      "path": "docs/acceptance/P2-R02.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "829b63c1a8d063565444ac7b48d9ffbccc1289d777244a50b98d7142c0cb79ea"
+    },
+    {
+      "path": "docs/acceptance/P2-R03.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "9c17771cba45a7f62e6196fc440c9b7c327d863a95a8ad01dd8a86166f2c02d7"
+    },
+    {
+      "path": "docs/acceptance/P2-R04.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8aa50e529eb505f304b829231f0579a8aa034a4cdc41fd46d4c7e2f140aae111"
+    },
+    {
+      "path": "docs/acceptance/P2-R06-r1.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8d2ca895ecdb957464303d198c87ea57b4336b7b747361a18c1e4ec69b87f8fd"
+    },
+    {
+      "path": "docs/acceptance/P2-R06-r2.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "93fabde4de2526d76dbdf740409bda752436380531c776709149848a9243be0f"
+    },
+    {
+      "path": "docs/acceptance/P2-R06.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "a1b2fac6fb0f522165677b5229b19b50ecbcd167318dc1c283786cff5272ed85"
+    },
+    {
+      "path": "docs/acceptance/P2-T12.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "007b52bd283e1429b5e229381b171c44760dec4b1d2a6a1d6a14669ba490fc2d"
+    },
+    {
+      "path": "docs/acceptance/P2-T13.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "5d71c1d0cc2493def7124f27288cb13ecbc8965cb8e0d8f29d2bee98cb3a3bd8"
+    },
+    {
+      "path": "docs/acceptance/P2-T14.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "aab1c7327626efa193c25b1bbb922c70fc8c208bcd31800d29bcb11d18de8c85"
+    },
+    {
+      "path": "docs/acceptance/P2-T15.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "17ab4f1e27a476b1706c0ca3f75629addfc3415dcb6f6e90731a8ea6ae75692f"
+    },
+    {
+      "path": "docs/acceptance/P2-T16.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "120ee8f9e44838e62efc706fec346267f0f4fe13fa2505c6b8f45f89d83a9412"
+    },
+    {
+      "path": "docs/acceptance/P2-T17.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "32c0df93e07589721b85e83e54c0db83ceb87abc57582345a22db375fda1f406"
+    },
+    {
+      "path": "docs/acceptance/P2.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8b93525a339ad716beb14fcd2d3dbc875b6fa86795e79904e7b4a5ee4815657b"
+    },
+    {
+      "path": "docs/acceptance/P3-P4.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "b5dc5091ceba57e4a0cb12efa76969dcc0df59dd70aa8ffe99f6b1c69d356f95"
+    },
+    {
+      "path": "docs/acceptance/P34-B01-03.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "1def7703f6e1c419977539516f72c7153c7663b0c19db22b11e8ba2a6721cbd5"
+    },
+    {
+      "path": "docs/acceptance/P34-U02-03.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "808e10098929fa563d16860fcfaf9572d740fd250719774610bc4af4138ebb0b"
+    },
+    {
+      "path": "docs/acceptance/P34-U04-05.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "438ec0bccc1b71abf300efbf8f1e126bcaa9f5261a83fec6fee7e3326422f11a"
+    },
+    {
+      "path": "docs/acceptance/P34-U06-08.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "0722c96cc3c97022719a931302b3e51b6a1f021955f3d6921a99946981e0d1f3"
+    },
+    {
+      "path": "docs/acceptance/P34-U09-11.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "7f19a750db2e292ca3c810c61fd90329f1640db2b5465a83c41f00a9a1dbb0a2"
+    },
+    {
+      "path": "docs/acceptance/P34-rework-r3.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "a8a7c7c6d067c8f5b466049a31750e9649db8bb4e9527e3324cfc11354454978"
+    },
+    {
+      "path": "docs/acceptance/P34-rework.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "d28b2491e8e4e3c6493b076922ad8e78db9f07e823300bdec0202d2391bf367e"
+    },
+    {
+      "path": "docs/acceptance/V032-bot-to-bot.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "119d3f71e6e100704e39e7c02c50390ab45bb7800df9dabc22cbf5a2814240f0"
+    },
+    {
+      "path": "tasks/P34/R-review-r2.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "4c1f9ecde7c6155a5cafe1b90d0bf6d3e492aee8b17b56347d77daff1b874f27"
+    },
+    {
+      "path": "tasks/P34/R-review-r3.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "d2439165bc06d0134eb67dd5f67ecee293a14ac96d23617c23c03a053dbe474c"
+    },
+    {
+      "path": "tasks/P34/R-review-r4.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "c73cd5a10429e0b95f7b84a185ec58eb6022ac8100bf2cf24fabbd960108f1a5"
+    },
+    {
+      "path": "tasks/P34/R-review.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "2e38135c327033b594ded7fb90f52e249fe59eac9be3ab26409b93b5f65f9e38"
+    }
+  ],
+  "supplementalSources": [
+    {
+      "path": "docs/deepening-proposal.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "3965414d5a8eeec47d574c3bc51aa667f0a547bb026ea710273b339a6ba4eb15"
+    },
+    {
+      "path": "docs/deepening/implementation-design.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "349ec30a0481887c74fe74bd8ddc7e184177085c466a06782764ebab02a2bb1b"
+    },
+    {
+      "path": "docs/spikes/P34-api-spike.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "f45e302715c89e6b7b1e976d1c255641bfbfd91459ab10f3c0feb335338cc1ce"
+    },
+    {
+      "path": "packages/dsh-bot/src/shared/activity-preview.ts",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "63b6b6ef1ca0025b5cdab9ac70d46cc636097471a384af05782bba08db77cf74"
+    }
+  ],
+  "cases": [
+    {
+      "id": "H01",
+      "path": "evals/cases/failures/H01.json",
+      "sha256": "4818fe10c76cb8b99173941ef94ebdc217a29898d365cea85dedc95615a8094e",
+      "status": "FIXED"
+    },
+    {
+      "id": "H02",
+      "path": "evals/cases/failures/H02.json",
+      "sha256": "686c6d30c8b57ebfcf93f515f8265739b60af3f7a30abf7d567233300997ba52",
+      "status": "FIXED"
+    },
+    {
+      "id": "H03",
+      "path": "evals/cases/failures/H03.json",
+      "sha256": "1f50c4bea94a3e33529920044cd767775b945b697fc4e1d3804531e4da1461e5",
+      "status": "FIXED"
+    },
+    {
+      "id": "H04",
+      "path": "evals/cases/failures/H04.json",
+      "sha256": "0a3982995547013532e04b526fa52b68e68bdf1a026a5d7d1f3585ba05f60e7c",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H05",
+      "path": "evals/cases/failures/H05.json",
+      "sha256": "532b24e1bee3ecb8adf7d9db7d9d11c275a2f90caec526743bc9359dd758dee8",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H06",
+      "path": "evals/cases/failures/H06.json",
+      "sha256": "5429b2d1a202d784db13f5257083d5b2aa2443292bdb6ff6fd1286b5bf55dd01",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H07",
+      "path": "evals/cases/failures/H07.json",
+      "sha256": "e318dfc3c88104562b52dcbd3a1a68ac89dc0f7df8c7702a001019052892b68a",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H08",
+      "path": "evals/cases/failures/H08.json",
+      "sha256": "c0f70e2707765a2622d827cee26404cd2b01e80b9a658188244b3dc17931a2ae",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H09",
+      "path": "evals/cases/failures/H09.json",
+      "sha256": "0fb6f5652722dcebb754d8a4dcdb1f12077861d2856adcb1151b34a2adcf6178",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H10",
+      "path": "evals/cases/failures/H10.json",
+      "sha256": "09f290dde7a8da2a5c9aec933379f6373b49b9f4857aa19b7b2b151a7b88e66f",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H11",
+      "path": "evals/cases/failures/H11.json",
+      "sha256": "e7ca5669829d63df740395861b4eca4444133f49ef26f03c639c71b6e9487f1e",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H12",
+      "path": "evals/cases/failures/H12.json",
+      "sha256": "e152fb99565ccd2d2c15e23a5483edfd4ce8e565ebe75b615580b84981b768b3",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H13",
+      "path": "evals/cases/failures/H13.json",
+      "sha256": "969eada51a6c01c60219c8541abe507297d6bc8591c475a7a78acfdb83ed358f",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H14",
+      "path": "evals/cases/failures/H14.json",
+      "sha256": "eb01240ecabbfc8f8dcec3e630188bc1c9a4133ef0ca0b2fc8d8f65ed7b8c9b2",
+      "status": "FIXED"
+    },
+    {
+      "id": "H15",
+      "path": "evals/cases/failures/H15.json",
+      "sha256": "bc5291aea7333cee8a7bb098c2714caf02c926ec9d1fb62957bf43a605735053",
+      "status": "FIXED"
+    },
+    {
+      "id": "H16",
+      "path": "evals/cases/failures/H16.json",
+      "sha256": "be16ec6c9ae663ef7e32e22f2b44690280e62caeb725a3ee322f78151f5e6710",
+      "status": "FIXED"
+    },
+    {
+      "id": "H17",
+      "path": "evals/cases/failures/H17.json",
+      "sha256": "42ad2d5f34244831d671b52e8c33dc26696da70608bebea8c3b4d6206d20a0df",
+      "status": "FIXED"
+    },
+    {
+      "id": "H18",
+      "path": "evals/cases/failures/H18.json",
+      "sha256": "5700abcef974c21df168636d5ada71850d97251cd904a4fa46e700aa3a0068b9",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H19",
+      "path": "evals/cases/failures/H19.json",
+      "sha256": "9f922cbcf4f50378fdda7ecfc1793f38b25930431718278d77b161e437eb0842",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H20",
+      "path": "evals/cases/failures/H20.json",
+      "sha256": "198ffa0a5b6793d52889c9b74df7fec74b68426981d2e03e46f71d32adae077a",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H21",
+      "path": "evals/cases/failures/H21.json",
+      "sha256": "aa8183cd704294bee552368abfab376589c028675cbfb42cb2f09dfd41dc2939",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H22",
+      "path": "evals/cases/failures/H22.json",
+      "sha256": "98dfb917f7d7db9200a81a377341cfa04a06d4b68947434ef439681fa4559410",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H23",
+      "path": "evals/cases/failures/H23.json",
+      "sha256": "351368b2c639e97ae3534940d88132b59b06ecf5ad72f679123fe0140ef4299f",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H24",
+      "path": "evals/cases/failures/H24.json",
+      "sha256": "20b84762b19389a5ef6cc30cc981d1759305abaa9287bc9d31400b204d4b85cf",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H25",
+      "path": "evals/cases/failures/H25.json",
+      "sha256": "6e660e40669cf9ef70a32ecbfa415cde69f33750bf8b1e01777c49762fcd52f1",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H26",
+      "path": "evals/cases/failures/H26.json",
+      "sha256": "9a13df7748a8b9cdfb087be27059f9b08044a29ed0afb98a61fd81be28e07778",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "H27",
+      "path": "evals/cases/failures/H27.json",
+      "sha256": "30a3cbc626181b19d3fc1cc409c2a5bb0052451ef94dfe55b4e868bd7d1bd8f0",
+      "status": "SOURCE_ONLY"
+    },
+    {
+      "id": "S01",
+      "path": "evals/cases/failures/S01.json",
+      "sha256": "87b9a4f6c529be4bafdd22530e7bc49b49b972373b1a28f7f1731b13886c94a0",
+      "status": "OPEN"
+    },
+    {
+      "id": "S02",
+      "path": "evals/cases/failures/S02.json",
+      "sha256": "5452d84da48936136701541fd5c32fd0aa7be8bd47a89f64520c0fc11562b970",
+      "status": "OPEN"
+    },
+    {
+      "id": "S03",
+      "path": "evals/cases/failures/S03.json",
+      "sha256": "bb7183421e4a8f211716cff58095011b64cee563c5ae22cfaa2168d4fb97d126",
+      "status": "OPEN"
+    },
+    {
+      "id": "S04",
+      "path": "evals/cases/failures/S04.json",
+      "sha256": "ba80c5233027dd02e5605eacaf506500cb68eed88e1a7c6bbdd9c66405316876",
+      "status": "FIXED"
+    },
+    {
+      "id": "S05",
+      "path": "evals/cases/failures/S05.json",
+      "sha256": "6776da5e19128a63ba59df8678984f60fefad590bba602212ae702eb66ea4855",
+      "status": "OPEN"
+    },
+    {
+      "id": "S06",
+      "path": "evals/cases/failures/S06.json",
+      "sha256": "f40c92d66081263039ab8b412f1b8122694657cac69f414dcb7d4e004ac1a601",
+      "status": "FIXED"
+    },
+    {
+      "id": "S07",
+      "path": "evals/cases/failures/S07.json",
+      "sha256": "d6f11e7fd270330179d2416d29c9463b01c6f31f724a6741b78429cf221799a8",
+      "status": "OPEN"
+    },
+    {
+      "id": "S08",
+      "path": "evals/cases/failures/S08.json",
+      "sha256": "dcc31370876e10f5c667feb0fc04b2c6b00b1ecf1b8bc577c36c8ec9123939f1",
+      "status": "FIXED"
+    }
+  ],
+  "dispositions": [
+    {
+      "candidateId": "FC-0001",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0002",
+      "disposition": "case",
+      "caseId": "H01",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof. PROGRESS early lastEventSeq hypothesis was corrected by P1-T08d:11-15 (missing inject); never treat the hypothesis as root cause."
+    },
+    {
+      "candidateId": "FC-0003",
+      "disposition": "case",
+      "caseId": "H25",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H25; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0004",
+      "disposition": "case",
+      "caseId": "H04",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H04; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0005",
+      "disposition": "case",
+      "caseId": "H06",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H06; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0006",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Host unload observer missed the SIGTERM cleanup log; independent lifecycle tests do not prove this observation. Future Host teardown evidence needed."
+    },
+    {
+      "candidateId": "FC-0007",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0008",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Expected pnpm link peer advisory with the mandated Cordis peer range; do not remove the peer or suppress diagnostics to force PASS."
+    },
+    {
+      "candidateId": "FC-0009",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0010",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0011",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0012",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0013",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0014",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0015",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0016",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0017",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0018",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0019",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0020",
+      "disposition": "case",
+      "caseId": "H19",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H19; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0021",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0022",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0023",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0024",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0025",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0026",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0027",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0028",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Browser origin authorization was rejected; no browser entered the page. Distinct approval boundary, not a Chromium launch defect."
+    },
+    {
+      "candidateId": "FC-0029",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0030",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0031",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0032",
+      "disposition": "case",
+      "caseId": "H13",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0033",
+      "disposition": "case",
+      "caseId": "H07",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0034",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0035",
+      "disposition": "duplicate",
+      "caseId": "H07",
+      "duplicateOf": "FC-0033",
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0036",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0037",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0038",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0039",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0040",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0041",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0042",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0043",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Instructions for future screenshot success criteria; this line is a gate definition, not an observed failure."
+    },
+    {
+      "candidateId": "FC-0044",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0045",
+      "disposition": "case",
+      "caseId": "H20",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H20; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0046",
+      "disposition": "duplicate",
+      "caseId": "H20",
+      "duplicateOf": "FC-0045",
+      "reason": "Primary mechanism mapped to H20; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0047",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Browser sandbox rejected the historical screenshot run; retained as an environment boundary, without inferring a more specific OS mechanism."
+    },
+    {
+      "candidateId": "FC-0048",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0049",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0050",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Screenshot matrix and failure-propagation specification, not an observed defective run."
+    },
+    {
+      "candidateId": "FC-0051",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0052",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0053",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0054",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0055",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0056",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0057",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0058",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0059",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0060",
+      "disposition": "duplicate",
+      "caseId": "H25",
+      "duplicateOf": "FC-0003",
+      "reason": "Primary mechanism mapped to H25; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0061",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0062",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0063",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0064",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0065",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0066",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0067",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0068",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0069",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0070",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0071",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0072",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0073",
+      "disposition": "case",
+      "caseId": "H05",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H05; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0074",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0075",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "displayTitle intentionally falls back to cwd; historical client switched to raw SessionSummary.title. Distinct title-source API usage, deferred from this selected regression set."
+    },
+    {
+      "candidateId": "FC-0076",
+      "disposition": "duplicate",
+      "caseId": "H05",
+      "duplicateOf": "FC-0073",
+      "reason": "Primary mechanism mapped to H05; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0077",
+      "disposition": "duplicate",
+      "caseId": "H05",
+      "duplicateOf": "FC-0073",
+      "reason": "Primary mechanism mapped to H05; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0078",
+      "disposition": "duplicate",
+      "caseId": "H05",
+      "duplicateOf": "FC-0073",
+      "reason": "Primary mechanism mapped to H05; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0079",
+      "disposition": "duplicate",
+      "caseId": "H05",
+      "duplicateOf": "FC-0073",
+      "reason": "Primary mechanism mapped to H05; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0080",
+      "disposition": "duplicate",
+      "caseId": "H05",
+      "duplicateOf": "FC-0073",
+      "reason": "Primary mechanism mapped to H05; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0081",
+      "disposition": "duplicate",
+      "caseId": "H05",
+      "duplicateOf": "FC-0073",
+      "reason": "Primary mechanism mapped to H05; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0082",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0083",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0084",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Several distinct fixture defects and a missing endpoint allowlist; historical probe repairs, not product failures. Original run IDs preserved."
+    },
+    {
+      "candidateId": "FC-0085",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0086",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0087",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0088",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0089",
+      "disposition": "duplicate",
+      "caseId": "H07",
+      "duplicateOf": "FC-0033",
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0090",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0091",
+      "disposition": "duplicate",
+      "caseId": "H07",
+      "duplicateOf": "FC-0033",
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0092",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0093",
+      "disposition": "case",
+      "caseId": "H26",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H26; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0094",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0095",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0096",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0097",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0098",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0099",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0100",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0101",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0102",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0103",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0104",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0105",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0106",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0107",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0108",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0109",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0110",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0111",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0112",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0113",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0114",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Acceptance evidence record template, not an observed failure."
+    },
+    {
+      "candidateId": "FC-0115",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0116",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0117",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0118",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0119",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Probe called nonexistent Agent.prompt; repaired to public SessionController.prompt. Harness API misuse, not a product delegation defect."
+    },
+    {
+      "candidateId": "FC-0120",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Probe misclassified ambient native user messages as its source trigger; this is delegation ingress testing, distinct from H02 wake-only business admission."
+    },
+    {
+      "candidateId": "FC-0121",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Task isolation constraint intentionally retained the existing DSH_HOME while using new roots; not a product defect."
+    },
+    {
+      "candidateId": "FC-0122",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0123",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0124",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0125",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Probe read title from SessionSummary lacking that field; repaired to session projections. Not proof of missing product title."
+    },
+    {
+      "candidateId": "FC-0126",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Mixed report: navigation repair (H04) plus historical Chromium environment failure (H13); this summary is not independent root-cause evidence."
+    },
+    {
+      "candidateId": "FC-0127",
+      "disposition": "duplicate",
+      "caseId": "H04",
+      "duplicateOf": "FC-0004",
+      "reason": "Primary mechanism mapped to H04; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0128",
+      "disposition": "duplicate",
+      "caseId": "H04",
+      "duplicateOf": "FC-0004",
+      "reason": "Primary mechanism mapped to H04; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0129",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0130",
+      "disposition": "duplicate",
+      "caseId": "H06",
+      "duplicateOf": "FC-0005",
+      "reason": "Primary mechanism mapped to H06; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0131",
+      "disposition": "duplicate",
+      "caseId": "H06",
+      "duplicateOf": "FC-0005",
+      "reason": "Primary mechanism mapped to H06; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0132",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0133",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0134",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0135",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0136",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0137",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0138",
+      "disposition": "case",
+      "caseId": "H23",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H23; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0139",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Avatar test fixture lacked required id/name fields; strict validator correctly rejected it. Not a product validation regression."
+    },
+    {
+      "candidateId": "FC-0140",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0141",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0142",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0143",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0144",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0145",
+      "disposition": "case",
+      "caseId": "H22",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H22; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0146",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0147",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0148",
+      "disposition": "duplicate",
+      "caseId": "H22",
+      "duplicateOf": "FC-0145",
+      "reason": "Primary mechanism mapped to H22; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0149",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0150",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0151",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0152",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0153",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0154",
+      "disposition": "duplicate",
+      "caseId": "H22",
+      "duplicateOf": "FC-0145",
+      "reason": "Primary mechanism mapped to H22; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0155",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0156",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0157",
+      "disposition": "case",
+      "caseId": "H09",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H09; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0158",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0159",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0160",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0161",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0162",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0163",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0164",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0165",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0166",
+      "disposition": "case",
+      "caseId": "H24",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H24; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0167",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0168",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0169",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0170",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0171",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0172",
+      "disposition": "duplicate",
+      "caseId": "H09",
+      "duplicateOf": "FC-0157",
+      "reason": "Primary mechanism mapped to H09; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0173",
+      "disposition": "case",
+      "caseId": "H18",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H18; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0174",
+      "disposition": "duplicate",
+      "caseId": "H18",
+      "duplicateOf": "FC-0173",
+      "reason": "Primary mechanism mapped to H18; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0175",
+      "disposition": "duplicate",
+      "caseId": "H18",
+      "duplicateOf": "FC-0173",
+      "reason": "Primary mechanism mapped to H18; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0176",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0177",
+      "disposition": "duplicate",
+      "caseId": "H09",
+      "duplicateOf": "FC-0157",
+      "reason": "Primary mechanism mapped to H09; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0178",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0179",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0180",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0181",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0182",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0183",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0184",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0185",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0186",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0187",
+      "disposition": "case",
+      "caseId": "H10",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H10; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0188",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0189",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Notification Host policy passed; external platform, OS notification and visual capabilities were unexecuted/unsupported. No independent failure mechanism asserted."
+    },
+    {
+      "candidateId": "FC-0190",
+      "disposition": "case",
+      "caseId": "H21",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H21; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0191",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0192",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0193",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0194",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0195",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0196",
+      "disposition": "case",
+      "caseId": "H12",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H12; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0197",
+      "disposition": "case",
+      "caseId": "H11",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H11; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0198",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0199",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0200",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0201",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0202",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0203",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0204",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0205",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0206",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0207",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0208",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0209",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0210",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0211",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0212",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0213",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0214",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0215",
+      "disposition": "duplicate",
+      "caseId": "H11",
+      "duplicateOf": "FC-0197",
+      "reason": "Primary mechanism mapped to H11; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0216",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0217",
+      "disposition": "duplicate",
+      "caseId": "H12",
+      "duplicateOf": "FC-0196",
+      "reason": "Primary mechanism mapped to H12; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0218",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0219",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0220",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0221",
+      "disposition": "duplicate",
+      "caseId": "H22",
+      "duplicateOf": "FC-0145",
+      "reason": "Primary mechanism mapped to H22; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0222",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0223",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0224",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0225",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0226",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "External MCP integration was not run because this task used synthetic loopback/stdio only; no service fault inferred."
+    },
+    {
+      "candidateId": "FC-0227",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0228",
+      "disposition": "duplicate",
+      "caseId": "H21",
+      "duplicateOf": "FC-0190",
+      "reason": "Primary mechanism mapped to H21; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0229",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "No public Electron notification API in locked Host; unsupported capability, not an implementation error to fix in M1."
+    },
+    {
+      "candidateId": "FC-0230",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0231",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0232",
+      "disposition": "duplicate",
+      "caseId": "H21",
+      "duplicateOf": "FC-0190",
+      "reason": "Primary mechanism mapped to H21; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0233",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0234",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0235",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0236",
+      "disposition": "duplicate",
+      "caseId": "H21",
+      "duplicateOf": "FC-0190",
+      "reason": "Primary mechanism mapped to H21; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0237",
+      "disposition": "duplicate",
+      "caseId": "H21",
+      "duplicateOf": "FC-0190",
+      "reason": "Primary mechanism mapped to H21; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0238",
+      "disposition": "duplicate",
+      "caseId": "H21",
+      "duplicateOf": "FC-0190",
+      "reason": "Primary mechanism mapped to H21; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0239",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0240",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0241",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0242",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0243",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0244",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0245",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0246",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Broad case-insensitive token match in an error/status/negative-test or diagnostic filename, not a newly observed defect. Passing guard evidence is not relabeled as failure."
+    },
+    {
+      "candidateId": "FC-0247",
+      "disposition": "duplicate",
+      "caseId": "H11",
+      "duplicateOf": "FC-0197",
+      "reason": "Primary mechanism mapped to H11; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0248",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0249",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0250",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0251",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0252",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0253",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0254",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0255",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0256",
+      "disposition": "duplicate",
+      "caseId": "H12",
+      "duplicateOf": "FC-0196",
+      "reason": "Primary mechanism mapped to H12; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0257",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0258",
+      "disposition": "duplicate",
+      "caseId": "H11",
+      "duplicateOf": "FC-0197",
+      "reason": "Primary mechanism mapped to H11; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0259",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0260",
+      "disposition": "duplicate",
+      "caseId": "H11",
+      "duplicateOf": "FC-0197",
+      "reason": "Primary mechanism mapped to H11; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0261",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0262",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0263",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0264",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0265",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0266",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Group log clipping is a distinct UI layout obligation with DOM-only repair evidence; real scroll/occlusion validation remains NOT_RUN."
+    },
+    {
+      "candidateId": "FC-0267",
+      "disposition": "duplicate",
+      "caseId": "H07",
+      "duplicateOf": "FC-0033",
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0268",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0269",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Initial lint-only findings: tabindex policy plus test non-null assertions; corrected before final check. No new runtime defect inferred."
+    },
+    {
+      "candidateId": "FC-0270",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0271",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0272",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0273",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "r4 heading separates a new screenshot run; this line alone has no failure observation."
+    },
+    {
+      "candidateId": "FC-0274",
+      "disposition": "duplicate",
+      "caseId": "H07",
+      "duplicateOf": "FC-0033",
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0275",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Management header layout revision has implementation evidence only; real narrow/light/dark checks remain NOT_RUN."
+    },
+    {
+      "candidateId": "FC-0276",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Memory search layout revision has implementation evidence only; real 390px check remains NOT_RUN."
+    },
+    {
+      "candidateId": "FC-0277",
+      "disposition": "duplicate",
+      "caseId": "H07",
+      "duplicateOf": "FC-0033",
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0278",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0279",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0280",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0281",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0282",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0283",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0284",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0285",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0286",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0287",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0288",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0289",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0290",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0291",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0292",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0293",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0294",
+      "disposition": "duplicate",
+      "caseId": "H12",
+      "duplicateOf": "FC-0196",
+      "reason": "Primary mechanism mapped to H12; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0295",
+      "disposition": "duplicate",
+      "caseId": "H07",
+      "duplicateOf": "FC-0033",
+      "reason": "Primary mechanism mapped to H07; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0296",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0297",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0298",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Unexecuted/delegated acceptance obligation retained as FAIL/NOT_RUN; no independently established root cause in this statement. Requires its own future runtime evidence."
+    },
+    {
+      "candidateId": "FC-0299",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Supported-message/restricted-PTC release boundary restatement; OS PTC and browser/desktop remain unverified, not new failures."
+    },
+    {
+      "candidateId": "FC-0300",
+      "disposition": "case",
+      "caseId": "H08",
+      "duplicateOf": null,
+      "reason": "Primary mechanism mapped to H08; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0301",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0302",
+      "disposition": "duplicate",
+      "caseId": "H08",
+      "duplicateOf": "FC-0300",
+      "reason": "Primary mechanism mapped to H08; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0303",
+      "disposition": "duplicate",
+      "caseId": "H08",
+      "duplicateOf": "FC-0300",
+      "reason": "Primary mechanism mapped to H08; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0304",
+      "disposition": "duplicate",
+      "caseId": "H01",
+      "duplicateOf": "FC-0002",
+      "reason": "Primary mechanism mapped to H01; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0305",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0306",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    },
+    {
+      "candidateId": "FC-0307",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0308",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0309",
+      "disposition": "out-of-scope",
+      "caseId": null,
+      "duplicateOf": null,
+      "reason": "Structural heading or review cross-reference, not an independent failure observation; full referenced task remains in frozen sources."
+    },
+    {
+      "candidateId": "FC-0310",
+      "disposition": "duplicate",
+      "caseId": "H13",
+      "duplicateOf": "FC-0032",
+      "reason": "Primary mechanism mapped to H13; original full line retained. Mixed PASS/NOT_RUN clauses remain historical boundaries, not new proof."
+    }
+  ],
+  "openContracts": [
+    "S01",
+    "S02",
+    "S03",
+    "S05",
+    "S07"
+  ],
+  "notes": [
+    "Frozen inputs: 41 acceptance Markdown + 4 R-review files + one explicit progress snapshot = 46.",
+    "Case-insensitive matching line union FAIL|NOT_RUN|返工|根因 = 310, versus uppercase-only 278. Original 306 lacks a reproducible frozen rule.",
+    "Acceptance+reviews alone produce 305 lines; progress adds 5. No claim that the difference of 4 equals four newly introduced defects.",
+    "Three acceptance file-list txt inputs are separately listed as non-narrative exclusions and have zero matching lines.",
+    "MAST categories are a coarse internal mapping, not a claim of running the external benchmark.",
+    "S01/S02/S03 are target shared semantics against private v1 reads; they do not imply private candidate storage is a v1 bug.",
+    "S05/S07 remain OPEN/SOURCE with no executable v2 promotion or quota facade; not counted toward six shared reproductions.",
+    "B3 closes H03 current injection, S04 pending-cleanup replay gate, S06 BotKey isolation and S08 delayed epoch gate. History, verified-copy cleanup and native approval grants remain B4/M4 gates.",
+    "B4: H03/S04/S08 evidence extended; all forgetting-related narrow contracts were already FIXED by B3. No unrelated OPEN shared contract was closed. Full private strong forgetting remains FAIL (P0 OPEN); see docs/deepening/B4.md."
+  ]
+}

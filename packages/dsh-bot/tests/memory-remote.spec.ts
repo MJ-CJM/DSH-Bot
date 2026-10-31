@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { memorySchema } from '../src/shared/schema.js';
+import { privateVersion } from '../src/host/memory/version.js';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +16,7 @@ import { DshBotMemoryRemote } from '../lib/host/memory/remote.js';
 import { DshBotRegistry } from '../lib/host/registry.js';
 import { TYPERT } from '../lib/typert.host.js';
 import type { MemoryRecord } from '../src/shared/schema.js';
+import { MemoryForgetting } from '../src/host/memory/forget-service.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
 
@@ -35,6 +39,11 @@ class Presets extends Service {
 async function facility() {
   await mkdir(isolatedHome, { recursive: true });
   const root = await mkdtemp(join(isolatedHome, 't09-memory-remote-'));
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = root;
+  const restoreHome = () => {
+    if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
+  };
   const ctx = new Context();
   try {
     await ctx.plugin(Storage).await();
@@ -46,8 +55,9 @@ async function facility() {
     let unit!: KvUnit;
     const open = kv.open.bind(kv);
     const opening = vi.spyOn(kv, 'open').mockImplementation(async (descriptor) => {
-      unit = await open(descriptor);
-      return unit;
+      const opened = await open(descriptor);
+      if (descriptor.name === 'dsh_bot_memory') unit = opened;
+      return opened;
     });
     const host = ctx.plugin({
       inject: ['storageDomain', 'agentPresets'],
@@ -67,11 +77,11 @@ async function facility() {
       ctx, registry, remote: ctx.dshBotMemory, unit, host,
       close: async () => {
         opening.mockRestore();
-        try { await ctx.fiber.dispose(); } finally { await rm(root, { recursive: true, force: true }); }
+        try { await ctx.fiber.dispose(); } finally { restoreHome(); await rm(root, { recursive: true, force: true }); }
       },
     };
   } catch (error) {
-    try { await ctx.fiber.dispose(); } finally { await rm(root, { recursive: true, force: true }); }
+    try { await ctx.fiber.dispose(); } finally { restoreHome(); await rm(root, { recursive: true, force: true }); }
     throw error;
   }
 }
@@ -82,6 +92,25 @@ async function withFacility(run: (fixture: Awaited<ReturnType<typeof facility>>)
 }
 
 describe('memory Remote methods over the T06 registry queue and actual JSON domain', () => {
+  it('exposes a management-only global count for orphaned quarantine rows without adding them to private reads', async () =>
+    withFacility(async ({ registry, remote }) => {
+      const kernel = registry.memoryKernel;
+      if (!kernel) throw new Error('Missing memory kernel');
+      const record = memorySchema.parse({ id: 'orphan', botId: 'deleted', content: 'SYNTHETIC_QUARANTINE',
+        kind: 'note', tags: [], pinned: true, createdAt: 1, updatedAt: 1 });
+      const { version, payload } = privateVersion(kernel, record, { botId: 'deleted', botCreatedAt: 0 });
+      version.status = 'proposed';
+      const opId = randomUUID();
+      await kernel.domain.table('migration_items').put(record.id, { legacyId: record.id, memoryId: version.memoryId,
+        versionId: version.versionId, opId, contentRef: version.contentRef, quarantine: true });
+      await kernel.commit({ opId, kind: 'migration', subjectIds: [version.memoryId], expectedRevision: kernel.seq,
+        forgetEpoch: kernel.epoch, versions: [version], payloads: { [version.contentRef]: payload } });
+      expect(await remote.quarantineCount()).toBe(1);
+      expect(await remote.count('alpha')).toBe(0);
+      expect(await remote.list('alpha', {})).toEqual([]);
+      expect(await remote.list('beta', {})).toEqual([]);
+    }));
+
   it('lists, searches and pages within the selected Bot; persists manual provenance and updates', async () => withFacility(async ({ remote, registry }) => {
     const first = await remote.save('alpha', { content: 'Prefer short titles', kind: 'preference', tags: ['writing'] });
     const second = await remote.save('alpha', { content: 'Prefer long reports', tags: ['writing'], pinned: true });
@@ -165,7 +194,8 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     expect(await remote.list('alpha', {})).toMatchObject([{ id, content: 'Safe content', tags: [] }]);
   }));
 
-  it('keeps mutations in the registry lifecycle queue and propagates storage failure', async () => withFacility(async ({ remote, registry, unit, host, ctx }) => {
+  it('keeps mutations in the registry lifecycle queue and propagates storage failure', async () => withFacility(async ({ remote, registry, unit,
+    host, ctx }) => {
     const originalPut = unit.putRecord.bind(unit);
     const put = vi.spyOn(unit, 'putRecord').mockRejectedValueOnce(new Error('disk unavailable'));
     await expect(remote.save('alpha', { content: 'Must fail' })).rejects.toMatchObject({ code: 'store/unavailable' });
@@ -197,21 +227,43 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     expect(() => registry.memoryFor('alpha')).toThrow();
   }));
 
-  it('publishes decorator names and strict codecs for all actual Host methods', async () => withFacility(async ({ remote }) => {
+  it('publishes decorator names and strict codecs for all actual Host methods', async () => withFacility(async ({ remote, registry, ctx }) => {
     expect(remote.typertRemote.namespace).toBe('dshBot.memory');
+    registry.memoryForget = new MemoryForgetting(ctx, registry);
+    const target = await registry.memoryFor('alpha').save({ content: 'Synthetic forget target' });
     const cases: Record<string, unknown[]> = {
+      autoShareStatus: [],
       list: ['alpha', {}], search: ['alpha', { query: 'absent' }],
-      save: ['alpha', { content: 'Codec result' }], count: ['alpha'],
+      save: ['alpha', { content: 'Codec result' }], count: ['alpha'], quarantineCount: [],
+      previewForget: ['alpha', { memoryId: target.id, mode: 'version' }], cleanupStatuses: [], rootInstructions: [],
     };
+    let managedId = '', publishedId = '';
     let saved: MemoryRecord | undefined;
     for (const descriptor of TYPERT.invocations.filter(({ namespace }) => namespace === 'dshBot.memory')) {
       if (descriptor.result.mode !== 'strict') throw new Error('Expected strict result');
       const method = descriptor.implementation ?? descriptor.method;
+      const kernel = registry.memoryKernel; if (!kernel) throw new Error('Missing kernel');
+      Object.assign(cases, {
+        setAutoShare: [{ enabled: false, expectedRevision: kernel.policyRevision }],
+        query: [{ botId: 'alpha', scope: 'shared', view: 'all' }],
+        createManaged: [{ botId: 'alpha', scope: 'shared', kind: 'user_fact', content: 'MANAGED', subject: 'user',
+          factKey: 'preference', valid: { from: 1, to: null, basis: 'explicit' }, expectedRevision: kernel.seq }],
+        revise: [{ id: managedId, expectedRevision: kernel.seq, patch: { content: 'MANAGED_EDIT' } }],
+        confirm: [{ id: target.id, botId: 'alpha', scope: 'shared', expectedRevision: kernel.seq }],
+        resolve: [{ ids: [managedId], selected: managedId, choice: 'select', expectedRevision: kernel.seq }],
+        previewContribution: [publishedId], previewShared: [{ memoryId: publishedId, mode: 'related' }],
+      });
       const args = descriptor.method === 'update' ? ['alpha', saved?.id, { pinned: true }]
         : descriptor.method === 'delete' ? ['alpha', saved?.id] : cases[descriptor.method];
       if (!args) throw new Error(`Missing case for ${method}`);
       const result = await Reflect.apply(Reflect.get(remote, method), remote, args);
       expect(descriptor.result.create().parse(result)).toEqual(result);
+      if (descriptor.method === 'createManaged') managedId = result as string;
+      if (descriptor.method === 'confirm') publishedId = result as string;
+      if (descriptor.method === 'previewForget') cases.chooseForget = [{
+        previewRevision: (result as { previewRevision: string }).previewRevision, choice: 'stop',
+      }];
+      if (descriptor.method === 'chooseForget') cases.retryCleanup = [(result as { id: string }).id];
       if (descriptor.method === 'save') saved = (await remote.list('alpha', {}))[0];
     }
   }));

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "S04",
+  "kind": "shared",
+  "rootCause": "forgotten-content-replayed-through-stale-managed-copy",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/deepening/implementation-design.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      89,
+      103
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "Capture a row, forget it, then replay the captured content via the public save facade.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/shared-contracts.spec.ts -t \"S04 \"",
+  "expected": "A stale copy/version is rejected by tombstone/epoch checks; fresh human restatement requires separate provenance.",
+  "observed": {
+    "original": "v1 creates a new row with the same captured content.",
+    "beforeFix": "v1 creates a new row with the same captured content.",
+    "afterFix": "B4 loopback and real MCP cover current/stage/previous/orphan generations, copy snapshot deletion and blocked rollback/remount. All pending-cleanup requests stay blocked; clean-dispatch strong forgetting remains FAIL (P0 OPEN). See docs/deepening/B4.md."
+  },
+  "regressions": [
+    {
+      "testId": "S04",
+      "testFile": "packages/dsh-bot/tests/deepening/shared-contracts.spec.ts",
+      "testName": "S04 replay of a captured managed copy is rejected after forgetting",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/S04.json"
+    }
+  ]
+}

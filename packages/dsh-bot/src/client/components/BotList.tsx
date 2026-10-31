@@ -13,6 +13,7 @@ export interface BotListProps {
   t: PropsLocale<'dsh-bot'>['t'];
   selectedId?: string;
   onSelect(id: string): void;
+  onShowDetail?(id: string): void;
   onActivate(id: string): void;
   compact?: boolean;
   disabled?: boolean;
@@ -27,6 +28,7 @@ export function BotList({
   t,
   selectedId,
   onSelect,
+  onShowDetail,
   onActivate,
   compact = false,
   disabled = false,
@@ -90,8 +92,11 @@ export function BotList({
             disabled={disabled}
             onClick={() => {
               onSelect(bot.id);
-              onActivate(bot.id);
+              onShowDetail?.(bot.id);
               element.current?.focus();
+            }}
+            onDoubleClick={() => {
+              if (!disabled) onActivate(bot.id);
             }}
           >
             <BotAvatar bot={bot} size={compact ? 32 : 40} />

@@ -1,3 +1,5 @@
+import { withGraphCapability } from '../data-flow/graph-capability.js';
+import { outlets } from '../data-flow/tool-guard.js';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -46,7 +48,9 @@ export class ReferenceWriter {
     );
   }
   protected async assertBot(bot: BotKey) {
+    this.registry.memoryAdmission?.assertAllowed();
     if ((await this.registry.get(bot.botId)).createdAt !== bot.botCreatedAt) throw new OperationError('conflict');
+    this.registry.memoryAdmission?.assertAllowed();
   }
   protected binding(bot: BotKey) {
     return this.domain.table('bindings').get(keyOf(bot));
@@ -108,6 +112,7 @@ export class ReferenceWriter {
     l.off.push(
       agent.ctx.tools.guard((exec) => {
         if (!exec.name.startsWith(GRAPH_PREFIX)) return;
+        try { this.registry.memoryAdmission?.assertToolAllowed(exec); } catch { return 'Memory cleanup pending'; }
         if (!l.accepting || this.stopping || exec.agent !== agent || (l.copying && !l.allowed.has(exec.callId)))
           return 'Reference graph writer unavailable';
         try {
@@ -124,6 +129,7 @@ export class ReferenceWriter {
         (exec, next) => {
           if (!exec.name.startsWith(GRAPH_PREFIX)) return next();
           const pending = l.tail.then(async () => {
+            this.registry.memoryAdmission?.assertToolAllowed(exec);
             if (!l.accepting || this.stopping || exec.agent !== agent || (l.copying && !l.allowed.has(exec.callId)))
               throw new OperationError('unavailable');
             exec.signal.throwIfAborted();
@@ -211,17 +217,29 @@ export class ReferenceWriter {
     const l = this.live.get(keyOf(bot));
     if (l) await this.closeLive(l);
   }
-  protected async call(l: Live, tool: string, args: unknown, signal: AbortSignal) {
+  protected async call(l: Live, tool: string, args: unknown, signal: AbortSignal, cleanup = false) {
+    if (!cleanup) this.registry.memoryAdmission?.assertAllowed();
+    if (cleanup && tool !== 'read_graph') throw new OperationError('invalid');
     const callId = ToolCallId(randomUUID());
     l.allowed.add(callId);
     try {
-      const result = await l.agent.ctx.tools.execute({
+      const execute = () => l.agent.ctx.tools.execute({
         name: GRAPH_PREFIX + tool,
         arguments: args,
         agent: l.agent,
         callId,
         signal,
       });
+      const managed = () => withGraphCapability(l.agent, callId, execute);
+      const flow = outlets(this.registry);
+      let result: Awaited<ReturnType<typeof execute>>;
+      if (cleanup) result = await this.registry.memoryAdmission.cleanupRead(l.agent, callId, managed);
+      else if (flow && !['read_graph', 'search_nodes', 'open_nodes'].includes(tool)) {
+        const envelope = flow.draft('mcp-copy', l.bot, l.agent.session.id, callId, { kind: 'bot', bot: l.bot },
+          JSON.stringify({ identity: l.identity, tool, args }));
+        const id = await flow.admit(envelope, undefined, signal);
+        result = await flow.dispatch(id, managed, signal);
+      } else result = await managed();
       if (result.isError) throw new OperationError('unavailable');
       const value = parse(
         z.object({

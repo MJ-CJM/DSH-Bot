@@ -1,3 +1,8 @@
+import { personaRegistryDouble } from './fixtures/persona-registry.js';
+import { ManagedOutlets } from '../lib/host/data-flow/outlets.js';
+import { EgressChecker } from '../lib/host/data-flow/egress.js';
+import { OnceGrants } from '../lib/host/data-flow/grants.js';
+import { required } from './fixtures/required.js';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,10 +22,11 @@ import { describe, expect, it, vi } from 'vitest';
 import * as botContext from '../lib/host/bot-context.js';
 import { BotMemoryService } from '../lib/host/memory/service.js';
 import { Config as RegistryConfig } from '../lib/host/registry.js';
+import { MemoryAdmission } from '../lib/host/memory/admission.js';
 import { openBotStores } from '../lib/host/store.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
-const memoryToolNames = ['memory_forget', 'memory_list', 'memory_save', 'memory_search'];
+const memoryToolNames = ['bot_memory_forget', 'bot_memory_list', 'bot_memory_save', 'bot_memory_search'];
 const botToolNames = ['bot_delegate', 'bot_manage', ...memoryToolNames].sort();
 const botIds = ['alpha', 'beta', 'disabled', 'readonly'];
 
@@ -44,18 +50,28 @@ async function runtime(ctx: Context, root: string) {
   await ctx.plugin(Storage).await();
   await ctx.plugin(storageJson, { root }).await();
   await ctx.plugin(storageDomain, { backend: 'json' }).await();
-  const stores = await openBotStores(ctx);
+  const stores = await openBotStores(ctx, { memoryV2: { dataDir: join(root, 'data') } });
+  const memoryAdmission = new MemoryAdmission(ctx);
+  memoryAdmission.start(required(stores.memoryKernel));
+  ctx.effect(() => () => memoryAdmission.close());
   for (const id of botIds) {
     await stores.bots.create({ id, name: id, memory: { enabled: id !== 'disabled', injectLimit: 20 },
-      tools: { deny: id === 'readonly' ? ['memory_save'] : [] } });
+      tools: { deny: id === 'readonly' ? ['bot_memory_save'] : [] } });
   }
   // The registry-facing fixture is deliberately small. Memory operations use
   // the production service and Store, with no in-memory persistence substitute.
   const memoryFor = vi.fn((botId: string) => new BotMemoryService(stores.memories, botId));
+  const kernel = required(stores.memoryKernel);
+  const memoryOutlets = new ManagedOutlets(new EgressChecker(kernel, new OnceGrants(kernel),
+    key => stores.bots.list().some(b => b.id === key.botId && b.createdAt === key.botCreatedAt)));
+  await memoryOutlets.recover();
+  ctx.effect(() => async () => { await memoryOutlets.close(); memoryOutlets.checker.close(); });
+  const personaRegistry = personaRegistryDouble(() => stores.bots.list());
   ctx.provide('dshBots', {
+    ...personaRegistry,
     config: RegistryConfig({}),
     presetBot: (botId: string) => stores.bots.get(botId),
-    memoryFor,
+    memoryFor, memoryAdmission, memoryOutlets, memoryKernel: stores.memoryKernel,
   } as unknown as Context['dshBots']);
   let owner!: Context;
   await ctx.plugin({
@@ -89,13 +105,12 @@ async function runtime(ctx: Context, root: string) {
     });
   };
   const assemble = (agent: Agent) => ctx.systemPrompt.assemble({ agent, scope: agent });
-  const memoryText = async (agent: Agent) => (await assemble(agent)).sections
-    .find((section) => section.name === 'dsh-bot:memory')?.text;
+  const memoryText = async (agent: Agent) => (await assemble(agent)).contexts.find(c => c.name === 'dsh-bot:memory')?.text;
   const execute = (agent: Agent, name: string, args: unknown) => ctx.tools.execute({
     callId: ToolCallId(`memory-call-${++sequence}`), name, arguments: args, agent,
     signal: new AbortController().signal,
   });
-  return { ctx, stores, harness, memoryFor, presets, create, assemble, memoryText, execute };
+  return { ctx, stores, harness, memoryFor, presets, create, assemble, memoryText, execute, personaRegistry };
 }
 
 async function send(agent: Agent, text: string) {
@@ -112,7 +127,7 @@ function wireSystem(body: unknown): unknown {
 }
 
 describe('Bot memory through the production Agent loop and local Messages mock', () => {
-  it('executes memory_save from an HTTP model response and injects it only into a new Agent', async () => withRuntime(async ({
+  it('executes bot_memory_save from an HTTP model response and refreshes required memory context on the next request', async () => withRuntime(async ({
     ctx, stores, create, memoryText,
   }) => {
     const fact = 'T06_WIRE_MEMORY: The user explicitly prefers answers in Simplified Chinese.';
@@ -122,7 +137,7 @@ describe('Bot memory through the production Agent loop and local Messages mock',
         host: '127.0.0.1', port: 0, randomSeed: 6,
         sequence: ['tool_call_success', 'tool_call_success', 'success', 'success', 'success'],
         apiKey: 't06-local-mock-key', successText: 'T06_MEMORY_LOOP_OK',
-        toolName: 'memory_save',
+        toolName: 'bot_memory_save',
         toolArguments: JSON.stringify({ content: fact, kind: 'preference', tags: ['language'], pinned: true }),
       });
       return () => mock.close();
@@ -155,22 +170,23 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     expect(toolResults).toHaveLength(2);
     expect(JSON.stringify(toolResults[0])).toContain('deduplicated\\":false');
     expect(JSON.stringify(toolResults[1])).toContain('deduplicated\\":true');
-    expect(await memoryText(first.agent)).toBe(originalSnapshot);
+    expect(originalSnapshot).toBe('');
+    expect(await memoryText(first.agent)).toContain(fact);
     expect(wireSystem(mock.requests[1]?.body)).toEqual(wireSystem(mock.requests[0]?.body));
 
     const next = await create('alpha');
     expect(await memoryText(next.agent)).toContain(fact);
     await send(next.agent, 'A new session should already know my preference.');
-    expect(JSON.stringify(wireSystem(mock.requests[3]?.body))).toContain(fact);
+    expect(JSON.stringify(mock.requests[3]?.body)).toContain(fact);
     await send(first.agent, 'Continue the original session with its existing prompt snapshot.');
-    expect(wireSystem(mock.requests[4]?.body)).toEqual(wireSystem(mock.requests[0]?.body));
+    expect(JSON.stringify(mock.requests[4]?.body)).toContain(fact);
     expect(mock.requests).toHaveLength(5);
     expect(mock.requests.every((request) => request.outcome === 'completed')).toBe(true);
     expect(stores.memories.listByBot('beta', { limit: 20 })).toEqual([]);
   }), 15_000);
 
   it('isolates Agent tools and snapshots, skips disabled Bots, and releases owned registrations', async () => withRuntime(async ({
-    ctx, stores, harness, memoryFor, presets, create, memoryText, execute,
+    ctx, stores, harness, memoryFor, presets, create, memoryText, execute, personaRegistry,
   }) => {
     const alphaMemory = await stores.memories.add({ botId: 'alpha', content: 'Alpha private long-term fact.' });
     await stores.memories.add({ botId: 'beta', content: 'Beta private long-term fact.' });
@@ -182,7 +198,8 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     const plain = await harness.create(SessionId('t06-plain'));
     for (const agent of [first.agent, second.agent, beta.agent]) {
       expect(ctx.tools.schemas(agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
-      for (const tool of ctx.tools.schemas(agent).filter(tool => tool.name.startsWith('memory_'))) expect(JSON.stringify(tool.parameters)).not.toContain('botId');
+      for (const tool of ctx.tools.schemas(agent).filter(tool => tool.name.startsWith('memory_'))) expect(JSON.stringify(
+        tool.parameters)).not.toContain('botId');
     }
     expect(ctx.tools.schemas()).toEqual([]);
     expect(ctx.tools.schemas(disabled.agent).map((tool) => tool.name).sort()).toEqual(['bot_delegate', 'bot_manage'].sort());
@@ -190,27 +207,30 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     for (const agent of [disabled.agent, plain]) expect(await memoryText(agent)).toBeUndefined();
     expect(memoryFor.mock.calls.map(([id]) => id)).not.toContain('disabled');
     expect(ctx.tools.schemas(readonly.agent).map((tool) => tool.name).sort())
-      .toEqual(botToolNames.filter((name) => name !== 'memory_save'));
-    expect((await execute(readonly.agent, 'memory_save', { content: 'Must not be stored.' })).isError).toBe(true);
+      .toEqual(botToolNames.filter((name) => name !== 'bot_memory_save'));
+    expect((await execute(readonly.agent, 'bot_memory_save', { content: 'Must not be stored.' })).isError).toBe(true);
     expect(stores.memories.listByBot('readonly', { limit: 20 })).toEqual([]);
     expect(await memoryText(first.agent)).toContain('Alpha private');
     expect(await memoryText(first.agent)).not.toContain('Beta private');
     expect(await memoryText(beta.agent)).toContain('Beta private');
     expect(await memoryText(beta.agent)).not.toContain('Alpha private');
-    const listing = await execute(beta.agent, 'memory_list', {});
+    const listing = await execute(beta.agent, 'bot_memory_list', {});
     expect(listing.isError).toBe(false);
     expect(JSON.stringify(listing.value)).toContain('Beta private');
     expect(JSON.stringify(listing.value)).not.toContain('Alpha private');
-    const forget = await execute(beta.agent, 'memory_forget', { id: alphaMemory.id });
+    const forget = await execute(beta.agent, 'bot_memory_forget', { id: alphaMemory.id });
     expect(forget.isError).toBe(true);
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toHaveLength(1);
 
+    expect(personaRegistry.personaListenerCount()).toBe(5);
     await first.dispose();
+    expect(personaRegistry.personaListenerCount()).toBe(4);
     expect(botContext.getBotBinding(first.agent)).toBeUndefined();
     expect(ctx.tools.schemas(first.agent)).toEqual([]);
     expect(await memoryText(first.agent)).toBeUndefined();
     expect(ctx.tools.schemas(second.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
     await presets.get('alpha')?.plugin.dispose();
+    expect(personaRegistry.personaListenerCount()).toBe(3);
     expect(botContext.getBotBinding(second.agent)).toBeUndefined();
     expect(ctx.tools.schemas(second.agent)).toEqual([]);
     expect(await memoryText(second.agent)).toBeUndefined();
@@ -218,7 +238,7 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     expect(await memoryText(beta.agent)).toContain('Beta private');
   }));
 
-  it('orders literal memory after persona and before tool guidance, respecting complete prompts', async () => withRuntime(async ({
+  it('preserves literal runtime memory alongside an unchanged complete persona section', async () => withRuntime(async ({
     ctx, stores, presets, create, assemble, execute,
   }) => {
     const literal = 'The saved template is {{not_a_registered_variable}}.';
@@ -226,13 +246,9 @@ describe('Bot memory through the production Agent loop and local Messages mock',
       await stores.memories.add({ botId, content: literal });
       const preset = presets.get(botId);
       if (!preset) throw new Error('Missing fixture preset');
-      // These are the same public section semantics used by dsh-persona; this
-      // test does not import the first-party plugin's implementation internals.
-      preset.ctx.effect(() => preset.ctx.systemPrompt.section({
-        name: PERSONA_PREFIX_SECTION,
-        order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
-        text: `${botId} persona`, complete: botId === 'beta',
-      }));
+      // The committed Bot record is authoritative for live persona scopes.
+      // Keep first-party section semantics under test through bot-context's real registration.
+      await stores.bots.update(botId, { persona: { prefix: `${botId} persona`, complete: botId === 'beta' } });
       preset.ctx.effect(() => preset.ctx.systemPrompt.section({
         name: 'fixture:tool-guidance', order: ctx.systemPrompt.getSectionOrder('TOOL_BASH'),
         text: 'Fixture tool guidance.',
@@ -240,21 +256,19 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     }
     const normal = await create('alpha');
     const assembly = await assemble(normal.agent);
-    const names = assembly.sections.map((section) => section.name);
-    expect(names.indexOf(PERSONA_PREFIX_SECTION)).toBeLessThan(names.indexOf('dsh-bot:memory'));
-    expect(names.indexOf('dsh-bot:memory')).toBeLessThan(names.indexOf('fixture:tool-guidance'));
-    expect(renderPrompt(assembly)).toContain(literal);
-    expect(assembly.sections.find((section) => section.name === 'dsh-bot:memory'))
+    expect(assembly.contexts.find(c => c.name === 'dsh-bot:memory')?.text).toContain(literal);
+    expect(assembly.contexts.find((section) => section.name === 'dsh-bot:memory'))
       .toMatchObject({ interpolate: false });
 
     const complete = await create('beta');
     const completeAssembly = await assemble(complete.agent);
     // Upstream complete:true intentionally suppresses every other section.
-    // Memory remains accessible through tools without overriding that policy.
+    // Required runtime context remains available separately from the complete system section.
     expect(completeAssembly.sections).toEqual([{ name: PERSONA_PREFIX_SECTION, text: 'beta persona' }]);
     expect(renderPrompt(completeAssembly)).toBe('beta persona');
+    expect(completeAssembly.contexts.find(c => c.name === 'dsh-bot:memory')?.text).toContain(literal);
     expect(ctx.tools.schemas(complete.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
-    const listing = await execute(complete.agent, 'memory_list', {});
+    const listing = await execute(complete.agent, 'bot_memory_list', {});
     expect(listing.isError).toBe(false);
     expect(JSON.stringify(listing.value)).toContain(literal);
   }));

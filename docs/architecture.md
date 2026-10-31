@@ -270,3 +270,18 @@ Client CSS 构建的虚拟模块键及嵌套编译入口使用相对 packageRoot
 公开 `dsh-plugin-market-index` 仅为精确 rc.2 开发依赖。离线 fixture 使用显式合成包和 .invalid registry；运行时换成 loopback registry，原生 CLI 验证安装、版本读回及 404。Git 的 commit/path 仅由公开 parser/target 验证；没有最终已发布来源时不执行或宣称 Git 安装、线上市场验证。未运行只读参考树的 private generator。
 
 `scripts/screenshot.mjs --v03` 复用返工 screenshot-v03：中英 × 亮暗 × 15 页面（60 张目标），另做群聊/管理 390px 操作与截图。先准备并核验安装包及真实种子 Host，再启动缓存 Chromium；浏览器失败不抹去 Host 成功收据，矩阵仍逐项 FAIL。正式报告汇总 U01–U13、r1/r2，清楚区分历史证据、最终 tgz Host 回归、DOM 与浏览器验收，见 [P3/P4 验收](acceptance/P3-P4.md)。
+
+
+## 0.5.0：自然群聊与前后台并行
+
+本节取代上文历史版本的 delivery=parent、群只显示文字及必须指定路由的描述。完整设计见 [实现计划](grok-bot-implementation-plan.md)，证据见 [0.5.0 验收](acceptance/V050-natural-bots.md)。
+
+Bot 的持续主对话仍由原生 Session 承载。bot_delegate 使用 native spawn/caller，插件只做 Bot 身份、审批、数据范围和结果回流检查；不新增任务执行器。启动工具的取消信号只负责受理阶段，受理后绑定 Agent 生命周期，停止当前前台回复不再取消无关后台结果。任务列表读取原生 catalog/status，补充/停止/打开复用原生 Remote 与页面。原生冷恢复不保留 caller 检查，因此已结束子任务不可直接恢复执行；agent/created 在启动前拒绝无准确租约的恢复，用户回主聊发起新委派。
+
+群沿用独立无模型 root 与 fresh Bot workers。默认 natural 模式接受普通消息；group_message 可选择发言或跳过、定向提问并追加有限接续，支持 A→B→A。宿主持久确认群消息后继续调度，取消覆盖整条接续链。记忆上下文按全群读者过滤；附件通过原生上传 receipt、AttachmentStore 和 ContentBlock 引用传递；Markdown 渲染和文件打开复用平台 API。没有任务 DAG 或固定主持人角色。
+
+能力入口从公开模型、技能和平台服务读取实际目录。技能编辑仅操作本 Bot 自有 SKILL.md，使用路径检查及 hash CAS；不复制原生技能加载器。定时历史继续使用 native schedule，附加纯 SessionProjection 区分 Inbox 投递与回复结束；responded 不代表任务成果成功。合法当前主会话的 schedule 消息只继承本 Bot 范围，不转成人工委派授权，也不清除旧的限制。
+
+新建主聊为用户显式恢复动作：Bot 代际与旧 main 指针 CAS → 原生新 SessionId/create/flush → 更换映射。旧历史、记忆、子任务、定时和原数据范围保留，不自动迁移、清洗或重放。旧任务仍只回旧主聊；旧定时仍指向旧 Session。界面切换或卸载后的迟到回执不强制导航。
+
+原生执行策略默认允许有限的准确 ToolDefinition，保留宿主 deny/ask 与身份限制；它信任单用户 Host，不是任意脚本的数据隔离沙箱。浏览器 provider 缺公开的逐 Session 工具归属接口，不能按 MCP 前缀放行；语音使用官方 Voice Input，当前只验证就绪诊断。云账号、托管分享、手机推送、支付和外部部署仍需独立服务及真实闭环。

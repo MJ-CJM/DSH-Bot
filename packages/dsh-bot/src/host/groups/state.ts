@@ -1,5 +1,6 @@
+import type { WorkerBinding } from './worker-tool.js';
 import type { Context } from '@deepseek-ai/cordis';
-import type { AgentHandle } from '@deepseek-ai/dsh-agent';
+import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-agent-default-model';
 import type { SubagentActivation } from '@deepseek-ai/dsh-subagent';
 import type { Domain } from '@deepseek-ai/dsh-storage-domain';
@@ -19,17 +20,24 @@ import type { DshBotRegistry } from '../registry.js';
 import { OperationError, Serial, need, parse } from '../common/operations.js';
 
 import type { groupsDomain } from './model.js';
+/** A Controller-owned root is borrowed as an Agent reference, never fabricated as an AgentHandle. */
+export type GroupRoot = { ownership: 'owned'; agent: Agent; handle: AgentHandle } | { ownership: 'borrowed'; agent: Agent };
 /** Shared per-service state: one queue and one set of ownership/cancellation maps. */
 export class GroupState {
   public queue = new Serial();
+  public workers = new Map<string, WorkerBinding>();
+  public offWorkers?: () => void;
   public stopped = false;
   public shutdownPhase = 'running';
   public closing?: Promise<void>;
-  public roots = new Map<string, AgentHandle>();
+  public roots = new Map<string, GroupRoot>();
   public reasons = new Map<string, GroupSummary['reason']>();
+  private scheduling = new Map<string, { active: number; pending: { limit: number; start: () => void }[] }>();
   public chains = new Map<string, Promise<void>>();
   public controllers = new Map<string, AbortController>();
   public activations = new Map<string, SubagentActivation>();
+  public settledInputs = new Set<string>();
+  public inputAdmissions = new Map<string, AbortController>();
   public cancelledTurns = new Set<string>();
   public unregister?: () => Promise<void>;
   public offTitle?: () => void;
@@ -43,6 +51,26 @@ export class GroupState {
     public domain: Domain<typeof groupsDomain>,
     public changed: () => void,
   ) {}
+  /** Bounded FIFO admission: any released slot may start the next independent work. */
+  schedule(groupId: string, limit: number, run: () => Promise<void>): Promise<void> {
+    const lane = this.scheduling.get(groupId) ?? { active: 0, pending: [] };
+    this.scheduling.set(groupId, lane);
+    const pump = () => {
+      while (lane.pending.length && lane.active < need(lane.pending[0]).limit) {
+        const job = need(lane.pending.shift());
+        lane.active++;
+        job.start();
+      }
+      if (!lane.active && !lane.pending.length) this.scheduling.delete(groupId);
+    };
+    const completed = new Promise<void>((resolve, reject) => {
+      lane.pending.push({ limit, start: () => {
+        void Promise.resolve().then(run).then(resolve, reject).finally(() => { lane.active--; pump(); });
+      } });
+    });
+    pump();
+    return completed;
+  }
   table<K extends 'groups' | 'members' | 'turns' | 'deliveries' | 'read_state'>(key: K) {
     return this.domain.table(key);
   }

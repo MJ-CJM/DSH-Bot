@@ -6,6 +6,7 @@ import {
   groupCreateSchema,
   groupEditSchema,
   groupSendSchema,
+  groupSetModelSchema,
   groupPageSchema,
   groupRecordSchema,
   groupSummarySchema,
@@ -29,6 +30,15 @@ const base = { service: 'dshBotGroupsRemote', invocation: { kind: 'direct' as co
 export const groupsSpec = {
   package: 'dsh-bot/groups',
   methods: {
+    'dshBot.groups/open': {
+      ...base, parameters: [param('group', groupKeySchema)],
+      result: codec('OpenedGroup', z.strictObject({ sessionId: z.string().min(1), workspaceId: z.string().min(1) })),
+    },
+    'dshBot.groups/openAttachment': {
+      ...base,
+      parameters: [param('group', groupKeySchema), param('messageId', z.string().min(1)), param('attachmentId', z.string().min(1))],
+      result: codec('OpenedAttachment', z.strictObject({ opened: z.literal(true) })),
+    },
     'dshBot.groups/markRead': {
       ...base,
       parameters: [
@@ -47,6 +57,11 @@ export const groupsSpec = {
     'dshBot.groups/edit': {
       ...base,
       parameters: [param('group', groupKeySchema), param('input', groupEditSchema)],
+      result: codec('Group', groupRecordSchema),
+    },
+    'dshBot.groups/setModel': {
+      ...base,
+      parameters: [param('group', groupKeySchema), param('input', groupSetModelSchema)],
       result: codec('Group', groupRecordSchema),
     },
     'dshBot.groups/view': {

@@ -1,21 +1,8 @@
-import type { WorkspaceMethods, ReferenceMemoryMethods } from '../../src/shared/workspace-contract.js';
-import type { GroupMethods } from '../../src/shared/groups-contract.js';
-import type { GroupView, GroupSummary } from '../../src/shared/groups.js';
-import type { CollaborationMethods } from '../../src/shared/collaboration-contract.js';
-import { IM_PIN, type TeamBoard } from '../../src/shared/collaboration.js';
-import type { IntegrationMethods } from '../../src/shared/integrations-contract.js';
-import { EMPTY_INTEGRATIONS } from '../../src/client/integrations-state.js';
 import type { BotsPageInjected } from '../../src/client/pages/BotsPage.js';
-import type { AutomationRemoteMethods } from '../../src/shared/automation-contract.js';
-import type { RunRecord } from '../../src/shared/automation.js';
-import type { NativeTask } from '../../src/client/automation-state.js';
-import type { NativeAggregate } from '../../src/shared/native-schedule.js';
-import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol';
 import { Context } from '@deepseek-ai/cordis';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { SlotCore, type StoredEntry, resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots';
-import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type { ISessions, SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SidebarRightTabDefinition, SidebarRightTabInjected } from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
@@ -25,149 +12,13 @@ import { createRoot } from 'react-dom/client';
 import { vi } from 'vitest';
 import * as client from '../../src/client/index.js';
 import * as primitives from './platform-primitives.js';
-import type { BotStatus, DshBotRemoteMethods } from '../../src/shared/remote-contract.js';
-import { type ActivitySession, isActivityUnread } from '../../src/shared/activity.js';
-import {
-  type BotCreateInput, type BotRecord, type MemoryRecord, botCreateSchema, botSchema, normalizeBotPatch,
+import * as inputTriggerPlatform from './platform-input-trigger.js';
+import type {
+  BotRecord,
 } from '../../src/shared/schema.js';
 
-export function bot(input: BotCreateInput = { id: 'alpha-bot', name: 'Alpha Bot' }): BotRecord {
-  return botSchema.parse({ ...botCreateSchema.parse(input), schemaVersion: 1, createdAt: 1, updatedAt: 1 });
-}
-
-export function remoteDouble(initial: BotRecord[] = []) {
-  const data = { groups: [] as GroupSummary[], groupView: undefined as GroupView | undefined, board: { supported: false, reason: 'native-service-missing', members: [], tasks: [] } as TeamBoard, integrations: structuredClone(EMPTY_INTEGRATIONS), sessionRows: [] as SessionSummary[], routines: [] as NativeTask[], legacy: [] as NativeAggregate['legacy'], runs: [] as RunRecord[], records: initial, presetIdPrefix: 'custom-', memories: [] as MemoryRecord[], activities: [] as ActivitySession[], statuses: undefined as BotStatus[] | undefined };
-  const activity = {
-    list: vi.fn<DshBotRemoteMethods['activity']['list']>(async () => ({ ok: true, value: {
-      sessions: [...data.activities], bots: data.records.map((bot) => {
-        const sessions = data.activities.filter((row) => row.botId === bot.id).sort((a, b) => b.updatedAt - a.updatedAt);
-        const latest = sessions[0];
-        return { botId: bot.id, lastActivityAt: latest?.updatedAt ?? 0, unreadCount: sessions.filter((row) => row.unread).length,
-          ...(latest ? { latest: { ...latest.lastMessage, sessionId: latest.sessionId } } : {}) };
-      }),
-    } })),
-    markRead: vi.fn<DshBotRemoteMethods['activity']['markRead']>(async (sessionId) => {
-      const row = data.activities.find((item) => item.sessionId === sessionId);
-      if (!row) return { ok: false, error: new RemoteError('activity/not-found', '', {}) };
-      const read = { ...row, lastReadAt: Math.max(Date.now(), row.lastMessage.at, row.lastReadAt ?? 0) };
-      const next = { ...read, unread: isActivityUnread(read) };
-      data.activities = data.activities.map((item) => item.sessionId === sessionId ? next : item);
-      return { ok: true, value: next };
-    }),
-  };
-  const memory = {
-    list: vi.fn<DshBotRemoteMethods['memory']['list']>(async (id) => ({ ok: true, value: data.memories.filter((row) => row.botId === id) })),
-    search: vi.fn<DshBotRemoteMethods['memory']['search']>(async (id, input) => ({ ok: true, value: data.memories.filter((row) => row.botId === id && row.content.includes(input.query)) })),
-    count: vi.fn<DshBotRemoteMethods['memory']['count']>(async (id) => ({ ok: true, value: data.memories.filter((row) => row.botId === id).length })),
-    save: vi.fn<DshBotRemoteMethods['memory']['save']>(async () => ({ ok: true, value: { id: 'memory-test', deduplicated: false } })),
-    update: vi.fn<DshBotRemoteMethods['memory']['update']>(async (botId, id, patch) => {
-      const row = data.memories.find((item) => item.botId === botId && item.id === id);
-      if (!row) throw new Error('Missing memory');
-      const next = { ...row, ...patch, updatedAt: row.updatedAt + 1 };
-      data.memories = data.memories.map((item) => item === row ? next : item);
-      return { ok: true, value: next };
-    }),
-    delete: vi.fn<DshBotRemoteMethods['memory']['delete']>(async (botId, id) => {
-      data.memories = data.memories.filter((row) => row.botId !== botId || row.id !== id);
-      return { ok: true, value: undefined };
-    }),
-  };
-  const methods = {
-    activity,
-    memory,
-    catalogInfo: vi.fn<DshBotRemoteMethods['catalogInfo']>(async () => ({ ok: true, value: { presetIdPrefix: data.presetIdPrefix } })),
-    list: vi.fn<DshBotRemoteMethods['list']>(async () => ({ ok: true, value: [...data.records] })),
-    status: vi.fn<DshBotRemoteMethods['status']>(async () => ({
-      ok: true,
-      value: data.statuses ?? data.records.map((record) => ({
-        id: record.id, presetId: `host-selected/${record.id}`, mainSessionId: data.sessionRows.filter(row => !row.blank && row.origin !== 'subagent' && row.projectionValues?.agentPreset === `host-selected/${record.id}`).sort((a,b) => b.updatedAt - a.updatedAt)[0]?.id ?? data.activities.filter(row => row.botId === record.id).sort((a,b) => b.updatedAt - a.updatedAt)[0]?.sessionId, preset: { state: 'ok' as const },
-      })),
-    })),
-    openConversation: vi.fn<DshBotRemoteMethods['openConversation']>(async () => ({ ok: true, value: { sessionId: 'test-created-session' } })),
-    ensureHome: vi.fn<DshBotRemoteMethods['ensureHome']>(async (id) => ({ ok: true, value: { path: `/test/dsh-bot/bots/${id}/home` } })),
-    ensureBotsWorkspace: vi.fn<DshBotRemoteMethods['ensureBotsWorkspace']>(async () => ({ ok: true, value: { workspaceId: 'bots-workspace', path: '/test/dsh-bot/bots' } })),
-    get: vi.fn<DshBotRemoteMethods['get']>(async (id) => {
-      const record = data.records.find((item) => item.id === id);
-      if (!record) throw new Error(`Missing test Bot ${id}`);
-      return { ok: true, value: record };
-    }),
-    create: vi.fn<DshBotRemoteMethods['create']>(async (input) => {
-      const record = bot(input);
-      data.records = [...data.records, record];
-      return { ok: true, value: record };
-    }),
-    update: vi.fn<DshBotRemoteMethods['update']>(async (id, patch) => {
-      const record = data.records.find((item) => item.id === id);
-      if (!record) throw new Error(`Missing test Bot ${id}`);
-      const updated = botSchema.parse({ ...record, ...normalizeBotPatch(patch), updatedAt: record.updatedAt + 1 });
-      data.records = data.records.map((item) => item.id === id ? updated : item);
-      return { ok: true, value: updated };
-    }),
-    duplicate: vi.fn<DshBotRemoteMethods['duplicate']>(async (id, newId) => {
-      const record = data.records.find((item) => item.id === id);
-      if (!record) throw new Error(`Missing test Bot ${id}`);
-      const duplicate = { ...record, id: newId, name: `${record.name} copy` };
-      data.records = [...data.records, duplicate];
-      return { ok: true, value: duplicate };
-    }),
-    delete: vi.fn<DshBotRemoteMethods['delete']>(async (id) => {
-      data.records = data.records.filter((item) => item.id !== id);
-      return { ok: true, value: undefined };
-    }),
-  };
-  const routine = {
-    aggregate: vi.fn<AutomationRemoteMethods<'dshBot.nativeSchedule'>['aggregate']>(async () => ({ ok: true, value: {
-      bindings: data.routines.map(r => ({ botId: r.botId, botCreatedAt: r.botCreatedAt, sessionId: r.sessionId, nativeScheduleId: r.id })),
-      legacy: data.legacy, legacySkipped: 0, legacyUnavailable: false, nativeAvailable: true,
-    } })),
-    deleteLegacy: vi.fn<AutomationRemoteMethods<'dshBot.nativeSchedule'>['deleteLegacy']>(async id => { data.legacy = data.legacy.filter(r => r.id !== id); return { ok: true, value: true }; }),
-    runNow: vi.fn<AutomationRemoteMethods<'dshBot.nativeSchedule'>['runNow']>(),
-  };
-  const schedule = {
-    catalog: vi.fn<TypertRemoteNamespaceMap['schedule']['catalog']>(async () => ({ ok: true, value: data.routines })),
-    update: vi.fn<TypertRemoteNamespaceMap['schedule']['update']>(async request => {
-      const r = data.routines.find(row => row.id === request.id);
-      if (!r) return { ok: true, value: { id: request.id, updated: false, code: 'schedule_not_found' } };
-      const value = { ...r, ...(request.title ? { title: request.title } : {}), ...(request.prompt ? { prompt: request.prompt } : {}) };
-      data.routines = data.routines.map(row => row.id === r.id ? value : row);
-      return { ok: true, value: { id: r.id, updated: true, record: value } };
-    }),
-    delete: vi.fn<TypertRemoteNamespaceMap['schedule']['delete']>(async request => {
-      data.routines = data.routines.filter(r => r.id !== request.id); return { ok: true, value: { id: request.id, deleted: true } };
-    }),
-    history: vi.fn<TypertRemoteNamespaceMap['schedule']['history']>(async request => ({ ok: true, value: { id: request.id,
-      records: [], earlierRecordsUnavailable: false, earlierRecordsPruned: false, retention: { days: 30, records: 200 } } })),
-  };
-  const run = {
-    get: vi.fn<AutomationRemoteMethods<'dshBot.run'>['get']>(),
-    list: vi.fn<AutomationRemoteMethods<'dshBot.run'>['list']>(async options => ({ ok: true, value: data.runs.filter(row => !options.nativeScheduleId || row.nativeScheduleId === options.nativeScheduleId).slice(0, options.limit ?? 50) })),
-  };
-  const automation = { status: vi.fn<AutomationRemoteMethods<'dshBot.automation'>['status']>(async () => ({ ok: true, value: { state: 'ready' } })) };
-  const connectors = {
-    catalog: vi.fn<IntegrationMethods<'dshBot.connectors'>['catalog']>(async () => ({ ok: true, value: data.integrations })),
-    saveDefinition: vi.fn<IntegrationMethods<'dshBot.connectors'>['saveDefinition']>(),
-    saveAssignment: vi.fn<IntegrationMethods<'dshBot.connectors'>['saveAssignment']>(),
-    applyIdle: vi.fn<IntegrationMethods<'dshBot.connectors'>['applyIdle']>(),
-    importLegacy: vi.fn<IntegrationMethods<'dshBot.connectors'>['importLegacy']>(),
-  };
-  const notifications = {
-    savePolicy: vi.fn<IntegrationMethods<'dshBot.notifications'>['savePolicy']>(), markRead: vi.fn<IntegrationMethods<'dshBot.notifications'>['markRead']>(), test: vi.fn<IntegrationMethods<'dshBot.notifications'>['test']>(),
-  };
-  const collaboration = {
-    board: vi.fn<CollaborationMethods['board']>(async () => ({ ok: true, value: data.board })),
-    ensure: vi.fn<CollaborationMethods['ensure']>(), createTask: vi.fn<CollaborationMethods['createTask']>(), updateTask: vi.fn<CollaborationMethods['updateTask']>(),
-  };
-  const groups = {
-    markRead: vi.fn<GroupMethods['markRead']>(async () => ({ok:true,value:true})),
-    list: vi.fn<GroupMethods['list']>(async () => ({ ok: true, value: data.groups })),
-    view: vi.fn<GroupMethods['view']>(async () => { if (!data.groupView) throw new Error('No group fixture'); return { ok: true, value: data.groupView }; }),
-    create: vi.fn<GroupMethods['create']>(), edit: vi.fn<GroupMethods['edit']>(), send: vi.fn<GroupMethods['send']>(), cancel: vi.fn<GroupMethods['cancel']>(), archive: vi.fn<GroupMethods['archive']>(),
-  };
-  const im = { status: vi.fn(async () => ({ ok: true as const, value: { pin: IM_PIN, installed: false, contractDetected: false, inboundSupported: false as const, outboundSupported: false as const, reason: 'plugin-missing' as const } })) };
-  const workspaceManagement = { request: vi.fn<WorkspaceMethods['request']>() };
-  const referenceMemory = { request: vi.fn<ReferenceMemoryMethods['request']>(async input => ({ ok: true, value: { status: { bot: input.bot, state: 'internal', toolCount: 0, writer: false, copies: [] } } })) };
-  return { methods, data, routine, schedule, run, automation, connectors, notifications, collaboration, im, groups, workspaceManagement, referenceMemory };
-}
+import { remoteDouble } from './remote-double.js';
+export { bot, remoteDouble } from './remote-double.js';
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
 export function workspace(id = 'workspace-one', title = 'Test workspace'): WorkspaceSnapshot['items'][number] {
@@ -180,7 +31,7 @@ export function loadBuiltClient(): typeof client {
   const require = createRequire(import.meta.url);
   let plugin: typeof client | undefined;
   const source = readFileSync(require.resolve('dsh-bot/client'), 'utf8');
-  const platformRequire = ((id: string) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : require(id)) as NodeJS.Require;
+  const platformRequire = ((id: string) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : /^@deepseek-ai\/dsh-client-ui-input-trigger(?:\/client)?$/.test(id) ? inputTriggerPlatform : require(id)) as NodeJS.Require;
   const previousLoader = Object.getOwnPropertyDescriptor(window, '__ModuleLoader__');
   Object.defineProperty(window, '__ModuleLoader__', { configurable: true, value: {
     load(entry: { factory: (require: NodeJS.Require) => typeof client }) { plugin = entry.factory(platformRequire); },
@@ -214,6 +65,8 @@ export async function mountClient(
     name: 'root',
     children: {
       main: { kind: 'keyed', scope: 'root' },
+      'conversation.composer': { kind: 'chain', scope: 'session' },
+      'conversation.input.dock': { kind: 'list', scope: 'session' },
       'sidebar.panellist': { kind: 'list', scope: 'root' },
       'sidebar.footer.action': { kind: 'list', scope: 'root' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
@@ -235,11 +88,21 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === '@deepseek-ai/dsh-permission-presets') return ctx.provide('remote.permissionPresets', {
+      catalog: vi.fn(async () => ({ ok: true, value: { options: [] } })),
+    } as never);
+    if (contribution?.package === 'dsh-bot/capabilities') return ctx.provide('remote.dshBot.capabilities', {
+      request: vi.fn(async (input: { action: string }) => ({ ok: true, value: input.action === 'models'
+        ? { kind: 'models', providers: [] } : { kind: 'inspect', online: false, skillsAvailable: false, skills: [], tools: [], ownSkills: [], extraDirs: [] } })),
+    } as never);
     if (contribution?.package === 'dsh-bot/workspace') {
-      const releases = [ctx.provide('remote.dshBot.workspace', remote.workspaceManagement), ctx.provide('remote.dshBot.referenceMemory', remote.referenceMemory)];
+      const releases = [ctx.provide('remote.dshBot.workspace', remote.workspaceManagement),
+        ctx.provide('remote.dshBot.referenceMemory', remote.referenceMemory)];
       return () => { for (const release of releases) release(); };
     }
-    if (contribution?.package === 'dsh-bot/messaging') return ctx.provide('remote.dshBot.messaging', { request: async () => ({ ok: true as const, value: { enabled: true, nestedMessaging: false as const, pending: 0, items: [] } }) });
+    if (contribution?.package === 'dsh-bot/messaging') return ctx.provide('remote.dshBot.messaging', {
+      request: async () => ({ ok: true as const, value: { enabled: true, nestedMessaging: false as const, pending: 0, items: [] } }),
+    });
     if (contribution?.package === 'dsh-bot/groups') return ctx.provide('remote.dshBot.groups', remote.groups);
     if (contribution?.package === 'dsh-bot/collaboration') {
       const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];
@@ -249,9 +112,14 @@ export async function mountClient(
       const releases = [ctx.provide('remote.dshBot.connectors', remote.connectors), ctx.provide('remote.dshBot.notifications', remote.notifications)];
       return async () => { for (const release of releases) await release(); };
     }
+    if (contribution?.package === '@deepseek-ai/dsh-subagent') return ctx.provide('remote.subagents', {
+      prompt: vi.fn(async () => ({ ok: true, value: undefined })),
+      interruptByParent: vi.fn(async () => ({ ok: true, value: undefined })),
+    } as never);
     if (contribution?.package === '@deepseek-ai/dsh-schedule') return ctx.provide('remote.schedule', remote.schedule);
     if (contribution?.package === 'dsh-bot/automation') {
-      const releases = [ctx.provide('remote.dshBot.nativeSchedule', remote.routine), ctx.provide('remote.dshBot.run', remote.run), ctx.provide('remote.dshBot.automation', remote.automation)];
+      const releases = [ctx.provide('remote.dshBot.nativeSchedule', remote.routine), ctx.provide('remote.dshBot.run', remote.run),
+        ctx.provide('remote.dshBot.automation', remote.automation)];
       return async () => { for (const release of releases) await release(); };
     }
     remoteMounted = true;
@@ -285,7 +153,9 @@ export async function mountClient(
   }
   let navigation = new AbortController();
   const beginNavigation = () => { navigation.abort(); navigation = new AbortController(); return navigation.signal; };
-  const openSession = vi.fn<Context['uiWorkspace']['openSession']>((id) => { beginNavigation(); updateRightSession(typeof id === 'string' ? id : id.childSessionId); });
+  const openSession = vi.fn<Context['uiWorkspace']['openSession']>((id) => {
+    beginNavigation(); updateRightSession(typeof id === 'string' ? id : id.childSessionId);
+  });
   const selectPanel = vi.fn<Context['layout']['selectPanel']>(() => { beginNavigation(); updateRightSession(undefined); });
   ctx.provide('layout', { selectPanel, beginNavigation } as unknown as Context['layout']);
   const openWorkspace = vi.fn<Context['uiWorkspace']['openWorkspace']>(async (_id, beforeOpen) => {
@@ -318,13 +188,14 @@ export async function mountClient(
     inject: (_key: string, callback: () => () => void) => callback(),
     register: core.register.bind(core),
   } as unknown as Context['slots']);
-  ctx.provide('remote', { $mount: mountRemote, $on: (name: string, fn: () => void) => ctx.on(name as 'schedule/changed', fn), schedule: remote.schedule, dshBot: remote.methods } as unknown as Context['remote']);
+  ctx.provide('remote', { $mount: mountRemote, $on: (name: string, fn: () => void) => ctx.on(name as 'schedule/changed', fn),
+    schedule: remote.schedule, dshBot: remote.methods } as unknown as Context['remote']);
   const createSession = vi.fn<ISessions['create']>(async () => 'test-created-session' as SessionId);
   const createWorkspace = vi.fn<Context['workspaces']['create']>(async ({ path }) => ({ ...workspace('custom-workspace'), path }));
   const pickDirectory = vi.fn<Context['uiWorkspace']['pickDirectory']>(async () => null);
   ctx.provide('uiWorkspace', { openWorkspace, openSession, pickDirectory } as unknown as Context['uiWorkspace']);
   ctx.provide('workspaces', { list: workspaceSource, create: createWorkspace } as unknown as Context['workspaces']);
-  ctx.provide('sessions', { list: sessionSource, create: createSession } as unknown as Context['sessions']);
+  ctx.provide('sessions', { list: sessionSource, create: createSession, refreshProjections: vi.fn(async () => {}) } as unknown as Context['sessions']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();
   const container = document.createElement('div');
@@ -490,7 +361,8 @@ export async function mountClient(
 }
 
 export function button(container: ParentNode, text: string): HTMLButtonElement {
-  const element = [...container.querySelectorAll('button')].find((item) => !item.closest('[hidden]') && (item.textContent?.trim() === text || item.getAttribute('aria-label') === text));
+  const element = [...container.querySelectorAll('button')].find((item) =>
+    !item.closest('[hidden]') && (item.textContent?.trim() === text || item.getAttribute('aria-label') === text));
   if (!element) throw new Error(`Button ${JSON.stringify(text)} not found in ${container.textContent}`);
   return element;
 }
@@ -522,4 +394,10 @@ export async function submit(container: ParentNode) {
   const form = [...container.querySelectorAll('form')].find(form => !form.closest('[hidden]'));
   if (!form) throw new Error('No form is mounted');
   await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+}
+
+export async function doubleClick(element: HTMLElement) {
+  await click(element);
+  await click(element);
+  await act(async () => { element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
 }

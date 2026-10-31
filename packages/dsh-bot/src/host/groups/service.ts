@@ -1,3 +1,4 @@
+import { installWorkerTools } from './worker-tool.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Domain } from '@deepseek-ai/dsh-storage-domain';
 import type { DshBotRegistry } from '../registry.js';
@@ -23,12 +24,13 @@ export class Groups {
     this.membership = new GroupMembers(this.state, this.roots);
     this.messages = new GroupMessages(this.state, this.roots);
     const runner = new GroupTurnRunner(this.state, this.roots, this.messages);
+    this.state.offWorkers = installWorkerTools(this.state, runner);
     this.turns = new GroupTurns(this.state, this.roots, this.messages, runner);
   }
   lifecycle() {
     return {
       phase: this.state.shutdownPhase,
-      ownedRoots: this.state.roots.size,
+      ownedRoots: [...this.state.roots.values()].filter(root => root.ownership === 'owned').length,
       workers: this.state.chains.size,
       activations: this.state.activations.size,
     };
@@ -36,11 +38,18 @@ export class Groups {
   start(...args: Parameters<GroupRoots['start']>) {
     return this.roots.start(...args);
   }
+  open(...args: Parameters<GroupRoots['open']>) { return this.roots.open(...args); }
   create(...args: Parameters<GroupMembers['create']>) {
     return this.membership.create(...args);
   }
   edit(...args: Parameters<GroupMembers['edit']>) {
     return this.membership.edit(...args);
+  }
+  setModel(...args: Parameters<GroupMembers['setModel']>) {
+    return this.membership.setModel(...args);
+  }
+  openAttachment(...args: Parameters<GroupMessages['openAttachment']>) {
+    return this.messages.openAttachment(...args);
   }
   markRead(...args: Parameters<GroupMessages['markRead']>) {
     return this.messages.markRead(...args);
@@ -79,11 +88,13 @@ export class Groups {
       this.state.shutdownPhase = 'draining-queue';
       await attempt(() => this.state.queue.close());
       this.state.offTitle?.();
+      this.state.offWorkers?.();
+      this.state.workers.clear();
       this.state.shutdownPhase = 'disposing-roots';
       for (const a of this.state.activations.values()) await attempt(() => a.dispose());
       for (const h of this.state.roots.values()) {
         await attempt(() => this.roots.flush(h));
-        await attempt(() => h.dispose());
+        await attempt(() => this.roots.release(h));
       }
       this.state.roots.clear();
       this.state.shutdownPhase = 'unregistering-preset';

@@ -6,7 +6,8 @@ import { agentEvents } from '@deepseek-ai/dsh-agent';
 import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { getBotBinding } from 'dsh-bot/bot-context';
 
-export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel', 'systemPrompt', 'skills', 'tools', 'llm', 'workspaceRegistry', 'sandboxPolicy', 'sessionProjections'];
+export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel',
+  'systemPrompt', 'skills', 'tools', 'llm', 'workspaceRegistry', 'sandboxPolicy', 'sessionProjections'];
 
 async function saveResult(path, value) {
   await writeFile(`${path}.tmp`, JSON.stringify(value, null, 2));
@@ -209,9 +210,9 @@ async function inspect(ctx, config, signal, calls) {
   const execute = (name, args) => ctx.tools.execute({ name, arguments: args,
     agent: live[0], callId: ToolCallId(`t06-profile-${name}-${Date.now()}`), signal });
   const initialMemory = await memoryText(live[0]);
-  const firstSave = await execute('memory_save', { content: 'T06_PROFILE_MEMORY prefers concise answers', tags: ['first'] });
-  const duplicateSave = await execute('memory_save', { content: 'Ｔ０６_PROFILE_MEMORY\n prefers concise answers', tags: ['second'], pinned: true });
-  const rejectedSave = await execute('memory_save', { content: `ghp_${'t'.repeat(36)}` });
+  const firstSave = await execute('bot_memory_save', { content: 'T06_PROFILE_MEMORY prefers concise answers', tags: ['first'] });
+  const duplicateSave = await execute('bot_memory_save', { content: 'Ｔ０６_PROFILE_MEMORY\n prefers concise answers', tags: ['second'], pinned: true });
+  const rejectedSave = await execute('bot_memory_save', { content: `ghp_${'t'.repeat(36)}` });
   const memoryAgent = await create(`bot-${request.ids[0]}`);
   const beforeShutdown = await memoryText(memoryAgent);
   await bots.memoryFor(request.ids[0]).save({ content: 'T06_AFTER_SNAPSHOT additional durable fact' });

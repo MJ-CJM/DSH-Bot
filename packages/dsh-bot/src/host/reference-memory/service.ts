@@ -13,8 +13,50 @@ import { OperationError, digest, parse } from '../common/operations.js';
 
 import { keyOf } from './model.js';
 import { MemoryCopyWorkflow } from './copies.js';
+import { managedGraphFiles, eraseManagedGraphs } from './cleanup-files.js';
+import { randomUUID } from 'node:crypto';
+import { unlink } from 'node:fs/promises';
 export { referenceMemoryDomain, memoryEntity, verifyMemoryEntity } from './model.js';
 export class ReferenceMemory extends MemoryCopyWorkflow {
+  async forgetInventory() {
+    const files = await managedGraphFiles(this.root);
+    const copies = [...this.domain.table('copies').entries()];
+    return { count: files.length + copies.length, stamp: { files, copies,
+      bindings: [...this.domain.table('bindings').entries()] } };
+  }
+  /** All managed graph generations are in the conservative preview. User explicitly chooses their reset. */
+  async forgetCleanup(): Promise<void> {
+    for (const l of this.live.values()) l.accepting = false;
+    for (const cancel of this.copying.values()) cancel.abort();
+    await this.control.run(async () => {
+      for (const l of [...this.live.values()]) await this.closeLive(l);
+      await eraseManagedGraphs(this.root);
+      for (const [id] of [...this.domain.table('copies').entries()]) await this.domain.table('copies').delete(id);
+      for (const [key, binding] of this.domain.table('bindings').entries()) {
+        if (binding.mode === 'internal' && !binding.importId) continue;
+        await this.domain.table('bindings').put(key, graphBindingSchema.parse({ ...binding, mode: 'internal',
+          importId: undefined, fileIdentity: digest([randomUUID()]), revision: binding.revision + 1 }));
+      }
+      // Reopen twice through the actual MCP reader. A stopped writer or an empty directory is insufficient proof.
+      for (const [, binding] of this.domain.table('bindings').entries()) {
+        const agent = await this.main(binding.bot);
+        if (!agent) throw new Error('Reference main unavailable for cold read');
+        await agent.runMaintenance(async signal => {
+          for (let pass = 0; pass < 2; pass++) {
+            const live = await this.mount(binding.bot, agent, binding.fileIdentity, true);
+            try {
+              const graph = graphSchema.parse(await this.call(live, 'read_graph', {}, signal, true));
+              if (graph.entities.length || graph.relations.length) throw new Error('Reference remount contains stale data');
+            } finally { await this.closeLive(live); }
+          }
+          await unlink(this.file(binding.bot, binding.fileIdentity));
+        });
+      }
+      const check = await this.forgetInventory();
+      if (check.count || this.live.size) throw new Error('Reference copy cleanup unverified');
+      this.changed();
+    });
+  }
   async request(input: z.input<typeof graphRequestSchema>) {
     const r = parse(graphRequestSchema, input);
     if (r.action === 'status') {

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "S06",
+  "kind": "shared",
+  "rootCause": "bot-id-recreation-inherits-previous-private-shard",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/deepening/implementation-design.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      89,
+      103
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "Delete Alpha while retaining memory, then create the same ID with a new birth.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/shared-contracts.spec.ts -t \"S06 \"",
+  "expected": "New BotKey has no previous private rows or permissions.",
+  "observed": {
+    "original": "Current v1 rows are bound to botId and are visible to the recreated service.",
+    "beforeFix": "Current v1 rows are bound to botId and are visible to the recreated service.",
+    "afterFix": "B3 v2 regression PASS: dynamic injection, BotKey isolation, or pending-cleanup/epoch gate. Full history/copy cleanup remains B4 P0 OPEN."
+  },
+  "regressions": [
+    {
+      "testId": "S06",
+      "testFile": "packages/dsh-bot/tests/deepening/shared-contracts.spec.ts",
+      "testName": "S06 same Bot ID with a new birth cannot inherit retained private rows",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/S06.json"
+    }
+  ]
+}

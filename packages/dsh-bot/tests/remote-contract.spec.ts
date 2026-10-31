@@ -1,3 +1,4 @@
+import { memoryResultCases } from './fixtures/memory-result-cases.js';
 import { createRequire } from 'node:module';
 import { Context } from '@deepseek-ai/cordis';
 import * as Gateway from '@deepseek-ai/dsh-api-gateway/client';
@@ -29,7 +30,6 @@ const memory = memorySchema.parse({
   id: 'memory-1', botId: 'test-bot', content: 'Prefer concise text', kind: 'preference', tags: [], pinned: true,
   source: { by: 'user', at: 1 }, createdAt: 1, updatedAt: 1,
 });
-
 describe('single-source Remote contract', () => {
   it('loads activity from a plugin scope through real Gateway result decoding and rejects storage fields on the wire', async () => {
     const ctx = new Context();
@@ -95,7 +95,6 @@ describe('single-source Remote contract', () => {
         .rejects.toThrow('invalid server-response failure');
     } finally { await ctx.fiber.dispose(); }
   });
-
   it('mounts the real published Gateway namespace and observes its explicit optional-argument convention', async () => {
     const ctx = new Context();
     const calls: { endpoint: string; payload: unknown }[] = [];
@@ -150,7 +149,6 @@ describe('single-source Remote contract', () => {
       expect(ctx.get('remote.dshBot.activity')).toBeUndefined();
     } finally { await ctx.fiber.dispose(); }
   });
-
   it('matches all Host and Client method signatures at compile time', () => {
     expectTypeOf<DshBotRegistry['watch']>().toEqualTypeOf<DshBotMethods['watch']>();
     expectTypeOf<DshBotRemoteMethods['watch']>().toEqualTypeOf<(signal?: AbortSignal) => RemoteStreamHandle<BotChange, never>>();
@@ -185,18 +183,20 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
-      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace' | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
-    expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'>();
+      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace'
+        | 'create' | 'createForChat' | 'startOnboarding' | 'retryOnboarding' | 'onboardingStatus' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
+    expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'
+      | 'autoShareStatus' | 'setAutoShare' | 'query' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
+      | 'quarantineCount' | 'previewForget' | 'chooseForget' | 'cleanupStatuses' | 'retryCleanup' | 'rootInstructions'>();
   });
-
-  it('shares all twenty strict descriptors between Host and Client exports', () => {
+  it('shares all strict descriptors between Host and Client exports', () => {
     expect(require.resolve('dsh-bot/host-contract')).toMatch(/lib\/typert\.host\.js$/);
     // The Host owns registration in ctx.effect. ./typert would also be picked
     // up by the DSH typert-loader, causing a startup-order-dependent duplicate.
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(20);
+    expect(TYPERT.invocations).toHaveLength(39);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -209,7 +209,6 @@ describe('single-source Remote contract', () => {
     expect(TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'delete'))
       .toMatchObject({ implementation: 'remove', namespace: 'dshBot' });
   });
-
   it('declares a zero-argument Bots workspace Remote and validates its path and identity on both wire directions', () => {
     const descriptor = TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'ensureBotsWorkspace');
     expect(descriptor?.parameters).toEqual([]);
@@ -222,7 +221,6 @@ describe('single-source Remote contract', () => {
       expect(() => result.decode?.(invalid)).toThrow();
     }
   });
-
   it('declares a zero-argument cancellable stream and validates every invalidation frame', () => {
     const watch = TYPERT_REMOTE.descriptors.find((entry) => entry.method === 'watch');
     expect(watch).toMatchObject({ service: 'dshBots', namespace: 'dshBot', mode: 'stream', parameters: [], cancellation: { parameter: 'signal' } });
@@ -234,7 +232,6 @@ describe('single-source Remote contract', () => {
       expect(() => result.decode?.(invalid)).toThrow();
     }
   });
-
   it('strictly validates activity arguments and wrapped unknown-session errors', () => {
     const list = TYPERT_REMOTE.methods['dshBot.activity/list']?.input({ strict: true }).create();
     const mark = TYPERT_REMOTE.methods['dshBot.activity/markRead']?.input({ strict: true }).create();
@@ -246,7 +243,6 @@ describe('single-source Remote contract', () => {
     expect(remoteErrorOf(new DshBotError('activity/not-found', 'Unknown activity')))
       .toMatchObject({ code: 'activity/not-found', details: {} });
   });
-
   it('validates every memory method with strict identity, cursor and provenance boundaries', () => {
     const input = (method: string, value: unknown) => {
       const descriptor = TYPERT_REMOTE.methods[`dshBot.memory/${method}`];
@@ -278,7 +274,6 @@ describe('single-source Remote contract', () => {
     expect(() => input('delete', { botId: '../escape', id: 'memory-1' })).toThrow();
     expect(() => input('count', { botId: 'test-bot', unknown: true })).toThrow();
   });
-
   it('validates arguments, defaults and unknown fields with the T03 schemas', () => {
     const input = (method: string, value: unknown) => {
       const descriptor = TYPERT_REMOTE.methods[`dshBot/${method}`];
@@ -307,13 +302,13 @@ describe('single-source Remote contract', () => {
     expect(() => input('duplicate', { id: 'test-bot' })).toThrow();
     expect(() => input('delete', { id: 'test-bot', options: { deleteMemories: 'yes' } })).toThrow();
   });
-
   it('preserves explicit optional-field clears through strict Client codec, JSON and Host codec', () => {
     const descriptor = TYPERT_REMOTE.methods['dshBot/update'];
     if (!descriptor) throw new Error('Missing update descriptor');
     const input = descriptor.input({ strict: true }).create();
     expect(input.parse({ id: 'test-bot', patch: {} })).toEqual({ id: 'test-bot', patch: {} });
-    expect(input.parse({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } })).toEqual({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } });
+    expect(input.parse({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } }))
+      .toEqual({ id: 'test-bot', patch: { avatarVariant: 'hat', avatarColor: 'purple' } });
     expect(() => input.parse({ id: 'test-bot', patch: { avatarVariant: 'unknown' } })).toThrow();
     const patch = { avatar: null, avatarColor: null, avatarVariant: null, model: null, defaultCwd: null, order: null };
     const parsed = input.parse({ id: 'test-bot', patch });
@@ -327,7 +322,6 @@ describe('single-source Remote contract', () => {
       expect(() => input.parse({ id: 'test-bot', patch: { [field]: null } })).toThrow();
     }
   });
-
   it('accepts complete stored records and rejects malformed successful results', () => {
     for (const descriptor of TYPERT.invocations) {
       if (descriptor.result.mode !== 'strict') throw new Error('Expected strict result codec');
@@ -343,13 +337,7 @@ describe('single-source Remote contract', () => {
         expect(() => codec.parse({ ...value, unexpected: true })).toThrow();
         expect(() => codec.parse({ sessions: [], bots: [{ botId: 'test-bot', unreadCount: -1 }] })).toThrow();
       } else if (descriptor.namespace === 'dshBot.memory') {
-        const values: Record<string, [unknown, unknown]> = {
-          list: [[memory], [{ ...memory, unknown: true }]],
-          search: [[memory], [{ id: 'bad' }]],
-          save: [{ id: 'memory-1', deduplicated: false }, { id: 'memory-1', deduplicated: 'false' }],
-          update: [memory, { ...memory, source: { by: 'untrusted', at: 1 } }],
-          delete: [undefined, { removed: true }], count: [201, -1],
-        };
+        const values = memoryResultCases(memory);
         const value = values[descriptor.method];
         if (!value) throw new Error(`Missing memory result case ${descriptor.method}`);
         expect(codec.parse(value[0])).toEqual(value[0]);
@@ -379,6 +367,10 @@ describe('single-source Remote contract', () => {
       } else if (descriptor.method === 'delete') {
         expect(codec.parse(undefined)).toBeUndefined();
         expect(() => codec.parse({ removed: true })).toThrow();
+      } else if (['startOnboarding', 'retryOnboarding', 'onboardingStatus'].includes(descriptor.method)) {
+        const result = { botId: 'alpha', state: 'pending', retryable: false };
+        expect(codec.parse(result)).toEqual(result);
+        expect(() => codec.parse({ ...result, state: 'fake' })).toThrow();
       } else {
         const result = descriptor.method === 'list' ? [record] : record;
         expect(codec.parse(result)).toEqual(result);

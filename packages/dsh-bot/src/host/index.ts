@@ -1,3 +1,6 @@
+import { Onboarding } from './onboarding/coordinator.js';
+import { Capabilities } from './capabilities/service.js';
+import { CapabilitiesRemote, CAPABILITIES_HOST } from './capabilities/remote.js';
 import { MessagingRemote, MESSAGING_HOST } from './messaging/remote.js';
 import { MessagingSafety } from './messaging/safety.js';
 import { Messaging, messagingDomain } from './messaging/service.js';
@@ -20,11 +23,13 @@ import { TYPERT } from '../typert.host.js';
 import { Config, DshBotRegistry } from './registry.js';
 import { registerStandardBotManage } from './tools/bot-manage.js';
 import { DshBotMemoryRemote } from './memory/remote.js';
+import { MemoryForgetting } from './memory/forget-service.js';
 import { DshBotActivityRemote } from './activity/remote.js';
 import { AUTOMATION_HOST, AutomationStatusRemote } from './automation/remote.js';
 import type { AutomationStatus } from '../shared/automation-contract.js';
 import { MainSessions } from './main-session.js';
 import { startAutomation } from './automation/coordinator.js';
+import { startShadow } from './shadow/service.js';
 export { Config, DshBotRegistry };
 export const name = 'dsh-bot';
 export const inject = [
@@ -64,6 +69,7 @@ export function apply(ctx: Context, config: Config): void {
     .waitUntilReady()
     .then(async () => {
       if (stopping) return;
+      registry.shadow = await startShadow(ctx, registry.config);
       const sidecars = await openIntegrationStores(ctx);
       const connectors = new Connectors(ctx, sidecars, registry, registry.config.connectorApplyTimeoutMs, () =>
         registry.invalidate(),
@@ -105,6 +111,9 @@ export function apply(ctx: Context, config: Config): void {
       const mainSessions = new MainSessions(ctx, registry);
       await mainSessions.start();
       registry.mainSessions = mainSessions;
+      const onboarding = new Onboarding(ctx, registry);
+      await onboarding.start();
+      registry.onboarding = onboarding;
       if (registry.config.messagingEnabled) {
         try {
           await ctx.effect(async () => {
@@ -191,7 +200,17 @@ export function apply(ctx: Context, config: Config): void {
       ctx.effect(() => ctx.provide('dshBotGroups', groups as Groups), 'dsh-bot: groups service');
       new GroupsRemote(ctx, groups);
       await ctx.effect(() => ctx.typert.register(GROUPS_HOST), 'dsh-bot: groups Remote');
+      const capabilities = new Capabilities(ctx, registry);
+      ctx.effect(() => () => capabilities.close(), 'dsh-bot: capabilities');
+      new CapabilitiesRemote(ctx, capabilities);
+      await ctx.effect(() => ctx.typert.register(CAPABILITIES_HOST), 'dsh-bot: capabilities Remote');
       automation = await startAutomation(ctx, registry);
+      await ctx.effect(async () => {
+        const forget = new MemoryForgetting(ctx, registry);
+        registry.memoryForget = forget;
+        await forget.runner.recover();
+        return async () => { await forget.runner.close(); registry.memoryForget = undefined; };
+      }, 'dsh-bot: forgetting coordinator');
       status = { state: 'ready' };
       ctx.logger.info('[dsh-bot] loaded');
     })
@@ -207,6 +226,9 @@ export function apply(ctx: Context, config: Config): void {
       await ready;
       const errors: unknown[] = [];
       for (const close of [
+        () => registry.onboarding?.close(),
+        () => registry.shadow?.close(),
+        () => registry.memoryForget?.runner.close(),
         () => messaging?.close(),
         () => referenceMemory?.close(),
         () => management?.close(),

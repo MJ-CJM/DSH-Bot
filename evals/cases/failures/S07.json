@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "S07",
+  "kind": "shared",
+  "rootCause": "quota-check-and-publish-not-one-durable-operation",
+  "mastCategory": "specification",
+  "source": {
+    "path": "docs/deepening/implementation-design.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      89,
+      103
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "OPEN",
+  "precondition": "100 automatic proposals race the remaining Bot and domain quota; restart/recreate afterwards.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "At most min(bot remaining, domain remaining) commits; charges survive replay, restart and ID recreation.",
+  "observed": {
+    "original": "No v2 auto-publish/quota op-log exists; SOURCE_ONLY, not a claim that v1 currently publishes automatically.",
+    "beforeFix": "No v2 auto-publish/quota op-log exists; SOURCE_ONLY, not a claim that v1 currently publishes automatically.",
+    "afterFix": "NOT_RUN: future v2 behavior remains OPEN."
+  },
+  "regressions": []
+}

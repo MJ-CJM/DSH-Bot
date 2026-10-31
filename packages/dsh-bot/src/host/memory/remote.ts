@@ -15,6 +15,9 @@ import type { MemoryRecord, MemorySaveResult } from '../../shared/schema.js';
 import { parseInput } from '../errors.js';
 import type {} from '../registry.js';
 import { rejectMemorySecrets } from './secrets.js';
+import { forgetChoiceSchema, forgetSelectionSchema, type ForgetChoice, type ForgetSelection } from '../../shared/memory-forget.js';
+import { z } from 'zod';
+import type { MemoryQuery, MemoryCreate, MemoryRevise, MemoryConfirm, MemoryResolve } from '../../shared/memory-management.js';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -29,6 +32,58 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
   constructor(ctx: Context) {
     super(ctx, 'dshBotMemory', { namespace: 'dshBot.memory' });
   }
+  @Remote
+  async autoShareStatus() { return this.ctx.dshBots.autoShareStatus(); }
+  @Remote
+  async setAutoShare(input: { enabled: boolean; expectedRevision: number }) { return this.ctx.dshBots.setAutoShare(input); }
+  @Remote
+  async query(input: MemoryQuery) { return this.ctx.dshBots.manageMemory(m => m.query(input)); }
+  @Remote
+  async createManaged(input: MemoryCreate) {
+    const result = await this.ctx.dshBots.manageMemory(m => m.create(input)); this.ctx.dshBots.invalidate(); return result;
+  }
+  @Remote
+  async revise(input: MemoryRevise) {
+    await this.ctx.dshBots.manageMemory(m => m.revise(input)); this.ctx.dshBots.invalidate();
+  }
+  @Remote
+  async confirm(input: MemoryConfirm) {
+    const result = await this.ctx.dshBots.manageMemory(m => m.confirm(input)); this.ctx.dshBots.invalidate(); return result;
+  }
+  @Remote
+  async resolve(input: MemoryResolve) {
+    await this.ctx.dshBots.manageMemory(m => m.resolve(input)); this.ctx.dshBots.invalidate();
+  }
+  @Remote
+  async previewContribution(id: string) { return this.forgetting().previews.contribution(parseInput(z.uuid(), id)); }
+  @Remote
+  async previewShared(selection: ForgetSelection) {
+    return this.forgetting().previewShared(parseInput(forgetSelectionSchema, selection));
+  }
+  private forgetting() {
+    const service = this.ctx.dshBots.memoryForget;
+    if (!service) throw new Error('Memory cleanup is not ready');
+    return service;
+  }
+
+  @Remote
+  async previewForget(botId: string, selection: ForgetSelection) {
+    return this.forgetting().preview(botId, parseInput(forgetSelectionSchema, selection));
+  }
+  @Remote
+  async chooseForget(choice: ForgetChoice) {
+    const result = await this.forgetting().choose(parseInput(forgetChoiceSchema, choice));
+    this.ctx.dshBots.invalidate();
+    return result;
+  }
+  @Remote
+  async cleanupStatuses() { return this.forgetting().runner.statuses(); }
+  @Remote
+  async retryCleanup(id: string) {
+    return this.forgetting().runner.resume(parseInput(z.uuid(), id));
+  }
+  @Remote
+  async rootInstructions() { return this.forgetting().roots(); }
 
   @Remote
   async list(botId: string, options: MemoryRemoteListInput): Promise<MemoryRecord[]> {
@@ -57,6 +112,11 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
   @Remote('delete')
   async remove(botId: string, id: string): Promise<void> {
     return this.ctx.dshBots.memoryFor(botId).forget({ id });
+  }
+
+  @Remote
+  async quarantineCount(): Promise<number> {
+    return this.ctx.dshBots.memoryQuarantineCount();
   }
 
   @Remote

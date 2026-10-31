@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H07",
+  "kind": "history",
+  "rootCause": "sidebar-origin-inference-reused-across-runs",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P34-rework-r3.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      75,
+      98
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "A newer screenshot contains an extra native blank session.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Reconcile exact session IDs, preset, blank, title and workspace for that specific run.",
+  "observed": {
+    "original": "r3 had three blank Bot mains; r4 had a separate standard provisional blank. One explanation cannot cover both runs.",
+    "beforeFix": "r3 had three blank Bot mains; r4 had a separate standard provisional blank. One explanation cannot cover both runs.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

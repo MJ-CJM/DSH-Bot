@@ -10,6 +10,7 @@ import { botIdSchema } from '../../shared/ids.js';
 import {
   AVATAR_COLOR_TOKENS,
   AVATAR_VARIANTS,
+  type BotPatch,
   type BotRecord,
   botCreateSchema,
   botPatchSchema,
@@ -39,6 +40,7 @@ function translate(
 // Model projection only: never return large inline avatar payloads. Prefix and
 // suffix share one preview budget, measured in Unicode code points.
 function modelView(bot: BotRecord, previewChars?: number) {
+  const { onboarding: _onboarding, ...fields } = bot;
   const persona: BotRecord['persona'] & { truncated?: boolean } = { ...bot.persona };
   if (previewChars !== undefined) {
     let remaining = previewChars;
@@ -52,7 +54,7 @@ function modelView(bot: BotRecord, previewChars?: number) {
       if (points.length > excerpt.length) persona.truncated = true;
     }
   }
-  return { ...bot, persona, ...(bot.avatar?.startsWith('data:') ? { avatar: '[data-url avatar]' } : {}) };
+  return { ...fields, persona, ...(bot.avatar?.startsWith('data:') ? { avatar: '[data-url avatar]' } : {}) };
 }
 
 const botViewSchema = {
@@ -130,7 +132,10 @@ const argumentsSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('list') }),
   z.strictObject({ action: z.literal('get'), id: botIdSchema }),
   z.strictObject({ action: z.literal('create'), input: botCreateSchema }),
-  z.strictObject({ action: z.literal('update'), id: botIdSchema, input: botPatchSchema }),
+  z.strictObject({ action: z.literal('update'), id: botIdSchema, input: botPatchSchema.refine(
+    input => (input.expectedCreatedAt === undefined) === (input.expectedUpdatedAt === undefined),
+    'Pass both expectedCreatedAt and expectedUpdatedAt from get, or omit both for legacy review',
+  ) }),
   // Private-home deletion is an explicit UI choice, outside the existing
   // management tool's approved memory-only deletion scope.
   z.strictObject({
@@ -170,7 +175,13 @@ export function registerBotManageTool(
   let dispose: (() => void) | undefined;
   dispose = owner.ctx.effect(() => {
     const releases: Array<() => void> = [];
+    let active = true;
+    // The native execution token binds the exact reviewed patch to one call.
+    // Legacy callers acquire their snapshot here, never at post-approval execution.
+    const reviewedUpdates = new Map<ToolExecution['token'], BotPatch>();
     const cleanup = () => {
+      active = false;
+      reviewedUpdates.clear();
       if (activeTools.get(owner) === dispose) activeTools.delete(owner);
       onDisposed?.();
       const errors: unknown[] = [];
@@ -199,15 +210,34 @@ export function registerBotManageTool(
             )
               return decision;
             try {
+              let reviewed: BotPatch | undefined;
+              if (args.action === 'update') {
+                const snapshot = await registry.get(args.id);
+                if (!active) throw new DshBotError('bot/unavailable', 'Bot management is unloading');
+                if ((args.input.expectedCreatedAt !== undefined && args.input.expectedCreatedAt !== snapshot.createdAt)
+                  || (args.input.expectedUpdatedAt !== undefined && args.input.expectedUpdatedAt !== snapshot.updatedAt)) {
+                  throw new DshBotError('bot/conflict', 'Bot changed; get its current details and review the update again');
+                }
+                reviewed = {
+                  ...args.input,
+                  // A role-only edit preserves the existing suffix and complete mode.
+                  ...(args.input.persona ? { persona: { ...snapshot.persona, ...args.input.persona } } : {}),
+                  expectedCreatedAt: snapshot.createdAt,
+                  expectedUpdatedAt: snapshot.updatedAt,
+                };
+                reviewedUpdates.set(exec.token, reviewed);
+              }
               const deleteMemories = args.action === 'delete' && (args.input?.deleteMemories ?? true);
               const count = deleteMemories ? await registry.memoryFor(args.id).count(exec.signal) : 0;
               exec.signal.throwIfAborted();
+              if (!active) throw new DshBotError('bot/unavailable', 'Bot management is unloading');
               const describe = (dictionary: Dictionary, locale: 'en' | 'zh') => {
                 const self = args.action !== 'create' && args.id === currentBotId;
-                const operation = translate(dictionary, `bot_manage.approval.${args.action}`, {
+                let operation = translate(dictionary, `bot_manage.approval.${args.action}`, {
                   id: JSON.stringify(args.action === 'create' ? args.input.id : args.id),
                   name: args.action === 'create' ? JSON.stringify(args.input.name) : '',
-                  fields: args.action === 'update' ? JSON.stringify(Object.keys(args.input).sort()) : '',
+                  fields: args.action === 'update'
+                    ? JSON.stringify(Object.keys(args.input).filter(key => !key.startsWith('expected')).sort()) : '',
                   selfWarning: self
                     ? translate(
                         dictionary,
@@ -223,6 +253,14 @@ export function registerBotManageTool(
                         )
                       : '',
                 });
+                if (reviewed?.persona) {
+                  operation += translate(dictionary, 'bot_manage.approval.personaPreview', {
+                    prefix: JSON.stringify(reviewed.persona.prefix),
+                    persona: JSON.stringify(reviewed.persona),
+                    createdAt: reviewed.expectedCreatedAt ?? '',
+                    updatedAt: reviewed.expectedUpdatedAt ?? '',
+                  });
+                }
                 // Enrich an existing ask too, so another policy cannot accidentally
                 // omit the target, deletion count or self-modification warning.
                 const upstream =
@@ -240,12 +278,13 @@ export function registerBotManageTool(
           { prepend: true },
         ),
       );
+      releases.push(owner.ctx.on('tools/result', exec => { reviewedUpdates.delete(exec.token); }));
       releases.push(
         owner.ctx.tools.register(
           defineTool({
             name: BOT_MANAGE_TOOL_NAME,
             description:
-              'List, inspect, create, update or delete Bots using the shared Bot registry. Writes require user approval. Updates affect new or cold-restored sessions; live sessions keep their configuration. Deletion removes the preset and, by default, its memories; history remains but cannot resume until the same Bot id exists again.',
+              'List, inspect, create, update or delete Bots using the shared Bot registry. Writes require user approval. To set an explicitly requested lasting role, first get the current Bot, then update persona.prefix with both expectedCreatedAt and expectedUpdatedAt copied from that get. Omitted suffix/complete are preserved. On bot/conflict get again and submit the new draft for fresh approval; only report saved after tool success. A name guess or one-time task is not a lasting role. Legacy updates without versions are protected only from approval preparation onward, not from any earlier unknown read. Use memory tools for preferences or facts. Committed persona text and complete mode apply when the next prompt assembly starts in live sessions, without replacing their history; a step already assembling or running keeps its snapshot. Other configuration updates affect new or cold-restored sessions. Deletion removes the preset and, by default, its memories; old sessions cannot adopt a recreated Bot generation.',
             parameters: {
               action: { type: 'string', enum: ['list', 'get', 'create', 'update', 'delete'], required: true },
               id: {
@@ -257,8 +296,10 @@ export function registerBotManageTool(
                 type: 'object',
                 additionalProperties: true,
                 description:
-                  'create: Bot fields including required id and name. update: a partial Bot patch, replacing whole top-level fields; id is immutable. delete: only optional deleteMemories (default true). Omit for list/get. Optional avatar/avatarColor/avatarVariant/model/defaultCwd/order can be cleared with null on update.',
+                  'create: Bot fields including required id and name. update: a partial Bot patch; include both snapshot timestamps from get. Omitted persona suffix/complete are preserved; other top-level fields are replaced. id is immutable. delete: only optional deleteMemories (default true). Omit for list/get. Optional avatar/avatarColor/avatarVariant/model/defaultCwd/order can be cleared with null on update.',
                 properties: {
+                  expectedCreatedAt: { type: 'integer', description: 'For update: copy createdAt from the preceding get, together with expectedUpdatedAt.' },
+                  expectedUpdatedAt: { type: 'integer', description: 'For update: copy updatedAt from the same get. A stale snapshot fails without saving.' },
                   id: { type: 'string' },
                   name: { type: 'string' },
                   description: { type: 'string' },
@@ -344,6 +385,7 @@ export function registerBotManageTool(
             async execute(_args, exec) {
               const args = readArguments(exec, owner);
               try {
+                if (!active) throw new DshBotError('bot/unavailable', 'Bot management is unloading');
                 switch (args.action) {
                   case 'list':
                     return {
@@ -356,8 +398,13 @@ export function registerBotManageTool(
                     return { action: args.action, bots: [modelView(await registry.get(args.id))] };
                   case 'create':
                     return { action: args.action, bots: [modelView(await registry.create(args.input))] };
-                  case 'update':
-                    return { action: args.action, bots: [modelView(await registry.update(args.id, args.input))] };
+                  case 'update': {
+                    const reviewed = reviewedUpdates.get(exec.token);
+                    reviewedUpdates.delete(exec.token);
+                    if (!reviewed) throw new DshBotError('bot/conflict', 'No reviewed update snapshot; request fresh approval');
+                    exec.signal.throwIfAborted();
+                    return { action: args.action, bots: [modelView(await registry.update(args.id, reviewed))] };
+                  }
                   case 'delete':
                     await registry.remove(args.id, args.input);
                     return { action: args.action, bots: [] };

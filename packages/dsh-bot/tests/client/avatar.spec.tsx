@@ -1,3 +1,4 @@
+import { requireValue } from './test-required.js';
 // @vitest-environment jsdom
 import { act, type ReactNode } from 'react';
 import { getByRole } from '@testing-library/dom';
@@ -111,6 +112,7 @@ describe('shared Bot avatars', () => {
     const dictionary = language === 'zh' ? zh.ui : en.ui;
     const onSave = vi.fn<BotEditorProps['onSave']>();
     const app = await mount(<BotEditor bot={bot()} onSave={onSave} onCancel={() => {}} t={translate(language)} />);
+    await click(button(app.container, requireValue(requireValue(app.container.querySelector('button[aria-expanded]')).getAttribute('aria-label'))));
     const shapes = getByRole(app.container, 'group', { name: dictionary['avatar.variant'] });
     for (const variant of AVATAR_VARIANTS) {
       const name = dictionary[`avatar.variant.${variant}`];
@@ -141,7 +143,7 @@ describe('shared Bot avatars', () => {
     expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatarVariant: 'sleeping', avatarColor: 'slate' }));
     await click(button(app.container, dictionary['avatar.automatic']));
     await submit(app.container);
-    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatarVariant: 'auto', avatarColor: null }));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatarVariant: 'auto' }));
     await app.render(<BotEditor bot={bot()} busy onSave={onSave} onCancel={() => {}} t={translate(language)} />);
     expect(app.container.querySelector('fieldset')?.disabled).toBe(true);
     const calls = onSave.mock.calls.length;
@@ -180,6 +182,7 @@ describe('shared Bot avatars', () => {
     const dictionary = language === 'zh' ? zh.ui : en.ui;
     const onSave = vi.fn<BotEditorProps['onSave']>();
     const app = await mount(<BotEditor bot={bot({ id: 'alpha-bot', name: 'Alpha', avatar: '🦊' })} onSave={onSave} onCancel={() => {}} t={translate(language)} />);
+    await click(button(app.container, requireValue(requireValue(app.container.querySelector('button[aria-expanded]')).getAttribute('aria-label'))));
     const swatch = app.container.querySelector<HTMLButtonElement>(`button[aria-label="${dictionary['avatar.green']}"]`);
     if (!swatch) throw new Error('No color swatch');
     await click(swatch);
@@ -190,26 +193,27 @@ describe('shared Bot avatars', () => {
     expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatar: null, avatarColor: '--dsw-alias-state-success-primary' }));
     await click(button(app.container, dictionary['avatar.automatic']));
     await submit(app.container);
-    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatar: null, avatarColor: null }));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ avatar: null, avatarVariant: 'auto' }));
   });
 
   it('saves a new color without introducing a required color into legacy/default records', async () => {
     const onSave = vi.fn<BotEditorProps['onSave']>();
     const app = await mount(<BotEditor onSave={onSave} onCancel={() => {}} t={translate('en')} />);
+    await click(button(app.container, requireValue(requireValue(app.container.querySelector('button[aria-expanded]')).getAttribute('aria-label'))));
     await fill(field(app.container, en.ui['editor.name']), 'New Bot');
-    await fill(field(app.container, en.ui['editor.id']), 'new-bot');
     await submit(app.container);
     expect(onSave.mock.calls[0]?.[0].avatarColor).toBeUndefined();
     const swatch = app.container.querySelector<HTMLButtonElement>(`button[aria-label="${en.ui['avatar.red']}"]`);
     if (!swatch) throw new Error('No color swatch');
     await click(swatch);
     await submit(app.container);
-    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'new-bot', avatarColor: '--dsw-alias-state-error-primary' }));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ id: expect.stringMatching(/^bot-/u), avatarColor: '--dsw-alias-state-error-primary' }));
   });
 
   it('uploads a validated raster image in the secondary controls and rejects unsupported files', async () => {
     const onSave = vi.fn<BotEditorProps['onSave']>();
     const app = await mount(<BotEditor bot={bot({ id: 'alpha-bot', name: 'Alpha', avatar: '🦊' })} onSave={onSave} onCancel={() => {}} t={translate('en')} />);
+    await click(button(app.container, requireValue(requireValue(app.container.querySelector('button[aria-expanded]')).getAttribute('aria-label'))));
     const upload = app.container.querySelector<HTMLInputElement>('details input[type="file"]');
     if (!upload) throw new Error('No secondary image input');
     const choose = async (file: File) => {

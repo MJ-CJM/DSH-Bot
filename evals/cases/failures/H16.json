@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "H16",
+  "kind": "history",
+  "rootCause": "model-secret-not-rejected-before-persistence",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P1-T06.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      8,
+      9
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "A model tries to persist a synthetic credential signature or merge into an existing record.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts -t \"H16 \"",
+  "expected": "Reject before schema error echo, dedup or persistent mutation.",
+  "observed": {
+    "original": "Review added model-secret rejection and structured Runtime error mapping.",
+    "beforeFix": "Review reconstruction reproduces the documented failure mechanism.",
+    "afterFix": "Current product/public Cordis boundary passes the same invariant (UNIT only)."
+  },
+  "regressions": [
+    {
+      "testId": "H16",
+      "testFile": "packages/dsh-bot/tests/deepening/contracts.spec.ts",
+      "testName": "H16 reject model credentials before deduplication or a persistent write",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/H16.json"
+    }
+  ]
+}

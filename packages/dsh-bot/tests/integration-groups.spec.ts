@@ -1,3 +1,4 @@
+import { executeRootSetup } from '../src/host/groups/root-guard.js';
 import { describe, expect, it, vi } from 'vitest';
 import { Session, type SessionId } from '@deepseek-ai/dsh-session';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
@@ -12,11 +13,33 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
   const roots = new Map<string, AgentHandle>(); const persisted = new Map<string, AgentHandle>(); const sequence: string[] = [];
   const config = Config({ dataDir: f.root, seedExamples: false, groupRoundTimeoutMs: 1000 });
   Object.assign(f.registry, { config, status: async () => [...f.bots.keys()].map(id => ({ id, presetId: `bot-${id}`, preset: { state: 'ok' } })) });
+  const workspaces = new Map<string, { id: string; path: string; sessionIds: SessionId[]; attachSession(id: SessionId): Promise<void> }>();
+  const workspaceRegistry = { create: vi.fn(async (path: string) => {
+    let workspace = workspaces.get(path);
+    if (!workspace) { workspace = { id: `workspace-${workspaces.size}`, path, sessionIds: [], async attachSession(id: SessionId) { if (!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaces.set(path, workspace); }
+    return workspace;
+  }) };
+  f.ctx.provide('workspaceRegistry', workspaceRegistry as never);
+  Object.assign(f.registry, { ensureBotsWorkspace: async () => { const workspace = await workspaceRegistry.create(f.root); return { path: workspace.path, workspaceId: workspace.id }; } });
   f.ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'synthetic', model: 'loopback' }) } as typeof f.ctx.agentDefaultModel);
   f.ctx.provide('agentPresets', { register: vi.fn(() => async () => { sequence.push('preset-dispose'); }), mount: vi.fn(async () => {}) } as unknown as typeof f.ctx.agentPresets);
   const create = vi.fn(async ({ sessionId, meta }: { sessionId: SessionId; meta?: { cwd?: string; agentPreset?: string } }) => {
     const session = Session.create(sessionId, undefined, { version: 4, id: sessionId, createdAt: Date.now(), isSeeded: false, ...meta });
-    const agent = { id: sessionId, session } as Agent;
+    let activity = Promise.resolve();
+    const agent = { id: sessionId, session, ctx: f.ctx, inbox: { nextTurn: [], nextStep: [] }, whenIdle: vi.fn(() => activity),
+      followup: vi.fn((message: import('@deepseek-ai/dsh-llm').UserMessage) => {
+        // Native lifecycle service double; real turn/blank/model behavior is verified by groups-workspace-profile.
+        activity = (async () => {
+          const turn = session.snapshotEvents().filter(event => event.type === 'turn/start').length + 1;
+          session.append('turn/start', { turn });
+          try {
+            expect(await executeRootSetup(agent, [message], turn)).toBe(true);
+            session.append('turn/end', { turn, reason: { kind: 'completed' } });
+          } catch { session.append('turn/end', { turn, reason: { kind: 'blocked' } }); }
+        })();
+        void activity.catch(() => {});
+      }),
+    } as unknown as Agent;
     const h = { agent, dispose: vi.fn(async () => { sequence.push('root-dispose'); roots.delete(sessionId); }) }; roots.set(sessionId, h); persisted.set(sessionId, h); return h;
   });
   const resume = vi.fn(async ({ resumeSessionId }: { resumeSessionId: string }) => { const h = persisted.get(resumeSessionId); if (!h || roots.has(resumeSessionId)) throw new Error('ownership'); roots.set(resumeSessionId, h); return h; });
@@ -38,7 +61,7 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
   let domain = await f.ctx.storageDomain.open(groupsDomain); let groups = new Groups(f.ctx, f.registry, domain, () => {}); await groups.start();
   const createGroup = (op = 'create-1') => groups.create({ operationId: op, name: 'Same name', members: [alpha, beta], mode: 'mention', historyConfirmed: true });
   const settle = async (g: GroupRecord) => { await vi.waitFor(async () => expect((await groups.view(groupKey(g))).turns.every(t => !['running', 'accepted'].includes(t.state))).toBe(true)); return groups.view(groupKey(g)); };
-  return { get groups() { return groups; }, createGroup, settle, calls, create, resume, flush, rename, roots, sequence, start, setBehavior(b: typeof behavior) { behavior = b; },
+  return { get groups() { return groups; }, createGroup, settle, calls, create, resume, flush, rename, roots, workspaces, sequence, start, setBehavior(b: typeof behavior) { behavior = b; },
     async seedUncertain(turnId: string) {
       const t = domain.table('turns').get(turnId); if (!t) throw new Error();
       await domain.table('turns').put(t.id,{...t,state:'running'});
@@ -188,5 +211,20 @@ describe('group context and strict Remote boundary', () => {
   it('forbids arbitrary parent, preset, Agent and unknown fields through the same codecs', () => {
     for (const extra of [{ agentPreset: 'standard' }, { sessionId: 'private' }, { parent: 'forged' }]) expect(() => groupsSpec.methods['dshBot.groups/send'].parameters[1].codec.decode({ operationId: 'op', text: 't', memberIds: [], expectedMembershipRevision: 1, ...extra })).toThrow();
     expect(GROUP_ROOT_PRESET).toBe('dsh-bot-group-root');
+  });
+});
+
+
+describe('strict supplemental send codec', () => {
+  it('roundtrips optional target and receipt without relaxing unknown fields', () => {
+    const method = groupsSpec.methods['dshBot.groups/send'];
+    const input = { operationId: 'precise', expectedMembershipRevision: 1, text: 'more', followup: { turnId: 'turn-1', deliveryId: 'delivery-1' } };
+    const decoded = method.parameters[1].codec.decode(input);
+    expect(method.parameters[1].strictCodec.decode(method.parameters[1].strictCodec.encode(decoded))).toEqual(decoded);
+    expect(() => method.parameters[1].codec.decode({ ...input, followup: { ...input.followup, childSessionId: 'forged' } })).toThrow();
+    const result = { id: 'turn-1', group: { groupId: 'g', groupCreatedAt: 1 }, operationId: 'original', requestDigest: 'x', inputMessageId: 'm',
+      createdAt: 1, updatedAt: 2, revision: 1, schemaVersion: 1, membershipRevision: 1, orderedMemberIds: [], mode: 'natural', contextThroughSeq: -1, state: 'running',
+      followups: [{ operationId: 'precise', requestDigest: 'h', deliveryId: 'delivery-1', messageId: 'group-m', childMessageId: 'native-m', state: 'accepted' }] };
+    expect(method.result.decode(method.result.encode(result))).toEqual(result);
   });
 });

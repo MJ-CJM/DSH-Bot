@@ -155,6 +155,7 @@ const snapshotSchema = z.strictObject({
   presetId: text(256),
   botUpdatedAt: automationTimeSchema,
 });
+const runStepSchema = z.enum(['queued', 'reserved', 'creating', 'submitting', 'executing', 'settled', 'unknown']);
 export const runRecordSchema = z
   .strictObject({
     id: automationIdSchema,
@@ -173,7 +174,8 @@ export const runRecordSchema = z
     endedAt: automationTimeSchema.optional(),
     updatedAt: automationTimeSchema,
     status: runStatusSchema,
-    step: z.enum(['queued', 'reserved', 'creating', 'submitting', 'executing', 'settled', 'unknown']),
+    step: runStepSchema,
+    lastConfirmedStep: runStepSchema.optional(),
     decision: z.enum(['run', 'skip']),
     skipReason: text(256).optional(),
     sessionId: text(256),

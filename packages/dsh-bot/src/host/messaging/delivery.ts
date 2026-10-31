@@ -1,3 +1,4 @@
+import { outlets } from '../data-flow/tool-guard.js';
 import { interrupt } from './interrupt.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-api-session-controller';
@@ -152,7 +153,7 @@ export class MessagingDelivery extends MessagingRecovery {
           ...(evidence.turn !== undefined ? { turn: evidence.turn } : {}),
         },
       });
-      if (evidence.pending && recovery && agent.status === 'idle') await this.wake(agent, r);
+      if (evidence.pending && recovery && agent.status === 'idle' && !outlets(this.registry)) await this.wake(agent, r);
     } else if (evidence.claimed || r.delivery !== 'queued') {
       await this.store.update(id, {
         delivery: r.delivery === 'delivered' ? 'delivered' : 'unknown',
@@ -163,12 +164,24 @@ export class MessagingDelivery extends MessagingRecovery {
       return;
     } else {
       if (!r.nativeInput) throw new OperationError('recovery-needed');
+      const flow = outlets(this.registry);
+      if (flow) {
+        if (!r.flowId) throw new Error('Legacy message held: unknown lineage');
+        await flow.validate(r.flowId, JSON.stringify({ envelope: r.envelope, nativeInput: r.nativeInput, outgoingInput: r.outgoingInput }));
+      }
       await this.store.update(id, { delivery: 'delivering' });
       if (this.stopped) return;
       if (r.envelope.priority === 'interrupt' && this.capabilities.interrupt) {
         await interrupt(this.store, agent, id, this.now);
       }
-      agent.followup(r.nativeInput as unknown as UserMessage);
+      if (flow) {
+        if (!r.flowId) throw new Error('Legacy message held: unknown lineage');
+        const held = flow.get(r.flowId).envelope;
+        if (!held) throw new Error('Message envelope erased');
+        await flow.inherit(agent.session.id, held.label);
+        const nativeInput = r.nativeInput;
+        await flow.dispatch(r.flowId, () => agent.followup(nativeInput as unknown as UserMessage));
+      } else agent.followup(r.nativeInput as unknown as UserMessage);
       if (!(await this.ctx.sessions.flush(agent.session))) throw new OperationError('recovery-needed');
       await this.store.update(id, {
         delivery: 'delivered',

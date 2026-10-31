@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H09",
+  "kind": "history",
+  "rootCause": "native-delivery-not-an-exactly-once-business-receipt",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P2-T17.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      111,
+      115
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "A process stops between native delivery and sidecar progress.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Treat ambiguous dispatch as unknown; do not replay business work blindly.",
+  "observed": {
+    "original": "The report documents that native message identity and normal cold recovery do not prove exactly-once across the delivery window.",
+    "beforeFix": "The report documents that native message identity and normal cold recovery do not prove exactly-once across the delivery window.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

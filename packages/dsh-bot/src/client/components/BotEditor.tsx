@@ -1,3 +1,5 @@
+import type { ModelActions, ModelCatalogData } from '../model-catalog-state.js';
+import type { CapabilityKey } from './CapabilitiesPanel.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import {
@@ -9,14 +11,17 @@ import {
 } from '../../shared/schema.js';
 import styles from '../styles/bots.module.css';
 import { AvatarPicker } from './AvatarPicker.js';
+import { BotAvatar } from './BotAvatar.js';
 import { Modal } from './Modal.js';
 
 export interface BotEditorProps {
   bot?: BotRecord;
+  models?: ModelActions;
   memoryPanel?: ReactNode;
   avatarWarning?: boolean;
   duplicate?: boolean;
   busy?: boolean;
+  creationSaved?: boolean;
   onEnsureHome?: (id: string) => Promise<string>;
   onEnsureBotsWorkspace?: () => Promise<string>;
   onPickDirectory?: () => Promise<string | null>;
@@ -27,10 +32,12 @@ export interface BotEditorProps {
 
 export function BotEditor({
   bot,
+  models,
   memoryPanel,
   avatarWarning,
   duplicate = false,
   busy = false,
+  creationSaved = false,
   onSave,
   onCancel,
   onEnsureHome,
@@ -42,7 +49,9 @@ export function BotEditor({
   const editing = Boolean(bot && !duplicate);
   const uid = useId();
   const mounted = useRef(true);
-  const [id, setId] = useState(duplicate && bot ? `${bot.id.slice(0, 27)}-copy` : (bot?.id ?? ''));
+  const [id] = useState(() => duplicate && bot ? `${bot.id.slice(0, 27)}-copy` : (bot?.id ?? `bot-${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`));
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const text = (key: string) => t(key as Parameters<typeof t>[0]);
   const [name, setName] = useState(duplicate && bot ? t('editor.copyName', { name: bot.name }) : (bot?.name ?? ''));
   const [avatar, setAvatar] = useState(bot?.avatar);
   const [avatarColor, setAvatarColor] = useState(bot?.avatarColor);
@@ -61,6 +70,21 @@ export function BotEditor({
   const [provider, setProvider] = useState(bot?.model?.provider ?? '');
   const [modelId, setModelId] = useState(bot?.model?.model ?? '');
   const [reasoning, setReasoning] = useState(bot?.model?.reasoningEffort ?? '');
+  const [modelCatalog, setModelCatalog] = useState<{ providers: ModelCatalogData['providers']; error?: unknown }>();
+  const [efforts, setEfforts] = useState<{ id: string; name: string }[]>([]);
+  const cap = (key: CapabilityKey) => t(key as Parameters<typeof t>[0]);
+  useEffect(() => {
+    if (!models) return;
+    const update = () => setModelCatalog(models.catalog.getSnapshot());
+    update(); return models.catalog.observe(update);
+  }, [models]);
+  useEffect(() => {
+    let active = true; setEfforts([]);
+    if (models && provider && modelId) void models.modelInfo(provider, modelId).then(info => {
+      if (active) setEfforts(info.reasoning?.efforts ?? []);
+    }, () => {});
+    return () => { active = false; };
+  }, [models, provider, modelId]);
   const [extraDirs, setExtraDirs] = useState(bot?.skills.extraDirs.join('\n') ?? '');
   const [suffix, setSuffix] = useState(bot?.persona.suffix ?? '');
   const [complete, setComplete] = useState(bot?.persona.complete ?? false);
@@ -97,7 +121,7 @@ export function BotEditor({
           if (current) setHomeFailed(true);
         },
       );
-    if (onEnsureBotsWorkspace)
+    if (editing && onEnsureBotsWorkspace)
       void onEnsureBotsWorkspace().then(
         (path) => {
           if (current) setBotsPath(path);
@@ -139,7 +163,7 @@ export function BotEditor({
       // Patches replace a whole top-level field, so retain advanced persona flags.
       persona: {
         prefix: persona,
-        ...(suffix ? { suffix } : {}),
+        ...(suffix || bot?.persona.suffix !== undefined ? { suffix } : {}),
         ...(complete || bot?.persona.complete !== undefined ? { complete } : {}),
       },
       template,
@@ -172,6 +196,22 @@ export function BotEditor({
         ],
       },
     };
+    // Compare the draft representation, not normalized record values: untouched arrays,
+    // optional flags and whitespace must survive an unrelated rename exactly.
+    if (editing && bot) {
+      const changed: Record<string, boolean> = {
+        name: name !== bot.name, avatar: avatar !== bot.avatar, avatarColor: avatarColor !== bot.avatarColor,
+        avatarVariant: avatarVariant !== (bot.avatarVariant ?? 'classic'),
+        description: description !== (bot.description ?? ''), defaultCwd: defaultCwd !== (bot.defaultCwd ?? ''),
+        persona: persona !== (bot.persona.prefix ?? '') || suffix !== (bot.persona.suffix ?? '') || complete !== (bot.persona.complete ?? false),
+        template: template !== bot.template,
+        model: modelEnabled !== Boolean(bot.model) || provider !== (bot.model?.provider ?? '') || modelId !== (bot.model?.model ?? '') || reasoning !== (bot.model?.reasoningEffort ?? ''),
+        skills: extraDirs !== bot.skills.extraDirs.join('\n'),
+        memory: memory !== bot.memory.enabled || injectLimit !== String(bot.memory.injectLimit),
+        tools: deny !== bot.tools.deny.join('\n'),
+      };
+      for (const key of Object.keys(fields) as Array<keyof BotPatch>) if (!changed[key]) delete fields[key];
+    }
     const input = editing
       ? fields
       : {
@@ -231,10 +271,11 @@ export function BotEditor({
       }}
       noValidate
     >
+      <fieldset disabled={creationSaved || disabled} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className={styles.editorBody}>
         {failure && (
           <p className={styles.error} role="alert">
-            {t('errors.save')}
+            {creationSaved ? text('chat.savedOpenFailed') : t('errors.save')}
           </p>
         )}
         {Object.keys(errors).length > 0 && (
@@ -258,24 +299,12 @@ export function BotEditor({
               aria-describedby={errors.name ? `${uid}-name-error` : undefined}
             />
           </label>
-          <label className={styles.field}>
-            {t('editor.id')}
-            <input
-              value={id}
-              onChange={(event) => setId(event.target.value)}
-              readOnly={editing}
-              disabled={disabled}
-              required
-              aria-invalid={Boolean(errors.id)}
-              aria-describedby={`${uid}-id-hint${errors.id ? ` ${uid}-id-error` : ''}`}
-            />
-            <span className={styles.hint} id={`${uid}-id-hint`}>
-              {t(editing ? 'editor.idImmutable' : 'editor.idHint')}
-            </span>
-          </label>
         </div>
         {avatarWarning && <p className={styles.warning}>{t('avatar.invalidStored')}</p>}
-        <AvatarPicker
+        <button type="button" className={styles.button} aria-label={t('editor.avatar')} aria-expanded={avatarOpen} disabled={disabled} onClick={() => setAvatarOpen(!avatarOpen)}>
+          <BotAvatar bot={{ id, avatar, avatarColor, avatarVariant }} size={48} />
+        </button>
+        {avatarOpen && <AvatarPicker
           id={id}
           value={avatar}
           color={avatarColor}
@@ -285,7 +314,9 @@ export function BotEditor({
           onColorChange={setAvatarColor}
           disabled={disabled}
           t={t}
-        />
+        />}
+        {!editing && <p className={styles.hint}>{text('chat.firstMessage')}</p>}
+        <details data-compatibility-settings=""><summary>{text('chat.compatibility')}</summary>
         <label className={styles.field}>
           {t('editor.description')}
           <textarea
@@ -295,6 +326,7 @@ export function BotEditor({
             disabled={disabled}
           />
         </label>
+        <details><summary>{text('chat.advanced')}</summary>
         <label className={styles.field}>
           {t('editor.persona')}
           <textarea
@@ -330,6 +362,7 @@ export function BotEditor({
           />
           {t('manage.personaComplete')}
         </label>
+        </details>
         <fieldset disabled={disabled}>
           <legend>{t('manage.model')}</legend>
           <p className={styles.hint}>{t('manage.modelHint')}</p>
@@ -339,6 +372,18 @@ export function BotEditor({
           </label>
           {modelEnabled && (
             <>
+              {models && <label className={styles.field}>{cap('capabilities.catalogModel')}
+                <select value={JSON.stringify([provider, modelId])} onChange={event => {
+                  const [nextProvider, nextModel] = JSON.parse(event.target.value) as [string, string];
+                  setProvider(nextProvider); setModelId(nextModel); setReasoning('');
+                }}>
+                  <option value={JSON.stringify([provider, modelId])}>{provider && modelId ? `${provider} / ${modelId}` : cap('capabilities.modelDefault')}</option>
+                  {(modelCatalog?.providers ?? []).map(route => <optgroup key={route.id} label={route.name}>
+                    {route.models.filter(model => model.provider !== provider || model.id !== modelId).map(model => <option key={model.id} value={JSON.stringify([route.id, model.id])}>{model.name}</option>)}
+                  </optgroup>)}
+                </select>
+                <span className={styles.hint}>{cap(modelCatalog?.error || modelCatalog?.providers.some(route => route.id === provider && !route.available) ? 'capabilities.modelUnavailable' : modelCatalog?.providers.some(route => route.id === provider && route.models.some(model => model.id === modelId)) ? 'capabilities.modelLoaded' : 'capabilities.modelUnknown')}</span>
+              </label>}
               <label className={styles.field}>
                 {t('manage.provider')}
                 <input value={provider} onChange={(e) => setProvider(e.target.value)} />
@@ -349,7 +394,8 @@ export function BotEditor({
               </label>
               <label className={styles.field}>
                 {t('manage.reasoning')}
-                <input value={reasoning} onChange={(e) => setReasoning(e.target.value)} />
+                <input list={`${uid}-reasoning-values`} value={reasoning} onChange={(e) => setReasoning(e.target.value)} />
+                <datalist id={`${uid}-reasoning-values`}>{efforts.map(effort => <option key={effort.id} value={effort.id}>{effort.name}</option>)}</datalist>
               </label>
             </>
           )}
@@ -359,6 +405,12 @@ export function BotEditor({
           <textarea rows={3} value={extraDirs} disabled={disabled} onChange={(e) => setExtraDirs(e.target.value)} />
         </label>
         <p className={styles.hint}>{t('manage.skillHint')}</p>
+        {onPickDirectory && <button type="button" className={styles.button} disabled={disabled} onClick={() => {
+          setPicking(true); setPickFailed(false);
+          void onPickDirectory().then(path => { if (mounted.current && path) setExtraDirs(current => [...new Set([...current.split('\n').filter(Boolean), path])].join('\n')); },
+            () => { if (mounted.current) setPickFailed(true); }).finally(() => { if (mounted.current) setPicking(false); });
+        }}>{cap('capabilities.chooseDirectory')}</button>}
+
         <section data-bot-default-cwd="" className={styles.cwdSection} aria-label={t('editor.defaultCwd')}>
           <p className={styles.hint}>{t('editor.cwdHint')}</p>
           <label className={styles.field}>
@@ -449,6 +501,7 @@ export function BotEditor({
             {t('editor.cwdPermissions')}
           </p>
         </section>
+        <details><summary>{text('chat.advanced')}</summary>
         <div className={styles.formRow}>
           <label className={styles.checkboxField}>
             <input
@@ -491,19 +544,23 @@ export function BotEditor({
             {t('editor.hiddenToolsHint')}
           </span>
         </label>
+        </details>
+        </details>
       </div>
+      </fieldset>
+      {!editing && !duplicate && <p role="note" className={styles.hint}>{t('onboarding.createNotice')}</p>}
       <footer className={styles.dialogFooter}>
         <button type="button" className={styles.button} onClick={onCancel} disabled={disabled}>
           {t('actions.cancel')}
         </button>
         <button type="submit" className={styles.primaryButton} disabled={disabled}>
-          {t(disabled ? 'editor.saving' : 'editor.save')}
+          {disabled ? t('editor.saving') : editing ? t('editor.save') : text(creationSaved ? 'chat.openChat' : 'chat.createAndChat')}
         </button>
       </footer>
     </form>
   );
   return (
-    <Modal title={title} description={t('bots.newSessionsNotice')} busy={disabled} onClose={onCancel} t={t}>
+    <Modal title={title} description={editing ? t('bots.newSessionsNotice') : undefined} busy={disabled} onClose={onCancel} t={t}>
       {editing && memoryPanel && (
         <div className={styles.tabs} role="tablist" aria-label={t('editor.details')}>
           <button

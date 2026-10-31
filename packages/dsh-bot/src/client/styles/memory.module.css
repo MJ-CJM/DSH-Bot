@@ -5,6 +5,31 @@
   color: var(--dsw-alias-label-primary);
   min-width: 0;
   max-width: 100%;
+  box-sizing: border-box;
+}
+/* Constrain intrinsic grid sizes and wrap the managed panel's tabs, notices and actions. */
+.panel :where(section, aside, form, fieldset, [role="tablist"]) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.panel :where(p, legend, label, button) {
+  overflow-wrap: anywhere;
+}
+.panel [role="tablist"],
+.panel :global([data-shared-memory-panel]) :where(div, form) {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.panel button {
+  max-width: 100%;
+  white-space: normal;
+}
+.panel :global([data-qualifier-row]) {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 .panel p,
 .panel h3 {
@@ -32,6 +57,10 @@
 .searchGroup > label {
   flex: 1 1 12rem;
   min-width: min(100%, 12rem);
+}
+.panel :global([data-qualifier-row]) label {
+  flex: 1 1 120px;
+  min-width: 0;
 }
 .panel .search button {
   align-self: flex-end;

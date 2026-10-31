@@ -1,4 +1,6 @@
 import type {} from '@deepseek-ai/dsh-api-remotes';
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { RoutineOutcome } from '../shared/routine-outcomes.js';
 import type {} from '@deepseek-ai/dsh-schedule';
 import type { Context } from '@deepseek-ai/cordis';
 import type { TypertRemoteNamespaceMap, RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
@@ -27,7 +29,7 @@ export interface RoutineActions {
   deleteLegacy(id: string): Promise<void>;
   runNow(record: NativeTask, operationId: string): Promise<void>;
   history(record: NativeTask): PollingCatalog<{
-    records: ScheduleDeliveryRecord[];
+    records: (ScheduleDeliveryRecord & { outcome?: RoutineOutcome })[];
     more: boolean;
     unavailable: boolean;
   }> & {
@@ -134,7 +136,7 @@ export function createRoutineActions(
       let pages = 1;
       const history = createPollingCatalog(
         ctx,
-        { records: [] as ScheduleDeliveryRecord[], more: false, unavailable: false },
+        { records: [] as (ScheduleDeliveryRecord & { outcome?: RoutineOutcome })[], more: false, unavailable: false },
         async () => {
           const records: ScheduleDeliveryRecord[] = [];
           let before: ScheduleDeliveryRecord['messageId'] | undefined;
@@ -159,7 +161,18 @@ export function createRoutineActions(
             unavailable ||= value.earlierRecordsUnavailable || value.earlierRecordsPruned;
             if (!more) break;
           }
-          return { records, more, unavailable };
+          // Native delivery receipts remain authoritative; missing execution evidence stays unknown.
+          let outcomes: RoutineOutcome[] = [];
+          try {
+            const sessions = ctx.get('sessions') as unknown as ISessions | undefined;
+            await sessions?.refreshProjections(record.sessionId);
+            const snapshot = sessions?.list.getSnapshot().projectionsBySession[record.sessionId];
+            outcomes = snapshot?.values.dshBotRoutineOutcomes ?? [];
+          } catch { /* A failed projection read must not hide durable delivery history. */ }
+          return { records: records.map(row => {
+            const outcome = outcomes.find(item => item.messageId === row.messageId);
+            return outcome ? { ...row, outcome } : row;
+          }), more, unavailable };
         },
         options,
       );

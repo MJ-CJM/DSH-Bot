@@ -1,0 +1,20 @@
+{
+  "en": {
+    "capabilities.browser": "Browser use",
+    "capabilities.browserBlocked": "The provider does not expose a public tool ownership bridge.",
+    "capabilities.browserConnector": "To use browser tools now, assign your own Playwright MCP connector to this Bot in Connections. It follows the existing connector approvals and data boundaries.",
+    "capabilities.voice": "Voice input",
+    "capabilities.voiceSetup": "Enable Voice Input in the native Plugins page. Prepare the selected recognizer there, then use the microphone beside Send. HTTPS or loopback and microphone permission are required.",
+    "capabilities.voiceReady": "The selected Host recognizer reports ready. Browser microphone access is checked when you record.",
+    "capabilities.voiceNotReady": "Voice recognition is not ready. Check the native plugin settings."
+  },
+  "zh": {
+    "capabilities.browser": "浏览器操作",
+    "capabilities.browserBlocked": "提供者尚未公开工具归属桥接。",
+    "capabilities.browserConnector": "如需立即使用浏览器工具，可在连接中为此 Bot 绑定自己的 Playwright MCP，沿用现有连接器审批和数据边界。",
+    "capabilities.voice": "语音输入",
+    "capabilities.voiceSetup": "在原生插件页启用 Voice Input（语音输入），按需准备识别器，然后使用发送按钮旁的麦克风。需要 HTTPS 或本机回环地址，并授予麦克风权限。",
+    "capabilities.voiceReady": "所选 Host 识别器报告已就绪；录音时仍需检查浏览器麦克风权限。",
+    "capabilities.voiceNotReady": "语音识别尚未就绪，请检查原生插件设置。"
+  }
+}

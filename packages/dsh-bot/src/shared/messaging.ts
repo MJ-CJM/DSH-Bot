@@ -127,6 +127,7 @@ export const messageRecordSchema = z
     envelope: envelopeSchema,
     nativeInput: nativeMessageSchema.optional(),
     outgoingInput: nativeMessageSchema.optional(),
+    flowId: z.uuid().optional(),
     invocationKey: id,
     invocationDigest: digest,
     revision: positive,

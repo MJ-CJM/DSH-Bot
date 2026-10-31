@@ -51,6 +51,7 @@ export class ReferenceBackend extends ReferenceWriter {
     return agent;
   }
   protected async applyNow(bot: BotKey) {
+    this.registry.memoryAdmission?.assertAllowed();
     const binding = this.binding(bot);
     if (!binding || binding.mode === 'internal' || this.stopping) return;
     const agent = await this.main(bot);

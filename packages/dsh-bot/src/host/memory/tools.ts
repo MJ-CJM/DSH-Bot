@@ -1,10 +1,11 @@
+import type { MemoryRecord } from '../../shared/schema.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { defineTool, type ToolRunContext, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools';
 import { DshBotError } from '../errors.js';
 import type { BotMemoryService } from './service.js';
 
-export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_save', 'memory_search', 'memory_list', 'memory_forget'];
+export const MEMORY_TOOL_NAMES: readonly string[] = ['bot_memory_save', 'bot_memory_search', 'bot_memory_list', 'bot_memory_forget'];
 
 const recordSchema = {
   type: 'object',
@@ -18,6 +19,7 @@ const recordSchema = {
     pinned: { type: 'boolean', required: true },
     createdAt: { type: 'integer', required: true },
     updatedAt: { type: 'integer', required: true },
+    scope: { type: 'string', enum: ['private', 'shared'] },
     source: {
       type: 'object',
       additionalProperties: false,
@@ -36,14 +38,14 @@ const listOutput = {
 };
 
 /** Definitions bind both the trusted Bot service and the owning Agent, never model arguments. */
-export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
+export function createMemoryTools(memory: BotMemoryService, owner: Agent, observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}) {
   const authorize = (exec: ToolRunContext) => {
     if (exec.agent !== owner) throw new DshBotError('bot/invalid', 'Memory tool belongs to another agent');
     exec.signal.throwIfAborted();
   };
   return [
     defineTool({
-      name: 'memory_save',
+      name: 'bot_memory_save',
       description:
         'Save explicit user preferences or durable facts for this Bot. Do not save one-off information, secrets, or API keys.',
       parameters: {
@@ -81,8 +83,8 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       },
     }),
     defineTool({
-      name: 'memory_search',
-      description: "Search this Bot's saved preferences and durable facts before asking the user again.",
+      name: 'bot_memory_search',
+      description: "Search this Bot's private memories and published user-shared facts before asking the user again.",
       parameters: {
         query: { type: 'string', required: true },
         limit: { type: 'integer', description: 'Maximum results, from 1 to 200.' },
@@ -90,12 +92,12 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       output: listOutput,
       async execute(args, exec) {
         authorize(exec);
-        return memory.search(args, exec.signal);
+        return memory.search(args, exec.signal, observed);
       },
     }),
     defineTool({
-      name: 'memory_list',
-      description: "List this Bot's durable memories, optionally filtered by tag or pinned status.",
+      name: 'bot_memory_list',
+      description: "List this Bot's private memories and published shared facts; candidates and conflicts are excluded.",
       parameters: {
         tag: { type: 'string' },
         pinned: { type: 'boolean' },
@@ -104,14 +106,15 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent) {
       output: listOutput,
       async execute(args, exec) {
         authorize(exec);
-        return memory.list(args, exec.signal);
+        return memory.list(args, exec.signal, observed);
       },
     }),
     defineTool({
-      name: 'memory_forget',
-      description: 'Delete a memory belonging to this Bot when the user asks to forget it or it is no longer valid.',
+      name: 'bot_memory_forget',
+      description: 'Stop using a memory belonging to this Bot. Affected sessions stay blocked until history and copy cleanup is verified.',
       parameters: { id: { type: 'string', required: true } },
-      output: { schema: { type: 'null' }, render: () => [{ type: 'text', text: 'Memory deleted.' }] },
+      output: { schema: { type: 'null' }, render: () => [{ type: 'text',
+        text: 'Stopped using this memory. Strong forgetting is pending; affected sessions remain blocked.' }] },
       async execute(args, exec) {
         authorize(exec);
         await memory.forget(args, exec.signal);

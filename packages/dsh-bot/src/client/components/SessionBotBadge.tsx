@@ -40,9 +40,10 @@ export function SessionBotBadge({
     return typeof value === 'string' ? value : undefined;
   });
   const snapshot = useCatalog((value) => value);
-  const entry =
-    presetId === undefined ? undefined : snapshot.entries.find((item) => item.status?.presetId === presetId);
   const activity = useActivity((value) => value.sessions.find((item) => item.sessionId === sessionId));
+  const entry = snapshot.entries.find(item => item.status?.mainSessionId === sessionId) ??
+    (presetId === undefined ? undefined : snapshot.entries.find((item) => item.status?.presetId === presetId &&
+      activity?.botId === item.bot.id && activity.botCreatedAt === item.bot.createdAt));
   const mainPanel = usePanelInfo((value) => value.activePanelId === null);
   // The public mainView retention source is also how DSH's DocumentTitle
   // identifies the selected session. Header slots may appear in other views.
