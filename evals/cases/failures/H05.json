@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H05",
+  "kind": "history",
+  "rootCause": "screenshot-does-not-await-independent-session-list",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P1-T08g.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      125,
+      138
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Bot catalog is ready but native sessions remain pending.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Await each source of initial readiness before asserting history rows.",
+  "observed": {
+    "original": "Failure screenshots still displayed loading; later debug snapshots were taken after readiness.",
+    "beforeFix": "Failure screenshots still displayed loading; later debug snapshots were taken after readiness.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

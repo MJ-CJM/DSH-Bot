@@ -1,0 +1,27 @@
+{
+  "source": "packages/client/ui-theme/src/styles/design-platform.css",
+  "tag": "dsh-v0.2.1-rc.2",
+  "sha256": "809b20ae477324fdf5181a2d338655a19919cabbf1b0e60adc149908462c5a66",
+  "light": {
+    "background": [255, 255, 255],
+    "foreground": [15, 17, 21],
+    "lines": [167, 222, 240, 253, 256, 250],
+    "colors": {
+      "--dsw-alias-state-business-primary": [65, 118, 230],
+      "--dsw-alias-state-success-primary": [34, 197, 94],
+      "--dsw-alias-state-warn-label": [221, 134, 41],
+      "--dsw-alias-state-error-primary": [236, 19, 19]
+    }
+  },
+  "dark": {
+    "background": [21, 21, 23],
+    "foreground": [249, 250, 251],
+    "lines": [285, 340, 358, 371, 374, 368],
+    "colors": {
+      "--dsw-alias-state-business-primary": [122, 170, 255],
+      "--dsw-alias-state-success-primary": [34, 197, 94],
+      "--dsw-alias-state-warn-label": [221, 134, 41],
+      "--dsw-alias-state-error-primary": [242, 90, 90]
+    }
+  }
+}

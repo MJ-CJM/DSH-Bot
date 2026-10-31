@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H22",
+  "kind": "history",
+  "rootCause": "sandbox-denies-os-process-identity-probe",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P2-T13.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      36,
+      36
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Lease audit requires ps lstart or descendant process enumeration.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Fail closed on unverified identity; label OS-level evidence NOT_RUN.",
+  "observed": {
+    "original": "Sandbox returned operation not permitted; injected PID tests are not OS proof.",
+    "beforeFix": "Sandbox returned operation not permitted; injected PID tests are not OS proof.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

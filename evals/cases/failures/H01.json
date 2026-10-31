@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "H01",
+  "kind": "history",
+  "rootCause": "peer-service-probe-is-not-injection",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/acceptance/V032-bot-to-bot.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      167,
+      171
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "Service belongs to another plugin fiber; ctx.get succeeds.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/contracts.spec.ts -t \"H01 \"",
+  "expected": "Declare optional injection before accessing peer service properties.",
+  "observed": {
+    "original": "Published Client factory threw without inject; root-context doubles had hidden the defect.",
+    "beforeFix": "Review reconstruction reproduces the documented failure mechanism.",
+    "afterFix": "Current product/public Cordis boundary passes the same invariant (UNIT only)."
+  },
+  "regressions": [
+    {
+      "testId": "H01",
+      "testFile": "packages/dsh-bot/tests/deepening/contracts.spec.ts",
+      "testName": "H01 peer service probe does not grant property access",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/H01.json"
+    }
+  ]
+}

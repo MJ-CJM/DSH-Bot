@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+exec "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" "$@"

@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "kind",
+    "rootCause",
+    "mastCategory",
+    "source",
+    "evidenceLevel",
+    "status",
+    "precondition",
+    "command",
+    "expected",
+    "observed",
+    "regressions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^(H|S)[0-9]{2}$"
+    },
+    "kind": {
+      "enum": [
+        "history",
+        "shared"
+      ]
+    },
+    "rootCause": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mastCategory": {
+      "enum": [
+        "specification",
+        "inter-agent-alignment",
+        "verification"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "revision",
+        "lines"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "evidenceLevel": {
+      "enum": [
+        "SOURCE",
+        "UNIT",
+        "HOST_LOOPBACK",
+        "BROWSER",
+        "REAL_MODEL"
+      ]
+    },
+    "status": {
+      "enum": [
+        "FIXED",
+        "OPEN",
+        "SOURCE_ONLY"
+      ]
+    },
+    "precondition": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "original",
+        "beforeFix",
+        "afterFix"
+      ],
+      "properties": {
+        "original": {
+          "type": "string",
+          "minLength": 1
+        },
+        "beforeFix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "afterFix": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "regressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "testId",
+          "testFile",
+          "testName",
+          "status",
+          "receipt"
+        ],
+        "properties": {
+          "testId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "testFile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "testName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "OPEN"
+            ]
+          },
+          "receipt": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

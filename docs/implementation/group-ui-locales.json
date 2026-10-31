@@ -1,0 +1,38 @@
+{
+  "en": {
+    "groups.nonText": "Other non-text content remains in the source conversation.",
+    "groups.openAttachment": "Open {name}",
+    "groups.attachmentUnavailable": "This attachment could not be opened. Retry or open its source conversation.",
+    "groups.attach": "Attach files",
+    "groups.attachments": "Attachments",
+    "groups.uploading": "Uploading",
+    "groups.uploaded": "Ready to send",
+    "groups.uploadFailed": "Upload failed. Remove this file and try again.",
+    "groups.removeAttachment": "Remove {name}",
+    "groups.image": "Image",
+    "groups.openArtifactSource": "Open source conversation",
+    "groups.cancelTurn": "Stop response",
+    "groups.advanced": "Advanced settings",
+    "groups.markdownCopy": "Copy code",
+    "groups.markdownCopied": "Copied",
+    "groups.markdownFootnotes": "Footnotes"
+  },
+  "zh": {
+    "groups.nonText": "其他非文字内容保留在来源对话中。",
+    "groups.openAttachment": "打开 {name}",
+    "groups.attachmentUnavailable": "暂时无法打开此附件，请重试或打开来源对话。",
+    "groups.attach": "添加文件",
+    "groups.attachments": "附件",
+    "groups.uploading": "正在上传",
+    "groups.uploaded": "待发送",
+    "groups.uploadFailed": "上传失败，请移除文件后重试。",
+    "groups.removeAttachment": "移除 {name}",
+    "groups.image": "图片",
+    "groups.openArtifactSource": "打开来源对话",
+    "groups.cancelTurn": "停止回复",
+    "groups.advanced": "高级设置",
+    "groups.markdownCopy": "复制代码",
+    "groups.markdownCopied": "已复制",
+    "groups.markdownFootnotes": "脚注"
+  }
+}

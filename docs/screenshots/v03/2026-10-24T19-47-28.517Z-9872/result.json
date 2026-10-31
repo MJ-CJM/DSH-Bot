@@ -1,0 +1,546 @@
+{
+  "fixtureStatus": "PASS",
+  "profile": "screenshots-v03-1792871248530-9872",
+  "installedAudit": {
+    "profile": "screenshots-v03-1792871248530-9872",
+    "version": "0.3.1",
+    "files": 270,
+    "artifactSha256": "eec5e01097c6f1cd8543d55e8ce4b7df7fd6ff318f544b27ac04e16ca7f2b627",
+    "status": "PASS"
+  },
+  "artifact": {
+    "sha256": "eec5e01097c6f1cd8543d55e8ce4b7df7fd6ff318f544b27ac04e16ca7f2b627",
+    "path": "dist/dsh-bot-0.3.1.tgz"
+  },
+  "aliases": [],
+  "themeEvidence": [],
+  "sidebarEvidence": [],
+  "scrollEvidence": [],
+  "status": "FAIL",
+  "phase": "isolated-host",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v03/2026-10-24T19-47-28.517Z-9872",
+  "workDir": "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-47-28.517Z-9872",
+  "realModelRequests": 0,
+  "modelRequests": 6,
+  "commands": [
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792871248530-9872",
+        "--from-default-profile",
+        "web",
+        "--dump-config"
+      ],
+      "label": "initialize",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "plugin",
+        "--profile",
+        "screenshots-v03-1792871248530-9872",
+        "add",
+        "/Users/youzihui/ai-workspace/DSH-Bot/dist/dsh-bot-0.3.1.tgz"
+      ],
+      "label": "install",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792871248530-9872",
+        "--no-open",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0"
+      ],
+      "label": "host",
+      "code": 0
+    }
+  ],
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "NOT_RUN: seed-only mode"
+    }
+  ],
+  "narrowChecks": [
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    }
+  ],
+  "pageErrors": []
+}

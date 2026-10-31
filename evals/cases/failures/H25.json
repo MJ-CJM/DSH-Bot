@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H25",
+  "kind": "history",
+  "rootCause": "locator-label-or-scope-does-not-match-ui-state",
+  "mastCategory": "verification",
+  "source": {
+    "path": ".codex/runs/PROGRESS.md",
+    "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+    "lines": [
+      72,
+      72
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "A screenshot uses a stale label or a page-wide duplicate button locator.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Use the current dialog and exact accessible control for the intended state.",
+  "observed": {
+    "original": "Schedule rule lookup timed out; another test clicked a same-name memory action outside its editor.",
+    "beforeFix": "Schedule rule lookup timed out; another test clicked a same-name memory action outside its editor.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

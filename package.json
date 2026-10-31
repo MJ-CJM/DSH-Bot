@@ -1,0 +1,25 @@
+{
+  "name": "dsh-bot-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.5",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "scripts/pnpm --filter './packages/*' -r build",
+    "test": "scripts/pnpm --filter './packages/*' -r test",
+    "typecheck": "scripts/pnpm --filter './packages/*' -r typecheck",
+    "lint": "biome lint packages",
+    "check": "scripts/pnpm build && scripts/pnpm test && scripts/pnpm typecheck && scripts/pnpm lint",
+    "check:spikes": "scripts/pnpm --filter './spikes/**' -r build && scripts/pnpm --filter './spikes/**' -r typecheck && biome lint spikes && node spikes/remote/packages/dsh-bot-spike-remote/lib/contract-check.js && node spikes/p1-api/lib/public-exports.js && DSH_HOME=\"$PWD/.dsh-dev\" node spikes/test-tools/src/run.ts",
+    "pack:plugin": "scripts/pnpm --filter dsh-bot build && cd packages/dsh-bot && ../../scripts/pnpm pack --pack-destination ../../dist",
+    "spike:p34": "scripts/pnpm -F dsh-bot build && scripts/pnpm -C spikes/p34 build && DSH_HOME=\"$PWD/.dsh-dev\" node spikes/p34/lib/run.js"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "22.20.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

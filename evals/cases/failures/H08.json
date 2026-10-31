@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H08",
+  "kind": "history",
+  "rootCause": "screenshot-failure-not-propagated-to-cli",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/V032-bot-to-bot.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      175,
+      192
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Host succeeds but screenshot capture reports failure.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "CLI exits nonzero for failed or unexecuted required browser validation.",
+  "observed": {
+    "original": "First root CLI returned exit 0 despite browser FAIL; later root command propagated exit 1.",
+    "beforeFix": "First root CLI returned exit 0 despite browser FAIL; later root command propagated exit 1.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "S08",
+  "kind": "shared",
+  "rootCause": "pre-forget-approval-commits-after-forget-epoch",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/deepening/implementation-design.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      89,
+      103
+    ]
+  },
+  "evidenceLevel": "UNIT",
+  "status": "FIXED",
+  "precondition": "Queue a pre-approved synthetic save, forget the existing row, then release the queue.",
+  "command": "DSH_HOME=\"$PWD/.dsh-dev\" scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/shared-contracts.spec.ts -t \"S08 \"",
+  "expected": "Revalidate payload version, forgetEpoch and policy at commit; stale grant commits zero rows.",
+  "observed": {
+    "original": "v1 save has cancellation but no epoch grant; delayed write restores captured content.",
+    "beforeFix": "v1 save has cancellation but no epoch grant; delayed write restores captured content.",
+    "afterFix": "B4 revalidates preview inside the admission/commit queue, cancels active leases and keeps retry/prepared requests blocked after forget epoch changes. Full native grant/egress contracts remain B6; P0 stays OPEN. See docs/deepening/B4.md."
+  },
+  "regressions": [
+    {
+      "testId": "S08",
+      "testFile": "packages/dsh-bot/tests/deepening/shared-contracts.spec.ts",
+      "testName": "S08 approval captured before forget cannot commit from the queued operation",
+      "status": "PASS",
+      "receipt": ".dsh-dev/deepening/b2/receipts/S08.json"
+    }
+  ]
+}

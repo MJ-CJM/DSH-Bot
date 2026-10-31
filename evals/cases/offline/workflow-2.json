@@ -1,0 +1,122 @@
+{
+  "source": "synthetic",
+  "cases": [
+    {
+      "id": "workflow-10",
+      "kind": "workflow",
+      "group": "workflow-05",
+      "catalogCaseId": "H01",
+      "input": {
+        "terminal": "completed",
+        "sideEffects": 1,
+        "simulateTimeout": false
+      },
+      "gold": {
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-11",
+      "kind": "workflow",
+      "group": "workflow-05",
+      "catalogCaseId": "H01",
+      "input": {
+        "terminal": "completed",
+        "sideEffects": 1,
+        "simulateTimeout": false
+      },
+      "gold": {
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-12",
+      "kind": "workflow",
+      "group": "workflow-06",
+      "catalogCaseId": "H01",
+      "input": {
+        "terminal": "completed",
+        "sideEffects": 1,
+        "simulateTimeout": false
+      },
+      "gold": {
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-13",
+      "kind": "workflow",
+      "group": "workflow-06",
+      "catalogCaseId": "H01",
+      "input": {
+        "terminal": "completed",
+        "sideEffects": 1,
+        "simulateTimeout": false
+      },
+      "gold": {
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-14",
+      "kind": "workflow",
+      "group": "workflow-07",
+      "catalogCaseId": "H01",
+      "input": {
+        "terminal": "completed",
+        "sideEffects": 1,
+        "simulateTimeout": false
+      },
+      "gold": {
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "workflow-10",
+      "response": {
+        "status": "ok",
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-11",
+      "response": {
+        "status": "ok",
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-12",
+      "response": {
+        "status": "ok",
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-13",
+      "response": {
+        "status": "ok",
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    },
+    {
+      "id": "workflow-14",
+      "response": {
+        "status": "ok",
+        "terminal": "completed",
+        "sideEffects": 1
+      }
+    }
+  ]
+}

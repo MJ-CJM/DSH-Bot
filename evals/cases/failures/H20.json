@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H20",
+  "kind": "history",
+  "rootCause": "requested-sidebar-extension-has-no-public-slot",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P1-T08b.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      22,
+      26
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Plugin requests a persistent parallel section and removal of native Bot rows.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Document the supported footer fallback; do not depend on private list filters.",
+  "observed": {
+    "original": "rc.2 lacks both required public extension mechanisms.",
+    "beforeFix": "rc.2 lacks both required public extension mechanisms.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

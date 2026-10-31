@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "title": { "en": "DSH-Bot local market fixture - not published", "zh": "DSH-Bot 本地市场测试样本 - 未发布" },
+  "description": { "en": "Synthetic package for parser and isolated mock registry tests only.", "zh": "仅用于解析与隔离 mock registry 安装测试的合成包。" },
+  "plugins": [{
+    "name": "dsh-bot-market-fixture",
+    "title": { "en": "Synthetic installation fixture", "zh": "合成安装样本" },
+    "description": { "en": "This is not the DSH-Bot release.", "zh": "此包不是 DSH-Bot 正式交付包。" },
+    "versions": [{
+      "version": "0.3.0",
+      "publishTimestamp": 1792800000,
+      "source": { "type": "npm", "registry": "https://registry.fixture.invalid/" },
+      "engines": { "dsh": ">=0.2.1-rc.2 <0.3.0" }
+    }]
+  }]
+}

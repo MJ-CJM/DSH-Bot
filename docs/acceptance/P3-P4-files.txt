@@ -1,0 +1,50 @@
+P34 U12/U13 change manifest
+
+Preserved pre-existing changes (not authored by this task):
+ M pnpm-workspace.yaml
+?? .codex/
+
+Authored/updated files:
+README.md
+docs/acceptance/P3-P4-files.txt
+docs/acceptance/P3-P4.md
+docs/architecture.md
+docs/dsh-api-notes.md
+docs/fixtures/market-index.fixture.json
+docs/screenshots/v03/2026-10-24T19-24-36.408Z-67773/error.log
+docs/screenshots/v03/2026-10-24T19-24-36.408Z-67773/result.json
+docs/screenshots/v03/2026-10-24T19-27-16.918Z-73042/error.log
+docs/screenshots/v03/2026-10-24T19-27-16.918Z-73042/result.json
+docs/screenshots/v03/2026-10-24T19-30-46.050Z-79469/error.log
+docs/screenshots/v03/2026-10-24T19-30-46.050Z-79469/result.json
+docs/screenshots/v03/2026-10-24T19-33-43.827Z-85091/error.log
+docs/screenshots/v03/2026-10-24T19-33-43.827Z-85091/result.json
+docs/screenshots/v03/README.md
+packages/dsh-bot/LICENSE
+packages/dsh-bot/README.md
+packages/dsh-bot/build/css-modules.ts
+packages/dsh-bot/package.json
+packages/dsh-bot/scripts/screenshot-v03.mjs
+packages/dsh-bot/tests/bundle.spec.ts
+packages/dsh-bot/tests/release-profile-host.mjs
+packages/dsh-bot/tests/release-upgrade-host.mjs
+packages/dsh-bot/tests/screenshot-profile.mjs
+pnpm-lock.yaml
+scripts/p34-artifact.mjs
+scripts/p34-collaboration-runtime.mjs
+scripts/p34-e2e
+scripts/p34-groups-runtime.mjs
+scripts/p34-market.mjs
+scripts/p34-memory-runtime.mjs
+scripts/p34-runtime.mjs
+scripts/p34-upgrade.mjs
+scripts/screenshot.mjs
+
+Generated release artifacts (gitignored):
+dist/dsh-bot-0.3.0.tgz
+dist/dsh-bot-0.3.0.tgz.sha256
+dist/artifact-manifest.json
+
+Final evidence:
+.dsh-dev/p34-u12-13/1792870282354-80476/
+docs/screenshots/v03/2026-10-24T19-33-43.827Z-85091/

@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+/** R05: install the release tarball in fresh profiles; native schedule and spawn only. */
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
+import { dirname, resolve, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+assert.equal(process.cwd(), root, 'Run scripts/p2-e2e from the repository root');
+const home = resolve(root, '.dsh-dev');
+assert.ok(!process.env.DSH_HOME || process.env.DSH_HOME === home, 'Only repository .dsh-dev is allowed');
+const artifact = resolve(root, 'dist/dsh-bot-0.2.2.tgz');
+const manifest = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'), 'utf8'));
+assert.equal(manifest.version, '0.2.2');
+const sha256 = data => createHash('sha256').update(data).digest('hex');
+const runDir = resolve(home, 'p2/r05', `${Date.now()}-${process.pid}`);
+await mkdir(runDir, { recursive: true });
+await writeFile(resolve(home, 'p2/r05/latest-run.txt'), `${runDir}\n`);
+const summary = { status: 'FAIL', runDir, artifact: { path: relative(root, artifact), sha256: sha256(await readFile(artifact)) },
+  isolation: 'Fresh profiles/storage/session/agents roots under required existing repository .dsh-dev; not an empty DSH_HOME.',
+  visualValidation: 'NOT_RUN', scenarios: [], checks: [], mockRequests: 0, realModelRequests: 0 };
+const scenarios = [
+  { name: 'native', args: ['scripts/screenshot.mjs', '--v022-host-only'], result: 'summary.json', status: 'HOST_ONLY_PASS', checks: [
+    ['model_schedule_create_and_bot_binding', 'native-seed.json'], ['native_every60_delivery', 'native-seed.json'],
+    ['manual_main_session_delivery_idempotent_pinned_title', 'native-seed.json'], ['installed_client_aggregate_update_delete_push', 'native-client.json'],
+    ['legacy_020_readonly_no_crash', 'legacy-compatibility.json'],
+  ] },
+  { name: 'delegate', args: ['packages/dsh-bot/tests/delegate-profile.mts'], result: 'result.json', status: 'PASS', checks: [
+    ['native_spawn_result_to_parent', 'host-result.json'], ['target_preset_no_parent_history', 'target.json'],
+    ['entry_approval_and_child_recursion_guard', 'approvals.json'],
+  ] },
+];
+async function command(bin, args, env = process.env) {
+  let output = '';
+  const code = await new Promise((accept, reject) => {
+    const child = spawn(bin, args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout.on('data', chunk => { output += chunk; process.stdout.write(chunk); });
+    child.stderr.on('data', chunk => { output += chunk; process.stderr.write(chunk); });
+    child.once('error', reject); child.once('close', accept);
+  });
+  return { code, output };
+}
+// Extract only our known local package, retaining files for byte-for-byte audit.
+const unpack = resolve(runDir, 'unpacked'); await mkdir(unpack);
+assert.equal((await command('/usr/bin/tar', ['-xzf', artifact, '-C', unpack])).code, 0);
+async function files(dir, base = dir) {
+  const result = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = resolve(dir, entry.name);
+    if (entry.isDirectory()) result.push(...await files(path, base));
+    else { assert.ok(entry.isFile(), 'No package symlinks'); result.push(relative(base, path)); }
+  }
+  return result.sort();
+}
+const packedRoot = resolve(unpack, 'package'); const packedFiles = await files(packedRoot);
+assert.equal(JSON.parse(await readFile(resolve(packedRoot, 'package.json'))).version, '0.2.2');
+assert.ok(!packedFiles.some(p => /(?:dispatcher|delegate\/(?:reporter|runtime)|automation\/(?:lock|rules|executor|runtime|barrier))\./.test(p)), 'No retired generated modules');
+for (const scenario of scenarios) {
+  console.log(`START ${scenario.name} (loopback mock only)`);
+  const outputDir = resolve(runDir, scenario.name);
+  let output = ''; let error;
+  try {
+    const execution = await command(process.execPath, scenario.args.map((arg, i) => i === 0 ? resolve(root, arg) : arg),
+      { ...process.env, DSH_HOME: home, DSH_BOT_E2E_DIR: outputDir, DSH_BOT_E2E_PACKAGE: artifact });
+    output = execution.output; assert.equal(execution.code, 0, `${scenario.name} exited ${execution.code}`);
+    const result = JSON.parse(await readFile(resolve(outputDir, scenario.result), 'utf8'));
+    assert.equal(result.status, scenario.status); assert.equal(result.realModelRequests, 0);
+    const installedRoot = resolve(home, 'profiles', result.profile, 'node_modules/dsh-bot');
+    const installed = JSON.parse(await readFile(resolve(installedRoot, 'package.json'), 'utf8'));
+    assert.equal(installed.version, '0.2.2');
+    const audit = [];
+    for (const file of packedFiles) {
+      const packed = await readFile(resolve(packedRoot, file)); const installedBytes = await readFile(resolve(installedRoot, file));
+      assert.deepEqual(installedBytes, packed, `Installed tarball mismatch: ${file}`);
+      audit.push({ file, sha256: sha256(packed) });
+    }
+    await writeFile(resolve(outputDir, 'package-audit.json'), `${JSON.stringify(audit, null, 2)}\n`);
+    summary.mockRequests += Array.isArray(result.mockRequests) ? result.mockRequests.length : result.mockRequests;
+    summary.scenarios.push({ name: scenario.name, status: 'PASS', profile: result.profile, installedVersion: installed.version, auditedFiles: audit.length });
+    for (const [id, file] of scenario.checks) {
+      const evidence = await readFile(resolve(outputDir, file));
+      summary.checks.push({ id, status: 'PASS', evidence: `${scenario.name}/${file}`, sha256: sha256(evidence) });
+    }
+  } catch (cause) {
+    error = String(cause); summary.scenarios.push({ name: scenario.name, status: 'FAIL', error });
+    for (const [id] of scenario.checks) summary.checks.push({ id, status: 'FAIL', error });
+  }
+  await writeFile(resolve(runDir, `${scenario.name}.log`), output);
+  await writeFile(resolve(runDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  console.log(`${error ? 'FAIL' : 'PASS'} ${scenario.name}`);
+}
+summary.status = summary.checks.every(row => row.status === 'PASS') && summary.scenarios.every(row => row.status === 'PASS') ? 'PASS' : 'FAIL';
+await writeFile(resolve(runDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+console.log(JSON.stringify({ status: summary.status, runDir, mockRequests: summary.mockRequests, realModelRequests: 0 }));
+if (summary.status !== 'PASS') process.exitCode = 1;

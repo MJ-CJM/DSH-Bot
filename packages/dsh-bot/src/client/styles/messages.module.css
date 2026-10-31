@@ -1,0 +1,5 @@
+.card { margin: 8px 0; border: 1px solid var(--dsw-alias-border-l3); border-radius: 10px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); min-width: 0; }
+.summary { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px; border: 0; background: inherit; color: inherit; text-align: start; cursor: pointer; flex-wrap: wrap; }
+.summary:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); }
+.body { padding: 0 12px 12px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+.body pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

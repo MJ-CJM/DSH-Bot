@@ -1,0 +1,17 @@
+# 编排方调研摘要（一手来源）
+- LongMemEval (ICLR 2025) https://arxiv.org/abs/2410.10813 , https://github.com/xiaowu0162/LongMemEval ：500 题，5 能力（信息抽取、多会话推理、时间推理、知识更新、拒答）；长上下文模型掉 30–60%；indexing/retrieval/reading 三阶段；session 分解、fact-augmented key、time-aware query expansion。2026/05 有 LongMemEval-V2（agentic 语境）。
+- LoCoMo（经 Mem0 论文）https://arxiv.org/abs/2504.19413 ：10 个长对话，单跳/多跳/时间/开放域；Mem0 抽取-合并-检索，p95 延迟 -91%、token -90%；2026-04 新算法 ADD-only、实体链接、语义+BM25+实体融合、时间排序 https://docs.mem0.ai/core-concepts/memory-evaluation （强调在 token 预算下评测）。
+- Zep/Graphiti https://arxiv.org/abs/2501.13956 , https://github.com/getzep/graphiti ：双时态（事实有效时间 vs 写入时间），失效而不删除，混合检索（向量+BM25+图遍历+RRF）。
+- Letta/MemGPT https://docs.letta.com/v1-sdk/memory/memory-blocks/index.md , https://www.letta.com/blog/sleep-time-compute/ ：带字符上限的 memory blocks 常驻上下文；sleep-time agent 异步整理记忆，主 agent 不直接改核心记忆；新版 MemFS 用 git 管理记忆 https://docs.letta.com/configuration/memory/index.md （/doctor 审计重复与 token）。
+- LangGraph https://docs.langchain.com/oss/python/langgraph/persistence ：checkpointer（每 thread 状态、中断、time travel、恢复）与 store（跨 thread 长期记忆，namespace）分离。
+- OpenAI Agents SDK：sessions、默认开启 tracing（生成/工具/handoff/guardrail span）https://openai.github.io/openai-agents-python/tracing/ ，guardrails https://openai.github.io/openai-agents-python/guardrails/ 。
+- ChatGPT memory https://help.openai.com/en/articles/8590148-memory-in-chatgpt ：saved memories 与 chat history 两层，用户可查看/删除，删除会话不删记忆。
+- Claude memory tool https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool + context editing https://platform.claude.com/docs/en/build-with-claude/context-editing ：客户端文件式 /memories，清理旧工具结果前先存记忆。
+- OpenClaw https://github.com/openclaw/openclaw/blob/main/docs/concepts/memory.md , heartbeat https://github.com/openclaw/openclaw/blob/main/docs/gateway/heartbeat.md ：Markdown 记忆（MEMORY.md/USER.md/每日文件）+ 每 agent SQLite 索引；主会话定时 heartbeat（默认 30 分钟）做主动性。
+- A2A v1.0（2026-03）https://a2a-protocol.org/latest/specification/ ：AgentCard、带状态机的 Task（submitted/working/input-required/auth-required/completed/failed/canceled/rejected）、push 通知。
+- MCP 2025-11-25 https://modelcontextprotocol.io/specification/2025-11-25 ：工具描述不可信、每次调用需用户同意；OWASP MCP 备忘单 https://cheatsheetseries.owasp.org/cheatsheets/MCP_Security_Cheat_Sheet.html （工具定义哈希/漂移监控）。
+- MAST 多 Agent 失败分类（NeurIPS 2025 D&B）https://arxiv.org/abs/2503.13657 ：14 种失败模式（规格歧义、上下文丢失、循环、信息隐瞒、过早终止、验证薄弱）。
+- AgentDojo https://arxiv.org/abs/2406.13352 , https://agentdojo.spylab.ai/results/ ：97 任务 629 安全用例；utility / utility under attack / targeted ASR。
+- CaMeL https://arxiv.org/abs/2503.18813 ：特权/隔离 LLM + 能力与数据流追踪的解释器，AgentDojo 上可证明安全 77% 任务成功。
+- τ-bench https://arxiv.org/abs/2406.12045 ：模拟用户+策略，比较最终 DB 状态；pass^k 衡量一致性。
+- Temporal https://docs.temporal.io/workflows , AI 参考架构 https://go.temporal.io/platform-hub/ai-engineering/ai-reference-architecture ：确定性 workflow + 幂等 activity，事件历史重放。

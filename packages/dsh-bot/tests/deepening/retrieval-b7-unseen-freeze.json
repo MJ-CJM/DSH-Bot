@@ -1,0 +1,12 @@
+{
+  "frozenAt": "2026-10-28T06:45:10.395Z",
+  "hashes": {
+    "src/host/memory/retrieval-rank.ts": "f5a720298d509a83a2ed81b0f429b81a486d8fe76282f9bac52dce34d692f0cb",
+    "src/host/memory/retrieval-config.ts": "7c7b00e4854ac5ff5fc78307c211f9b6983f106be4fc6c3473e9aee0c9efb75d",
+    "src/host/memory/retrieval-text.ts": "7ac4e94c861f545f30a0ac166608f26492cda8b891ef3b74a03c738260eee764",
+    "src/host/memory/retrieval-aliases.json": "6a107f1217ffa17ab64ac4b626443f133dbc7b12f08fbb7082e77f7a1857a69d",
+    "tests/deepening/retrieval-b7-baseline.ts": "b85bde615074e0aa91b9eb4f3d38a3968caad24d0cb14f98af94d45cabcdd24e",
+    "tests/deepening/retrieval-b7-unseen.json": "b702396a08d3cc1aee0e46e410dbe82aa4a642ca4c81425d35b802f1fe4c6139",
+    "tests/deepening/retrieval-unseen.spec.ts": "92a81f5f8b410d3dcab90862b65e02f09c565de8d0c36ffa19f5a972972e9a92"
+  }
+}

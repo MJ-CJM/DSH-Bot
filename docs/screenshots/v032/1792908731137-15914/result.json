@@ -1,0 +1,110 @@
+{
+  "status": "PASS",
+  "clientActivation": {
+    "status": "PASS",
+    "reason": "Installed Client booted and rendered its message card"
+  },
+  "fixtureStatus": "PASS",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v032/1792908731137-15914",
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "bot": "beta",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "bot": "beta",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "bot": "beta",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "bot": "beta",
+      "status": "PASS"
+    }
+  ],
+  "narrow": [
+    {
+      "language": "en",
+      "theme": "light",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "bot": "beta",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "bot": "beta",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "bot": "beta",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "bot": "alpha",
+      "status": "PASS"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "bot": "beta",
+      "status": "PASS"
+    }
+  ],
+  "errors": []
+}

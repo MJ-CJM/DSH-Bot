@@ -1,0 +1,267 @@
+import { requireValue } from './test-required.js';
+import { openProfile, openHistory, refreshBots } from './bot-ui-helpers.js';
+// @vitest-environment jsdom
+import { act } from 'react';
+import { readFileSync } from 'node:fs';
+import type { ActivitySession } from '../../src/shared/activity.js';
+import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import en from '../../locale/en.json';
+import zh from '../../locale/zh.json';
+import { Config } from '../../src/client/config.js';
+import { bot, button, click, mountClient } from './helpers.js';
+
+const t = en.ui;
+const mounted: Awaited<ReturnType<typeof mountClient>>[] = [];
+async function mount(...args: Parameters<typeof mountClient>) {
+  const app = await mountClient(...args);
+  mounted.push(app);
+  return app;
+}
+afterEach(async () => {
+  for (const app of mounted.splice(0).reverse()) await app.dispose();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+
+function session(id: string, botId: string, updatedAt: number, extra: Partial<SessionSummary> = {}): SessionSummary {
+  return { id: id as SessionSummary['id'], title: id, displayTitle: id, updatedAt, running: false, blank: false,
+    retainedBy: {}, projectionValues: { agentPreset: `host-selected/${botId}` }, ...extra };
+}
+function activity(sessionId: string, botId: string, updatedAt: number, preview = 'Assistant answer'): ActivitySession {
+  return { sessionId, botId, updatedAt, unread: true, lastMessage: { role: 'assistant', preview, at: updatedAt } };
+}
+async function setSessions(app: Awaited<ReturnType<typeof mount>>, rows: SessionSummary[]) {
+  await app.setSessions({ ids: rows.map((row) => row.id), byId: Object.fromEntries(rows.map((row) => [row.id, row])) });
+}
+
+
+describe('Bots main page through the public Cordis and Slot registration contract', () => {
+  it('orders recent Bots by activity and retains an explicitly opened profile across polls', async () => {
+    const now = Date.now();
+    const app = await mount([bot({ id: 'gamma-bot', name: 'Gamma' }), bot(), bot({ id: 'beta-bot', name: 'Beta' })], 'en', remote => {
+      remote.data.activities = [activity('beta-session', 'beta-bot', now - 1000)];
+    });
+    const options = () => [...app.container.querySelectorAll('li > button[data-bot-id]')];
+    expect(options().map(item => item.getAttribute('data-bot-id'))).toEqual(['beta-bot', 'alpha-bot', 'gamma-bot']);
+    expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
+    await openProfile(app);
+    app.remote.data.activities = [activity('gamma-session', 'gamma-bot', now)];
+    await refreshBots(app);
+    expect(options().map(item => item.getAttribute('data-bot-id'))).toEqual(['gamma-bot', 'alpha-bot', 'beta-bot']);
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('alpha-bot');
+    expect(app.remote.methods.openConversation).not.toHaveBeenCalled();
+  });
+
+  it.each(['en', 'zh'] as const)('renders session previews, unread and running states with locale-relative times in %s', async (language) => {
+    const now = Date.now();
+    const dictionary = language === 'en' ? en.ui : zh.ui;
+    const preview = 'This is a long assistant reply. '.repeat(4);
+    const app = await mount([bot()], language, (remote) => {
+      remote.data.activities = [activity('older', 'alpha-bot', now - 120_000, preview),
+        { ...activity('newer', 'alpha-bot', now - 60_000, '[已隐藏]'), title: 'Latest conversation' }];
+    });
+    await openHistory(app, language);
+    await setSessions(app, [session('older', 'alpha-bot', now - 120_000), session('newer', 'alpha-bot', now - 60_000, { running: true, title: undefined })]);
+    const rows = [...app.container.querySelectorAll('[data-session-id]')];
+    expect(rows.map((row) => row.getAttribute('data-session-id'))).toEqual(['newer']);
+    expect(rows[0]?.textContent).toContain('Latest conversation');
+    expect(rows[0]?.textContent).toContain(dictionary['activity.hidden']);
+    expect(rows[0]?.textContent).toContain(dictionary['activity.running']);
+    expect(rows[0]?.querySelector('[data-unread]')).not.toBeNull();
+    expect(rows[0]?.querySelector('time')?.textContent).toBe(new Intl.RelativeTimeFormat(language, { numeric: 'auto', style: 'short' }).format(-1, 'minute'));
+    const option = app.container.querySelector('li > button[data-bot-id]');
+    expect(option?.querySelector('[data-unread]')?.getAttribute('aria-label')).toBe(dictionary['activity.unreadCount'].replace('{count}', '2'));
+    expect(option?.querySelector('[data-activity-preview]')?.textContent).toBe(dictionary['activity.hidden']);
+    expect(app.container.querySelector('[data-session-id="older"]')).toBeNull();
+    // jsdom cannot measure ellipsis; verify the CSS contract without claiming a screenshot.
+    const css = readFileSync('src/client/styles/bots.module.css', 'utf8');
+    expect(css.match(/\.activityPreview\s*\{([^}]+)\}/)?.[1]).toMatch(/overflow:\s*hidden/);
+    expect(css.match(/\.activityPreview\s*\{([^}]+)\}/)?.[1]).toMatch(/text-overflow:\s*ellipsis/);
+    expect(css.match(/\.activityPreview\s*\{([^}]+)\}/)?.[1]).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it('opens history even if markRead fails, logs only localized text, and preserves unread for retry', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const now = Date.now();
+    const app = await mount([bot()], 'en', (remote) => { remote.data.activities = [activity('history', 'alpha-bot', now)]; });
+    await openHistory(app);
+    await setSessions(app, [session('history', 'alpha-bot', now)]);
+    const row = app.container.querySelector<HTMLButtonElement>('[data-session-id="history"]');
+    if (!row) throw new Error('History row is missing');
+    app.remote.methods.activity.markRead.mockResolvedValueOnce({ ok: false, error: new RemoteError('store/unavailable', 'Sensitive transport detail', {}) });
+    await click(row);
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('history');
+    expect(row.querySelector('[data-unread]')).not.toBeNull();
+    expect(warning).toHaveBeenCalledExactlyOnceWith(t['activity.readFailed']);
+    expect(app.container.textContent).not.toContain('Sensitive transport detail');
+    app.openSession.mockClear();
+    const original = app.remote.methods.activity.markRead.getMockImplementation();
+    if (!original) throw new Error('markRead implementation missing');
+    let release!: () => void;
+    app.remote.methods.activity.markRead.mockImplementationOnce(async (id) => {
+      await new Promise<void>((resolve) => { release = resolve; }); return original(id);
+    });
+    await click(row);
+    expect(app.openSession).not.toHaveBeenCalled();
+    expect(row.disabled).toBe(true);
+    await act(async () => { release(); });
+    expect(app.remote.methods.activity.markRead).toHaveBeenLastCalledWith('history');
+    expect(app.openSession).toHaveBeenCalledExactlyOnceWith('history');
+    expect(row.querySelector('[data-unread]')).toBeNull();
+  });
+
+  it('shows an on-demand profile on narrow panels and restores focus after closing it', async () => {
+    vi.stubGlobal('innerWidth', 390);
+    try {
+      const app = await mount([bot()]);
+      expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
+      await openProfile(app);
+      const article = requireValue(app.container.querySelector('article'));
+      expect(button(article, t['chat.openChat'])).toBeDefined();
+      expect(button(article, t['card.edit'])).toBeDefined();
+      expect(article.textContent).not.toContain(t['bots.emptySessionsHint']);
+      await click(requireValue(article.querySelector('summary')));
+      await click(button(article, t['memory.title']));
+      expect(app.container.querySelector('dialog')?.textContent).toContain(t['memory.empty']);
+      await click(button(requireValue(app.container.querySelector('dialog')), t['actions.close']));
+      await click(button(requireValue(app.container.querySelector('dialog')), t['actions.close']));
+      expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
+      expect(app.container.querySelector('li > button[data-bot-id]')).not.toBeNull();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('falls back to the description or localized no-conversation message in the Bot list', async () => {
+    const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha', description: 'A useful helper' }), bot({ id: 'beta-bot', name: 'Beta' })]);
+    const previews = [...app.container.querySelectorAll('li > button[data-bot-id] [data-activity-preview]')].map((item) => item.textContent);
+    expect(previews).toEqual(['A useful helper', t['bots.noSessions']]);
+    expect(app.container.querySelector('[data-session-id]')).toBeNull();
+    expect(app.container.querySelector<HTMLButtonElement>('li > button[data-bot-id]')?.disabled).toBe(false);
+  });
+
+  it('renders a stored-avatar warning without disabling the healthy Bot or failing its list', async () => {
+    const app = await mount([bot()], 'en', (remote) => {
+      remote.data.statuses = [{ id: 'alpha-bot', presetId: 'custom-alpha', preset: { state: 'ok' }, warnings: ['avatar/invalid'] }];
+    });
+    await click(button(app.container, t['card.edit']));
+    expect(app.container.textContent).toContain(t['avatar.invalidStored']);
+    expect(app.container.querySelector('img')).toBeNull();
+    expect(app.container.querySelector<HTMLButtonElement>('li > button[data-bot-id]')?.disabled).toBe(false);
+    await click(button(app.container, t['card.edit']));
+    expect(app.container.querySelector('dialog')?.textContent).toContain(t['avatar.invalidStored']);
+  });
+
+  it('defaults to 5 seconds and validates the inclusive 1000–60000 ms Client configuration range', () => {
+    expect(Config({})).toEqual({ pollIntervalMs: 5000, maxPollIntervalMs: 30000, memoryPageSize: 50, routineHistoryPageSize: 50, sidebarSessionLimit: 5 });
+    for (const value of [1000, 2000, 60000]) expect(Config({ pollIntervalMs: value }).pollIntervalMs).toBe(value);
+    for (const value of [999, 60001, 0, -1, 1000.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => Config({ pollIntervalMs: value })).toThrow();
+    }
+    expect(() => Config({ pollIntervalMs: '5000' as never })).toThrow();
+  });
+
+  it('validates the memory page size configuration', () => {
+    for (const value of [1, 50, 199]) expect(Config({ memoryPageSize: value }).memoryPageSize).toBe(value);
+    for (const value of [0, 200, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) expect(() => Config({ memoryPageSize: value })).toThrow();
+  });
+
+  it('counts all memories before Bot deletion and blocks when the count fails', async () => {
+    const app = await mount([bot()], 'en', (remote) => {
+      remote.methods.memory.count.mockResolvedValueOnce({ ok: false, error: new RemoteError('store/unavailable', 'offline', {}) });
+    });
+    await click(requireValue(app.container.querySelector('li summary')));
+    await click(button(app.container, t['actions.delete']));
+    const dialog = app.container.querySelector('dialog');
+    if (!dialog) throw new Error('No delete dialog');
+    expect(dialog.textContent).toContain(t['delete.countError']);
+    expect(button(dialog, t['actions.delete']).disabled).toBe(true);
+    expect(app.remote.methods.memory.list).not.toHaveBeenCalled();
+    app.remote.methods.memory.count.mockResolvedValueOnce({ ok: true, value: 205 });
+    await click(button(dialog, t['actions.retry']));
+    expect(dialog.textContent).toContain(t['delete.memoryCount'].replace('{count}', '205'));
+    expect(button(dialog, t['actions.delete']).disabled).toBe(false);
+    await click(button(dialog, t['actions.cancel']));
+    expect(app.remote.methods.delete).not.toHaveBeenCalled();
+  });
+
+  it('retains the default polling cadence without exposing refresh interval controls', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const app = await mount([bot()]);
+    expect(app.container.querySelector('header select')).toBeNull();
+    expect(app.container.textContent).not.toContain(t['bots.pollInterval']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
+    await app.unmountPage();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
+    await app.remountPage();
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(3);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(3);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(4);
+  });
+
+  it('polls at the configured custom cadence with no visible interval selector', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const app = await mount([bot()], 'en', undefined, { pollIntervalMs: 2000 });
+    expect(app.container.querySelector('header select')).toBeNull();
+    expect(app.container.textContent).not.toContain(t['bots.pollInterval']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1999); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3999); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(app.remote.methods.list).toHaveBeenCalledTimes(3);
+  });
+
+  it('renders a recent list with a New menu and settings; profile hides internal identifiers and empty work panels', async () => {
+    const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha Bot', description: 'A careful helper' })]);
+    const page = app.container.querySelector('[data-bots-page]');
+    const header = page?.querySelector('header');
+    expect(header?.querySelector('h1')?.textContent).toBe(t['bots.title']);
+    expect(header?.querySelector('summary')?.getAttribute('aria-label')).toBe(t['chat.new']);
+    expect(button(requireValue(header), t['chat.settings'])).toBeDefined();
+    expect(page?.querySelector('article')).toBeNull();
+    await openProfile(app);
+    const article = page?.querySelector('article');
+    expect(article?.getAttribute('data-bot-detail')).toBe('alpha-bot');
+    expect(article?.textContent).not.toContain('alpha-bot');
+    expect(article?.textContent).toContain('A careful helper');
+    expect(article?.querySelector('[data-session-id]')).toBeNull();
+    expect(article?.querySelector('[data-background-work]')).toBeNull();
+  });
+
+  it('switches narrow and wide classes from the actual main panel width and disconnects its observer', async () => {
+    let resize: ResizeObserverCallback | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { resize = callback; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    try {
+      const app = await mount([bot()]);
+      const page = app.container.querySelector('[data-bots-page]');
+      expect(observe).toHaveBeenCalledWith(page);
+      await act(async () => { resize?.([{ contentRect: { width: 540 } } as ResizeObserverEntry], {} as ResizeObserver); });
+      expect(page?.className).toContain('compact');
+      expect(page?.className).not.toContain('wide');
+      await act(async () => { resize?.([{ contentRect: { width: 1080 } } as ResizeObserverEntry], {} as ResizeObserver); });
+      expect(page?.className).toContain('wide');
+      expect(page?.className).not.toContain('compact');
+      await app.unmountPage();
+      expect(disconnect).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+});

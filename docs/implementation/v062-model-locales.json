@@ -1,0 +1,24 @@
+{
+  "en": {
+    "groups.modelGroupDefault": "Group default model",
+    "groups.modelPerBot": "Per-Bot models",
+    "groups.modelFollowGroup": "Follow group default",
+    "groups.modelSourceMember": "This Bot in this group",
+    "groups.modelSourceGroup": "Group default",
+    "groups.modelSourceBot": "Bot default",
+    "groups.modelSourceDsh": "DSH default",
+    "groups.modelSaveFailed": "Couldn't change the model. Reopen the menu to review current settings before choosing again.",
+    "groups.modelScope": "Choose this group's default or each Bot's model for new work. Private chats, other groups and running work keep their models."
+  },
+  "zh": {
+    "groups.modelGroupDefault": "群默认模型",
+    "groups.modelPerBot": "按 Bot 设置",
+    "groups.modelFollowGroup": "跟随群默认",
+    "groups.modelSourceMember": "本群此 Bot 的设置",
+    "groups.modelSourceGroup": "群默认",
+    "groups.modelSourceBot": "Bot 默认",
+    "groups.modelSourceDsh": "DSH 默认",
+    "groups.modelSaveFailed": "未能更改模型。请重新打开菜单查看当前设置后再选择。",
+    "groups.modelScope": "选择本群默认或各 Bot 新工作的模型；私聊、其他群和运行中的工作保留原模型。"
+  }
+}

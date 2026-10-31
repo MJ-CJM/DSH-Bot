@@ -1,0 +1,545 @@
+{
+  "fixtureStatus": "PASS",
+  "profile": "screenshots-v03-1792870246056-79469",
+  "installedAudit": {
+    "profile": "screenshots-v03-1792870246056-79469",
+    "version": "0.3.0",
+    "files": 270,
+    "artifactSha256": "d037fcee07c1e7787b1e78b1e1a8dbd2e4b6028ac9291b6b486f7ba7ee135089",
+    "status": "PASS"
+  },
+  "artifact": {
+    "sha256": "d037fcee07c1e7787b1e78b1e1a8dbd2e4b6028ac9291b6b486f7ba7ee135089",
+    "path": "dist/dsh-bot-0.3.0.tgz"
+  },
+  "aliases": [],
+  "themeEvidence": [],
+  "status": "FAIL",
+  "phase": "browser-launch",
+  "outputDir": "/Users/youzihui/ai-workspace/DSH-Bot/docs/screenshots/v03/2026-10-24T19-30-46.050Z-79469",
+  "workDir": "/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-30-46.050Z-79469",
+  "realModelRequests": 0,
+  "modelRequests": 3,
+  "commands": [
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792870246056-79469",
+        "--from-default-profile",
+        "web",
+        "--dump-config"
+      ],
+      "label": "initialize",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "plugin",
+        "--profile",
+        "screenshots-v03-1792870246056-79469",
+        "add",
+        "/Users/youzihui/ai-workspace/DSH-Bot/dist/dsh-bot-0.3.0.tgz"
+      ],
+      "label": "install",
+      "code": 0
+    },
+    {
+      "tool": "dsh",
+      "args": [
+        "--profile",
+        "screenshots-v03-1792870246056-79469",
+        "--no-open",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0"
+      ],
+      "label": "host",
+      "code": 0
+    }
+  ],
+  "matrix": [
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bots",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "bot-editor",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "connectors",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "notifications",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "collaboration",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-create",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-members",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-mention",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "group-round",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "management",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-records",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "memory-backend",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "transfer",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "routines",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "screen": "im",
+      "status": "FAIL",
+      "reason": "environment: Chromium launch failed"
+    }
+  ],
+  "narrowChecks": [
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "light",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "en",
+      "theme": "dark",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "light",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "group",
+      "status": "FAIL",
+      "reason": "not run"
+    },
+    {
+      "language": "zh",
+      "theme": "dark",
+      "surface": "management",
+      "status": "FAIL",
+      "reason": "not run"
+    }
+  ],
+  "pageErrors": [],
+  "failure": "Error: browserType.launch: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /Users/youzihui/Library/Caches/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-mac-arm64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --user-data-dir=/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-30-46.050Z-79469/tmp/playwright_chromiumdev_profile-QpFl0v --remote-debugging-pipe --no-startup-window\n<launched> pid=79612\n[pid=79612][err] [1024/123050.122749:ERROR:base/power_monitor/thermal_state_observer_mac.mm:140] ThermalStateObserverMac unable to register to power notifications. Result: 9\n[pid=79612][err] [1024/123050.146799:ERROR:net/dns/dns_config_service_posix.cc:138] DNS config watch failed to start.\n[pid=79612][err] [1024/123050.165875:FATAL:base/apple/mach_port_rendezvous_mac.cc:159] Check failed: kr == KERN_SUCCESS. bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer.79612: Permission denied (1100)\nCall log:\n  - <launching> /Users/youzihui/Library/Caches/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-mac-arm64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --user-data-dir=/Users/youzihui/ai-workspace/DSH-Bot/.dsh-dev/screenshots-v03/2026-10-24T19-30-46.050Z-79469/tmp/playwright_chromiumdev_profile-QpFl0v --remote-debugging-pipe --no-startup-window\n  - <launched> pid=79612\n  - [pid=79612][err] [1024/123050.122749:ERROR:base/power_monitor/thermal_state_observer_mac.mm:140] ThermalStateObserverMac unable to register to power notifications. Result: 9\n  - [pid=79612][err] [1024/123050.146799:ERROR:net/dns/dns_config_service_posix.cc:138] DNS config watch failed to start.\n  - [pid=79612][err] [1024/123050.165875:FATAL:base/apple/mach_port_rendezvous_mac.cc:159] Check failed: kr == KERN_SUCCESS. bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer.79612: Permission denied (1100)\n  - [pid=79612] <gracefully close start>\n  - [pid=79612] <kill>\n  - [pid=79612] <will force kill>\n  - [pid=79612] exception while trying to kill process: Error: kill EPERM\n  - [pid=79612] <process did exit: exitCode=null, signal=SIGTRAP>\n  - [pid=79612] starting temporary directories cleanup\n  - [pid=79612] finished temporary directories cleanup\n  - [pid=79612] <gracefully close end>\n"
+}

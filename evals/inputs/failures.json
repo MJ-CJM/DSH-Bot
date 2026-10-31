@@ -1,0 +1,4334 @@
+{
+  "schemaVersion": 1,
+  "baselineSha": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+  "pattern": {
+    "expression": "FAIL|NOT_RUN|返工|根因",
+    "flags": "i",
+    "unit": "matching-line"
+  },
+  "sources": [
+    {
+      "path": ".codex/runs/PROGRESS.md",
+      "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+      "sha256": "802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+      "lineCount": 174,
+      "snapshot": "evals/inputs/failures-progress.md"
+    },
+    {
+      "path": "docs/acceptance/P1-T01.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "d2982964ff043597f0553608fc91061cffd7a0f8e30c3d9f47b14eb583c74a86",
+      "lineCount": 124
+    },
+    {
+      "path": "docs/acceptance/P1-T04.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "9377a85b945692ddcf453e6b3dc9e87c5276db22a7d0dcbd4f9048b8d71e3e8a",
+      "lineCount": 150
+    },
+    {
+      "path": "docs/acceptance/P1-T05.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "3ebf034997eb13c2dbe7b29ed50326814f3aafa7629ebc0a02d4e9755b67cf56",
+      "lineCount": 130
+    },
+    {
+      "path": "docs/acceptance/P1-T06.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "b05dab698e667624d7fc32cc391c5a5685e717f5725c5da42fed721c94709ee2",
+      "lineCount": 127
+    },
+    {
+      "path": "docs/acceptance/P1-T07.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "3f906ee563f4eef9ff7880e4f336a7c23b5ee8d549b745e8dd0361489d7aa31f",
+      "lineCount": 116
+    },
+    {
+      "path": "docs/acceptance/P1-T08.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8e260b6d413693b1de49b9fdcbe65dcf4c2954683f29c5e0d797a020120934b2",
+      "lineCount": 150
+    },
+    {
+      "path": "docs/acceptance/P1-T08b-review.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "01c287e112a3848d8472103d266a59728c3e6015565f96226bd340f89cfabe01",
+      "lineCount": 154
+    },
+    {
+      "path": "docs/acceptance/P1-T08b.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "2ff17c3c1a724bba2fef22f33bf5a74b3991a2c6994b62583f48b2999898a8ec",
+      "lineCount": 148
+    },
+    {
+      "path": "docs/acceptance/P1-T08c.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "f96aad7b4401e619e0f2c46f1fc43677bdcd2d5e896b91c3c99020bccd55a942",
+      "lineCount": 87
+    },
+    {
+      "path": "docs/acceptance/P1-T08d.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "11f7ec18090f3a6a3e28b9e4054a0b8eb926f100961f4b003b3f9713fbdfa386",
+      "lineCount": 134
+    },
+    {
+      "path": "docs/acceptance/P1-T08e.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "7364a07e43ca0015fcb47089e1dfdb3fa18e8bfe4bd01daa4a27734d858deab2",
+      "lineCount": 72
+    },
+    {
+      "path": "docs/acceptance/P1-T08g.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "3dc7b3a3bcded370a2917ce7a04ff459ec729f7df80b1afd4905b75922bf52ef",
+      "lineCount": 180
+    },
+    {
+      "path": "docs/acceptance/P1-T08h.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "906ce0c362d2dbb7b83c8704035b8345af4c6b36ab143a4d00857981dd97efd5",
+      "lineCount": 113
+    },
+    {
+      "path": "docs/acceptance/P1-T08i.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "ed1eb0d582cb1e74ecdeb3ee27be62e813384add93b06fde871d7391b1129bdf",
+      "lineCount": 191
+    },
+    {
+      "path": "docs/acceptance/P1-T08j.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "1d8b0286722b25f5fa03376c3c2dddb63d0d9a0d8b4be8d2fdf0109f44d786cb",
+      "lineCount": 53
+    },
+    {
+      "path": "docs/acceptance/P1-T09.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "5a513678985ffa2e96c2300e9757a0b6a83fd48645b4127037f161bd89d6280c",
+      "lineCount": 137
+    },
+    {
+      "path": "docs/acceptance/P1-T10.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "1a70973e287bbc2a98566df053626ddd3d193ae0b81fd7052d6b39696e610332",
+      "lineCount": 106
+    },
+    {
+      "path": "docs/acceptance/P1.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "07311e8a76bb3a1c2675979e1112f9c0f9cb977d5904fe1a643a9584d973b0f2",
+      "lineCount": 42
+    },
+    {
+      "path": "docs/acceptance/P2-R01.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "f23604cf235c0bda1a395d4340664229cd854196825fb0400946b169b512af4c",
+      "lineCount": 64
+    },
+    {
+      "path": "docs/acceptance/P2-R02.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "829b63c1a8d063565444ac7b48d9ffbccc1289d777244a50b98d7142c0cb79ea",
+      "lineCount": 116
+    },
+    {
+      "path": "docs/acceptance/P2-R03.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "9c17771cba45a7f62e6196fc440c9b7c327d863a95a8ad01dd8a86166f2c02d7",
+      "lineCount": 67
+    },
+    {
+      "path": "docs/acceptance/P2-R04.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8aa50e529eb505f304b829231f0579a8aa034a4cdc41fd46d4c7e2f140aae111",
+      "lineCount": 80
+    },
+    {
+      "path": "docs/acceptance/P2-R06-r1.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8d2ca895ecdb957464303d198c87ea57b4336b7b747361a18c1e4ec69b87f8fd",
+      "lineCount": 64
+    },
+    {
+      "path": "docs/acceptance/P2-R06-r2.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "93fabde4de2526d76dbdf740409bda752436380531c776709149848a9243be0f",
+      "lineCount": 59
+    },
+    {
+      "path": "docs/acceptance/P2-R06.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "a1b2fac6fb0f522165677b5229b19b50ecbcd167318dc1c283786cff5272ed85",
+      "lineCount": 81
+    },
+    {
+      "path": "docs/acceptance/P2-T12.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "007b52bd283e1429b5e229381b171c44760dec4b1d2a6a1d6a14669ba490fc2d",
+      "lineCount": 78
+    },
+    {
+      "path": "docs/acceptance/P2-T13.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "5d71c1d0cc2493def7124f27288cb13ecbc8965cb8e0d8f29d2bee98cb3a3bd8",
+      "lineCount": 104
+    },
+    {
+      "path": "docs/acceptance/P2-T14.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "aab1c7327626efa193c25b1bbb922c70fc8c208bcd31800d29bcb11d18de8c85",
+      "lineCount": 94
+    },
+    {
+      "path": "docs/acceptance/P2-T15.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "17ab4f1e27a476b1706c0ca3f75629addfc3415dcb6f6e90731a8ea6ae75692f",
+      "lineCount": 80
+    },
+    {
+      "path": "docs/acceptance/P2-T16.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "120ee8f9e44838e62efc706fec346267f0f4fe13fa2505c6b8f45f89d83a9412",
+      "lineCount": 166
+    },
+    {
+      "path": "docs/acceptance/P2-T17.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "32c0df93e07589721b85e83e54c0db83ceb87abc57582345a22db375fda1f406",
+      "lineCount": 171
+    },
+    {
+      "path": "docs/acceptance/P2.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "8b93525a339ad716beb14fcd2d3dbc875b6fa86795e79904e7b4a5ee4815657b",
+      "lineCount": 120
+    },
+    {
+      "path": "docs/acceptance/P3-P4.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "b5dc5091ceba57e4a0cb12efa76969dcc0df59dd70aa8ffe99f6b1c69d356f95",
+      "lineCount": 97
+    },
+    {
+      "path": "docs/acceptance/P34-B01-03.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "1def7703f6e1c419977539516f72c7153c7663b0c19db22b11e8ba2a6721cbd5",
+      "lineCount": 90
+    },
+    {
+      "path": "docs/acceptance/P34-U02-03.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "808e10098929fa563d16860fcfaf9572d740fd250719774610bc4af4138ebb0b",
+      "lineCount": 134
+    },
+    {
+      "path": "docs/acceptance/P34-U04-05.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "438ec0bccc1b71abf300efbf8f1e126bcaa9f5261a83fec6fee7e3326422f11a",
+      "lineCount": 88
+    },
+    {
+      "path": "docs/acceptance/P34-U06-08.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "0722c96cc3c97022719a931302b3e51b6a1f021955f3d6921a99946981e0d1f3",
+      "lineCount": 123
+    },
+    {
+      "path": "docs/acceptance/P34-U09-11.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "7f19a750db2e292ca3c810c61fd90329f1640db2b5465a83c41f00a9a1dbb0a2",
+      "lineCount": 110
+    },
+    {
+      "path": "docs/acceptance/P34-rework-r3.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "a8a7c7c6d067c8f5b466049a31750e9649db8bb4e9527e3324cfc11354454978",
+      "lineCount": 135
+    },
+    {
+      "path": "docs/acceptance/P34-rework.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "d28b2491e8e4e3c6493b076922ad8e78db9f07e823300bdec0202d2391bf367e",
+      "lineCount": 107
+    },
+    {
+      "path": "docs/acceptance/V032-bot-to-bot.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "119d3f71e6e100704e39e7c02c50390ab45bb7800df9dabc22cbf5a2814240f0",
+      "lineCount": 224
+    },
+    {
+      "path": "tasks/P34/R-review-r2.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "4c1f9ecde7c6155a5cafe1b90d0bf6d3e492aee8b17b56347d77daff1b874f27",
+      "lineCount": 7
+    },
+    {
+      "path": "tasks/P34/R-review-r3.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "d2439165bc06d0134eb67dd5f67ecee293a14ac96d23617c23c03a053dbe474c",
+      "lineCount": 10
+    },
+    {
+      "path": "tasks/P34/R-review-r4.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "c73cd5a10429e0b95f7b84a185ec58eb6022ac8100bf2cf24fabbd960108f1a5",
+      "lineCount": 8
+    },
+    {
+      "path": "tasks/P34/R-review.md",
+      "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+      "sha256": "2e38135c327033b594ded7fb90f52e249fe59eac9be3ab26409b93b5f65f9e38",
+      "lineCount": 20
+    }
+  ],
+  "excluded": [
+    {
+      "path": "docs/acceptance/P3-P4-files.txt",
+      "reason": "File inventory, not an acceptance narrative"
+    },
+    {
+      "path": "docs/acceptance/P34-rework-files.txt",
+      "reason": "File inventory, not an acceptance narrative"
+    },
+    {
+      "path": "docs/acceptance/P34-rework-r2-files.txt",
+      "reason": "File inventory, not an acceptance narrative"
+    }
+  ],
+  "candidates": [
+    {
+      "id": "FC-0001",
+      "source": {
+        "path": ".codex/runs/PROGRESS.md",
+        "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+        "lines": [
+          10,
+          10
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "T08 c7f4a6c Bots page; r1 (token allowlist, demo badge removed, delete-memories checkbox, start-chat failure UX, CSS lifecycle) 220 tests"
+    },
+    {
+      "id": "FC-0002",
+      "source": {
+        "path": ".codex/runs/PROGRESS.md",
+        "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+        "lines": [
+          22,
+          22
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "T08d r1 dispatched (activity.list fails in browser: strict schema vs lastEventSeq; markRead must not block nav)"
+    },
+    {
+      "id": "FC-0003",
+      "source": {
+        "path": ".codex/runs/PROGRESS.md",
+        "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+        "lines": [
+          72,
+          72
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "T16 screenshot rerun FAIL: dialog 'New routine' getByLabel('Schedule rule') not found (selectOption timeout) -> rework r2"
+    },
+    {
+      "id": "FC-0004",
+      "source": {
+        "path": ".codex/runs/PROGRESS.md",
+        "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+        "lines": [
+          108,
+          108
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "R06 avatar screenshot FAIL: 编辑 button disabled/detached -> r1 resume 01a15dde-9f76-7251-b397-2379ba01ab98"
+    },
+    {
+      "id": "FC-0005",
+      "source": {
+        "path": ".codex/runs/PROGRESS.md",
+        "revision": "snapshot:802351c977de0fb29e2d6997f0bc0a49d7bb59f8a9d68c1dc4e263fcc9d457ef",
+        "lines": [
+          111,
+          111
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "R06 avatar shot FAIL 'Different Bot avatars stay visible beside the editor' (editor is modal) -> r2"
+    },
+    {
+      "id": "FC-0006",
+      "source": {
+        "path": "docs/acceptance/P1-T01.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          66,
+          66
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 安装后 Host 卸载日志捕获 | FAIL | SIGTERM 子进程 exit 0，但 observer 未捕获 unloaded；实际卸载日志未确认，清理验证以独立 Cordis 测试为限 |"
+    },
+    {
+      "id": "FC-0007",
+      "source": {
+        "path": "docs/acceptance/P1-T01.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          67,
+          67
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 实际 Client 激活、徽标显示、双语插件页标题 / 图标、亮暗主题 | FAIL | 浏览器安全审批拒绝，未执行；桌面版最终安装与验证由编排方在佳民确认后进行 |"
+    },
+    {
+      "id": "FC-0008",
+      "source": {
+        "path": "docs/acceptance/P1-T01.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          116,
+          116
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 完全消除 pnpm link peer 提示 | FAIL | Client / React 等提示已消除，但 pnpm 11.28.5 仍对保留的 `@deepseek-ai/cordis@^4.0.5` 发出通用 link peer 提示；未隐藏提示或移除约定保留的 Cordis peer |"
+    },
+    {
+      "id": "FC-0009",
+      "source": {
+        "path": "docs/acceptance/P1-T01.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          117,
+          117
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 桌面版 Client 激活 / 亮暗主题 / sourcemap 调试器验证 | FAIL | 本轮未执行；沿用首轮真实 UI 未验证的边界，不以 map 单测替代桌面运行证据 |"
+    },
+    {
+      "id": "FC-0010",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          41,
+          41
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 3. failed 后写前 reconcile，失败仍 unavailable，成功清闩锁 | PASS | 缺失 preset 重建、连续失败后恢复、owned orphan 清理、外部同前缀保留、健康但未提交候选回到存储定义；读方法仍可用 |"
+    },
+    {
+      "id": "FC-0011",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          44,
+          44
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 本轮重跑已有会话冷恢复/真实浏览器 UI | FAIL（未执行，非本轮代码验收范围） | 本轮 modelSessionsCreated=0、promptsSent=0；沿用 T02 冷恢复证据，不宣称新增端到端验证 |"
+    },
+    {
+      "id": "FC-0012",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          49,
+          49
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- `restart-remote.json` / `empty-restart-remote.json` 验证持久化与不重种；`failed-startup-remote.json` 记录三个 `bot/unavailable`，message 指明 `dsh_bot` 的坏记录 `invalid`。"
+    },
+    {
+      "id": "FC-0013",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          50,
+          50
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- `failed-startup.log` 含 `[dsh-bot] startup failed bot=*: domain 'dsh_bot': stored record 'invalid' ...`。故障数据放本轮独立 `invalid-storages/`，不覆盖前三轮存储。"
+    },
+    {
+      "id": "FC-0014",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          56,
+          56
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "2. reconcile 只操作本实例持有 disposer 的注册，不按前缀清除其它插件。与其它插件同 id 冲突时仍报 unavailable，需处理冲突后重试。致命存储打开失败不走写前自愈，需修复存储/配置并重启；不会自动修改坏记录。已有 broken Bot 本身不触发全局 failed；只有补偿失败后才全局校准。"
+    },
+    {
+      "id": "FC-0015",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          111,
+          111
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 补偿再次失败不得宣称正常 | PASS | `bot/rollback-failed`；后续操作 `bot/unavailable` |"
+    },
+    {
+      "id": "FC-0016",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          123,
+          123
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Desktop、真实浏览器 UI/亮暗主题 | FAIL（未执行，非 T04 范围） | 本轮只验证 Web Host + 已鉴权 Node Client，不把它当成视觉验收 |"
+    },
+    {
+      "id": "FC-0017",
+      "source": {
+        "path": "docs/acceptance/P1-T04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          124,
+          124
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 完整模板、技能/工具隔离、真实模型对话 | FAIL（未执行，留 T05/T06/T10） | 当前仅 persona 占位；本轮模型会话与 prompt 均为 0 |"
+    },
+    {
+      "id": "FC-0018",
+      "source": {
+        "path": "docs/acceptance/P1-T05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          67,
+          67
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Desktop/浏览器、亮暗主题、真实模型回复、冷恢复闭环 | **FAIL（未执行）**：本任务无UI变更；本轮不启动Desktop、不发模型prompt，相关验收留T06/T08/T10 |"
+    },
+    {
+      "id": "FC-0019",
+      "source": {
+        "path": "docs/acceptance/P1-T05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          102,
+          102
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node packages/dsh-bot/tests/registry-profile.mjs` | **PASS：74项**，initial/restart/empty-restart/failed-startup 四轮Host均通过 |"
+    },
+    {
+      "id": "FC-0020",
+      "source": {
+        "path": "docs/acceptance/P1-T05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          107,
+          107
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "评审首轮 composer 在新增 standard 路由断言处 FAIL，保留在 `run-2026-10-18T18-05-35.779Z-78191/`：提示词/工具/binding正确，但 fixture 从包的dev-only `dsh-agent` 引入另一份 scope 模块，构造的 carrier 没有按宿主的scope标签过滤，导致测试 waterfall 扩大到全局。已把 fixture 复制到隔离profile运行，使公开helper使用宿主依赖；没有给产品添加仅测试用途的peer，也没有删减失败断言。随后正常通过，最后一轮以上述最终目录为准。"
+    },
+    {
+      "id": "FC-0021",
+      "source": {
+        "path": "docs/acceptance/P1-T05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          117,
+          117
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 不可用provider/model明确失败 | **PASS（单测+真实Host）**：不存在provider、provider未列出model和目录异常均有明确诊断；真实创建返回bot/preset-failed，含botId和完整路由；从不回退 |"
+    },
+    {
+      "id": "FC-0022",
+      "source": {
+        "path": "docs/acceptance/P1-T05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          129,
+          129
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "遗留验收：Desktop/真实UI、实际模型回复/工具闭环、进行中turn热更新仍为 **FAIL（未执行）**，不以本轮静态或路由测试替代。原生standard和Bot作用域隔离、旧代际deny保留已有真实Host证据。"
+    },
+    {
+      "id": "FC-0023",
+      "source": {
+        "path": "docs/acceptance/P1-T06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          45,
+          45
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 冷恢复后继续模型请求、提供商 KV cache 命中率、Desktop/UI/Windows | FAIL / 未执行；冷恢复探针仅验证空闲 Agent 的新 section，未扩大为这些结果 |"
+    },
+    {
+      "id": "FC-0024",
+      "source": {
+        "path": "docs/acceptance/P1-T06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          115,
+          115
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Desktop/UI、真实模型、完整 profile 冷恢复 | FAIL / 未执行；不属于本次 T06 允许的模型验证范围，不用 mock 或静态检查代替这些运行证据 |"
+    },
+    {
+      "id": "FC-0025",
+      "source": {
+        "path": "docs/acceptance/P1-T07.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          52,
+          52
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| action 与错误码覆盖 | PASS，严格/嵌套输入及 null 清空契约，bot/invalid、bot/not-found、bot/conflict、bot/preset-failed、bot/rollback-failed、bot/unavailable、store/unavailable；检查真实事务失败与回滚 |"
+    },
+    {
+      "id": "FC-0026",
+      "source": {
+        "path": "docs/acceptance/P1-T07.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          58,
+          58
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Desktop/浏览器审批弹窗、真实模型端到端建 Bot | FAIL（未执行，非本任务要求的单测验收）；未打开 Desktop/浏览器，未调用真实模型。不能用单测或空闲 Host 工具目录替代这些证据 |"
+    },
+    {
+      "id": "FC-0027",
+      "source": {
+        "path": "docs/acceptance/P1-T07.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          111,
+          111
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 浏览器审批卡视觉、人类点击、模型发起调用 | FAIL（未执行，未扩大为本轮运行结论） |"
+    },
+    {
+      "id": "FC-0028",
+      "source": {
+        "path": "docs/acceptance/P1-T08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          46,
+          46
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| CUA 新建 Chrome tab 访问该隔离 Host 的本机 bootstrap | FAIL；浏览器自动审批拒绝 origin 授权，无渲染、截图或交互证据，立即停止尝试 |"
+    },
+    {
+      "id": "FC-0029",
+      "source": {
+        "path": "docs/acceptance/P1-T08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          80,
+          80
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实浏览器列表/编辑/聊天导航、亮暗主题可读性 | **FAIL（未执行）**；自动审批拒绝浏览器访问，未采用绕行方式 |"
+    },
+    {
+      "id": "FC-0030",
+      "source": {
+        "path": "docs/acceptance/P1-T08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          81,
+          81
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实 Desktop 与模型回复 | **FAIL（未执行）**；不在本任务授权的真实模型会话范围；没有改动桌面应用 |"
+    },
+    {
+      "id": "FC-0031",
+      "source": {
+        "path": "docs/acceptance/P1-T08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          149,
+          149
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- **真实浏览器亮/暗视觉、真实 UI 聊天导航仍为 FAIL（未执行）**：本轮没有重新尝试前轮被安全审批拒绝的浏览器操作。profile 回归证明的是正式 Host/Remote/Agent 行为，不是浏览器渲染；React/jsdom 的失败注入和生命周期测试也不扩大为真实浏览器证据。"
+    },
+    {
+      "id": "FC-0032",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          24,
+          24
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 新增 4 张真实截图 | **FAIL／待宿主运行**：`--extras-only` 在沙箱 Chromium 启动时因 MachPortRendezvous `Permission denied (1100)` 退出，未产生图片；证据 `dist/screenshots/2026-10-19T03-25-44.825Z-7132/summary.json` |"
+    },
+    {
+      "id": "FC-0033",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          33,
+          33
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 第 3 轮：根因是空白态截图目标错误，非工作区确认未执行"
+    },
+    {
+      "id": "FC-0034",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          41,
+          41
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 失败现场 PNG、当前 URL、可见 dialog 标题、main 文本 | **PASS（实现/单测）**；关闭 context 前输出 failure-步骤.png，summary.failureEvidence 与 failure.json 脱敏记录；截图失败仍尝试 DOM 诊断，不覆盖原错误 |"
+    },
+    {
+      "id": "FC-0035",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          44,
+          44
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 区分选择失败与空白态不显示徽标 | **PASS**；实跑 selected＋落盘正确 preset/blank＋宿主渲染条件，根因为脚本目标错误 |"
+    },
+    {
+      "id": "FC-0036",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          46,
+          46
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 最新完整矩阵与真实失败截图 | **FAIL／待宿主运行**；本轮未启动受限 Chromium，不能用 jsdom 代替截图实测 |"
+    },
+    {
+      "id": "FC-0037",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          47,
+          47
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 已开始对话后的真实会话徽标截图 | **FAIL／未执行**；本轮明确选择用户允许的空白态方案，不冒充完成非空会话徽标视觉验收 |"
+    },
+    {
+      "id": "FC-0038",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          57,
+          57
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "宿主仍运行 `DSH_HOME=\"$PWD/.dsh-shot\" node scripts/screenshot.mjs`。新版文件名使用 `*-blank-session.png`；若失败，先查看 summary.failureEvidence 指向的 PNG 与失败步骤。本节覆盖以下旧轮次关于截图目标与徽标等待的说明。"
+    },
+    {
+      "id": "FC-0039",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          67,
+          67
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- **FAIL／待宿主执行：** 最新修正后的 16 张截图、暗色实际对比度及完整业务流程。未在受限沙箱重试 Chromium；仍由编排方运行 `DSH_HOME=\"$PWD/.dsh-shot\" node scripts/screenshot.mjs`。"
+    },
+    {
+      "id": "FC-0040",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          85,
+          85
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 1. 修正后完整 16 张真实截图 | **FAIL／待宿主运行** | 本轮按编排方指示不重试受限浏览器；已准备 2 语言 × 2 主题 × 2 视口 × 2 页面矩阵；不将 jsdom 测试当作真实 Chromium 验证 |"
+    },
+    {
+      "id": "FC-0041",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          87,
+          87
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 2. 修正后真实视觉复核 | **FAIL／待宿主运行** | 两个示例含一条短简介；下一轮截图用于检查留白与按钮比例 |"
+    },
+    {
+      "id": "FC-0042",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          91,
+          91
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 4. 修正后暗色模式实测不低于 3:1 | **FAIL／待宿主运行** | 本轮没有真实浏览器测量，不提供虚构比值；保留原 fixture 测试，并新增运行时门槛，亮色也执行 ≥3:1 |"
+    },
+    {
+      "id": "FC-0043",
+      "source": {
+        "path": "docs/acceptance/P1-T08b-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          151,
+          151
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "仍使用已有缓存 Chromium，不下载浏览器；新建隔离 profile，保留旧截图证据。成功标准是脚本退出 0、summary.status 为 PASS、screenshots 共 16 张、所有目标头像都有实际值且 contrastRatio ≥3、prompts 为 0。请同时视觉复核卡片留白、按钮组及暗色鲸鱼；真实宿主结果回来前，这些运行验收维持 FAIL/待执行。"
+    },
+    {
+      "id": "FC-0044",
+      "source": {
+        "path": "docs/acceptance/P1-T08b.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          1,
+          1
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "# P1 T08b UI 返工验收（0.1.1）"
+    },
+    {
+      "id": "FC-0045",
+      "source": {
+        "path": "docs/acceptance/P1-T08b.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          22,
+          22
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 与工作区并列的常驻 Bots 区块 | **FAIL** | rc.2 无受支持的追加区块 slot；已告知并降级为公开 footer action 会话弹层 |"
+    },
+    {
+      "id": "FC-0046",
+      "source": {
+        "path": "docs/acceptance/P1-T08b.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          26,
+          26
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 从原工作区列表移除 Bot 会话 | **FAIL（无公开机制，按任务允许保留）** | 没有公共全局过滤 hook，保留宿主列表 |"
+    },
+    {
+      "id": "FC-0047",
+      "source": {
+        "path": "docs/acceptance/P1-T08b.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          29,
+          29
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实亮/暗 × 中/英 × 窄/宽 Bots/会话截图 | **FAIL** | 浏览器被沙箱拒绝，0 张图；未以单测代替视觉 |"
+    },
+    {
+      "id": "FC-0048",
+      "source": {
+        "path": "docs/acceptance/P1-T08b.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          30,
+          30
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实 Desktop 最终试用 | **FAIL／未执行** | 交编排方执行截图与 Desktop 体验验收 |"
+    },
+    {
+      "id": "FC-0049",
+      "source": {
+        "path": "docs/acceptance/P1-T08b.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          79,
+          79
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-shot\" node scripts/screenshot.mjs` | **FAIL（browser）**；MachPortRendezvous `bootstrap_check_in ... Permission denied (1100)`；尚未执行 profile 安装步骤、0 截图 |"
+    },
+    {
+      "id": "FC-0050",
+      "source": {
+        "path": "docs/acceptance/P1-T08b.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          96,
+          96
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "矩阵为中/英 × 亮/暗 × 600×900/1440×1000 × Bots 页/idle Bot 会话，共 16 张 PNG，保存 `dist/screenshots/<run>/`。600px 宽度扣除宿主侧栏后会触发本包 600px main 断点；脚本另断言两卡在窄屏纵排、宽屏同排，记录实际 main 宽度和主题 token。每轮 browser pageerror 或覆盖不全使结果 FAIL。"
+    },
+    {
+      "id": "FC-0051",
+      "source": {
+        "path": "docs/acceptance/P1-T08c.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          84,
+          84
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "保留失败轮次，不以最后成功覆盖历史：`.dsh-dev/t05/run-2026-10-19T04-07-37.093Z-37377/`、`04-11-55.129Z-40815`、`04-14-43.212Z-42893`、`04-16-36.149Z-43970`（后三者同目录前缀 `run-2026-10-19T`）。这些轮次实际模型已完成，但活动为空，均是历史 **FAIL**，不能当作活动验收。"
+    },
+    {
+      "id": "FC-0052",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "结论（r1 更新）：**宿主首轮截图 FAIL 已定位并修复；代码、组件检查、真实 Host profiles 与加强后的 seed-only PASS；修复后宿主重截尚未执行，视觉验收仍为 FAIL / 待复核。** 原测试不足以证明插件作用域下能读取活动，详见下节；保留所有原始失败证据。"
+    },
+    {
+      "id": "FC-0053",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          7,
+          7
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## r1 宿主截图 FAIL 修复"
+    },
+    {
+      "id": "FC-0054",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          9,
+          9
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "### 根因与漏测原因"
+    },
+    {
+      "id": "FC-0055",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          13,
+          13
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "已用正式 `lib/client.js` factory 运行于独立 Client 插件作用域、连接真实 Host 的新回归**修复前复现 FAIL**：`.dsh-dev/t08d-r1-reproduce.log` 与 `.dsh-dev/t05/run-2026-10-19T04-47-02.994Z-67384/client-activity-completed-mock.json`。此前 composer/seed 的确调用了真实 Gateway/HTTP，但调用方是根 Context；组件测试的普通嵌套对象 doubles 也没有子服务权限行为，所以两者未覆盖这个作用域差异。"
+    },
+    {
+      "id": "FC-0056",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          15,
+          15
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "`lastEventSeq` **不是此次读取失败根因**：原 Store 已移除此字段。本轮按要求进一步使用显式字段白名单，list/markRead 共用，禁止未来内部字段泄漏。同时发现旧 `strict/create` result 仅声明 schema，rc.2 不自动生成输出 encode/decode；现活动两端点明确提供 encode/decode，正反例和实际往返均执行 strict schema。没有放宽公开 schema 或把内部 seq 加入合约。"
+    },
+    {
+      "id": "FC-0057",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          30,
+          30
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 修复前真实复现 Client 作用域错误 | **PASS（负例确实 FAIL）** | 上述 `t08d-r1-reproduce.log`；持久 mock 已产生，production catalog 显式返回缺 inject 错误 |"
+    },
+    {
+      "id": "FC-0058",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          41,
+          41
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 修复后真实宿主截图 | **FAIL / 未执行** | 本轮不运行 Chromium，由编排方重跑；原宿主 FAIL 证据保留，不以 seed-only 冒充修复后视觉通过 |"
+    },
+    {
+      "id": "FC-0059",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          91,
+          91
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实 Chromium 7 张截图矩阵 | **FAIL / 未执行**。用户指定沙箱不运行 Chromium，由编排方在宿主执行；本次 PNG 数量 0 |"
+    },
+    {
+      "id": "FC-0060",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          93,
+          93
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "首轮 `check` **FAIL** 保存在 `.dsh-dev/t08d-check-initial.log`：旧记忆生命周期测试从整个页面按重名文案找按钮，误点新增直接“记忆”，随后找不到 Settings tab。修正测试限定编辑器 dialog 后全量重跑通过。初期 typecheck 的 Host/Client 同名 `Context.sessions` 声明问题已改用公开 Client `ISessions` / `ObservableSnapshot<SessionListState>`；没有绕开 strict 检查。"
+    },
+    {
+      "id": "FC-0061",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          102,
+          102
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 验收逐条 PASS / FAIL"
+    },
+    {
+      "id": "FC-0062",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          122,
+          122
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实亮暗宽/窄布局、7 张 PNG、浏览器徽标可见行为/对比度 | **FAIL / 未执行** | 按任务交由编排方宿主运行，不使用旧 T08b 截图冒充本轮证据 |"
+    },
+    {
+      "id": "FC-0063",
+      "source": {
+        "path": "docs/acceptance/P1-T08d.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          133,
+          133
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "6. 唯一待交接项：在仓库根由宿主执行 `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs`，检查新生成的 7 张 PNG、summary 中的 layout/preview/contrast/conversationChecks。需要旧编辑器补充矩阵可加 `--extras-only`。未执行项在本报告保持 FAIL，直到有本轮真实证据。"
+    },
+    {
+      "id": "FC-0064",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "实现、组件与 mock Host 检查已完成；**真实 zh light/dark 截图为 FAIL / 沙箱阻塞，不能视为视觉验收通过**。"
+    },
+    {
+      "id": "FC-0065",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          36,
+          36
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --workspace-only` | FAIL，Chromium 在 browser-launch 被 macOS 沙箱拒绝，`bootstrap_check_in … Permission denied (1100)`；0 张截图，该次尚未启动 Host/mock |"
+    },
+    {
+      "id": "FC-0066",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          40,
+          40
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 验收逐条 PASS / FAIL"
+    },
+    {
+      "id": "FC-0067",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          46,
+          46
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 默认 16px 着色鲸鱼；非 Bot、不存在 activity、首次数据未就绪不输出 DOM/占位 | PASS，组件测试；真实像素对齐另列 FAIL |"
+    },
+    {
+      "id": "FC-0068",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          50,
+          50
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 双语悬浮卡片 `Bot：名称` / `Bot: name`，主题 alias 前景与背景 | PASS（组件层），双语文案及 token 检查；实际亮暗视觉另列 FAIL |"
+    },
+    {
+      "id": "FC-0069",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          52,
+          52
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| zh light/dark 两张真实工作区截图、16px 对齐/对比度 | FAIL，Chromium 沙箱启动失败，未生成 PNG；未用 jsdom 或种子结果替代 |"
+    },
+    {
+      "id": "FC-0070",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          53,
+          53
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 实际宿主 schedule+Bot 同行、hover、冷页面直接加载 | FAIL，浏览器未启动；仅源码和组件验证，需宿主复验 |"
+    },
+    {
+      "id": "FC-0071",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          66,
+          66
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 浏览器失败：[`summary.json`](../../dist/screenshots/2026-10-19T05-00-38.481Z-79572/summary.json)、同目录 `failure.json`。明确记录 `No live browser page; screenshot unavailable`，未伪造截图。"
+    },
+    {
+      "id": "FC-0072",
+      "source": {
+        "path": "docs/acceptance/P1-T08e.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          69,
+          69
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 同时在一个已读空闲 Bot 会话添加未来定时任务：应仅显示原生时钟，hover 仍有 Bot 名称；移除任务后恢复鲸鱼。再核对普通会话无额外头像、删除 Bot 后头像消失。两主题都需观察。这些真实浏览器项本轮仍为 FAIL，不将 T08e 标作全部验收通过。"
+    },
+    {
+      "id": "FC-0073",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          23,
+          23
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 宿主矩阵亮暗截图 | FAIL | 编排方两次在 zh-dark-wide-bots-layout 失败；r1 后待编排方复验 |"
+    },
+    {
+      "id": "FC-0074",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          47,
+          47
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "最终构建复验的证据路径在文末补充。所有 seed 均不运行 Chromium；视觉验证仍为 FAIL/未执行。"
+    },
+    {
+      "id": "FC-0075",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          51,
+          51
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- `displayTitle` 本来就是宿主展示标签，会回退 cwd basename。这是 `pod_0814` 成为标题的根因，不是 Bot catalog 的 Bot 名字段错误。公开 `SessionSummary.title` 是更干净且随投影更新的来源；所有候选标题继续共用摘要脱敏，避免 live title 绕过保护。"
+    },
+    {
+      "id": "FC-0076",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          125,
+          125
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## T08g r1：宿主截图失败根因与修复"
+    },
+    {
+      "id": "FC-0077",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          127,
+          127
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "### 根因：脚本未等待独立的原生会话列表首次加载"
+    },
+    {
+      "id": "FC-0078",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          129,
+          129
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "已核对编排方两份原始 `summary.json` 与 `failure-zh-dark-wide-bots-layout.png`："
+    },
+    {
+      "id": "FC-0079",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          134,
+          134
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "**两张失败 PNG 的会话历史区域均为“正在加载会话…”，并非已显示两行而缺少 `data-session-id`。** 旧版 `captureFailureEvidence` 先 `await page.screenshot()`，再 `page.evaluate(readFailureState)`，因此 summary 中含两条会话的 `mainText` 是截图完成后的另一时刻，不能证明排序断言发生时两行已存在。"
+    },
+    {
+      "id": "FC-0080",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          138,
+          138
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "产品渲染条件在 `packages/dsh-bot/src/client/pages/BotsPage.tsx`：`sessions.phase !== 'ready'` 或 activity 尚未首次加载时显示初始 status；实际历史按钮总是带稳定 `key={session.id}` 与 `data-session-id={session.id}`。锁定 rc.2 源码 `packages/api/session-controller/src/client/sessions/manager.ts:35–42` 明确 `phase` 从 pending 到 ready 单调变化；`refreshList()` 的 `:413–443` 在首次成功响应后设 ready，后续后台拉取只切换 `state`。结合失败 PNG、全新 context、组件延迟原生列表的确定性复现，根因属于脚本首次就绪条件遗漏。本轮没有修改产品刷新或列表渲染逻辑。"
+    },
+    {
+      "id": "FC-0081",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          170,
+          170
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 根因定位与首次加载时序回归 | PASS | 原始两张 PNG、诊断先后顺序、rc.2 phase 源码和可控 pending 组件复现相互印证 |"
+    },
+    {
+      "id": "FC-0082",
+      "source": {
+        "path": "docs/acceptance/P1-T08g.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          173,
+          173
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| r1 修复后的完整宿主截图矩阵 | FAIL | 本轮未运行 Chromium；按分工等待编排方重跑，seed-only 不覆盖浏览器等待条件或视觉验收 |"
+    },
+    {
+      "id": "FC-0083",
+      "source": {
+        "path": "docs/acceptance/P1-T08h.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          12,
+          12
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 删除对话框 `deleteHome` 默认不勾选；默认删除只清 Bot/按选择清记忆，保留 home。勾选后只删受管 home，保留 skills 和用户 defaultCwd。先验证归属，再提交 Bot 删除，最后清目录；存储失败保留 home，清理失败返回 `bot/home-cleanup-failed`。Client 读回列表并明确提示 Bot 已删除、目录未完全清理。`bot_manage` 的原审批只涉及记忆，因此仍拒绝 deleteHome 参数。"
+    },
+    {
+      "id": "FC-0084",
+      "source": {
+        "path": "docs/acceptance/P1-T08h.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          37,
+          37
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "首轮全量 check 为 504 PASS / 1 FAIL，原 bundle 端点清单漏加 ensureHome；修正该测试清单后完整重跑 505 PASS。集成初轮发现并修正了三个探针问题，失败记录保留：`09-32-41.444Z-40312` 为 JS 默认 expected 参数将 undefined 当 true；`09-32-59` 开始的轮次为旧 session logs 触发原生 bootstrap；`09-33-44` 开始的轮次为误以为关闭 title LLM 就不会有原生五词标题。最终改用真实 `projections.values.title`（空白时 null）和首轮原生标题断言，不修改产品或宿主行为；最终以 09-34-59 轮为准。"
+    },
+    {
+      "id": "FC-0085",
+      "source": {
+        "path": "docs/acceptance/P1-T08h.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          53,
+          53
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Bots 页新会话与次要菜单，zh light/dark | FAIL | 0/2 截图；按任务由编排方宿主运行 |"
+    },
+    {
+      "id": "FC-0086",
+      "source": {
+        "path": "docs/acceptance/P1-T08h.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          54,
+          54
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 编辑器默认工作目录区域，zh light/dark | FAIL | 0/2 截图；按任务由编排方宿主运行 |"
+    },
+    {
+      "id": "FC-0087",
+      "source": {
+        "path": "docs/acceptance/P1-T08h.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          55,
+          55
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 主入口打开原生会话与“未分组”，zh light/dark | FAIL | 0/2 截图；按任务由编排方宿主运行 |"
+    },
+    {
+      "id": "FC-0088",
+      "source": {
+        "path": "docs/acceptance/P1-T08i.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          68,
+          68
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 宿主 zh light/dark 六张截图及真实输入框非 disabled/非 inert、Bots hero 标签 | FAIL | 本轮未执行；按任务分工由编排方运行，当前 0/6，不能称视觉通过 |"
+    },
+    {
+      "id": "FC-0089",
+      "source": {
+        "path": "docs/acceptance/P1-T08i.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          146,
+          146
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "核查发现，旧 `botSessionRows` 仅按原生列表成员、preset、归档等筛选，没有显式排除 `blank`，因此不能把 dark 当时未显示空白会话认定为已有产品规则。宿主落盘记录证明该会话仍在工作区、preset 正确、blank=true、turns=0；但未保存当时的 Client 列表快照，无法确定当时是尚未加入列表还是 preset 尚未解析。新增回归实际复现：preset 补齐后，旧实现会把空白会话列入历史（修复前 1 fail / 6 pass，`.dsh-dev/t08i-r2-history-before.log`）。"
+    },
+    {
+      "id": "FC-0090",
+      "source": {
+        "path": "docs/acceptance/P1-T08i.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          163,
+          163
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 修正后 zh-dark 三张完整截图 | FAIL；本轮按分工未运行，待编排方复跑 `--v015` |"
+    },
+    {
+      "id": "FC-0091",
+      "source": {
+        "path": "docs/acceptance/P1-T08i.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          165,
+          165
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "最终 seed 证据：`dist/screenshots/2026-10-19T12-32-24.259Z-39910/summary.json`，status=PASS、mode=seed-only、三个会话均 blank=false / turns=1。遗留仅本轮 dark 截图复跑；宿主当时 Client 快照缺失，未将具体刷新时序写成已证实根因。"
+    },
+    {
+      "id": "FC-0092",
+      "source": {
+        "path": "docs/acceptance/P1-T08i.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          188,
+          188
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 修正后完整截图矩阵 | FAIL；按分工本轮未运行，待编排方复跑默认命令 |"
+    },
+    {
+      "id": "FC-0093",
+      "source": {
+        "path": "docs/acceptance/P1-T08j.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          19,
+          19
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `scripts/pnpm check`（首轮） | FAIL：新增测试在 jsdom 中的 `import.meta.url` 不是 file URL；已改为从 package 工作目录读取 `icon.svg`。其余 534 项通过 |"
+    },
+    {
+      "id": "FC-0094",
+      "source": {
+        "path": "docs/acceptance/P1-T08j.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          24,
+          24
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v016` | FAIL：Chromium 启动被 macOS 沙箱拒绝，`bootstrap_check_in ... MachPortRendezvousServer ... Permission denied (1100)`，进程 SIGTRAP |"
+    },
+    {
+      "id": "FC-0095",
+      "source": {
+        "path": "docs/acceptance/P1-T08j.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          36,
+          36
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 与邻近图标的实际视觉大小、基线一致 | FAIL | viewBox 静态居中及 16/18px 单测通过；浏览器受阻，真实视觉未验证 |"
+    },
+    {
+      "id": "FC-0096",
+      "source": {
+        "path": "docs/acceptance/P1-T08j.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          38,
+          38
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `.codex/screens/v016-light.png` | FAIL | Chromium 无法启动，未生成 |"
+    },
+    {
+      "id": "FC-0097",
+      "source": {
+        "path": "docs/acceptance/P1-T08j.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          39,
+          39
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `.codex/screens/v016-dark.png` | FAIL | Chromium 无法启动，未生成 |"
+    },
+    {
+      "id": "FC-0098",
+      "source": {
+        "path": "docs/acceptance/P1-T09.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          16,
+          16
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Registry profile 回归 | **PASS** | **83 checks**，initial/restart/empty-restart/failed-startup；真实鉴权 Remote、metadata、SVG 拒绝、T09 memory CRUD、旧头像冷启动诊断/读取不写/显式修复 |"
+    },
+    {
+      "id": "FC-0099",
+      "source": {
+        "path": "docs/acceptance/P1-T09.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          18,
+          18
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 实际浏览器视觉验证 | **FAIL（本轮未执行）** | 此轮要求的 profile 为真实 Host/Remote 回归，不等同浏览器视觉或人类点击验证 |"
+    },
+    {
+      "id": "FC-0100",
+      "source": {
+        "path": "docs/acceptance/P1-T09.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          97,
+          97
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实浏览器亮/暗主题视觉与实际会话导航 | FAIL（未执行，可选自测） | 本轮使用 React/jsdom 和 token 校验，没有启动隔离 Web/桌面浏览器；不把离线检查当作视觉或会话恢复验证 |"
+    },
+    {
+      "id": "FC-0101",
+      "source": {
+        "path": "docs/acceptance/P1-T10.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          55,
+          55
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "Registry 四阶段分别为初装、带数据重启、删空后重启、刻意损坏本轮独立存储后的 guard 负测。前 3 阶段检查正常 loaded、preset 健康、CRUD/记忆与持久化；第 4 阶段预期 `startup failed` 和 Remote `bot/unavailable`，这是故障处理 PASS，不是生产激活错误被忽略。"
+    },
+    {
+      "id": "FC-0102",
+      "source": {
+        "path": "docs/acceptance/P1-T10.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          99,
+          99
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 本轮完整桌面操作、升级保留数据与真实模型体验 | **FAIL（未执行）** | 任务分工由编排方/用户按 [P1 清单](P1.md) 执行；本轮未修改或启动真实桌面会话 |"
+    },
+    {
+      "id": "FC-0103",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "**状态规则：** 以下结果表示这次完整桌面操作是否实际执行。尚未执行一律记 **FAIL（待验）**；测试、Web Host/mock 和过去的截图只作为辅助证据，不能代替桌面操作。验收人执行后填写日期、环境、证据及 PASS/FAIL，不直接沿用辅助证据的结论。"
+    },
+    {
+      "id": "FC-0104",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          21,
+          21
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 1 | 在“插件 → 添加插件 → 安装第三方插件”选择 **0.1.6 tgz** 并启用。升级时先卸载旧版本、安装 tgz，再 **Cmd+Q 完全退出并重开**。检查中英插件列表。 | 版本为 0.1.6；中英标题、描述与鲸鱼图标正确，插件无激活错误。升级后原 Bot、记忆和目录仍在。CLI 或 link 安装仅为备选，步骤见 README。 | **FAIL（待验）**；本轮安装包静态审计、隔离安装与 Host 激活另见 T10 |"
+    },
+    {
+      "id": "FC-0105",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          22,
+          22
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 2 | 点击左侧 Bots；新安装检查两个示例。分别切换亮暗主题、中英语言、宽窄窗口及折叠侧栏；在会话中打开右侧 Bots tab。 | 首次有“通用助手”和“研究员”。首页为 Bot 列表/详情；左侧导航鲸鱼与默认头像共用剪影，currentColor 随主题变化，无底色块，图标与相邻入口对齐。右栏展示同一批 Bot 与最近会话，普通轮询不闪烁或重置选中项。 | **FAIL（待验）**；历史 Web 截图可辅助比对 |"
+    },
+    {
+      "id": "FC-0106",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          23,
+          23
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 3 | 新建“文案助手”，人设设为“只用中文、活泼语气”，不设默认工作目录。检查原生 preset 选择器；分别从首页和右侧 Bots tab 新开会话。在编辑器查看默认路径，再指定一个已存在的自定义目录重试，最后清空该设置。 | 选择器有此 Bot。默认新会话直接进入原生输入区并属于共享 **Bots** 工作区，`cwd` 为 `$DSH_HOME/dsh-bot/bots`；私有目录为其下 `<botId>/home`。自定义目录对应自己的工作区，清空后回到 Bots。输入框可输入；空白态不要求会话头部徽标，产生回复后的非空会话才检查头像/名称与点击打开详情。原生列表的空白、归档、运行中或有状态点的行不保证显示鲸鱼。 | **FAIL（待验）**；工作区与创建链已有本轮真实 Host 检查 |"
+    },
+    {
+      "id": "FC-0107",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          24,
+          24
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 4 | 文案助手新会话问“你是谁”，再用研究员新开会话问同样问题；记录实际回复。 | 两者采用各自人设，文案助手使用中文活泼语气，研究员采用其研究人设。不能仅以 preset 名称、创建成功或请求被接受代替回复验证。 | **FAIL（待验）**；本轮无真实模型请求 |"
+    },
+    {
+      "id": "FC-0108",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          25,
+          25
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 5 | 对文案助手说“请调用 memory_save 记住：我喜欢简洁的标题”，确认工具执行成功；新开文案助手会话询问标题偏好，再到研究员新会话查询其记忆。 | 记忆工具成功保存，在新文案助手会话自动注入；研究员的记忆列表/搜索没有该记录。以工具结果和记忆面板验证隔离，不能只凭模型是否猜出答案。存活旧会话的提示词快照不随保存变化。 | **FAIL（待验）**；本轮 AgentLoop/mock、存储和冷恢复检查通过 |"
+    },
+    {
+      "id": "FC-0109",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          26,
+          26
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 6 | 打开该 Bot 的“记忆”页签，检查内容、类型、标签、时间与来源会话；搜索、编辑、置顶、手工新增；先取消删除，再确认删除第 5 项记录。重新创建文案助手会话。另在设置中关闭记忆并保存，检查记忆页提示，再重新开启并保存。 | 列表和总数在写入后更新，取消不删除；来源链接打开对应会话。确认删除后记忆列表/搜索不再返回该记录，新会话不再从记忆注入它。仍存活的旧会话及原历史消息不会被清空。关闭记忆时显示关闭提示且已有记忆仍可管理，重新开启后提示消失。 | **FAIL（待验）**；本轮组件与 Remote 检查通过 |"
+    },
+    {
+      "id": "FC-0110",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          27,
+          27
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 7 | 修改文案助手人设，在旧的**存活 Agent**与新会话比较；再复制到新 ID，检查配置与记忆。最后删除临时文案助手，核对删除记忆数量、`删除 home` 默认关闭，先取消再确认。 | 新会话使用新配置，存活旧 Agent 保留原代际；重启后冷恢复采用当前定义。复制配置但不复制记忆或技能文件。删除后选择器消失、活动摘要移除；默认清记忆且保留 home/skills。历史日志保留，但 Bot preset 缺失时**不保证历史会话可冷恢复**；应有删除提示。 | **FAIL（待验）**；本轮代际/删除/存储检查通过 |"
+    },
+    {
+      "id": "FC-0111",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          28,
+          28
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 8 | 在任意未禁用 `bot_manage` 的 Bot 会话请求新建“周报助手”；先拒绝审批，确认首页没有新 Bot，再重试并批准。可补测修改/删除，检查审批说明。 | 模型调用 `bot_manage`，原生审批显示目标 ID、名字或变更字段；拒绝不落库，批准才成功。首页与右栏在刷新后显示结果。`standard` 默认不挂该工具，不能拿普通 standard 会话代替此项。 | **FAIL（待验）**；本轮工具和真实 ApprovalService 检查不是人工点击审批验证 |"
+    },
+    {
+      "id": "FC-0112",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          29,
+          29
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 9 | 为保留的临时 Bot 留下一条记忆，记录其内容与 Bots 工作区名称。Cmd+Q 完全退出桌面版并重开，检查 Bot、记忆、原生会话与共享工作区；如曾手工改名，应保留名字。 | Bot 与记忆持久化；Bots 按真实路径复用，正常重启不创建重复工作区。会话冷恢复采用当前 Bot 配置和记忆快照。若用户删除了工作区，重建不应把原已移至未分组/归档的历史会话强行重新附加。 | **FAIL（待验）**；本轮两个独立 Web Host 的冷恢复通过 |"
+    },
+    {
+      "id": "FC-0113",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          30,
+          30
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 10 | 禁用插件，等待配置生效；检查原生 standard 会话与插件页。再启用，必要时按宿主提示重启，重新打开 Bots、右栏与记忆页。 | 原生功能正常；禁用生效后插件贡献的入口、页面、tab 和徽标卸载，不叠加监听/样式；重新启用后数据恢复、UI 只出现一份，示例不重复种入。旧 Agent 的代际存活遵循宿主行为，不把禁用等同强制结束所有旧会话。 | **FAIL（待验）**；本轮 effect 清理/重新挂载测试通过 |"
+    },
+    {
+      "id": "FC-0114",
+      "source": {
+        "path": "docs/acceptance/P1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          32,
+          32
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "各项记录：`编号 / PASS 或 FAIL / 实际步骤与结果 / 截图或日志路径 / 时间`。真实模型步骤需要同时保存工具结果和实际回复；证据不得含 API key、认证 cookie 或启动 token。"
+    },
+    {
+      "id": "FC-0115",
+      "source": {
+        "path": "docs/acceptance/P2-R01.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          57,
+          57
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 完整 Loader profile、定时投递、冷恢复、桌面亮暗 UI | **FAIL（本任务未执行）**：不在 R01 必需验收范围；focused test 只挂载生成的 schedule 与 bot-context 行，sessionPersistence/SessionController 使用替身，不将 CRUD 成功当作这些行为通过 |"
+    },
+    {
+      "id": "FC-0116",
+      "source": {
+        "path": "docs/acceptance/P2-R02.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          25,
+          25
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v021` | **FAIL**；Chromium 启动被 macOS 沙箱 MachPort 权限拒绝，0 PNG |"
+    },
+    {
+      "id": "FC-0117",
+      "source": {
+        "path": "docs/acceptance/P2-R02.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          41,
+          41
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| ② 总览/详情改读原生 catalog/history，原生编辑/删除 | **PASS**：正式 Client/Gateway 同 taskId；中英 DOM 操作；真实浏览器视觉另列 FAIL |"
+    },
+    {
+      "id": "FC-0118",
+      "source": {
+        "path": "docs/acceptance/P2-R02.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          48,
+          48
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Chromium、中英亮暗浏览器截图及可读性 | **FAIL（受阻）**：MachPort 权限拒绝，未产生截图；由编排方复跑 |"
+    },
+    {
+      "id": "FC-0119",
+      "source": {
+        "path": "docs/acceptance/P2-R03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          58,
+          58
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 初次 E2E（目录 `1792553800928-76464`）**FAIL**：探针误用不存在的 Agent.prompt。修为公开 SessionController.prompt；产品没有该调用。"
+    },
+    {
+      "id": "FC-0120",
+      "source": {
+        "path": "docs/acceptance/P2-R03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          59,
+          59
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 第二次 E2E（目录 `1792553838627-77567`）**FAIL**：原生时间/运行环境消息追加在人工输入后，初版“最后任意 user/message”门禁误判为后台通知，未启动子代理。修为跳过原生 agent-instructions/runtime-context/time-context/tmux-context 环境消息，同时不清除先前通知屏障；单元回归和第三次真实 E2E 通过。失败证据均保留。"
+    },
+    {
+      "id": "FC-0121",
+      "source": {
+        "path": "docs/acceptance/P2-R04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          28,
+          28
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 决策：在规定的既有 `.dsh-dev` 下使用全新 profile、storage/session/agents roots。理由：公共规则只允许这个 DSH_HOME 且要求保留已有数据，因此不清空/替换 home；严格“全新空 DSH_HOME”单列 FAIL。"
+    },
+    {
+      "id": "FC-0122",
+      "source": {
+        "path": "docs/acceptance/P2-R04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          48,
+          48
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 中文界面不再带固定英文 `[Run now]` | **PASS（持久标题/代码）**；采用原生内容标题形式，公开 projection 读回 `Project review / 项目回顾 · 2026-10-21 03:50 UTC`；浏览器显示另列 FAIL |"
+    },
+    {
+      "id": "FC-0123",
+      "source": {
+        "path": "docs/acceptance/P2-R04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          53,
+          53
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 严格“全新空 DSH_HOME” | **FAIL（未执行）**；保留规定的既有 `.dsh-dev`，仅新建 profile 和数据根，见隔离决策 |"
+    },
+    {
+      "id": "FC-0124",
+      "source": {
+        "path": "docs/acceptance/P2-R04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          54,
+          54
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Bots 页面浏览器实际呈现、中英亮暗、桌面升级 | **FAIL（受阻/未执行）**；Chromium MachPort 权限拒绝，0 PNG；桌面升级依规则由编排方完成 |"
+    },
+    {
+      "id": "FC-0125",
+      "source": {
+        "path": "docs/acceptance/P2-R04.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          62,
+          62
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "首轮 `.dsh-dev/p2/r04/1792554445105-89234`：native **FAIL**，delegate **PASS**。四次 native mock 请求全部 completed，manual Run 已 succeeded；新增标题断言误从不含 title 的 SessionSummary 读取，得到 undefined。修为公开 `session/projections.values.title` 后重新运行全部场景，不将该轮局部成功拼入最终结果。失败原目录保留。"
+    },
+    {
+      "id": "FC-0126",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          3,
+          3
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "产品与脚本返工完成，`scripts/pnpm check` **PASS**（41 文件、555 tests、typecheck、lint）。本沙箱浏览器复验 **FAIL**（Chromium 启动权限），不宣称头像截图已通过。起始 HEAD `fa403e6`，初始仅 `.codex/` 未跟踪；保留原有内容，无 commit/push，无桌面/参考源码/全局配置改动。"
+    },
+    {
+      "id": "FC-0127",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 根因与证据"
+    },
+    {
+      "id": "FC-0128",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          35,
+          35
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 查明 disabled/detach 根因 | **PASS**，编排方摘要与产品调用链一致；新增延迟 Remote 回归覆盖实际忙碌区间。 |"
+    },
+    {
+      "id": "FC-0129",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r1.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          40,
+          40
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v022-avatar`（构建完成后） | **FAIL**，Chromium `MachPortRendezvousServer ... Permission denied (1100)`，未启动 Host/进入页面；`.dsh-dev/r06-r1-screens-final.log`，`dist/screenshots/2026-10-21T10-09-48.444Z-38418/summary.json`。 |"
+    },
+    {
+      "id": "FC-0130",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          7,
+          7
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "已查看编排方失败图与摘要：`dist/screenshots/2026-10-21T10-11-30.687Z-40590/failure-v022-avatar-light-editor-ready.png`。编辑器已打开，选择器可见；模态框及遮罩正常遮住背景列表。失败是旧脚本要求“编辑时列表仍可见”，不是编辑器没有打开。"
+    },
+    {
+      "id": "FC-0131",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          25,
+          25
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 分开选择器/列表截图实现 | **PASS（代码/静态）**。状态、文件名、数量和主题匹配均已更新；真实四图运行另列 FAIL。 |"
+    },
+    {
+      "id": "FC-0132",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          29,
+          29
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v022-avatar` | **FAIL**，Chromium 启动 `MachPortRendezvousServer ... Permission denied (1100)`，未进入 Host/页面。日志 `.dsh-dev/r06-r2-screens.log`；证据 `dist/screenshots/2026-10-21T10-18-40.426Z-50561/summary.json`。 |"
+    },
+    {
+      "id": "FC-0133",
+      "source": {
+        "path": "docs/acceptance/P2-R06-r2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          30,
+          30
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 四张 PNG / 24px 视觉辨识 | **FAIL（环境阻断，未完成实拍/视觉验收）**。不使用初轮或 r1 图冒充新版。 |"
+    },
+    {
+      "id": "FC-0134",
+      "source": {
+        "path": "docs/acceptance/P2-R06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          3,
+          3
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "最新返工见 [R06 r2：分开截图与增强造型](P2-R06-r2.md)；导航修复见 [r1](P2-R06-r1.md)。以下保留 R06 初轮证据与包摘要。"
+    },
+    {
+      "id": "FC-0135",
+      "source": {
+        "path": "docs/acceptance/P2-R06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "实现与正式检查完成；浏览器视觉验收 **FAIL**（Chromium 启动权限错误）。不把单测、主题计算或打包结果当作真实亮暗 UI 验证。工作分支 `phase/p2-reuse`，开始 HEAD `c2c46e1`；原有未跟踪 `.codex/` 保留。无 commit/push，无真实模型请求，未修改桌面应用、参考源码、全局配置或 `~/.dsh`。"
+    },
+    {
+      "id": "FC-0136",
+      "source": {
+        "path": "docs/acceptance/P2-R06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          20,
+          20
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 1. 10–12 色、中英名称、亮暗对比度 | **PASS（数值）** | 12 色、同组 locale 键；锁定亮/暗 fixture 计算每色 ≥3:1，最低亮色 3.964:1、暗色 7.512:1。真实主题观感未验证，归第 5 项 FAIL。 |"
+    },
+    {
+      "id": "FC-0137",
+      "source": {
+        "path": "docs/acceptance/P2-R06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          24,
+          24
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 5. --v022-avatar 亮暗截图 | **FAIL（环境阻断）** | 脚本已实现并实际执行；Chromium `bootstrap_check_in ... MachPortRendezvousServer ... Permission denied (1100)`。在 Host 初始化前失败，0 张目标截图，未进入编辑器。由编排方复跑。 |"
+    },
+    {
+      "id": "FC-0138",
+      "source": {
+        "path": "docs/acceptance/P2-R06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          32,
+          32
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `scripts/pnpm --filter dsh-bot typecheck`（初轮） | **FAIL**：构建前旧 lib 类型仍只有四个颜色；按既有 build→test→typecheck 顺序生成产物后消失。 |"
+    },
+    {
+      "id": "FC-0139",
+      "source": {
+        "path": "docs/acceptance/P2-R06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          34,
+          34
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `scripts/pnpm --filter dsh-bot test -- tests/client/avatar.spec.tsx tests/client/whale-glyph.spec.tsx tests/store.spec.ts tests/remote-contract.spec.ts tests/bot-manage.spec.ts tests/registry.spec.ts` | 初轮 **FAIL**，实际跑了全套，新增测试两处夹具缺少必填 id/name；已修正。日志 `.dsh-dev/r06-targeted.log`。 |"
+    },
+    {
+      "id": "FC-0140",
+      "source": {
+        "path": "docs/acceptance/P2-R06.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          37,
+          37
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v022-avatar` | **FAIL**，Chromium 启动权限错误。日志 `.dsh-dev/r06-screens.log`；完整证据 `dist/screenshots/2026-10-21T09-56-15.214Z-18181/{summary,failure}.json`。 |"
+    },
+    {
+      "id": "FC-0141",
+      "source": {
+        "path": "docs/acceptance/P2-T12.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          40,
+          40
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "状态：`queued / running / waiting_approval / succeeded / failed / cancelled / timed_out / skipped / recovery_needed`。创建/提交属于内部 step。终态不可再次运行；占位运行结束必须传入执行链已确认停止的内部证明标志，Remote 不暴露它。回报 `pending / sent / blocked`，sent 仅表示调用方确认持久入箱，不能解读为发起 Bot 已处理。"
+    },
+    {
+      "id": "FC-0142",
+      "source": {
+        "path": "docs/acceptance/P2-T12.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          64,
+          64
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 9 种 Run 状态、快照/身份及 terminal 约束 | **PASS**：queued/running/waiting_approval/succeeded/failed/cancelled/timed_out/skipped/recovery_needed 全部有行为覆盖；未确认停止不能释放、终态不能返回 running、Bot 同 ID 重建不能串用 |"
+    },
+    {
+      "id": "FC-0143",
+      "source": {
+        "path": "docs/acceptance/P2-T12.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          70,
+          70
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实 Host profile、打包安装、实际调度/委派回报及桌面 UI | **FAIL（本轮未执行，非 T12 交付范围）**：本轮没有启动这些路径，需由 T13–T17 分项验收；单元和组件结果不代替它们 |"
+    },
+    {
+      "id": "FC-0144",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "本轮实现普通会话 RunExecutor、单 Host 所有权和诊断 Remote，并完成 T12 导出返工。没有 Dispatcher、Routine 工具/UI、bot_delegate 或自动回报；没有改版本或重新打包。原有 `tasks/P2/T13-executor.md` 修改和未跟踪 `.codex/` 均保留，未 commit/push，未修改桌面安装或 `~/.dsh`。"
+    },
+    {
+      "id": "FC-0145",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          36,
+          36
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `/bin/ps -p $$ -o lstart=` | FAIL，沙箱返回 `operation not permitted`；没有绕过沙箱 |"
+    },
+    {
+      "id": "FC-0146",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          38,
+          38
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "依赖安装、所有业务测试/profile 都在仓库内的隔离数据目录运行。唯一启用的模型 provider 显式指向 `127.0.0.1` 动态端口，用专用 mock key；其它 provider、标题 LLM、重试、遥测/远程日志禁用。[mock.json](../../.dsh-dev/p2/t13/1792507084315-13178/mock.json) 记录请求路径、行为及服务端 outcome。`auth_error` 的 HTTP 响应传输结束不等于业务成功，业务 Run 是 `failed`；两个 stall 的服务端 outcome 仍为 `stalled`，Run 分别通过本地 Agent 停止屏障到 `timed_out` / `cancelled`。"
+    },
+    {
+      "id": "FC-0147",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          48,
+          48
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 模型 error / max-tokens / blocked / aborted 分类 | **PASS**。真实 mock error/max-tokens→failed；blocked/aborted 为单测。非 completed 不会标为 succeeded |"
+    },
+    {
+      "id": "FC-0148",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          54,
+          54
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| PID 启动时间不符自动接管 | **PASS（注入单测）**；**FAIL（真实 OS 查询）**：本沙箱禁用 ps，不能据此声称真实 PID 复用场景已验证 |"
+    },
+    {
+      "id": "FC-0149",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          55,
+          55
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| T12 导出返工 | **PASS**。移除 `./automation` / `./automation-remote`；根 Host 直接加载内部模块，测试使用相对路径；Typert package 字符串仅作为契约标识 |"
+    },
+    {
+      "id": "FC-0150",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          57,
+          57
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 桌面侧栏可视展开、亮暗主题、交互审批 UI | **FAIL（本轮未执行）**。T13 无 UI 改动；本轮只确认原生分组数据，不能代替 T16/T17 桌面视觉验收 |"
+    },
+    {
+      "id": "FC-0151",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          64,
+          64
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| error | auth_error | failed | 保留 |"
+    },
+    {
+      "id": "FC-0152",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          65,
+          65
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| max-tokens | max_tokens | failed | 保留 |"
+    },
+    {
+      "id": "FC-0153",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          89,
+          89
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- **决策：Host 根入口激活内部服务，不新增 Loader 子路径导出。理由：** T12 两个 export 不属于 DSH 加载必需，按返工要求移除。"
+    },
+    {
+      "id": "FC-0154",
+      "source": {
+        "path": "docs/acceptance/P2-T13.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          96,
+          96
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 首轮锁测试 2 项失败：ps 被沙箱阻止；采用上述保守降级后，真实进程竞争/死 PID 接管通过，OS 启动时间查询仍明确 FAIL。"
+    },
+    {
+      "id": "FC-0155",
+      "source": {
+        "path": "docs/acceptance/P2-T14.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          52,
+          52
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 桌面 UI、中英亮暗、真实系统睡眠 | **FAIL（本轮未执行）**，T14 无 UI 改动；UI 属 T16/T17，不以 Host 数据冒充视觉验证 |"
+    },
+    {
+      "id": "FC-0156",
+      "source": {
+        "path": "docs/acceptance/P2-T15.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          67,
+          67
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实 Desktop UI、亮暗主题、UI 切换窗口 | **FAIL（未执行）**：本任务无 UI 改动，本轮为 headless Web Host；不以 Host 结果替代桌面截图 |"
+    },
+    {
+      "id": "FC-0157",
+      "source": {
+        "path": "docs/acceptance/P2-T15.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          68,
+          68
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 已删除原生 session 的真实 UI 删除流程、逐投递边界 SIGKILL | **FAIL（未执行）**：不可达原会话为不存在 ID，删除分支为适配器注入；投递窗口用持久状态夹具，无完整故障进程矩阵 |"
+    },
+    {
+      "id": "FC-0158",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "日期：2026-10-20。分支 `phase/p2`；基线 HEAD `3d4d69bc7861d264ef23b4acd8007870f6367866`。实现完成；**构建、636 项测试及正式 Client/Gateway/Host 链路通过，浏览器与截图验收 FAIL（沙箱拒绝 Chromium 启动）**。不能将本报告视为桌面亮暗验收通过。"
+    },
+    {
+      "id": "FC-0159",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          60,
+          60
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v020` | **FAIL**，最终退出 1；Chromium 启动被沙箱拒绝；日志 [t16-screenshots.log](../../.dsh-dev/t16-screenshots.log) |"
+    },
+    {
+      "id": "FC-0160",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          71,
+          71
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- [最终汇总](../../dist/screenshots/2026-10-20T15-38-44.073Z-95669/summary.json)：`HOST_ONLY_PASS`、`visualValidation=NOT_RUN`、真实模型请求 0、PNG 数 0。"
+    },
+    {
+      "id": "FC-0161",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          92,
+          92
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Bot 详情区与顶部总览，不加侧栏 | **PASS（组件/slot）**：正式 factory、双语测试；浏览器显示另列 FAIL |"
+    },
+    {
+      "id": "FC-0162",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          95,
+          95
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 历史、跳过原因、会话链接 | **PASS（组件+非视觉 Host）**：skip/overlap UI、真实成功历史；原生会话画面另列 FAIL |"
+    },
+    {
+      "id": "FC-0163",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          101,
+          101
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 实际浏览器 create→every60→pause/run_now→history 导航 | **FAIL（未执行）**：Chromium 在启动阶段被拒；脚本已实现步骤 |"
+    },
+    {
+      "id": "FC-0164",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          102,
+          102
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 中英亮暗实际可读性、两入口可见数据、v020 PNG | **FAIL（受阻）**：0 张截图，不能以 CSS/DOM 单测替代 |"
+    },
+    {
+      "id": "FC-0165",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          103,
+          103
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 模型主动调用 routine_* 的完整 profile 对话 | **FAIL（未执行）**：原生工具运行时测试通过，但不是模型发起链；需扩展 mock profile 或 T17 补验 |"
+    },
+    {
+      "id": "FC-0166",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          144,
+          144
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `scripts/pnpm install --frozen-lockfile --offline` | FAIL：离线缓存缺 `@vitest/spy` 元数据，供应链校验报 `ERR_PNPM_NO_OFFLINE_META`（虽然退出码为 0，不按成功计）；[日志](../../.dsh-dev/t16-r2-frozen.log) |"
+    },
+    {
+      "id": "FC-0167",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          150,
+          150
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 最终浏览器 `--v020` 与亮暗 PNG | FAIL（本轮未执行）：环境已知无法启动 Chromium，按本次指示留编排方复跑；不以 DOM 或 seed-only 代替 |"
+    },
+    {
+      "id": "FC-0168",
+      "source": {
+        "path": "docs/acceptance/P2-T16.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          153,
+          153
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "种子证据：[汇总](../../dist/screenshots/2026-10-20T15-47-11.712Z-8118/summary.json)、[完整 Routine/Run 收据](../../dist/screenshots/2026-10-20T15-47-11.712Z-8118/routine-seed.json)。`SEED_ONLY_PASS`、`visualValidation=NOT_RUN`，不会生成替代图片；两个 Run 是 manual，并没有冒充定时到期执行。Host 在隔离 profile 正常退出。"
+    },
+    {
+      "id": "FC-0169",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          24,
+          24
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "最终统一 e2e：**14/14 PASS**，三套场景、七次 Host 启停，32 次 mock 请求；[summary.json](../../.dsh-dev/p2/t17/1792512393149-35787/summary.json)。最终目录 `.dsh-dev/p2/t17/1792512393149-35787`。未执行项继续单列 FAIL，不将本报告称为全部桌面验收通过。"
+    },
+    {
+      "id": "FC-0170",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          50,
+          50
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 全新空 DSH_HOME 安装 | **FAIL（未执行）**；使用规定的既有 `.dsh-dev` 下全新 profile、存储和 session roots；未清空/替换 home |"
+    },
+    {
+      "id": "FC-0171",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          51,
+          51
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 中英亮暗截图与桌面真实操作 | **FAIL（未执行）**；依任务由编排方复跑，不用组件/Host 验证代替 |"
+    },
+    {
+      "id": "FC-0172",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          52,
+          52
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实桌面跨版本升级、macOS 休眠、逐投递边界 SIGKILL | **FAIL（未执行的扩展验收）**；0.2.0 重装、进程暂停及单元故障注入各自单列 |"
+    },
+    {
+      "id": "FC-0173",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          62,
+          62
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Dispatcher 旧实现的确定性回归 | 预期 FAIL，退出 1；[修复前证据](../../.dsh-dev/p2/t17/1792512393149-35787/validation/t17-timer-before.log)。恢复修复后定向测试退出 0；最终全量另覆盖所有权失效 |"
+    },
+    {
+      "id": "FC-0174",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          87,
+          87
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "统一首轮 `.dsh-dev/p2/t17/1792511790877-21451`：limits 21 次 mock、delegate 7 次 mock 通过，dispatcher 的 every60 在 80 秒期限内无 Run、无 mock，汇总如实 FAIL。原 `first-fatal.json`、未推进的 Routine 与空 runs 表保留。"
+    },
+    {
+      "id": "FC-0175",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          89,
+          89
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "确定性回归将时钟放在到期前 1ms，在扫描读完到期列表、重设 timer 前跨过到期点。旧实现仅剩兜底 timer，测试 FAIL（`.dsh-dev/t17-timer-before.log`）；修复记录 scannedAt，仅为扫描之后新跨过的时点立即唤醒。另验证真正扫描失败及所有权失效时只等兜底，不发生零延迟循环。完整检查/重新打包/新 e2e 的结果见上表，未放宽等待或完成断言。"
+    },
+    {
+      "id": "FC-0176",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          93,
+          93
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 决策：在固定 `.dsh-dev` 下使用全新 profile 和存储根，不清空或替换 DSH_HOME。理由：任务同时要求固定 home、保留既有数据；新空 home 的字面要求未执行，明确 FAIL，不以 profile 冒充。"
+    },
+    {
+      "id": "FC-0177",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          101,
+          101
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "未完成的验收继续标为 FAIL：新空 DSH_HOME、真实桌面/浏览器亮暗截图、用户现有数据实际跨版本升级、真实 macOS 休眠、全投递边界 SIGKILL 故障矩阵。已存在的单元/旧任务证据不提升为本轮实测。历史/锁收据暂不裁剪；blocked 回报没有手动重试入口；只保证同机单 owner，不承诺外部副作用 exactly-once。"
+    },
+    {
+      "id": "FC-0178",
+      "source": {
+        "path": "docs/acceptance/P2-T17.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          137,
+          137
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- **决策：Host 根入口激活内部服务，不新增 Loader 子路径导出。理由：** T12 两个 export 不属于 DSH 加载必需，按返工要求移除。"
+    },
+    {
+      "id": "FC-0179",
+      "source": {
+        "path": "docs/acceptance/P2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "R05 已实现并打包。主会话、迁移/改名/原生标题固定、立即运行投递、子代理过滤与正式检查通过；浏览器亮暗截图 **FAIL**（Chromium 启动被系统权限拒绝）。未 commit/push，未修改桌面应用、只读 DSH 参考源码或 `~/.dsh`。任务开始的 `.codex/` 未跟踪内容保留，旧 profile、用户会话与历史产物未删除。"
+    },
+    {
+      "id": "FC-0180",
+      "source": {
+        "path": "docs/acceptance/P2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          25,
+          25
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 决策：截图失败保留证据，继续完成独立 Host 验收。理由：任务明确允许 Chromium 不能启动时标 FAIL 由编排方复跑；未降低沙箱或借用旧截图。"
+    },
+    {
+      "id": "FC-0181",
+      "source": {
+        "path": "docs/acceptance/P2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          36,
+          36
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 6. 每 Bot 一行主会话预览；详情只有主会话 | **PASS（Host/组件）**。Host 活动过滤、Client mainSessionId 过滤与中英 DOM 测试通过；旧历史、子代理和未映射行不展示。真实浏览器视觉另列 FAIL。 |"
+    },
+    {
+      "id": "FC-0182",
+      "source": {
+        "path": "docs/acceptance/P2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          38,
+          38
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 7b. --v022 输出亮暗截图 | **FAIL（环境阻断）**。`bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`；没有生成 `.codex/screens/v022-light.png` / `v022-dark.png`，未进入页面。 |"
+    },
+    {
+      "id": "FC-0183",
+      "source": {
+        "path": "docs/acceptance/P2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          53,
+          53
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" DSH_BOT_E2E_PACKAGE=\"$PWD/dist/dsh-bot-0.2.2.tgz\" node scripts/screenshot.mjs --v022` | **FAIL**，Chromium 启动权限错误；`.dsh-dev/r05-screens.log`。 |"
+    },
+    {
+      "id": "FC-0184",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "交付 `dist/dsh-bot-0.3.0.tgz`。**Host 集成与构建检查 PASS；整体发布验收 FAIL**：真实浏览器尚未进入页面，IM consumer gate 未通过，真实平台/桌面/线上发布未执行。下面所有 PASS 均有明确证据范围；未运行的项目仍列 FAIL，不以 DOM、静态分析或合成种子代替截图。"
+    },
+    {
+      "id": "FC-0185",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          22,
+          22
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" scripts/p34-e2e` | Host/runtimeStatus=PASS，整体 status=FAIL / 退出 1。保留浏览器与外部门禁失败，未把脚本退出 1 改成“全链路通过”。 |"
+    },
+    {
+      "id": "FC-0186",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          23,
+          23
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `node scripts/screenshot.mjs --v03`（由 e2e 设置相同 DSH_HOME 与包参数） | fixtureStatus=PASS；浏览器 FAIL（环境）。同一返工脚本覆盖全部 15 页面 × 中英 × 亮暗；60 个目标均未生成合格 PNG，8 个窄屏检查 FAIL。 |"
+    },
+    {
+      "id": "FC-0187",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          37,
+          37
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U01 API spike | PASS（MCP/群/Teams/Memory 风险 gate）；FAIL（IM） | [原 spike 报告](../spikes/P34-api-spike.md)：维护窗口秘密桥、群根 guard/恢复/卸载、caller preset/默认 route、Team CAS 和 Memory 多写者丢写复现。IM consumer 注册/撤销后无 fallback gate 未测。本轮没有把 U01 全探针重新运行称为 PASS；依赖的正式组合由以下最终包运行复验。 |"
+    },
+    {
+      "id": "FC-0188",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          38,
+          38
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U02 连接器与原生凭据桥 | PASS（Host）；FAIL（真实服务/视觉） | connectors-notifications 首次/冷 Host：同名 namespace 隔离、busy 保存 pending→空闲维护、撤权 guard、生日/版本及主会话身份、无秘密进入文档/Remote/日志。真实 GitHub/Notion 等联调 FAIL（未运行）。[原报告](P34-U02-03.md)。 |"
+    },
+    {
+      "id": "FC-0189",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          39,
+          39
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U03 通知中心与策略 | PASS（Host/策略回归）；FAIL（外推/OS/视觉） | 同一真实 Host 的模型调用 bot_notify、去重、来源、Inbox 不受外推节流影响、冷恢复；单元回归覆盖审批拒绝、时区/DST/额度、unknown 不重发。fake 端口不表示真实 IM 接通，schedule 投递不当作模型完成。 |"
+    },
+    {
+      "id": "FC-0190",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          40,
+          40
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U04 IM 可选适配 | PASS（安全禁用）；FAIL（收发功能） | im-gate-team 安装固定 `xmanrui/dsh-im@4645cf7` 的实际包，合同检测、零账号及 disabled 状态通过。consumer、入站去重、同主会话/原 thread 回复、checked 外推均 FAIL（gate 未通过，未执行）；未绕过私有 seam。[原报告](P34-U04-05.md)。 |"
+    },
+    {
+      "id": "FC-0191",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          41,
+          41
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U05 原生 Team | PASS（Host）；FAIL（视觉） | 实际 TeamService、lead 所属、任务 claim/complete/CAS/依赖、原生 child 继承配置/settlement 和冷恢复。teammate 不是另一个独立 Bot；未挂宿主服务时 unsupported。 |"
+    },
+    {
+      "id": "FC-0192",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          42,
+          42
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U06 群模型与生命周期 | PASS（Host）；FAIL（视觉） | groups 首次/冷 Host：独立 owned 根、同 operationId、生日/revision、flush/标题、重复 resume/Controller 所有权拒绝、贡献卸载后 guard、清理。每 Bot 一个可见主会话，ID/标题不变，根模型调用 **0**。[原报告](P34-U06-08.md)。 |"
+    },
+    {
+      "id": "FC-0193",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          43,
+          43
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U07 群路由 | PASS（已测 Host 分支）；FAIL（未测故障） | 多 Bot 真实 preset/MCP namespace/默认模型、@ memberIds、顺序/上下文、partial/max_tokens、取消和停止、重开不补跑不明副作用通过。物理强杀正落提交窗口、群 child 实际 ask 拒绝仍 FAIL（未运行）。 |"
+    },
+    {
+      "id": "FC-0194",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          44,
+          44
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U08 群 UI | PASS（正式 Client DOM）；FAIL（浏览器） | 中英输入 @、中文/空格/大小写/重名/未知提示、鲸鱼身份、轮流失败/取消不推进、无变更零 DOM/焦点/草稿/选区/滚动回归。群创建/成员/@/轮流亮暗页面与窄屏均因 Chromium 启动失败而 FAIL。 |"
+    },
+    {
+      "id": "FC-0195",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          45,
+          45
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U09 管理工作区 | PASS（Host/Client DOM）；FAIL（浏览器） | 管理内分区、内部记忆/传输、连接器/通知/原生定时/协作/IM 入口与智能轮询；JSON/文本技能导出、预览导入、禁用引用、非秘密草稿保留和不闪 DOM 回归。真实亮暗/窄屏/键盘交互未执行。[原报告](P34-U09-11.md)。 |"
+    },
+    {
+      "id": "FC-0196",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          46,
+          46
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U10 Reference Memory 并存 | PASS（Host）；FAIL（PTC/视觉） | memory-transfer 首次/冷 Host：实际 MCP server、Bot 生日文件隔离、单写者/队列、旧 client 停止再换、并发读回、损坏文件保留、server 退出/清理和子代理仍用 internal。PTC 路径按 gate 拒绝写入，未支持。 |"
+    },
+    {
+      "id": "FC-0197",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          47,
+          47
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U11 单向复制 | PASS（已测 Host 分支）；FAIL（物理故障窗口/视觉） | envelope metadata/digest readback、逐条清单、半批续跑/幂等/取消/回退、源冲突阻止 commit、原表字节不变和条目数确认通过。只内部→图谱复制并存，无反向导入/替代；binding/清单间物理强杀未执行。 |"
+    },
+    {
+      "id": "FC-0198",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          48,
+          48
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U12 包与市场元数据 | PASS（本地交付/fixture）；FAIL（线上安装） | 同一 0.3.0 tgz 全新安装、manifest/exports/locale/icon/许可证/peer/dev/兼容范围、全文件安装审计、启用/卸载/重装和旧包升级通过。公开 parser/mock registry 不是正式市场；线上 npm、最终 Git tag/commit 路径安装、另一台机器一键安装均 FAIL（未发布/未执行）。 |"
+    },
+    {
+      "id": "FC-0199",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          49,
+          49
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U13 集成与证据 | PASS（Host 回归）；FAIL（完整用户/视觉流程） | 本轮四领域首次/冷 Host + 原生 schedule/delegate + 旧包升级/CLI 重装均使用同一 tgz；正式构建 Client/Gateway 与单元测试通过。跨页面真实浏览器全链路、PNG、真实平台/桌面/线上市场仍未通过，因此整体不标 PASS。 |"
+    },
+    {
+      "id": "FC-0200",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          53,
+          53
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "完整条款与原文件清单见 [返工验收](P34-rework.md)，r2 Wire/error 决定覆盖 r1 保留旧 Wire 的历史决定；持久身份始终保留。"
+    },
+    {
+      "id": "FC-0201",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          55,
+          55
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 返工项 | 结果 | 本轮复核 |"
+    },
+    {
+      "id": "FC-0202",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          58,
+          58
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| r1 4–7 可读性、输入式 @、轮流失败/取消、群鲸鱼/唯一主会话 | PASS | 新包群 Host 与现有正式 Client 测试复验；侧栏视觉实际显示另为 FAIL。 |"
+    },
+    {
+      "id": "FC-0203",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          59,
+          59
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| r1 8 screenshot-v03 | FAIL（环境） | 复用原脚本，并从原 40 目标补齐 Bot 编辑器、内部记忆、传输、原生定时、IM 至 60 目标；追加群聊/管理窄屏及任务要求的四类兼容别名。实际浏览器启动失败，未冒用旧图。 |"
+    },
+    {
+      "id": "FC-0204",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          64,
+          64
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| r2 5 报告与运行边界 | PASS | 历史 r2 只有检查/DOM 证据；本报告新增当前最终包的首次/冷 Host 收据，仍单列浏览器 FAIL。 |"
+    },
+    {
+      "id": "FC-0205",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          72,
+          72
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| bots、bot-editor | FAIL / FAIL | FAIL / FAIL |"
+    },
+    {
+      "id": "FC-0206",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          73,
+          73
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| group-create、group-members | FAIL / FAIL | FAIL / FAIL |"
+    },
+    {
+      "id": "FC-0207",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          74,
+          74
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| group-mention、group-round | FAIL / FAIL | FAIL / FAIL |"
+    },
+    {
+      "id": "FC-0208",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          75,
+          75
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| management、connectors、notifications | FAIL / FAIL | FAIL / FAIL |"
+    },
+    {
+      "id": "FC-0209",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          76,
+          76
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| collaboration、routines、im | FAIL / FAIL | FAIL / FAIL |"
+    },
+    {
+      "id": "FC-0210",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          77,
+          77
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| memory-records、memory-backend、transfer | FAIL / FAIL | FAIL / FAIL |"
+    },
+    {
+      "id": "FC-0211",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          78,
+          78
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 群聊/管理 390px 操作与布局，各一组 | FAIL / FAIL | FAIL / FAIL |"
+    },
+    {
+      "id": "FC-0212",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          80,
+          80
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "失败发生在 `bootstrap_check_in / MachPortRendezvousServer Permission denied (1100)`，早于 page.goto。**合格 PNG=0**；每行列出的各页面均独立计 FAIL。群创建/成员操作/@/轮流、协作、记忆、主题可读性、焦点、错误、窄屏、草稿和真实背景刷新均未获得浏览器证据。fixture 的三个 Bot/群/原生任务/协作/记忆准备成功仅属 Host 运行，不是截图。"
+    },
+    {
+      "id": "FC-0213",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          87,
+          87
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "2. 决策：市场仅 fixture + mock registry。理由：没有已发布 0.3.0 npm/最终 Git tag，不能写虚假正式索引或运行只读 private generator。Git nonexistent path 的远程安装、发布后的版本匹配与外部机器安装仍 FAIL（未执行）；parser 的 path traversal 拒绝不能替代远程 Git fetch。"
+    },
+    {
+      "id": "FC-0214",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          91,
+          91
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "6. 真实 GitHub 等 MCP、飞书/Lark 收发、OS 通知、关闭 Host 后推送、桌面体验、线上发布均 FAIL（不支持或未执行）；不会自动 commit/push/publish。只支持同一数据后端一个活动 Host，单写者不协调外部程序。"
+    },
+    {
+      "id": "FC-0215",
+      "source": {
+        "path": "docs/acceptance/P3-P4.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          92,
+          92
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "7. 群内 ask 拒绝、群/记忆提交间的物理强杀窗口仍 FAIL（未执行）。正常冷恢复、取消、半批失败、max_tokens 和 server 强停的实测不能替代这些窗口。"
+    },
+    {
+      "id": "FC-0216",
+      "source": {
+        "path": "docs/acceptance/P34-B01-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          42,
+          42
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `scripts/pnpm install --frozen-lockfile` | FAIL（NOT_RUN）；未增加依赖，本轮无依赖复现需求，未额外运行安装。pnpm 的自动整理实际发生且原文件恢复另有说明。 |"
+    },
+    {
+      "id": "FC-0217",
+      "source": {
+        "path": "docs/acceptance/P34-B01-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          55,
+          55
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| B01 PTC 传播 | FAIL，组合未证实；按 §14.4 交 B04 实施受限回退。 |"
+    },
+    {
+      "id": "FC-0218",
+      "source": {
+        "path": "docs/acceptance/P34-B01-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          56,
+          56
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| B01 实际 ui-chat 默认 renderer、完整 wake 极端竞态 | FAIL（NOT_RUN）；见 B01 表格，相关生产能力保持门禁。 |"
+    },
+    {
+      "id": "FC-0219",
+      "source": {
+        "path": "docs/acceptance/P34-B01-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          68,
+          68
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 正式安全工具/目录、三层回复链、MCP/Team/PTC 全矩阵、热卸载安全 | FAIL（NOT_RUN，本轮范围外）；由 B04/B06 接续，未提前启用。 |"
+    },
+    {
+      "id": "FC-0220",
+      "source": {
+        "path": "docs/acceptance/P34-B01-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          69,
+          69
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 正式 Client 亮暗中英窄屏截图、0.3.2 tgz/安装升级 | FAIL（NOT_RUN，本轮范围外）；由 B05/B06 接续，无版本修改或打包发布。 |"
+    },
+    {
+      "id": "FC-0221",
+      "source": {
+        "path": "docs/acceptance/P34-B01-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          89,
+          89
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "补充收尾：尝试 `ps -axo pid=,ppid=,command=` 审计系统进程表，FAIL（沙箱 `Operation not permitted`），未提权或放宽沙箱。runner 对所有直接启动的子进程均等待 close，loopback server 正常关闭；这不替代全系统后代进程审计。"
+    },
+    {
+      "id": "FC-0222",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          22,
+          22
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "通知新增 `dsh_bot_notifications` v1：policies、intents、receipts、read_state。intent 同行保存预留额度、attempt 和状态；跨表 receipt 写失败不能释放额度或自动重发。`sending` 冷恢复为 unknown，丢失审批的 waiting_approval 为 cancelled；已知失败/unknown 均不自动重试。UI 的新尝试使用新 operationId、可见关联旧尝试，并重新确认。外推端口需要 checked targetDigest、精确正文和 AbortSignal；异常/超时记 unknown，只有适配器明确未受理才记 failed。平台 accepted 不表示用户已读。"
+    },
+    {
+      "id": "FC-0223",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          76,
+          76
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 同一 runtime 内的 Playwright 启动及截图矩阵 | FAIL：macOS `MachPortRendezvousServer` / `bootstrap_check_in … Permission denied (1100)`，浏览器未进入页面 |"
+    },
+    {
+      "id": "FC-0224",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          83,
+          83
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "最终 check 日志：`.dsh-dev/p34-u02-03/check.log`。本轮最终 Host 证据目录通过 `.dsh-dev/p34-u02-03/latest-runtime.txt` 定位；其中 `summary.json` 的 Host status 与 browser 字段必须分别阅读。runtime 的 first/cold result、connection-snapshot、inbox-isolation、disposed 以及 commands 为原生运行证据；浏览器 `browser.json` 为独立 FAIL。"
+    },
+    {
+      "id": "FC-0225",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          101,
+          101
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 亮暗主题实际浏览器交互/截图 | FAIL，浏览器启动被操作系统权限限制；没有截图，不用 DOM 当视觉验收 |"
+    },
+    {
+      "id": "FC-0226",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          102,
+          102
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实 GitHub/Notion/browser/filesystem MCP 联调 | FAIL，本轮仅 synthetic loopback/stdio，未配置真实服务 |"
+    },
+    {
+      "id": "FC-0227",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          114,
+          114
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 额度竞争、0 额度、冷却、时钟回退 | PASS，单 Host 串行 intent 预留；failed/unknown 不返还额度 |"
+    },
+    {
+      "id": "FC-0228",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          121,
+          121
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实平台 / dsh-im checked 适配 | FAIL，U01 IM gate 未通过，本轮不启用；由 U04 处理 |"
+    },
+    {
+      "id": "FC-0229",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          122,
+          122
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Electron OS 通知 | FAIL，锁定宿主没有公开扩展 API，UI 禁用并说明；不调用内部桥或浏览器 Notification |"
+    },
+    {
+      "id": "FC-0230",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          131,
+          131
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 2026-10-24 审查返工补充"
+    },
+    {
+      "id": "FC-0231",
+      "source": {
+        "path": "docs/acceptance/P34-U02-03.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          133,
+          133
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "1–3：领域命名与表单拆分、凭据清空和系统通知说明已纳入 [P34 返工报告](P34-rework.md)。该报告中的新目录、导航和路由行为覆盖本报告的历史描述。完整 `scripts/pnpm check` 为 52 文件 / 667 测试 PASS；首次/冷隔离 Host 的新证据分别列出。浏览器的亮暗截图及窄屏仍为 FAIL（环境），不使用 DOM 或 Host 成功代替视觉验收。"
+    },
+    {
+      "id": "FC-0232",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          7,
+          7
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "决策：U04 交付可选服务检测、锁定来源说明和中英禁用诊断，暂不注册 consumer、不连接通知投递端口，也不新增绑定/发送 Remote。理由：U01 `im-consumer-exclusive-dispose` 仍为 FAIL/NOT_RUN；既有 API 核实记录明确该 gate 未通过时不得启用入站/checked 平台投递。按设计 §14-2 关闭依赖功能并继续 U05。不存在用 Config、fake 服务或仅检查方法名绕过此 gate 的开关。`pin` 表示要求的源码提交，不冒称从服务合同检测到了已安装 commit。"
+    },
+    {
+      "id": "FC-0233",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          31,
+          31
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| DSH_HOME=\"$PWD/.dsh-dev\" node scripts/p34-collaboration-runtime.mjs | PASS（Host），浏览器 FAIL；见下方最终运行记录。脚本实际经 scripts/dsh 初始化、安装、dump、首次/冷 Host；经 scripts/pnpm pack 打包，无真实平台账号/模型凭据 |"
+    },
+    {
+      "id": "FC-0234",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          37,
+          37
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "目录：`.dsh-dev/p34-u04-05/runtime-1792863271851-73326/`；profile `p34-collaboration-1792863271852-73326`。`summary.json` 的 PASS 仅指 Host/合同断言，`browser=FAIL` 单独保留，不代表整单验收全通过。"
+    },
+    {
+      "id": "FC-0235",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          45,
+          45
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- `browser.json`：Chromium 在页面操作前因 `bootstrap_check_in ... Permission denied (1100)` 退出。亮暗/窄屏 UI 均 FAIL/NOT_RUN，无截图通过结论。"
+    },
+    {
+      "id": "FC-0236",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          54,
+          54
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| fake 入站去重、同主会话投递、原 thread 回复 | FAIL：依赖 U01 未通过的 consumer gate，按 §14 禁用；本轮没有用 mock 冒充此验收 |"
+    },
+    {
+      "id": "FC-0237",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          55,
+          55
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| consumer 卸载后真实 dsh-im 无独立会话 fallback | FAIL：无公开 fake 平台注入 seam，NOT_RUN；无账号不构成消费者卸载验证 |"
+    },
+    {
+      "id": "FC-0238",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          56,
+          56
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| checked 外推与通知端口实际平台投递 | FAIL：依赖 gate 未通过，生产未连接；没有退回普通 send |"
+    },
+    {
+      "id": "FC-0239",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          64,
+          64
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实浏览器亮暗任务板/IM 页面、窄屏 | FAIL：浏览器启动因 macOS MachPortRendezvous `bootstrap_check_in ... Permission denied (1100)` 被拒；无合格 PNG/交互证据 |"
+    },
+    {
+      "id": "FC-0240",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          65,
+          65
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实飞书收发、平台送达/已读、OS 通知 | FAIL：无真实账号、未执行；OS 无公开 API，仍不支持 |"
+    },
+    {
+      "id": "FC-0241",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          85,
+          85
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 2026-10-24 审查返工补充"
+    },
+    {
+      "id": "FC-0242",
+      "source": {
+        "path": "docs/acceptance/P34-U04-05.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          87,
+          87
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "管理分区内的协作/IM 入口及公共错误 helper 改名已纳入 [P34 返工报告](P34-rework.md)。该报告中的新目录、导航和路由行为覆盖本报告的历史描述。完整 `scripts/pnpm check` 为 52 文件 / 667 测试 PASS；首次/冷隔离 Host 的新证据分别列出。浏览器的亮暗截图及窄屏仍为 FAIL（环境），不使用 DOM 或 Host 成功代替视觉验收。"
+    },
+    {
+      "id": "FC-0243",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          70,
+          70
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/p34-groups-runtime.mjs` | Host/安装/编解码/冷恢复/卸载 PASS，浏览器 FAIL，二者分别记录；日志 `.dsh-dev/u06-runtime-final.log` |"
+    },
+    {
+      "id": "FC-0244",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          74,
+          74
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "运行脚本的 `summary.status=PASS` **只表示 Host 探针通过**；其中明确带 `browser=FAIL`，不代表整体任务/截图全 PASS。定向 UI 重跑与 strict/lint 复核另见 `.dsh-dev/u08-final-test.log`、`.dsh-dev/u06-final-typecheck.log`、`.dsh-dev/u06-final-lint.log`。早期失败日志保留在同一父目录，未覆盖：修复了探针 inject 缺项，以及真实 stall 取消后等待 result 导致卸载停滞的问题。"
+    },
+    {
+      "id": "FC-0245",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          86,
+          86
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U06 | 重复 resume 和 Controller 抢先拥有时 fail closed | PASS；真实原生所有权冲突；只读历史不意味着取得裸 Agent disposer |"
+    },
+    {
+      "id": "FC-0246",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          95,
+          95
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U07 | 失败、部分结果、取消、未知不记成功；仅 flush 成功推进指针 | PASS；真实 max_tokens 归 failed/partial，stall 用户取消；fixture 验证失败指针不前移及 flush=false→unknown/recovery |"
+    },
+    {
+      "id": "FC-0247",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          97,
+          97
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U07 | 强杀 Host 正好落在 native 动作/sidecar 提交间的完整故障试验 | FAIL / NOT_RUN；本轮做持久回执注入和正常冷 Host，没有执行该物理崩溃窗口 |"
+    },
+    {
+      "id": "FC-0248",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          98,
+          98
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U07 | 群 child 实际触发 native ask 并拒绝 | FAIL / NOT_RUN；本轮使用实际 max_tokens 失败分支；子代理原生 never 策略没有被本包覆盖，但未以源码/既有通知测试替代该群内操作实测 |"
+    },
+    {
+      "id": "FC-0249",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          105,
+          105
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U08 / §13 | G01/G02/G03 中文亮暗、G01 英文亮暗、真实窄屏与交互证据 | FAIL / NOT_RUN；缓存 Chromium 启动被 MachPort 权限拒绝，未生成截图；脚本不得以静态图/DOM 结果代替 |"
+    },
+    {
+      "id": "FC-0250",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          106,
+          106
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| §13 发布包 | 0.3.0 tgz 的最终 UI 截图及整期流程 | FAIL / NOT_RUN；当前仍为 0.2.2 开发包，交给 U12/U13 最终安装包复验 |"
+    },
+    {
+      "id": "FC-0251",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          120,
+          120
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 2026-10-24 审查返工补充"
+    },
+    {
+      "id": "FC-0252",
+      "source": {
+        "path": "docs/acceptance/P34-U06-08.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          122,
+          122
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "4–8：群服务函数拆分、输入式 @、轮流失败/取消、群根鲸鱼装饰及截图脚本已纳入 [P34 返工报告](P34-rework.md)。该报告中的新目录、导航和路由行为覆盖本报告的历史描述。完整 `scripts/pnpm check` 为 52 文件 / 667 测试 PASS；首次/冷隔离 Host 的新证据分别列出。浏览器的亮暗截图及窄屏仍为 FAIL（环境），不使用 DOM 或 Host 成功代替视觉验收。"
+    },
+    {
+      "id": "FC-0253",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          54,
+          54
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/p34-memory-runtime.mjs` | Host/本地 server PASS；实际打包安装并检查 Host/Client 字节，首次与冷 Host 均通过；浏览器结果单列 FAIL |"
+    },
+    {
+      "id": "FC-0254",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          57,
+          57
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| Chromium 亮暗/中英/窄屏启动 | FAIL（环境）；`bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`，未进入页面、未生成目标截图 |"
+    },
+    {
+      "id": "FC-0255",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          64,
+          64
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- `summary.json`：Host PASS，模型请求 3，真实模型请求 0，browser FAIL。"
+    },
+    {
+      "id": "FC-0256",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          66,
+          66
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- `first-evidence.json`：20 并行写、两 Bot 隔离、半批恢复、复制元数据、旧内部文件字节、取消、回退、源冲突、导出/导入、去重、损坏保留、主/子 Agent 边界及 PTC fail closed。"
+    },
+    {
+      "id": "FC-0257",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          83,
+          83
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U09 | 真实浏览器亮暗、中英、窄屏、键盘及操作截图 | FAIL（环境）；Chromium 在加载页面前被 MachPort 权限拒绝 |"
+    },
+    {
+      "id": "FC-0258",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          94,
+          94
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 额外故障证据 | 物理强杀恰落在 binding/清单写入间的 OS 窗口 | FAIL / NOT_RUN；本轮做正常冷 Host、半批拒绝、取消、并发源冲突及 server 强停；未执行该物理故障窗口，不把代码重试分支当成实测 |"
+    },
+    {
+      "id": "FC-0259",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          95,
+          95
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| U12/U13 后续 | 最终 0.3.0 发布包、真实桌面/平台与全期矩阵 | FAIL / NOT_RUN；属于后续任务，当前不升级版本或冒充最终发布验收 |"
+    },
+    {
+      "id": "FC-0260",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          102,
+          102
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "4. 决策：导入/复制存独立可恢复清单，不删除原数据。理由：底层没有跨表/文件事务；部分新 Bot/批量导入失败标 failed 并保留已创建记录供核对，不能自动覆盖或声称原子回滚。预览和复制清单当前没有自动裁剪。"
+    },
+    {
+      "id": "FC-0261",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          107,
+          107
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 2026-10-24 审查返工补充"
+    },
+    {
+      "id": "FC-0262",
+      "source": {
+        "path": "docs/acceptance/P34-U09-11.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          109,
+          109
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "9–11：记忆模块拆分、保留 DOM 的管理分区、复制条目数确认已纳入 [P34 返工报告](P34-rework.md)。该报告中的新目录、导航和路由行为覆盖本报告的历史描述。完整 `scripts/pnpm check` 为 52 文件 / 667 测试 PASS；首次/冷隔离 Host 的新证据分别列出。浏览器的亮暗截图及窄屏仍为 FAIL（环境），不使用 DOM 或 Host 成功代替视觉验收。"
+    },
+    {
+      "id": "FC-0263",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          1,
+          1
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "# P34 返工 r3 / DSH-Bot 0.3.1（2026-10-24）"
+    },
+    {
+      "id": "FC-0264",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "本轮静态/DOM 与 Host 结果和视觉结果独立。亮暗/390px 实际浏览器截图按任务第 7 条由编排方在沙箱外复跑；本轮这些视觉验收为 **FAIL（NOT_RUN）**，不把 CSS token、jsdom 或历史 PNG 当作 0.3.1 视觉通过。"
+    },
+    {
+      "id": "FC-0265",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          11,
+          11
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 1 正式样式 | PASS（实现/主题 token）；FAIL（亮暗/390px 视觉 NOT_RUN） | 群列表、创建/成员表单、消息与输入区统一卡片/间距/控件；管理主/子 tab 完整样式，连接器/通知表单改为自适应网格，运行统计为四张网格卡片。按钮/input/select/checkbox 使用显式 appearance、边框、焦点/禁用状态；颜色仅来自已锁定 DSH alias（transparent 只作透明箭头边）。既有全 Client token 检查与主题 fixture 验证 PASS。视觉由编排方补证。 |"
+    },
+    {
+      "id": "FC-0266",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          12,
+          12
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 2 @ 页顶部消息截断 | PASS（布局实现/DOM）；FAIL（实际滚动/遮挡视觉 NOT_RUN） | 移除消息区与下方冗长轮次区分离的布局；同一有明确最小/最大高度的 overflow:auto log 包含消息和轮次，无 sticky 覆盖。保留外层页面滚动，picker 关闭恢复输入焦点用 preventScroll。截图脚本拍摄前回到页面标题，并新增 log 顶/底可达断言，等待浏览器实际执行。 |"
+    },
+    {
+      "id": "FC-0267",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          15,
+          15
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 5 侧栏新会话来源 | PASS（源码/真实 fixture Host）；FAIL（原生侧栏浏览器 NOT_RUN） | 是 fixture 打开但不发言的标题正确的 Bot 主会话被 DSH blank 投影显示为“新会话”；不是标题遗漏、群根或 Team 新建重复主会话。修 fixture 逐主会话完成真实 mock 轮次，断言标题不变且 blank true→false。截图脚本新增原生 treeitem 名称断言；收据见下。 |"
+    },
+    {
+      "id": "FC-0268",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          17,
+          17
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 7 文档/交接 | PASS（本报告/README/CHANGELOG）；FAIL（截图 NOT_RUN） | 新截图与窄屏验证由编排方运行，不冒用旧图。 |"
+    },
+    {
+      "id": "FC-0269",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          36,
+          36
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `scripts/pnpm check` | 首次 FAIL：670 测试及 strict 通过，lint 发现滚动 log 的 tabindex 规则与两处测试非空断言；已修复。保留 `.dsh-dev/p34-r3-check.log`。键盘可达的滚动 log 保留 tabindex，文件内明确说明该单条 lint 例外；测试改显式存在性检查。 |"
+    },
+    {
+      "id": "FC-0270",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          38,
+          38
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" scripts/p34-e2e --host-only` | runtimeStatus=PASS，整体 status=FAIL / 退出 1；13 项检查全部 PASS，含 frozen install、**52 文件 / 670 测试**、strict/build/lint、pack/审计、市场 parser fixture、6 组运行、卸载重装和两条升级。浏览器刻意 NOT_RUN，IM 与桌面原边界保留。不是全链路视觉通过。 |"
+    },
+    {
+      "id": "FC-0271",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          39,
+          39
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" DSH_BOT_E2E_PACKAGE=\"$PWD/dist/dsh-bot-0.3.1.tgz\" node packages/dsh-bot/scripts/screenshot-v03.mjs --seed-only` | 重试后 fixtureStatus=PASS；6 次 loopback 请求（3 主会话+3 群成员），真实模型 0；浏览器矩阵 FAIL/NOT_RUN，未启动浏览器、未生成 PNG。 |"
+    },
+    {
+      "id": "FC-0272",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          50,
+          50
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- [fixture 矩阵收据](../screenshots/v03/2026-10-24T19-47-28.517Z-9872/result.json)：fixtureStatus=PASS，浏览器 status=FAIL / NOT_RUN。首次 fixture 新增断言漏列 `sessionController` 注入，失败收据在 `docs/screenshots/v03/2026-10-24T19-46-53.835Z-8821/`；补齐声明后重跑通过，不隐藏第一次失败。"
+    },
+    {
+      "id": "FC-0273",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          75,
+          75
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## 5. r4：返工（2026-10-24）"
+    },
+    {
+      "id": "FC-0274",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          102,
+          102
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 2 按实际来源修复及群创建回归 | PASS（fixture 导航实现、Host 集合回归）；FAIL（原生浏览器可见行 NOT_RUN） | 截图前通过原生侧栏点击已有 main，再进入 Bots 页，使原生 provisional 空行按自身规则隐藏；不删/归档原生会话、不写私有 Client 状态。`screenshot-profile.mjs` 与完整 `integration-groups-profile.mjs` 均通过公开 `workspaceRegistry.list()` / sessionIds 断言：创建群后 workspace 恰为三个 main IDs、群根不在其中。真实首次/冷群 Host 与根 prompt guard 回归通过。 |"
+    },
+    {
+      "id": "FC-0275",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          103,
+          103
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 3 连接器及管理头部统一 | PASS（实现、正式 Client 全测试）；FAIL（亮暗/390px 视觉 NOT_RUN） | 新 `ManagementHeader` 统一连接器、通知、记忆管理、协作、定时与 IM 页头；有 Bot 选择的页面按标题→选择→操作排列。连接器刷新位于 Bot 选择下方。复用既有 locale/主题 token。 |"
+    },
+    {
+      "id": "FC-0276",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          104,
+          104
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 4 记忆搜索布局 | PASS（实现及既有搜索行为回归）；FAIL（390px 视觉 NOT_RUN） | 输入框与搜索按钮同组、刷新 margin-inline-start:auto 右对齐；间距为 CSS 设计变量。显式 flex wrap/min-width/max-width，覆盖管理容器通用 form 网格对搜索区的影响。 |"
+    },
+    {
+      "id": "FC-0277",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          105,
+          105
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 5 截图侧栏断言 | PASS（脚本实现/语法）；FAIL（浏览器执行 NOT_RUN） | 每张截图前比较全部可见原生会话 ID 与三个 fixture main IDs，并拒绝任何“新会话/New Session”文本，不再只检查已知 main 行。新增连接器和记忆搜索区的 390px 内部宽度/页面溢出检查，窄屏矩阵由 8 项扩为 16 项。 |"
+    },
+    {
+      "id": "FC-0278",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          116,
+          116
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" scripts/p34-e2e --host-only` | runtimeStatus=PASS；13 项检查全部 PASS。总体 status=FAIL、退出 1，因为 `--host-only` 将浏览器列为 NOT_RUN；不声称全链路通过。实际完成 frozen install、`scripts/pnpm check`（build、52 文件 / 670 测试、strict、lint）、pack/审计、市场 parser fixture、六组首次/冷 Host 运行、CLI 卸载重装与两条升级。25 次 loopback、真实模型 0；单独截图 fixture 的 6 次另计。 |"
+    },
+    {
+      "id": "FC-0279",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          117,
+          117
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" DSH_BOT_E2E_PACKAGE=\"$PWD/dist/dsh-bot-0.3.1.tgz\" node packages/dsh-bot/scripts/screenshot-v03.mjs` | 退出 1；fixtureStatus=PASS，6 次 loopback，真实模型 0；Chromium 在启动阶段报 `bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`。60 张宽屏、16 项窄屏及新增侧栏断言均 FAIL / NOT_RUN，没有 PNG。 |"
+    },
+    {
+      "id": "FC-0280",
+      "source": {
+        "path": "docs/acceptance/P34-rework-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          134,
+          134
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "遗留：需在允许 Chromium 启动的环境，按上表同一截图命令复跑并人工检查新图，确认原生侧栏全部可见行、管理头部、搜索按钮相邻与亮暗/390px 布局。不得以本轮静态/Host 通过代替视觉通过。IM consumer gate、真实外部平台和桌面体验不在本轮完成范围，继续保持既有 FAIL/NOT_RUN 边界。"
+    },
+    {
+      "id": "FC-0281",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          1,
+          1
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "# P34 审查返工验收（2026-10-24）"
+    },
+    {
+      "id": "FC-0282",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          5,
+          5
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "代码及自动化回归通过；截图与窄屏视觉验收 FAIL（环境），所以本轮不宣称全部视觉验收完成。未运行真实模型、IM 平台发送或桌面版操作。"
+    },
+    {
+      "id": "FC-0283",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          18,
+          18
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 8 截图 | FAIL（环境） | 已新增 screenshot-v03.mjs 与独立 Host 种子。中英×亮暗×10 页面共 40 目标及窄屏检查已编排。实际 Chromium 在 bootstrap_check_in / MachPortRendezvousServer Permission denied (1100) 启动失败，未生成 PNG、未执行页面/窄屏操作。脚本种子在真实 tarball Host 单独 PASS（2 次 loopback，真实请求 0），不计为截图通过。 |"
+    },
+    {
+      "id": "FC-0284",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          42,
+          42
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/p34-runtime.mjs` | PASS：真实 tarball、Gateway、首次/冷 Host、连接器/凭据/通知及卸载；2 次本地 mock。浏览器另为 FAIL。 |"
+    },
+    {
+      "id": "FC-0285",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          43,
+          43
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/p34-groups-runtime.mjs` | PASS：真实首次/冷 Host、路由/部分/取消、根阻断、代际保留、主会话唯一性和清理；9 次 mock，根请求 0。浏览器另为 FAIL。 |"
+    },
+    {
+      "id": "FC-0286",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          44,
+          44
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/p34-memory-runtime.mjs` | PASS：真实 MCP、并行串行化/隔离/写者/复制/恢复/PTC 门禁/子代理与源不变；3 次 mock。浏览器另为 FAIL。 |"
+    },
+    {
+      "id": "FC-0287",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          45,
+          45
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node packages/dsh-bot/scripts/screenshot-v03.mjs --seed-only` | 种子 PASS，正常清理 Host；2 次 mock。截图矩阵 FAIL / NOT_RUN，明确不是视觉通过。 |"
+    },
+    {
+      "id": "FC-0288",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          46,
+          46
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node packages/dsh-bot/scripts/screenshot-v03.mjs` | FAIL（环境）：Chromium 启动被 macOS MachPort 权限拒绝。矩阵 40 目标均 FAIL，PNG 与窄屏未执行。 |"
+    },
+    {
+      "id": "FC-0289",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          67,
+          67
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "## r2 返工（2026-10-24）"
+    },
+    {
+      "id": "FC-0290",
+      "source": {
+        "path": "docs/acceptance/P34-rework.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          106,
+          106
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "r2 是本次结构/协议返工，任务要求的自动化检查全部通过。未新增 DSH 能力或重新验证完整 tarball 首次/冷 Host、真实浏览器、桌面或 IM。若把这些额外运行项目纳入整期验收，本轮状态仍为 **FAIL（未执行）**；上一节 r1 的 Host 收据及截图环境失败保留为历史证据。建议下次发布验收用同一份新 Host/Client 包重跑真实 Gateway/完整 Host 与截图矩阵；不能混用旧 Client contribution 或将本轮 DOM 测试计作亮暗/窄屏视觉证明。"
+    },
+    {
+      "id": "FC-0291",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          7,
+          7
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "修复前安装、升级和 Host 矩阵 PASS；本地真实 Client 浏览器截图 FAIL（环境）。 最终主矩阵 `.dsh-dev/v032/1792906421330-48924/summary.json`：`runtimeStatus=PASS`、127 次 loopback 模型请求、真实模型 0；补充原生 Team 来源攻击验证 `.dsh-dev/b04-team-final/summary.json` 为 PASS、2 次 loopback、真实模型 0。合计 129 次 loopback、真实模型 0。总体 runner 按约定设置 exitCode=1 / status=FAIL，原因是浏览器项，不能写成全项通过。"
+    },
+    {
+      "id": "FC-0292",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          39,
+          39
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/b2b-release-e2e.mjs` | Host 全部 PASS；浏览器 FAIL（环境），runner 因此设置 exitCode=1。包含真实 tgz 安装、旧功能、三条升级、正式消息矩阵、lazy 首主会话与 9 个强杀/故障窗口。 |"
+    },
+    {
+      "id": "FC-0293",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          41,
+          41
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v032` | 新增可复现入口；最终 runner 内调用同一个 captureV032，真实安装 fixture PASS，截图 FAIL（环境）。没有额外以该 CLI 重跑一遍并冒称两次浏览器证据。 |"
+    },
+    {
+      "id": "FC-0294",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          52,
+          52
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| PTC 回退 | PASS（受限模式）；真实 native run_code / SDK dispatcher + 合成 PtcRuntime seam 验证拒绝时 run=0，批准后 nested bot_message body=0。完整 OS PTC 后端来源传播仍 FAIL（NOT_RUN），没有开启该子能力。 |"
+    },
+    {
+      "id": "FC-0295",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          71,
+          71
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 无新增可见会话、lazy 首主会话 | PASS（Host）；A/B/C 三主会话先完成 mock 首轮 blank=false，前后 session/list、workspace/sessionIds、主映射精确集合不变。lazy 独立 profile 只新增目标第一个主会话，冷启动身份不变。浏览器原生侧栏实拍为 FAIL（环境）。 |"
+    },
+    {
+      "id": "FC-0296",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          75,
+          75
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| B05 实际 ui-chat renderer、亮暗中英窄屏、原生侧栏截图 | FAIL（环境）；8 个宽屏场景 + 8 个窄屏场景全部未生成 PNG。不能以 DOM/主题检查或已安装 Client 字节替代浏览器证明。 |"
+    },
+    {
+      "id": "FC-0297",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          82,
+          82
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "最终截图收据：`docs/screenshots/v032/1792906601878-53940/result.json`。Chromium 保持 `chromiumSandbox: true`，使用仓库内临时 profile；启动阶段 SIGABRT，清理时报 EPERM，尚未访问页面。实际 renderer、亮暗、中英、窄屏和侧栏交互均 FAIL（环境），没有 PNG。可在允许 Chromium 启动的环境用同一 `--v032` 命令补验；不传 no-sandbox 或绕过审批参数。"
+    },
+    {
+      "id": "FC-0298",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          88,
+          88
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "未实际运行：真实桌面完整热卸载/亮暗交互、完整 OS PTC backend、真实外部 IM/通知平台；均 FAIL（NOT_RUN/原有门禁）。这些不在本轮宣称通过的范围。"
+    },
+    {
+      "id": "FC-0299",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          159,
+          159
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "- 正式支持普通消息/interrupt/cold wake；PTC 内 bot_message 禁用，队友轮次 run_code 需原生审批，UI 有提示。浏览器/桌面实拍与完整 OS PTC backend 保留上述 FAIL，不伪造通过。无 commit/push 或全局/桌面升级。"
+    },
+    {
+      "id": "FC-0300",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          161,
+          161
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "命令记录中，以 `tail` 展示日志的外层 shell 返回 0 只代表日志读取成功；整体验收状态以 runner 的 `status=FAIL / runtimeStatus=PASS` 为准，不能据外层 shell 结果宣称截图通过。"
+    },
+    {
+      "id": "FC-0301",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          167,
+          167
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "### 根因与修改"
+    },
+    {
+      "id": "FC-0302",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          191,
+          191
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" DSH_BOT_E2E_DIR=\"$PWD/.dsh-dev/v032-fix-runtime\" node scripts/screenshot.mjs --v032` | 实际从根入口完成安装、首次/冷 Host，50 次 loopback、真实模型 0；Host PASS，浏览器 FAIL（环境）。首次执行尚未增加截图失败 exitCode 传播，故当时 CLI exit 0，不能解读为截图 PASS。 |"
+    },
+    {
+      "id": "FC-0303",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          192,
+          192
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| `DSH_HOME=\"$PWD/.dsh-dev\" B2B_NATIVE_BLANK_FIXTURE=1 DSH_BOT_E2E_DIR=\"$PWD/.dsh-dev/v032-fix-cli-final\" node scripts/screenshot.mjs --v032` | 最终 CLI exit 1，明确输出 `v032 screenshots: FAIL (environment)`；Host 首次/冷矩阵 PASS，额外持久 blank 回归 PASS，50 次 loopback、真实模型 0。`.dsh-dev/v032-fix-cli-final.log`；该 run 的 `summary.json` 只代表 Host PASS，`screenshots.json` 单独 FAIL。 |"
+    },
+    {
+      "id": "FC-0304",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          201,
+          201
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 1. 根因、公开 API 修复及真实 Client 入口激活回归 | **PASS**；实际构建工厂 + peer-owned 公开 UiConversation 的五场景；原错误先复现，修复后 ACTIVE/资源/清理断言通过。完整浏览器激活另见末项。 |"
+    },
+    {
+      "id": "FC-0305",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          206,
+          206
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "| 真实浏览器 Client 激活、亮暗中英宽窄屏 | **FAIL（环境）**；Chromium `chromiumSandbox: true` 启动阶段 SIGABRT / kill EPERM，未访问页面，16 场景无 PNG。最终 `docs/screenshots/v032/1792908392885-6343/result.json`；首次 `1792908329565-4543/result.json` 保留。不可将 Client 工厂测试或 Host PASS 当作真实页面激活证明。 |"
+    },
+    {
+      "id": "FC-0306",
+      "source": {
+        "path": "docs/acceptance/V032-bot-to-bot.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          223,
+          223
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "起始 `pnpm-workspace.yaml` 的 `spikes/p34` 修改、`.codex/`、任务单及编排方三份截图目录均保留；无 commit/push、全局设置/桌面应用/`~/.dsh` 修改，参考 rc.2 树仍干净。没有依赖变更，本轮未重装依赖。剩余要求由编排方在允许 Chromium 启动的环境运行 `DSH_HOME=\"$PWD/.dsh-dev\" node scripts/screenshot.mjs --v032`，以新 tgz 核实实际 boot、卡片、侧栏、亮暗中英及窄屏；通过前保留浏览器 FAIL。"
+    },
+    {
+      "id": "FC-0307",
+      "source": {
+        "path": "tasks/P34/R-review-r2.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          1,
+          1
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "# P34 返工 r2（编排者审查 r1 后）gpt-6.1-sol/high；跑 strict/lint/check/全部测试；不提交。"
+    },
+    {
+      "id": "FC-0308",
+      "source": {
+        "path": "tasks/P34/R-review-r3.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          1,
+          1
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "# P34 返工 r3（UI 打磨）gpt-6.1-sol/high；跑 strict/lint/check/全部测试；不提交。"
+    },
+    {
+      "id": "FC-0309",
+      "source": {
+        "path": "tasks/P34/R-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          1,
+          1
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "# P34 返工（编排者审查意见，累积）"
+    },
+    {
+      "id": "FC-0310",
+      "source": {
+        "path": "tasks/P34/R-review.md",
+        "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+        "lines": [
+          13,
+          13
+        ]
+      },
+      "evidenceLevel": "SOURCE",
+      "text": "8. 写 `packages/dsh-bot/scripts/screenshot-v03.mjs`：亮/暗两套，覆盖 Bots 列表、连接器、通知、协作任务板、群聊创建+成员管理、群会话(含@和轮流)、管理界面、记忆后端。输出 `docs/screenshots/v03/`。沙箱内 Chromium 失败就标 FAIL(环境)，编排者会在沙箱外重跑。"
+    }
+  ]
+}

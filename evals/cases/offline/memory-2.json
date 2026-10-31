@@ -1,0 +1,175 @@
+{
+  "source": "synthetic",
+  "cases": [
+    {
+      "id": "memory-08",
+      "kind": "memory",
+      "group": "memory-04",
+      "catalogCaseId": "H03",
+      "input": {
+        "candidates": [
+          {
+            "id": "fact-8",
+            "from": 0,
+            "to": 100
+          },
+          {
+            "id": "expired-8",
+            "from": 0,
+            "to": 10
+          }
+        ],
+        "at": 50
+      },
+      "gold": {
+        "relevant": [
+          "fact-8"
+        ],
+        "temporal": [
+          "fact-8"
+        ]
+      }
+    },
+    {
+      "id": "memory-09",
+      "kind": "memory",
+      "group": "memory-04",
+      "catalogCaseId": "H03",
+      "input": {
+        "candidates": [
+          {
+            "id": "fact-9",
+            "from": 0,
+            "to": 100
+          },
+          {
+            "id": "expired-9",
+            "from": 0,
+            "to": 10
+          }
+        ],
+        "at": 50
+      },
+      "gold": {
+        "relevant": [
+          "fact-9"
+        ],
+        "temporal": [
+          "fact-9"
+        ]
+      }
+    },
+    {
+      "id": "memory-10",
+      "kind": "memory",
+      "group": "memory-05",
+      "catalogCaseId": "H03",
+      "input": {
+        "candidates": [
+          {
+            "id": "fact-10",
+            "from": 0,
+            "to": 100
+          },
+          {
+            "id": "expired-10",
+            "from": 0,
+            "to": 10
+          }
+        ],
+        "at": 50
+      },
+      "gold": {
+        "relevant": [
+          "fact-10"
+        ],
+        "temporal": [
+          "fact-10"
+        ]
+      }
+    },
+    {
+      "id": "memory-11",
+      "kind": "memory",
+      "group": "memory-05",
+      "catalogCaseId": "H03",
+      "input": {
+        "candidates": [
+          {
+            "id": "fact-11",
+            "from": 0,
+            "to": 100
+          },
+          {
+            "id": "expired-11",
+            "from": 0,
+            "to": 10
+          }
+        ],
+        "at": 50
+      },
+      "gold": {
+        "relevant": [
+          "fact-11"
+        ],
+        "temporal": [
+          "fact-11"
+        ]
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "memory-08",
+      "response": {
+        "status": "ok",
+        "ranked": [
+          "fact-8",
+          "expired-8"
+        ],
+        "temporal": [
+          "fact-8"
+        ]
+      }
+    },
+    {
+      "id": "memory-09",
+      "response": {
+        "status": "ok",
+        "ranked": [
+          "fact-9",
+          "expired-9"
+        ],
+        "temporal": [
+          "fact-9"
+        ]
+      }
+    },
+    {
+      "id": "memory-10",
+      "response": {
+        "status": "ok",
+        "ranked": [
+          "fact-10",
+          "expired-10"
+        ],
+        "temporal": [
+          "fact-10"
+        ]
+      }
+    },
+    {
+      "id": "memory-11",
+      "response": {
+        "status": "ok",
+        "ranked": [
+          "fact-11",
+          "expired-11"
+        ],
+        "temporal": [
+          "fact-11"
+        ]
+      }
+    }
+  ]
+}

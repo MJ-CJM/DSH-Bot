@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H06",
+  "kind": "history",
+  "rootCause": "visual-assertion-combines-mutually-exclusive-modal-states",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P2-R06-r2.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      7,
+      13
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Avatar editor is open with its normal backdrop.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Capture the picker, close the modal, then capture the unobscured list.",
+  "observed": {
+    "original": "Old script required the background list to stay visible through a correctly opened modal.",
+    "beforeFix": "Old script required the background list to stay visible through a correctly opened modal.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H24",
+  "kind": "history",
+  "rootCause": "offline-install-cache-lacks-required-metadata",
+  "mastCategory": "verification",
+  "source": {
+    "path": "docs/acceptance/P2-T16.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      144,
+      144
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Frozen offline install has package bytes but incomplete pnpm metadata.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Report nonzero install and reproduce with the authorized dependency workflow.",
+  "observed": {
+    "original": "Offline install failed on missing @vitest/spy metadata.",
+    "beforeFix": "Offline install failed on missing @vitest/spy metadata.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}

@@ -1,0 +1,10 @@
+{
+  "en": {
+    "groups.manage": "Manage group",
+    "groups.keyboardHint": "Enter to send; Shift+Enter for a new line."
+  },
+  "zh": {
+    "groups.manage": "管理群聊",
+    "groups.keyboardHint": "Enter 发送，Shift+Enter 换行。"
+  }
+}

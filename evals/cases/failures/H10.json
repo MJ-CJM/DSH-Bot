@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "H10",
+  "kind": "history",
+  "rootCause": "multiple-mcp-writers-lose-confirmed-updates",
+  "mastCategory": "inter-agent-alignment",
+  "source": {
+    "path": "docs/spikes/P34-api-spike.md",
+    "revision": "66db1ea03b52237ba499a3c2642a4caf4c6d12f9",
+    "lines": [
+      25,
+      25
+    ]
+  },
+  "evidenceLevel": "SOURCE",
+  "status": "SOURCE_ONLY",
+  "precondition": "Two real Memory servers share one graph file.",
+  "command": "node scripts/deepening/validate-cases.mjs",
+  "expected": "Use one owned writer or reject the second writer.",
+  "observed": {
+    "original": "Both servers acknowledged create_entities, but round 0 retained only left; risk reproduction PASS was not safety PASS.",
+    "beforeFix": "Both servers acknowledged create_entities, but round 0 retained only left; risk reproduction PASS was not safety PASS.",
+    "afterFix": "NOT_RUN: source-level catalog only; no new runtime claim."
+  },
+  "regressions": []
+}
