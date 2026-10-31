@@ -1,486 +1,203 @@
 // @vitest-environment jsdom
 import { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { Context } from '@deepseek-ai/cordis';
 import { describe, expect, it, vi } from 'vitest';
-import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
-import { bot, button, click, field, fill, mountClient } from './helpers.js';
-import type { GroupSessionBadgeInjected } from '../../src/client/components/GroupSessionBadge.js';
-import { GROUP_ROOT_PRESET, groupTurnSchema, type GroupView } from '../../src/shared/groups.js';
+import { createGroupActions } from '../../src/client/groups-state.js';
+import type { GroupMethods } from '../../src/shared/groups-contract.js';
+import { GroupConversation } from '../../src/client/components/GroupsPanel.js';
+import { GroupMessageCard } from '../../src/client/components/GroupTimeline.js';
+import { selectGroupComposer, groupMessageDefinition } from '../../src/client/workspace-group.js';
+import { bots, view, summary, configure } from './group-fixture.js';
+import { mountClient, button, click, fill, field } from './helpers.js';
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
-const bots = [
-  bot({
-    id: 'alpha',
-    name: 'Same name',
-    avatarVariant: 'glasses',
-    avatarColor: 'teal',
-  }),
-  bot({
-    id: 'beta',
-    name: 'Same name',
-    avatarVariant: 'spout',
-    avatarColor: 'rose',
-  }),
-];
-function view(): GroupView {
-  const group: GroupView['group'] = {
-    id: 'group:one',
-    operationId: 'create:one',
-    createDigest: 'hash',
-    name: 'Synthetic group',
-    rootSessionId: 'group-root-one',
-    rootPresetId: GROUP_ROOT_PRESET,
-    cwd: '/synthetic',
-    mode: 'mention' as const,
-    membershipRevision: 1,
-    revision: 1,
-    archived: false,
-    state: 'ready' as const,
-    createdAt: 1,
-    updatedAt: 1,
-    schemaVersion: 1 as const,
-  };
-  const key = { groupId: group.id, groupCreatedAt: 1 };
-  return {
-    group,
-    unread: false,
-    readRevision: 0,
-    members: bots.map((b, order) => ({
-      id: `member:${b.id}`,
-      group: key,
-      bot: { botId: b.id, botCreatedAt: b.createdAt },
-      order,
-      joinedAt: 1,
-      enabled: true,
-    })),
-    unavailableMemberIds: [],
-    running: false,
-    turns: [],
-    deliveries: [],
-    messages: [
-      {
-        id: 'historic-beta',
-        seq: 1,
-        at: 1,
-        text: 'Historic reply',
-        turnId: 'turn:old',
-        speaker: {
-          bot: { botId: 'beta', botCreatedAt: 1 },
-          name: 'Original beta',
-          avatarColor: 'rose',
-          avatarVariant: 'spout',
-        },
-      },
-    ],
-    hasEarlier: false,
+async function composer(language: 'en' | 'zh' = 'en') {
+  const ctx = new Context(); const data = view(); data.group.mode = 'natural';
+  const send = vi.fn<GroupMethods['send']>(async () => { throw new Error('uncertain'); });
+  const cancel = vi.fn<GroupMethods['cancel']>();
+  const remote = { view: async () => ({ ok: true, value: data }), list: async () => ({ ok: true, value: [summary()] }), send, cancel } as unknown as GroupMethods;
+  ctx.provide('remote.dshBot.groups', remote);
+  const actions = createGroupActions(ctx, {}), element = document.createElement('div'); document.body.append(element);
+  let root = createRoot(element); const t = ((key: keyof typeof en.ui, params?: Record<string, unknown>) =>
+    (language === 'en' ? en : zh).ui[key].replace(/\{(\w+)\}/g, (_match, k) => String(params?.[k] ?? k))) as PropsLocale<'dsh-bot'>['t'];
+  const render = async () => { await act(async () => root.render(<GroupConversation workspace summary={summary()} actions={actions} bots={bots}
+    expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={async () => {}} t={t} />));
+    await vi.waitFor(() => expect(element.querySelector('textarea')).toBeTruthy()); };
+  await render();
+  return { element, actions, send, cancel, t, data,
+    async remount() { await act(async () => root.unmount()); root = createRoot(element); await render(); },
+    async refresh() { await act(async () => { for (const listener of [] as Array<() => void>) listener(); await actions.catalog.refresh(); }); },
+    async close() { await act(async () => root.unmount()); await ctx.fiber.dispose(); element.remove(); },
   };
 }
-function summary() {
-  const { turns: _t, deliveries: _d, messages: _m, hasEarlier: _h, ...s } = view();
-  return s;
-}
-function configure(remote: Parameters<NonNullable<Parameters<typeof mountClient>[2]>>[0]) {
-  remote.data.groupView = view();
-  remote.data.groups = [summary()];
-}
-describe('U08 real public slots / Remote-double group UI', () => {
-  it.each(['en', 'zh'] as const)(
-    '%s preserves message nodes, scroll, focus, selection and drafts across refresh and errors',
-    async (lang) => {
-      const app = await mountClient(bots, lang, configure);
-      const t = (lang === 'en' ? en : zh).ui;
-      try {
-        await click(button(app.container, t['groups.title']));
-        await vi.waitFor(() => expect(app.container.textContent).toContain('Historic reply'));
-        const draft = field(app.container, t['groups.message']) as HTMLTextAreaElement;
-        await fill(draft, 'Draft stays');
-        draft.focus();
-        draft.setSelectionRange(2, 6);
-        const timeline = app.container.querySelector('[role="log"]') as HTMLDivElement;
-        timeline.scrollTop = 40;
-        const message = app.container.querySelector('[data-group-message="historic-beta"]');
-        expect(
-          message?.querySelector('[data-avatar-variant="spout"][data-avatar-color="rose"]'),
-        ).toBeTruthy();
-        const reads = app.remote.groups.view.mock.calls.length;
-        await act(async () => {
-          await app.ctx.emit('connection/reset');
-        });
-        await vi.waitFor(() => expect(app.remote.groups.view.mock.calls.length).toBeGreaterThan(reads));
-        expect(field(app.container, t['groups.message'])).toBe(draft);
-        expect(draft.value).toBe('Draft stays');
-        expect(document.activeElement).toBe(draft);
-        expect(draft.selectionStart).toBe(2);
-        expect(timeline.scrollTop).toBe(40);
-        expect(app.container.querySelector('[data-group-message="historic-beta"]')).toBe(message);
-        app.remote.groups.view.mockRejectedValueOnce(new Error('network gone'));
-        await act(async () => {
-          await app.ctx.emit('connection/reset');
-        });
-        await vi.waitFor(() => expect(app.container.textContent).toContain(t['groups.disconnected']));
-        expect(draft.value).toBe('Draft stays');
-        expect(message?.isConnected).toBe(true);
-        const current = app.remote.data.groupView;
-        if (!current) throw new Error();
-        app.remote.data.records = [bots[0] as (typeof bots)[number]];
-        app.remote.data.groupView = {
-          ...current,
-          members: current.members.map((m) =>
-            m.bot.botId === 'beta' ? { ...m, enabled: false, removedAt: 10 } : m,
-          ),
-        };
-        await act(async () => {
-          await app.ctx.emit('connection/reset');
-        });
-        expect(app.container.textContent).toContain('Original beta');
-        expect(message?.querySelector('[data-avatar-variant="spout"]')).toBeTruthy();
-      } finally {
-        await app.dispose();
-      }
-    },
-  );
-  it('creates from distinct birthday keys and confirms history, routes exact @ tokens, retains request ID on an uncertain retry', async () => {
-    const app = await mountClient(bots);
-    const t = en.ui;
+describe('workspace group composer and management', () => {
+  it.each(['en', 'zh'] as const)('%s retains draft/focus and failed request id, with no second message timeline', async language => {
+    const f = await composer(language);
     try {
-      await click(button(app.container, t['groups.title']));
-      await click(button(app.container, t['groups.create']));
-      await fill(field(app.container, t['groups.name']), 'Synthetic group');
-      const form = app.container.querySelector('form[aria-label="Create group"]');
-      if (!form) throw new Error();
-      const members = [...form.querySelectorAll<HTMLInputElement>('fieldset input[type="checkbox"]')];
-      await click(members[0] as HTMLInputElement);
-      await click(members[1] as HTMLInputElement);
-      await click(field(form, t['groups.historyConsent']));
-      app.remote.groups.create.mockImplementation(async (input) => {
-        expect(input.members).toEqual(bots.map((b) => ({ botId: b.id, botCreatedAt: b.createdAt })));
-        app.remote.data.groups = [summary()];
-        app.remote.data.groupView = view();
-        return { ok: true, value: view().group };
-      });
-      await act(async () => {
-        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-      });
-      await vi.waitFor(() => expect(app.container.textContent).toContain('Historic reply'));
-      const draft = field(app.container, t['groups.message']);
-      await fill(draft, '@Same name is text only');
-      await click(button(app.container, t['groups.send']));
-      expect(app.remote.groups.send).not.toHaveBeenCalled();
-      expect(app.container.textContent).toContain(t['groups.ambiguousMention']);
-      await click(button(app.container, t['groups.pick']));
-      const picker = app.container.querySelector('fieldset');
-      if (!picker) throw new Error();
-      const recipients = picker.querySelectorAll<HTMLInputElement>('input');
-      await click(recipients[1] as HTMLInputElement);
-      await click(button(picker, t['groups.close']));
+      const draft = field(f.element, f.t('groups.message')) as HTMLTextAreaElement;
+      expect(f.element.querySelector('[role="log"]')).toBeNull();
+      await fill(draft, 'ordinary message'); draft.focus(); draft.setSelectionRange(2, 4);
       expect(document.activeElement).toBe(draft);
-      app.remote.groups.send.mockResolvedValue({
-        ok: false,
-        error: new RemoteError('dsh-bot/recovery-needed', '', {}),
-      });
-      await click(button(app.container, t['groups.send']));
-      expect((draft as HTMLTextAreaElement).value).toBe('@Same name is text only');
-      const first = app.remote.groups.send.mock.calls[0]?.[1];
-      expect(first?.memberIds).toEqual(['member:beta']);
-      const current = app.remote.data.groupView;
-      if (!current) throw new Error();
-      app.remote.data.groupView = {
-        ...current,
-        group: { ...current.group, membershipRevision: 2 },
-      };
-      await act(async () => {
-        await app.ctx.emit('connection/reset');
-      });
-      await click(button(app.container, t['groups.send']));
-      expect(app.remote.groups.send.mock.calls[1]?.[1].operationId).toBe(first?.operationId);
-      expect(app.remote.groups.send.mock.calls[1]?.[1].expectedMembershipRevision).toBe(1);
-      await act(async () => {
-        draft.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      });
-      expect(document.activeElement).toBe(draft);
-      let accept!: (result: Awaited<ReturnType<typeof app.remote.groups.send>>) => void;
-      app.remote.groups.send.mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            accept = resolve;
-          }),
-      );
-      await click(button(app.container, t['groups.send']));
-      await fill(draft, 'New draft typed during send');
-      const request = app.remote.groups.send.mock.calls.at(-1)?.[1];
-      await act(async () =>
-        accept({
-          ok: true,
-          value: groupTurnSchema.parse({
-            id: 'turn:ack',
-            group: { groupId: 'group:one', groupCreatedAt: 1 },
-            operationId: request?.operationId,
-            requestDigest: 'h',
-            inputMessageId: 'input',
-            createdAt: 1,
-            updatedAt: 1,
-            revision: 1,
-            schemaVersion: 1,
-            membershipRevision: 1,
-            orderedMemberIds: ['member:beta'],
-            mode: 'mention',
-            contextThroughSeq: 1,
-            state: 'accepted',
-          }),
-        }),
-      );
-      expect((draft as HTMLTextAreaElement).value).toBe('New draft typed during send');
-    } finally {
-      await app.dispose();
-    }
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.element.textContent).toContain(f.t('groups.conflict')); expect(draft.value).toBe('ordinary message');
+      const first = f.send.mock.calls[0]?.[1];
+      await f.remount();
+      expect((field(f.element, f.t('groups.message')) as HTMLTextAreaElement).value).toBe('ordinary message');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send.mock.calls[1]?.[1].operationId).toBe(first?.operationId);
+    } finally { await f.close(); }
   });
-  it.each(['en', 'zh'] as const)(
-    '%s resolves typed names and reports unknown mentions without sending',
-    async (language) => {
-      const named = [bot({ id: 'alpha', name: '研究员' }), bot({ id: 'beta', name: 'Research Assistant' })];
-      const app = await mountClient(named, language, configure);
-      const t = (language === 'en' ? en : zh).ui;
-      try {
-        await click(button(app.container, t['groups.title']));
-        await vi.waitFor(() => expect(app.container.textContent).toContain('Historic reply'));
-        const draft = field(app.container, t['groups.message']);
-        for (const [text, id] of [
-          ['@研究员 请分析', 'member:alpha'],
-          ['@research ASSISTANT please help', 'member:beta'],
-        ]) {
-          await fill(draft, text as string);
-          await click(button(app.container, t['groups.pick']));
-          const checked = app.container.querySelectorAll('fieldset input:checked');
-          expect(checked).toHaveLength(1);
-          await click(button(app.container.querySelector('fieldset') as HTMLElement, t['groups.close']));
-          app.remote.groups.send.mockResolvedValue({
-            ok: false,
-            error: new RemoteError('dsh-bot/recovery-needed', '', {}),
-          });
-          await click(button(app.container, t['groups.send']));
-          expect(app.remote.groups.send.mock.calls.at(-1)?.[1].memberIds).toEqual([id]);
-        }
-        const calls = app.remote.groups.send.mock.calls.length;
-        await fill(draft, '@missing Please help');
-        await click(button(app.container, t['groups.send']));
-        expect(app.remote.groups.send).toHaveBeenCalledTimes(calls);
-        expect(app.container.textContent).toContain(t['groups.unknownMention']);
-        expect(draft.value).toBe('@missing Please help');
-        await fill(draft, '@研究员 @missing Please help');
-        await click(button(app.container, t['groups.send']));
-        expect(app.remote.groups.send).toHaveBeenCalledTimes(calls);
-        expect(app.container.textContent).toContain(t['groups.chooseMention']);
-        expect(app.container.textContent).toContain(t['groups.unknownMention']);
-        await click(button(app.container, t['groups.round']));
-        expect(app.remote.groups.send).toHaveBeenCalledTimes(calls);
-        expect(app.container.querySelector('[data-group-session-leading]')).toBeNull();
-      } finally {
-        await app.dispose();
-      }
-    },
-  );
-  it('folds older rounds beneath their input, keeps the latest open and preserves overrides and nodes during polling', async () => {
-    const app = await mountClient(bots, 'en', (remote) => {
-      configure(remote);
-      const old = remote.data.groupView;
-      if (!old) throw new Error();
-      const turn = (id: string, at: number) =>
-        groupTurnSchema.parse({
-          id,
-          group: { groupId: old.group.id, groupCreatedAt: 1 },
-          operationId: `send:${id}`,
-          requestDigest: 'h',
-          inputMessageId: `input:${id}`,
-          createdAt: at,
-          updatedAt: at,
-          revision: 1,
-          schemaVersion: 1,
-          membershipRevision: 1,
-          orderedMemberIds: ['member:alpha', 'member:beta'],
-          mode: 'mention',
-          contextThroughSeq: 1,
-          state: 'completed',
-        });
-      const turns = [turn('turn:old', 1), turn('turn:new', 2)];
-      const historic = old.messages[0];
-      if (!historic) throw new Error('Missing fixture reply');
-      remote.data.groupView = {
-        ...old,
-        turns,
-        messages: turns.flatMap((turn, i) => [
-          {
-            id: turn.inputMessageId,
-            turnId: turn.id,
-            at: i + 1,
-            seq: i * 2 + 1,
-            text: `Question ${i}`,
-          },
-          {
-            ...historic,
-            id: `reply:${turn.id}`,
-            turnId: turn.id,
-            at: i + 1,
-            seq: i * 2 + 2,
-            text: `Reply ${i}`,
-          },
-        ]),
-      };
-    });
+  it('cleared reply does not resurrect after switch and staged receipts persist', async () => {
+    const f = await composer();
     try {
-      await click(button(app.container, en.ui['groups.title']));
-      await vi.waitFor(() => expect(app.container.querySelectorAll('[data-group-turn]')).toHaveLength(2));
-      const old = app.container.querySelector('[data-group-turn="turn:old"]') as HTMLElement;
-      const latest = app.container.querySelector('[data-group-turn="turn:new"]') as HTMLElement;
-      const toggle = old.querySelector('button') as HTMLButtonElement;
-      expect(toggle.textContent).toContain('2 members · Completed');
-      expect(toggle.getAttribute('aria-expanded')).toBe('false');
-      expect(latest.querySelector('button')?.getAttribute('aria-expanded')).toBe('true');
-      expect(old.previousElementSibling?.textContent).toContain('Question 0');
-      await click(toggle);
-      await click(latest.querySelector('button') as HTMLButtonElement);
-      const log = app.container.querySelector('[role="log"]') as HTMLElement;
-      log.scrollTop = 80;
-      const observer = new MutationObserver(() => {});
-      observer.observe(log, {
-        subtree: true,
-        attributes: true,
-        childList: true,
-        characterData: true,
-      });
-      await act(async () => {
-        await app.ctx.emit('connection/reset');
-      });
-      expect(observer.takeRecords()).toHaveLength(0);
-      observer.disconnect();
-      const current = app.remote.data.groupView;
-      if (!current) throw new Error('Missing group view');
-      app.remote.data.groupView = {
-        ...current,
-        turns: current.turns.map((turn) => ({
-          ...turn,
-          updatedAt: turn.updatedAt + 1,
-          revision: 2,
-          state: 'partial',
-        })),
-      };
-      await act(async () => {
-        await app.ctx.emit('connection/reset');
-      });
-      expect(app.container.querySelector('[data-group-turn="turn:old"]')).toBe(old);
-      expect(toggle.getAttribute('aria-expanded')).toBe('true');
-      expect(latest.querySelector('button')?.getAttribute('aria-expanded')).toBe('false');
-      expect(log.scrollTop).toBe(80);
-      await click(button(app.container, en.ui['bots.title']));
-      await click(button(app.container, en.ui['groups.title']));
-      await vi.waitFor(() =>
-        expect(
-          app.container.querySelector('[data-group-turn="turn:old"] button')?.getAttribute('aria-expanded'),
-        ).toBe('true'),
-      );
-      expect(
-        app.container.querySelector('[data-group-turn="turn:new"] button')?.getAttribute('aria-expanded'),
-      ).toBe('false');
-    } finally {
-      await app.dispose();
-    }
+      await act(async () => f.actions.reply('group-root-one', view().messages[0] as NonNullable<ReturnType<typeof view>['messages'][0]>));
+      await click(button(f.element, f.t('groups.clearReply')));
+      await act(async () => f.actions.patchDraft('group-root-one', value => ({ ...value, uploads: [{ id: 'a', name: 'file.txt', bytes: 3, state: 'uploaded', receiptId: 'real-receipt' }] })));
+      await f.remount();
+      expect(f.actions.draft('group-root-one').replyTo).toBeUndefined();
+      expect(f.element.textContent).toContain('file.txt');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send.mock.calls[0]?.[1].fileReceiptIds).toEqual(['real-receipt']);
+    } finally { await f.close(); }
   });
-  it('navigates from the native root header to the exact group and persists only visible read receipts', async () => {
-    const app = await mountClient(bots, 'en', (remote) => {
-      configure(remote);
-      if (remote.data.groupView) remote.data.groupView.unread = true;
-      remote.groups.markRead.mockImplementation(async (_key, _seq, revision) => {
-        if (remote.data.groupView)
-          remote.data.groupView = {
-            ...remote.data.groupView,
-            unread: false,
-            readRevision: revision + 1,
-          };
-        return { ok: true, value: true };
-      });
-    });
+  it('late acceptance clears only sent data even after unmount while preserving a newer draft', async () => {
+    const f = await composer(); let settle!: (value: Awaited<ReturnType<GroupMethods['send']>>) => void;
     try {
-      expect(app.remote.groups.markRead).not.toHaveBeenCalled();
-      const entry = app.core
-        .entries('conversation.session.header.utilities')
-        .find((e) => e.options.id === 'dsh-bot-group');
-      const actions = entry?.inject?.() as unknown as GroupSessionBadgeInjected;
-      await act(async () => actions.onOpenGroup('group:one'));
-      await vi.waitFor(() => expect(app.container.textContent).toContain('Historic reply'));
-      expect(app.selectPanel).toHaveBeenCalledWith('dsh-bot');
-      await vi.waitFor(() =>
-        expect(app.remote.groups.markRead).toHaveBeenCalledWith(
-          { groupId: 'group:one', groupCreatedAt: 1 },
-          1,
-          0,
-        ),
-      );
-      expect(app.remote.groups.send).not.toHaveBeenCalled();
-    } finally {
-      await app.dispose();
-    }
+      f.send.mockReturnValueOnce(new Promise(resolve => { settle = resolve; }));
+      await fill(field(f.element, f.t('groups.message')), 'sent text'); await click(button(f.element, f.t('groups.send')));
+      await f.remount(); expect(button(f.element, f.t('groups.send')).disabled).toBe(true);
+      await fill(field(f.element, f.t('groups.message')), 'new text');
+      await act(async () => settle({ ok: true, value: {} as never }));
+      expect(field(f.element, f.t('groups.message')).value).toBe('new text');
+      expect(f.actions.draft('group-root-one').operation).toBeUndefined();
+      expect(button(f.element, f.t('groups.send')).disabled).toBe(false);
+    } finally { await f.close(); }
   });
-  it('retains the edit revision during background updates and sends native child cancellation with CAS', async () => {
+  it.each(['Enter', 'Shift', 'IME', '229'] as const)('keyboard gating %s', async mode => {
+    const f = await composer();
+    try {
+      const draft = field(f.element, f.t('groups.message')); await fill(draft, 'keyboard');
+      await act(async () => draft.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true,
+        shiftKey: mode === 'Shift', isComposing: mode === 'IME', keyCode: mode === '229' ? 229 : 13 })));
+      expect(f.send).toHaveBeenCalledTimes(mode === 'Enter' ? 1 : 0);
+    } finally { await f.close(); }
+  });
+  it('exact roots select the replacement; ordinary conversations keep the native composer', async () => {
+    const f = await composer();
+    try {
+      await f.actions.catalog.refresh();
+      expect(selectGroupComposer({ sessionId: 'normal' as never }, f.actions)).toBeNull();
+      expect(selectGroupComposer({ sessionId: 'group-root-one' as never }, f.actions)).toEqual({ sessionId: 'group-root-one' });
+      expect(selectGroupComposer({ sessionId: 'group-root-fake' as never }, f.actions)).toBeNull();
+    } finally { await f.close(); }
+  });
+  it('plugin group page manages and opens the workspace, without a parallel chat', async () => {
     const app = await mountClient(bots, 'en', configure);
-    const t = en.ui;
     try {
-      await click(button(app.container, t['groups.title']));
-      await vi.waitFor(() => expect(app.container.textContent).toContain('Historic reply'));
-      await click(button(app.container, t['groups.edit']));
-      const form = app.container.querySelector('form[aria-label="Edit group members"]');
-      if (!form) throw new Error();
-      await fill(field(form, t['groups.name']), 'Keep edit draft');
-      await click(field(form, t['groups.historyConsent']));
-      const old = app.remote.data.groupView;
-      if (!old) throw new Error();
-      app.remote.data.groupView = {
-        ...old,
-        group: { ...old.group, revision: 8, membershipRevision: 5 },
-      };
-      await act(async () => {
-        await app.ctx.emit('connection/reset');
-      });
-      app.remote.groups.edit.mockResolvedValue({
-        ok: false,
-        error: new RemoteError('dsh-bot/conflict', '', {}),
-      });
-      await act(async () => {
-        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-      });
-      expect(app.remote.groups.edit.mock.calls[0]?.[1]).toMatchObject({
-        name: 'Keep edit draft',
-        expectedRevision: 1,
-        expectedMembershipRevision: 1,
-      });
-      expect(field(form, t['groups.name']).value).toBe('Keep edit draft');
-      await click(button(form, t['groups.close']));
-      const turn = {
-        id: 'turn:one',
-        group: { groupId: old.group.id, groupCreatedAt: 1 },
-        operationId: 'send:one',
-        requestDigest: 'h',
-        inputMessageId: 'input',
-        createdAt: 1,
-        updatedAt: 1,
-        revision: 7,
-        schemaVersion: 1 as const,
-        membershipRevision: 1,
-        orderedMemberIds: ['member:alpha'],
-        mode: 'mention' as const,
-        contextThroughSeq: 1,
-        state: 'running' as const,
-      };
-      app.remote.data.groupView = { ...old, turns: [turn], running: true };
-      await act(async () => {
-        await app.ctx.emit('connection/reset');
-      });
-      await vi.waitFor(() => expect(app.container.textContent).toContain(t['groups.cancelTurn']));
-      app.remote.groups.cancel.mockResolvedValue({
-        ok: true,
-        value: { ...turn, state: 'cancelled' },
-      });
-      await click(button(app.container, t['groups.cancelTurn']));
-      expect(app.remote.groups.cancel).toHaveBeenCalledWith(turn.group, turn.id, 7);
-    } finally {
-      await app.dispose();
-    }
+      await click(button(app.container, en.ui['chat.profile']));
+      await vi.waitFor(() => expect(app.container.textContent).toContain('Synthetic group'));
+      expect(app.container.querySelector('[role="log"]')).toBeNull();
+      expect(app.container.querySelector('textarea')).toBeNull();
+      expect(button(app.container, en.ui['groups.open'])).toBeTruthy();
+    } finally { await app.dispose(); }
   });
+});
+
+describe('exclusive native group message projection', () => {
+  it('claims only canonical appended Bot messages, preserving normal user and malformed-source fallback', () => {
+    const event = { type: 'user/message', surfaceOp: 'append', data: { id: 'bot-message', source: { kind: 'dsh-bot-group',
+      group: { groupId: 'g', groupCreatedAt: 1 }, memberId: 'a', turnId: 'turn', speaker: { bot: { botId: 'alpha', botCreatedAt: 1 }, name: 'Alpha' } } } };
+    expect(groupMessageDefinition.match(event as never)?.exclusive).toBe(true);
+    expect(groupMessageDefinition.match({ ...event, data: { ...event.data, source: { kind: 'user' } } } as never)).toBeNull();
+    expect(groupMessageDefinition.match({ ...event, data: { ...event.data, source: { kind: 'dsh-bot-group' } } } as never)).toBeNull();
+  });
+  it.each(['completed', 'group-message', 'error', 'aborted', 'max-tokens', 'refusal'] as const)('native card preserves real partial state: %s', async reason => {
+    const element = document.createElement('div'), root = createRoot(element);
+    try {
+      await act(async () => root.render(<GroupMessageCard message={{ ...(view().messages[0] ?? {}), id: 'message', seq: 1, at: 1, text: 'reply', turnId: 'turn', stopReason: reason }}
+        labels={{ code: { copyLabel: 'copy', copiedLabel: 'copied' }, footnotes: 'footnotes' }} onReply={() => {}} onOpenAttachment={async () => {}}
+        onOpenSession={async () => {}} t={(key => en.ui[key as keyof typeof en.ui]) as PropsLocale<'dsh-bot'>['t']} />));
+      expect(element.textContent?.includes(en.ui['groups.partial'])).toBe(!['completed', 'group-message'].includes(reason));
+    } finally { await act(async () => root.unmount()); }
+  });
+});
+
+
+describe('caret group mention UI', () => {
+  it('selects same-name member by stable identity with Tab; remount keeps text and binding', async () => {
+    const f = await composer();
+    try {
+      const input = field(f.element, f.t('groups.message')) as HTMLTextAreaElement;
+      await fill(input, 'hello @');
+      await vi.waitFor(() => expect(f.element.querySelectorAll('[role="option"]')).toHaveLength(3));
+      await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })));
+      await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })));
+      expect(input.value).toBe('hello @Same name ');
+      expect(f.send).not.toHaveBeenCalled();
+      await f.remount();
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send.mock.calls[0]?.[1].memberIds).toEqual(['member:alpha']);
+      expect(f.element.querySelector('select')).toBeNull();
+      expect(f.element.querySelector('input[type="checkbox"]')).toBeNull();
+    } finally { await f.close(); }
+  });
+  it('composition closing Enter cannot select or send; next ordinary Enter can select', async () => {
+    const f = await composer();
+    try {
+      const input = field(f.element, f.t('groups.message')) as HTMLTextAreaElement;
+      await fill(input, '@');
+      await vi.waitFor(() => expect(f.element.querySelectorAll('[role="option"]')).toHaveLength(3));
+      await act(async () => { input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+      expect(input.value).toBe('@'); expect(f.send).not.toHaveBeenCalled();
+      await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+      expect(input.value).toBe('@everyone '); expect(f.send).not.toHaveBeenCalled();
+    } finally { await f.close(); }
+  });
+});
+
+it('public conversation projection keeps user authorship and explicit reply metadata', () => {
+  for (const kind of ['user', 'dsh-bot-group-user', 'dsh-bot-group-followup']) {
+    const event = { type: 'user/message', surfaceOp: 'append', time: 1, seq: 2, data: { id: 'user-reply', content: [{ type: 'text', text: 'Follow up' }], source: { kind, group: { groupId: 'g', groupCreatedAt: 1 }, turnId: 'turn', replyTo: 'original' } } };
+    expect(groupMessageDefinition.match(event as never)?.exclusive).toBe(true);
+    const result = groupMessageDefinition.start({} as never, { event } as never, {} as never);
+    expect(result.message.authorKind).toBe('user'); expect(result.message.speaker).toBeUndefined(); expect(result.message.replyTo).toBe('original');
+  }
+});
+
+it('sent quotes render real authors, invoke original jump, and show unavailable explicitly', async () => {
+  const element = document.createElement('div'), root = createRoot(element), jump = vi.fn();
+  const t = ((key: keyof typeof en.ui) => en.ui[key]) as PropsLocale<'dsh-bot'>['t'];
+  const message = { id: 'reply', seq: 2, at: 1, text: 'Reply', turnId: 'turn', authorKind: 'user' as const, replyTo: 'original' };
+  const quoted = { ...message, id: 'original', replyTo: undefined, text: 'User original' };
+  try {
+    const render = async (hasQuote: boolean) => { await act(async () => root.render(<GroupMessageCard message={message} quoted={hasQuote ? quoted : undefined} onJump={jump}
+      labels={{ code: { copyLabel: 'copy', copiedLabel: 'copied' }, footnotes: 'footnotes' }} onReply={() => {}} onOpenAttachment={async () => {}} onOpenSession={async () => {}} t={t} />)); };
+    await render(true); expect(element.querySelector('blockquote')?.textContent).toContain('You');
+    await click(element.querySelector('blockquote button') as HTMLButtonElement); expect(jump).toHaveBeenCalledWith('original');
+    await render(false); expect(element.textContent).toContain(en.ui['groups.quoteUnavailable']);
+  } finally { await act(async () => root.unmount()); }
+});
+
+it('native quote lookup reports loading until async resolution, and unavailable only after a missing result', async () => {
+  const { WorkspaceMessage } = await import('../../src/client/workspace-group.js');
+  const element = document.createElement('div'), root = createRoot(element);
+  const quoted = { id: 'quoted', seq: 1, at: 1, text: 'Original is available', turnId: 'turn', authorKind: 'user' as const };
+  let settle!: (message: typeof quoted | undefined) => void;
+  const lookup = vi.fn(() => new Promise<typeof quoted | undefined>(resolve => { settle = resolve; }));
+  const snapshot = { view: undefined };
+  const actions = { messageView: () => ({ subscribe: () => () => {}, getSnapshot: () => snapshot }), quotedMessage: lookup } as unknown as import('../../src/client/groups-state.js').GroupActions;
+  const t = ((key: keyof typeof en.ui) => en.ui[key]) as PropsLocale<'dsh-bot'>['t'];
+  const render = async (id: string) => { await act(async () => root.render(<WorkspaceMessage key={id} node={{ data: { group: { groupId: 'g', groupCreatedAt: 1 }, message: { ...quoted, id, replyTo: 'quoted' } } } as never} actions={actions} onOpenSession={async () => {}} t={t} />)); };
+  try {
+    await render('reply-a');
+    expect(element.textContent).toContain(en.ui['groups.quoteLoading']); expect(element.textContent).not.toContain(en.ui['groups.quoteUnavailable']);
+    await act(async () => settle(quoted));
+    expect(element.querySelector('blockquote')?.textContent).toContain(quoted.text); expect(element.textContent).not.toContain(en.ui['groups.quoteUnavailable']);
+    await render('reply-b');
+    expect(element.textContent).toContain(en.ui['groups.quoteLoading']);
+    await act(async () => settle(undefined));
+    expect(element.textContent).toContain(en.ui['groups.quoteUnavailable']); expect(element.textContent).not.toContain(en.ui['groups.quoteLoading']);
+  } finally { await act(async () => root.unmount()); }
 });

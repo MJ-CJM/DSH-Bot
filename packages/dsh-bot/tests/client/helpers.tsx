@@ -12,6 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { vi } from 'vitest';
 import * as client from '../../src/client/index.js';
 import * as primitives from './platform-primitives.js';
+import * as inputTriggerPlatform from './platform-input-trigger.js';
 import type {
   BotRecord,
 } from '../../src/shared/schema.js';
@@ -30,7 +31,7 @@ export function loadBuiltClient(): typeof client {
   const require = createRequire(import.meta.url);
   let plugin: typeof client | undefined;
   const source = readFileSync(require.resolve('dsh-bot/client'), 'utf8');
-  const platformRequire = ((id: string) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : require(id)) as NodeJS.Require;
+  const platformRequire = ((id: string) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : /^@deepseek-ai\/dsh-client-ui-input-trigger(?:\/client)?$/.test(id) ? inputTriggerPlatform : require(id)) as NodeJS.Require;
   const previousLoader = Object.getOwnPropertyDescriptor(window, '__ModuleLoader__');
   Object.defineProperty(window, '__ModuleLoader__', { configurable: true, value: {
     load(entry: { factory: (require: NodeJS.Require) => typeof client }) { plugin = entry.factory(platformRequire); },
@@ -64,6 +65,8 @@ export async function mountClient(
     name: 'root',
     children: {
       main: { kind: 'keyed', scope: 'root' },
+      'conversation.composer': { kind: 'chain', scope: 'session' },
+      'conversation.input.dock': { kind: 'list', scope: 'session' },
       'sidebar.panellist': { kind: 'list', scope: 'root' },
       'sidebar.footer.action': { kind: 'list', scope: 'root' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
@@ -85,6 +88,13 @@ export async function mountClient(
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
   const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+    if (contribution?.package === '@deepseek-ai/dsh-permission-presets') return ctx.provide('remote.permissionPresets', {
+      catalog: vi.fn(async () => ({ ok: true, value: { options: [] } })),
+    } as never);
+    if (contribution?.package === 'dsh-bot/capabilities') return ctx.provide('remote.dshBot.capabilities', {
+      request: vi.fn(async (input: { action: string }) => ({ ok: true, value: input.action === 'models'
+        ? { kind: 'models', providers: [] } : { kind: 'inspect', online: false, skillsAvailable: false, skills: [], tools: [], ownSkills: [], extraDirs: [] } })),
+    } as never);
     if (contribution?.package === 'dsh-bot/workspace') {
       const releases = [ctx.provide('remote.dshBot.workspace', remote.workspaceManagement),
         ctx.provide('remote.dshBot.referenceMemory', remote.referenceMemory)];
@@ -102,6 +112,10 @@ export async function mountClient(
       const releases = [ctx.provide('remote.dshBot.connectors', remote.connectors), ctx.provide('remote.dshBot.notifications', remote.notifications)];
       return async () => { for (const release of releases) await release(); };
     }
+    if (contribution?.package === '@deepseek-ai/dsh-subagent') return ctx.provide('remote.subagents', {
+      prompt: vi.fn(async () => ({ ok: true, value: undefined })),
+      interruptByParent: vi.fn(async () => ({ ok: true, value: undefined })),
+    } as never);
     if (contribution?.package === '@deepseek-ai/dsh-schedule') return ctx.provide('remote.schedule', remote.schedule);
     if (contribution?.package === 'dsh-bot/automation') {
       const releases = [ctx.provide('remote.dshBot.nativeSchedule', remote.routine), ctx.provide('remote.dshBot.run', remote.run),
@@ -181,7 +195,7 @@ export async function mountClient(
   const pickDirectory = vi.fn<Context['uiWorkspace']['pickDirectory']>(async () => null);
   ctx.provide('uiWorkspace', { openWorkspace, openSession, pickDirectory } as unknown as Context['uiWorkspace']);
   ctx.provide('workspaces', { list: workspaceSource, create: createWorkspace } as unknown as Context['workspaces']);
-  ctx.provide('sessions', { list: sessionSource, create: createSession } as unknown as Context['sessions']);
+  ctx.provide('sessions', { list: sessionSource, create: createSession, refreshProjections: vi.fn(async () => {}) } as unknown as Context['sessions']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();
   const container = document.createElement('div');

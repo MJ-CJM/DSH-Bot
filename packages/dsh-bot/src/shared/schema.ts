@@ -41,9 +41,10 @@ export const botRegistryStateSchema = z
   .strictObject({
     status: z.enum(['pending', 'complete']).optional(),
     botsWorkspaceId: nonempty.optional(),
+    retiredCreationOperation: z.uuid().optional(),
   })
   .refine(
-    (value) => value.status !== undefined || value.botsWorkspaceId !== undefined,
+    (value) => value.status !== undefined || value.botsWorkspaceId !== undefined || value.retiredCreationOperation !== undefined,
     'Registry state must not be empty',
   );
 // Browser-safe syntax validation; the Host additionally applies its platform's
@@ -124,11 +125,16 @@ const botFields = z.strictObject({
   order: z.number().finite().optional(),
 });
 
+export const onboardingIntentSchema = z.strictObject({
+  operationId: z.uuid(), language: z.enum(['zh', 'en']), policyVersion: z.literal(1),
+  inputDigest: z.string().regex(/^[a-f0-9]{64}$/),
+});
 export const botRecordFields = botFields.extend({
   id: botIdSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
   schemaVersion: z.literal(1),
+  onboarding: onboardingIntentSchema.optional(),
 });
 export const botSchema = botRecordFields
   .refine((record) => record.updatedAt >= record.createdAt, 'updatedAt precedes createdAt')
@@ -151,6 +157,8 @@ export const botCreateSchema = botFields.extend({
  */
 const botPatchFields = botFields.partial();
 export const botPatchSchema = botPatchFields.extend({
+  expectedCreatedAt: timestampSchema.optional(),
+  expectedUpdatedAt: timestampSchema.optional(),
   avatar: botFields.shape.avatar.nullable(),
   avatarColor: botFields.shape.avatarColor.nullable(),
   avatarVariant: botFields.shape.avatarVariant.nullable(),
@@ -161,6 +169,8 @@ export const botPatchSchema = botPatchFields.extend({
 export const botRemoveOptionsSchema = z.strictObject({
   deleteMemories: z.boolean().default(true),
   deleteHome: z.boolean().default(false),
+  expectedCreatedAt: timestampSchema.optional(),
+  expectedUpdatedAt: timestampSchema.optional(),
 });
 export type BotRemoveOptions = z.input<typeof botRemoveOptionsSchema>;
 
@@ -211,7 +221,7 @@ export type BotRecord = z.infer<typeof botSchema>;
 export type BotCreateInput = z.input<typeof botCreateSchema>;
 export type BotPatch = z.input<typeof botPatchSchema>;
 export function normalizeBotPatch(patch: BotPatch): z.output<typeof botPatchFields> {
-  const { avatar, avatarColor, avatarVariant, model, defaultCwd, order, ...fields } = patch;
+  const { avatar, avatarColor, avatarVariant, model, defaultCwd, order, expectedCreatedAt: _createdAt, expectedUpdatedAt: _updatedAt, ...fields } = patch;
   return {
     ...fields,
     ...('avatar' in patch ? { avatar: avatar ?? undefined } : {}),

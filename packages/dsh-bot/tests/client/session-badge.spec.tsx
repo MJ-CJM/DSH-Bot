@@ -11,7 +11,7 @@ import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 import { SessionBotBadge, type SessionBotBadgeInjected, type SessionBotBadgeProps } from '../../src/client/components/SessionBotBadge.js';
 import { createBotCatalog } from '../../src/client/state.js';
-import { bot, button, click, field, mountClient, remoteDouble } from './helpers.js';
+import { bot, button, click, mountClient, remoteDouble } from './helpers.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -41,7 +41,7 @@ async function mountBadge(preset?: unknown, language: 'en' | 'zh' = 'en') {
     return selector(value);
   };
   const activityListeners = new Set<() => void>();
-  let activity: ActivitySnapshot = { sessions: [], bots: [], loading: false, loaded: true, pollIntervalMs: 5000 };
+  let activity: ActivitySnapshot = { sessions: [{ sessionId, botId: 'alpha-bot', botCreatedAt: 1, updatedAt: 100, unread: false, lastMessage: { role: 'assistant', at: 100, preview: 'Reply' } }], bots: [], loading: false, loaded: true, pollIntervalMs: 5000 };
   const activitySource = {
     getSnapshot: () => activity,
     subscribe: (listener: () => void) => { activityListeners.add(listener); return () => { activityListeners.delete(listener); }; },
@@ -98,7 +98,7 @@ async function mountBadge(preset?: unknown, language: 'en' | 'zh' = 'en') {
 }
 
 describe('Session Bot badge with public session projection and the shared catalog', () => {
-  const unread = (at = 100): ActivitySession => ({ sessionId: 'session-badge-test', botId: 'alpha-bot',
+  const unread = (at = 100): ActivitySession => ({ sessionId: 'session-badge-test', botId: 'alpha-bot', botCreatedAt: 1,
     updatedAt: at, unread: true, lastMessage: { role: 'assistant', preview: 'A completed reply', at } });
 
   it('marks only the visible native main session and retries for newly completed replies', async () => {
@@ -170,7 +170,7 @@ describe('Session Bot badge with public session projection and the shared catalo
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const app = await mountClient([bot()]);
     cleanups.push(app.dispose);
-    const badge = app.core.entries('conversation.session.header.utilities')[0]?.inject?.() as unknown as SessionBotBadgeInjected;
+    const badge = app.core.entries('conversation.session.header.utilities').find(entry => entry.options.id === 'dsh-bot')?.inject?.() as unknown as SessionBotBadgeInjected;
     const listener = vi.fn();
     const stopBadge = badge.hooks.catalog.subscribe(listener);
     await app.unmountPage();
@@ -292,13 +292,13 @@ describe('Session Bot badge with public session projection and the shared catalo
 
     await act(async () => actions.onOpenBot('beta-bot'));
     expect(app.selectPanel).toHaveBeenCalledExactlyOnceWith('dsh-bot');
-    expect(field(app.container, en.ui['editor.id']).value).toBe('beta-bot');
-    expect(field(app.container, en.ui['editor.name']).value).toBe('Beta Bot');
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('beta-bot');
+    expect(app.container.querySelector('article')?.textContent).toContain('Beta Bot');
     await click(button(app.container, en.ui['actions.close']));
     expect(app.container.querySelector('dialog')).toBeNull();
     await act(async () => actions.onOpenBot('beta-bot'));
     expect(app.selectPanel).toHaveBeenCalledTimes(2);
-    expect(field(app.container, en.ui['editor.id']).value).toBe('beta-bot');
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('beta-bot');
 
     await app.unloadPlugin();
     expect(app.core.entries('conversation.session.header.utilities')).toHaveLength(0);
@@ -310,12 +310,12 @@ describe('Session Bot badge with public session projection and the shared catalo
   it('retains a badge detail request while Bots is unmounted and consumes it after the fresh catalog loads', async () => {
     const app = await mountClient([bot()]);
     cleanups.push(app.dispose);
-    const actions = app.core.entries('conversation.session.header.utilities')[0]?.inject?.() as unknown as SessionBotBadgeInjected;
+    const actions = app.core.entries('conversation.session.header.utilities').find(entry => entry.options.id === 'dsh-bot')?.inject?.() as unknown as SessionBotBadgeInjected;
     await app.unmountPage();
     await act(async () => actions.onOpenBot('alpha-bot'));
     await app.remountPage();
     expect(app.selectPanel).toHaveBeenCalledExactlyOnceWith('dsh-bot');
-    expect(field(app.container, en.ui['editor.id']).value).toBe('alpha-bot');
+    expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('alpha-bot');
     await click(button(app.container, en.ui['actions.close']));
     // A consumed navigation is not replayed by later catalog refreshes.
     await act(async () => app.ctx.emit('connection/reset'));

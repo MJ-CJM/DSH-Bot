@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
+  - 'spikes/p34'
   - 'spikes/p1-api'
   - 'spikes/test-tools'
   - 'spikes/remote/packages/*'

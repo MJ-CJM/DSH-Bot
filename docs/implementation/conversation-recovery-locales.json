@@ -1,0 +1,22 @@
+{
+  "en": {
+    "capabilities.dataFlow": "Conversation data scope",
+    "capabilities.flowRestricted": "This conversation has restricted or unclassified sources. Some replies and exports may require approval or remain blocked.",
+    "capabilities.flowScoped": "This conversation keeps its current data audience. Reading tools does not make its contents shared.",
+    "capabilities.flowUnavailable": "Conversation data scope is unavailable.",
+    "capabilities.freshConversation": "Start a new main conversation",
+    "capabilities.freshConfirm": "Start a new main conversation? Your Bot, memories, and old conversation are kept. Existing background tasks and schedules still belong to the old conversation. No history or data is moved automatically.",
+    "capabilities.freshHint": "A new conversation can separate new work from an old conversation's unclassified sources. Tool restrictions following memory forgetting still apply. The old conversation remains available.",
+    "capabilities.freshError": "Could not start a new main conversation. Refresh its status and try again; your current draft is kept."
+  },
+  "zh": {
+    "capabilities.dataFlow": "对话数据范围",
+    "capabilities.flowRestricted": "此对话含有受限或未分类来源，部分回复和外发可能需要审批或继续受阻。",
+    "capabilities.flowScoped": "此对话保留当前数据可见范围，工具读入不会自动成为共享内容。",
+    "capabilities.flowUnavailable": "暂时无法获取对话数据范围。",
+    "capabilities.freshConversation": "开启新的主对话",
+    "capabilities.freshConfirm": "开启新的主对话？将保留 Bot、记忆及旧会话。现有后台任务和定时任务仍属于旧会话，不会自动搬移历史或数据。",
+    "capabilities.freshHint": "旧对话含未分类来源时，可开启新主对话处理新工作。记忆遗忘后的整体工具限制仍然保留，旧会话仍可访问。",
+    "capabilities.freshError": "暂时无法开启新主对话，请刷新状态后重试。当前草稿已保留。"
+  }
+}

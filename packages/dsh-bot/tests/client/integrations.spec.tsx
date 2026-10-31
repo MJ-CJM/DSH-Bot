@@ -1,3 +1,4 @@
+import { openSettings } from './bot-ui-helpers.js';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 // @vitest-environment jsdom
 import { act } from 'react';
@@ -13,7 +14,7 @@ describe('P34 management through the public main slot and shared polling catalog
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })], language);
     const t = (language === 'en' ? en : zh).ui;
     try {
-      await click(button(app.container, t['manage.title'])); await click(button(app.container, t['connectors.connectors']));
+      await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['connectors.connectors']));
       await fill(field(app.container, t['integrations.id']), 'connector'); await fill(field(app.container, t['integrations.label']), 'Example connector');
       await fill(field(app.container, t['connectors.url']), 'https://example.test/mcp'); await fill(field(app.container, t['connectors.credentialRef']), 'GITHUB_TOKEN');
       const node = field(app.container, t['integrations.label']);
@@ -38,7 +39,7 @@ describe('P34 management through the public main slot and shared polling catalog
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })], language, remote => { remote.data.integrations.notifications = [record()]; remote.data.integrations.unread = 1; });
     const t = (language === 'en' ? en : zh).ui;
     try {
-      await click(button(app.container, t['manage.title']));
+      await openSettings(app, t === zh.ui ? 'zh' : 'en');
       const tab = [...app.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(b => b.textContent?.includes(t['notifications.notifications'])); if (!tab) throw new Error('Missing notifications tab');
       await vi.waitFor(() => expect(tab.querySelector('svg')).toBeTruthy());
       await click(tab); expect(app.container.textContent).toContain(record().text); expect(app.container.textContent).toContain(t['notifications.recorded']);
@@ -55,7 +56,7 @@ describe('P34 management through the public main slot and shared polling catalog
     const set = vi.fn(async (_ref: string, _value: string) => ({ ok: true as boolean, value: undefined, error: new RemoteError('dsh-bot/unavailable', '', {}) }));
     const release = app.ctx.provide('remote.credentials', { describe, set } as never);
     try {
-      await click(button(app.container, t['manage.title'])); await click(button(app.container, t['connectors.connectors']));
+      await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['connectors.connectors']));
       await fill(field(app.container, t['connectors.credentialRef']), 'GITHUB_TOKEN');
       await click(button(app.container, t['connectors.describeCredential'])); expect(describe).toHaveBeenCalledWith(['GITHUB_TOKEN']);
       const password = field(app.container, t['connectors.secret']) as HTMLInputElement; expect(password.type).toBe('password'); expect(password.value).toBe('');
@@ -64,18 +65,19 @@ describe('P34 management through the public main slot and shared polling catalog
       expect(app.remote.connectors.saveDefinition).not.toHaveBeenCalled(); expect(JSON.stringify(app.remote.data.integrations)).not.toContain('SYNTHETIC_UI_SECRET');
       set.mockResolvedValue({ ok: false, value: undefined, error: new RemoteError('dsh-bot/unavailable', '', {}) });
       await fill(password, 'SYNTHETIC_UI_FAILURE'); await click(button(app.container, t['connectors.storeCredential'])); expect(password.value).toBe('');
-      await fill(password, 'SYNTHETIC_NOT_SUBMITTED'); await click(button(app.container, t['manage.title'])); await click(button(app.container, t['notifications.notifications'])); await click(button(app.container, t['manage.title'])); await click(button(app.container, t['connectors.connectors']));
+      await fill(password, 'SYNTHETIC_NOT_SUBMITTED'); await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['notifications.notifications'])); await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['connectors.connectors']));
       expect(field(app.container, t['connectors.secret']).value).toBe('');
     } finally { release(); await app.dispose(); }
   });
-  it('keeps only three top-level tabs and retains non-secret DOM/drafts across management sections', async () => {
+  it('keeps settings separate from recent conversations and retains non-secret DOM/drafts across settings sections', async () => {
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })]); const t = en.ui;
     const release = app.ctx.provide('remote.credentials', { describe: vi.fn(), set: vi.fn() } as never);
     try {
       const top = app.container.querySelector('[role="tablist"]');
-      expect([...top?.querySelectorAll('button') ?? []].map(b => b.textContent)).toEqual([t['bots.title'], t['groups.title'], t['manage.title']]);
+      expect(top).toBeNull();
+      expect(button(app.container, t['chat.settings'])).toBeDefined();
       expect(app.container.textContent).not.toContain(t['connectors.credentialsHint']);
-      await click(button(app.container, t['manage.title']));
+      await openSettings(app, t === zh.ui ? 'zh' : 'en');
       await click(button(app.container, t['connectors.connectors']));
       const input = field(app.container, t['integrations.label']);
       await fill(input, 'Persistent non-secret draft');
@@ -97,7 +99,7 @@ describe('P34 management through the public main slot and shared polling catalog
   it('requires explicit scope confirmation for preapproval and preserves input on conflict', async () => {
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })]); const t = en.ui;
     try {
-      await click(button(app.container, t['manage.title'])); await click(button(app.container, t['notifications.notifications']));
+      await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['notifications.notifications']));
       await fill(field(app.container, t['integrations.id']), 'local');
       await click(field(app.container, t['notifications.preapproved']));
       expect((field(app.container, t['notifications.confirmScope']) as HTMLInputElement).checked).toBe(false);

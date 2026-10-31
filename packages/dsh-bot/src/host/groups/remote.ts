@@ -20,6 +20,10 @@ export class GroupsRemote extends TypertRemoteService {
   ) {
     super(ctx, 'dshBotGroupsRemote', { namespace: 'dshBot.groups' });
   }
+  @Remote async open(group: GroupKey) { return this.groups.open(group); }
+  @Remote async openAttachment(group: GroupKey, messageId: string, attachmentId: string) {
+    return this.groups.openAttachment(group, messageId, attachmentId);
+  }
   @Remote async markRead(group: GroupKey, throughSeq: number, expectedRevision: number) {
     return this.groups.markRead(group, throughSeq, expectedRevision);
   }
@@ -31,6 +35,9 @@ export class GroupsRemote extends TypertRemoteService {
   }
   @Remote async edit(group: GroupKey, input: unknown) {
     return this.groups.edit(group, input);
+  }
+  @Remote async setModel(group: GroupKey, input: unknown) {
+    return this.groups.setModel(group, input);
   }
   @Remote async view(group: GroupKey, page: unknown) {
     return this.groups.view(group, page);

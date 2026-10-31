@@ -4,6 +4,7 @@ import type { MemoryKernel } from './op-log.js';
 import type { MemoryAdmission } from './admission.js';
 import { temporalView } from './temporal.js';
 import { adjudicate } from './conflicts.js';
+import { canReadLabel } from '../data-flow/labels.js';
 
 export interface ContextPolicy { maxInjectChars: number; privateShare: number; journalShare: number; journalDays: number }
 const chars = (text: string) => [...text].length;
@@ -21,17 +22,19 @@ export function nextDayBoundary(now: number, timeZone: string): number {
 }
 /** Sync provider reads only the published projection. No file, network, timer or model activity. */
 export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: ContextPolicy, injectLimit: number,
-  clock = Date.now, observed: (ids: string[]) => void = () => {}) {
+  clock = Date.now, observed: (ids: string[]) => void = () => {}, audience?: () => readonly BotKey[] | undefined) {
   let cached: { key: string; from: number; until: number; text: string; ids: string[] } | undefined;
   return () => {
     kernel.assertReadable();
     const state = kernel.snapshot, now = clock();
-    const key = JSON.stringify([kernel.scope.scope.id, owner, state.seq, state.epoch, kernel.policyRevision, policy, injectLimit]);
+    const readers = audience?.();
+    const key = JSON.stringify([kernel.scope.scope.id, owner, state.seq, state.epoch, kernel.policyRevision, policy, injectLimit, readers]);
     if (cached && cached.key === key && now >= cached.from && now < cached.until) { observed(cached.ids); return cached.text; }
     let until = nextDayBoundary(now, kernel.scope.quotaTimeZone);
     const view = temporalView(kernel, { at: now }), all = view.facts;
     until = Math.min(until, view.boundary);
-    const facts = adjudicate(all, now, owner).filter(f => f.state === 'active');
+    const facts = adjudicate(all, now, owner).filter(f => f.state === 'active' &&
+      (!readers || readers.every(reader => canReadLabel(f.version.labels, reader))));
     // Future/expired entries must also invalidate the cache at their validity boundary.
     for (const { version, payload: p } of all) {
       for (const boundary of [p.valid.from, p.valid.to]) if (boundary !== null && boundary > now) until = Math.min(until, boundary);
@@ -76,8 +79,10 @@ export function memoryContext(kernel: MemoryKernel, owner: BotKey, policy: Conte
   };
 }
 export function registerMemoryContext(agent: Agent, owner: BotKey, kernel: MemoryKernel, admission: MemoryAdmission,
-  policy: ContextPolicy & { memorySectionOrder: number }, injectLimit: number): () => void {
-  const provider = memoryContext(kernel, owner, policy, injectLimit, Date.now, ids => admission.observed(agent.session.id, ids));
+  policy: ContextPolicy & { memorySectionOrder: number }, injectLimit: number,
+  audience?: () => readonly BotKey[] | undefined): () => void {
+  const provider = memoryContext(kernel, owner, policy, injectLimit, Date.now,
+    ids => admission.observed(agent.session.id, ids), audience);
   return agent.ctx.systemPrompt.context({ name: 'dsh-bot:memory', order: policy.memorySectionOrder,
     required: true, interpolate: false, text: provider });
 }

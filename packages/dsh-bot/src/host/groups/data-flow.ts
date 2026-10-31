@@ -13,7 +13,7 @@ export function audience(state: GroupState, g: GroupRecord) {
 export async function groupInput(state: GroupState, g: GroupRecord, root: Agent, content: string, call: string) {
   const flow = outlets(state.registry); if (!flow) return;
   if (!flow.kernel.domain.table('flow_sessions').get(root.session.id) && root.session.snapshotEvents().some(e =>
-    e.type === 'user/message' && ['user', 'dsh-bot-group'].includes(e.data.source.kind)))
+    e.type === 'user/message' && ['user', 'dsh-bot-group', 'dsh-bot-group-user', 'dsh-bot-group-followup'].includes(e.data.source.kind)))
     throw new Error('Legacy group history held: unknown lineage');
   const target = audience(state, g), bot = target.members[0];
   if (!bot) throw new Error('Group has no audience');
@@ -38,5 +38,15 @@ export async function groupResult<T>(state: GroupState, g: GroupRecord, bot: Bot
   const envelope = flow.draft('group-result', bot, childId, call, audience(state, g), content);
   const id = await flow.admit(envelope, undefined, signal);
   await flow.inherit(root.session.id, envelope.label);
+  return flow.dispatch(id, send, signal);
+}
+
+export async function followupInput<T>(state: GroupState, g: GroupRecord, root: Agent, bot: BotKey,
+  childId: string, content: string, call: string, signal: AbortSignal, send: () => Promise<T>): Promise<T> {
+  const flow = outlets(state.registry); if (!flow) return send();
+  const envelope = flow.draft('group-input', bot, root.session.id, call, { kind: 'bot', bot }, content);
+  flow.checker.check({ ...envelope, binding: { ...envelope.binding, target: audience(state, g) } });
+  const id = await flow.admit(envelope, undefined, signal);
+  await flow.inherit(childId, envelope.label);
   return flow.dispatch(id, send, signal);
 }

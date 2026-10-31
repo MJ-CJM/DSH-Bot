@@ -1,0 +1,18 @@
+{
+  "en": {
+    "delete.changed": "This Bot changed or was removed. Close this dialog and review its current details before deleting.",
+    "delete.running": "The main conversation is running. Stop its reply before deleting this Bot.",
+    "delete.tasks": "Deletion does not confirm that background work has stopped. Stop running tasks separately before deleting.",
+    "delete.workspaceRetained": "Conversation history and the shared Bots workspace are retained. Only the selected memory and private-directory options apply.",
+    "delete.keepMemories": "Memory data is retained. Recreating the same Bot ID creates a new identity and does not automatically reconnect its retired private memories.",
+    "delete.history": "Native session history is retained. Deleting this Bot does not delete or automatically restore its conversations; continuation depends on the Host and the missing preset."
+  },
+  "zh": {
+    "delete.changed": "此 Bot 已变更或移除，请关闭确认框并检查当前信息后再删除。",
+    "delete.running": "主对话仍在运行，请先停止当前回复再删除此 Bot。",
+    "delete.tasks": "删除不代表后台工作已停止，请先分别停止正在运行的任务。",
+    "delete.workspaceRetained": "会话历史和共享 Bots 工作区将保留，仅按下方选项处理记忆和私有目录。",
+    "delete.keepMemories": "记忆数据将保留。重建相同 Bot ID 会创建新的身份，不会自动重新连接已停用身份的私有记忆。",
+    "delete.history": "原生会话历史将保留。删除 Bot 不会删除或自动恢复原会话；能否继续执行取决于宿主和已移除的人设。"
+  }
+}

@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { createForChatSchema, type CreateForChatInput, type StartOnboardingInput } from '../shared/onboarding.js';
+import type { Onboarding } from './onboarding/coordinator.js';
 import { AutoShareQuota } from './memory/quota.js';
 import { autoShareToggleSchema } from '../shared/data-flow.js';
 import { migrateMemoryDeny } from '../shared/memory-tool-names.js';
@@ -38,6 +41,8 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
+  onboarding?: Onboarding;
+  private readonly personaListeners = new Set<() => void>();
   /** Synchronous generation snapshot for preset plugins. It deliberately bypasses
    * the Remote queue: register() activates rows while that queue is held. */
   directorySnapshot() {
@@ -50,6 +55,27 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
     const bot = this.activating.get(key) ?? this.leases.get(`${this.config.presetIdPrefix}${key}`)?.bot;
     if (!bot) throw new DshBotError('bot/unavailable', `No activating Bot preset for '${key}'`);
     return structuredClone(bot);
+  }
+
+  /** Host-only committed snapshot for a live Agent. Never observe an activating
+   * candidate or adopt a deleted/recreated Bot with the same display ID. */
+  personaSnapshot(botId: string, createdAt: number): BotRecord['persona'] | undefined {
+    if (!this.initialized || this.stopping || this.failed) return undefined;
+    const bot = this.stores.bots.list().find(row => row.id === botId && row.createdAt === createdAt);
+    return bot ? { ...bot.persona } : undefined;
+  }
+
+  /** Synchronous final onboarding admission after its durable dispatch receipt. */
+  onboardingSnapshot(botId: string, createdAt: number): BotRecord | undefined {
+    if (!this.initialized || this.stopping || this.failed) return undefined;
+    const bot = this.stores.bots.list().find(row => row.id === botId && row.createdAt === createdAt);
+    return bot ? structuredClone(bot) : undefined;
+  }
+
+  /** Host-only synchronous commit notification; listeners cannot undo a commit. */
+  subscribePersonaChanges(listener: () => void): () => void {
+    this.personaListeners.add(listener);
+    return () => { this.personaListeners.delete(listener); };
   }
 
   /** Host-only, Bot-bound access to the existing domain; never open a second store.
@@ -163,6 +189,10 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
   }
 
   protected changed(id: string, action: BotChanged['action']): void {
+    for (const listener of this.personaListeners) {
+      try { listener(); }
+      catch (error) { this.ctx.logger.warn(`[dsh-bot] persona listener failed: ${messageOf(error)}`); }
+    }
     this.invalidate();
     // Host-only event. Do not await listeners inside the writer queue: listeners
     // may themselves read the registry. Their failures cannot undo a commit.
@@ -310,11 +340,52 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
   }
 
   @Remote
+  async createForChat(input: CreateForChatInput): Promise<BotRecord> {
+    const f = createForChatSchema.parse(input);
+    const inputDigest = createHash('sha256').update(JSON.stringify(f)).digest('hex');
+    return this.enqueue(async () => {
+      const existing = this.stores.bots.list().find(bot => bot.onboarding?.operationId === f.operationId);
+      if (existing) {
+        if (existing.onboarding?.inputDigest !== inputDigest) throw new DshBotError('bot/conflict', 'Creation operation input changed');
+        return existing;
+      }
+      if (this.stores.bots.retiredCreation(f.operationId)) throw new DshBotError('bot/conflict', 'Creation operation belongs to a removed Bot');
+      return this.createRecord(f.bot, 'create', { operationId: f.operationId, language: f.language, policyVersion: 1, inputDigest });
+    }, true);
+  }
+
+  @Remote
+  async onboardingStatus(botId: string) {
+    await this.waitUntilReady();
+    if (!this.onboarding) return { botId: parseInput(botIdSchema, botId), state: 'unavailable' as const, retryable: false };
+    return this.onboarding.status(botId);
+  }
+
+  @Remote
+  async startOnboarding(input: StartOnboardingInput) {
+    await this.waitUntilReady();
+    if (!this.onboarding) throw new DshBotError('bot/unavailable', 'Onboarding is starting');
+    return this.onboarding.dispatch(input);
+  }
+
+  @Remote
+  async retryOnboarding(input: StartOnboardingInput) {
+    await this.waitUntilReady();
+    if (!this.onboarding) throw new DshBotError('bot/unavailable', 'Onboarding is starting');
+    return this.onboarding.dispatch(input, true);
+  }
+
+  @Remote
   async update(id: string, patch: BotPatch): Promise<BotRecord> {
     const updated = await this.enqueue(async () => {
-      const fields = normalizeBotPatch(parseInput(botPatchSchema, patch));
+      const reviewed = parseInput(botPatchSchema, patch);
+      const fields = normalizeBotPatch(reviewed);
       if (fields.tools) fields.tools = { ...fields.tools, deny: migrateMemoryDeny(fields.tools.deny) };
       const previous = this.stores.bots.get(id);
+      if ((reviewed.expectedCreatedAt !== undefined && reviewed.expectedCreatedAt !== previous.createdAt)
+        || (reviewed.expectedUpdatedAt !== undefined && reviewed.expectedUpdatedAt !== previous.updatedAt)) {
+        throw new DshBotError('bot/conflict', 'Bot changed; get its current details and review the update again');
+      }
       const candidate = parseInput(botSchema, { ...previous, ...fields });
       await validateDefaultCwd(candidate.defaultCwd);
       const record = await this.transition(id, candidate, () =>
@@ -336,6 +407,7 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
         createdAt: _createdAt,
         updatedAt: _updatedAt,
         schemaVersion: _schemaVersion,
+        onboarding: _onboarding,
         ...fields
       } = original;
       const duplicate = await this.createRecord({ ...fields, id: newId }, 'duplicate');
@@ -355,6 +427,10 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
       const key = parseInput(botIdSchema, id);
       const fields = parseInput(botRemoveOptionsSchema, options ?? {});
       const removedBot = this.stores.bots.get(key);
+      if ((fields.expectedCreatedAt !== undefined && fields.expectedCreatedAt !== removedBot.createdAt)
+        || (fields.expectedUpdatedAt !== undefined && fields.expectedUpdatedAt !== removedBot.updatedAt)) {
+        throw new DshBotError('bot/conflict', 'Bot changed; review its current details before deleting');
+      }
       if (fields.deleteMemories) await this.stores.memories.removeByBot(key);
       if (this.memoryKernel) await retireShard(this.memoryKernel, { botId: key, botCreatedAt: removedBot.createdAt });
       const removeHome = fields.deleteHome ? await this.homes.prepareRemoval(key) : undefined;

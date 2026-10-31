@@ -5,6 +5,22 @@ import { v2Fixture, command } from './v2-fixtures.js';
 
 const policy = { maxInjectChars: 4000, privateShare: 0.6, journalShare: 0.25, journalDays: 30 };
 describe('I12 synchronous dynamic context', () => {
+  it('limits automatic group context to its audience and invalidates the cache when the audience changes', async () => {
+    const f = await v2Fixture();
+    try {
+      await f.alpha.save({ content: 'PRIVATE_ALPHA_ONLY' });
+      const alpha = { botId: 'alpha', botCreatedAt: 1 }, beta = { botId: 'beta', botCreatedAt: 2 };
+      let audience = [alpha];
+      const observed = vi.fn();
+      const provider = memoryContext(f.kernel, alpha, policy, 20, Date.now, observed, () => audience);
+      expect(provider()).toContain('PRIVATE_ALPHA_ONLY');
+      audience = [alpha, beta];
+      expect(provider()).not.toContain('PRIVATE_ALPHA_ONLY');
+      expect(observed).toHaveBeenLastCalledWith([]);
+      audience = [alpha];
+      expect(provider()).toContain('PRIVATE_ALPHA_ONLY');
+    } finally { await f.close(); }
+  });
   it('refreshes every committed revision, keeps literal interpolation and excludes the other Bot', async () => {
     const f = await v2Fixture();
     try {

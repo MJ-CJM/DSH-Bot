@@ -3,6 +3,15 @@ import { ACTIVITY_HIDDEN_PREVIEW, createActivityPreview } from '../src/host/acti
 import { ACTIVITY_PREVIEW_MAX_CHARS, activityRecordSchema, isActivityUnread, isHiddenActivityPreview } from '../src/shared/activity.js';
 
 describe('completed-message activity previews', () => {
+  it('accepts proven generation metadata while keeping older records unassigned', () => {
+    const legacy = { sessionId: 'legacy', botId: 'alpha', lastMessage: { role: 'assistant', preview: 'Safe', at: 1 }, updatedAt: 1 };
+    expect(activityRecordSchema.parse(legacy)).not.toHaveProperty('botCreatedAt');
+    expect(activityRecordSchema.parse({ ...legacy, botCreatedAt: 123 })).toHaveProperty('botCreatedAt', 123);
+    for (const botCreatedAt of [-1, 0.5, '123', null]) {
+      expect(activityRecordSchema.safeParse({ ...legacy, botCreatedAt }).success).toBe(false);
+    }
+  });
+
   it('uses a locale-neutral wire sentinel and recognizes persisted legacy markers', () => {
     expect(ACTIVITY_HIDDEN_PREVIEW).toMatch(/^[\x20-\x7e]+$/u);
     for (const marker of [ACTIVITY_HIDDEN_PREVIEW, '[已隐藏]']) {

@@ -1,4 +1,7 @@
+import { protectOnboarding } from './onboarding/guard.js';
+import { protectDelegateContinuation } from './delegate/continuation.js';
 import { protectDataFlow } from './data-flow/tool-guard.js';
+import { getGroupWorkerBinding } from './groups/worker-tool.js';
 import { registerMessageTool } from './messaging/tool.js';
 import { registerNotifyTool } from './notifications/tool.js';
 import type {} from './connectors/service.js';
@@ -17,6 +20,7 @@ import type {} from './registry.js';
 import { DshBotError } from './errors.js';
 import { registerMemoryContext } from './memory/context.js';
 import { rootInstructionNotice } from './memory/root-instructions.js';
+import { installLivePersona } from './live-persona.js';
 import { createMemoryTools, MEMORY_TOOL_NAMES } from './memory/tools.js';
 import { retiredMemoryGuidance } from './memory/tool-guidance.js';
 import { BOT_MANAGE_TOOL_NAME, registerBotPresetManage } from './tools/bot-manage.js';
@@ -66,6 +70,7 @@ export function apply(ctx: Context, config: Config): void {
       name !== BOT_DELEGATE_TOOL_NAME &&
       name !== 'bot_notify' &&
       name !== 'bot_message' &&
+      name !== 'group_message' &&
       !RETIRED_ROUTINE_TOOL_NAMES.includes(name),
   );
   const model = bot.model
@@ -80,6 +85,8 @@ export function apply(ctx: Context, config: Config): void {
   const binding = Object.freeze({ botId, botCreatedAt: bot.createdAt });
 
   const shouldUseBotModel = (agent: Agent) => {
+    // Only a reserved group child with matching lineage/preset can override this Bot default.
+    if (getGroupWorkerBinding(agent)?.modelSelection) return false;
     const pending = ctx.get('sessionProjections')?.stateOf(agent.session, 'modelSelection')?.pending;
     return agent.session.requestHeader() === undefined && pending == null;
   };
@@ -106,7 +113,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => {
     const agents = new Map<Agent, () => void | Promise<void>>();
     let stopped = false;
-    const offCreated = ctx.on('agent/created', async ({ agent }) => {
+    const offCreated = ctx.on('agent/created', async ({ agent, source }) => {
       if (bindings.has(agent)) throw new Error(`Agent ${agent.id} already has a Bot binding`);
       if (model && shouldUseBotModel(agent)) await validateModel();
       if (stopped) throw new DshBotError('bot/unavailable', `Bot '${botId}' context is unloading`);
@@ -147,6 +154,9 @@ export function apply(ctx: Context, config: Config): void {
           if (errors.length) throw new AggregateError(errors, 'Bot agent cleanup failed');
         };
         try {
+          releases.push(installLivePersona(agent,
+            () => ctx.dshBots.personaSnapshot(botId, bot.createdAt),
+            listener => ctx.dshBots.subscribePersonaChanges(listener)));
           releases.push(agent.ctx.systemPrompt.context({ name: 'dsh-bot:root-instructions', order: memorySectionOrder,
             required: true, interpolate: false, text: rootInstructionNotice }));
           // Do not silently ignore unknown, same-layer or reserved tool names.
@@ -175,9 +185,12 @@ export function apply(ctx: Context, config: Config): void {
             }
             const kernel = ctx.dshBots.memoryKernel;
             if (!kernel || !admission) throw new Error('Memory kernel is not ready');
-            releases.push(registerMemoryContext(agent, binding, kernel, admission, ctx.dshBots.config, memoryPolicy.injectLimit));
+            releases.push(registerMemoryContext(agent, binding, kernel, admission, ctx.dshBots.config, memoryPolicy.injectLimit,
+              () => getGroupWorkerBinding(agent)?.audience));
           }
           bindings.set(agent, binding);
+          protectDelegateContinuation(agent, binding, source);
+          protectOnboarding(agent, binding, ctx.dshBots);
           protectDataFlow(agent, binding, ctx.dshBots);
           const safety = agent.ctx.get('dshBotMessagingSafety');
           if (safety) safety.protect(agent);
@@ -209,7 +222,13 @@ export function apply(ctx: Context, config: Config): void {
               interpolate: false,
             }),
           );
-          if (!bot.tools.deny.includes(BOT_DELEGATE_TOOL_NAME)) releases.push(registerDelegateTool(agent));
+          if (!bot.tools.deny.includes(BOT_DELEGATE_TOOL_NAME)) {
+            releases.push(registerDelegateTool(agent));
+            if (!agent.session.header.parentSession) releases.push(agent.ctx.systemPrompt.section({
+              name: 'dsh-bot:background-work', order: memorySectionOrder, interpolate: false,
+              text: en.tools['bot_delegate.guidance'].replace('{botId}', botId),
+            }));
+          }
           if (model) {
             // Only alter route variables, never text/tools or other assembly
             // fields. Session history and explicit selection remain authoritative.

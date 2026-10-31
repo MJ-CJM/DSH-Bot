@@ -42,6 +42,7 @@ function activityRecord(record: StoredActivity): ActivityRecord {
   return {
     sessionId: record.sessionId,
     botId: record.botId,
+    ...(record.botCreatedAt === undefined ? {} : { botCreatedAt: record.botCreatedAt }),
     updatedAt: record.updatedAt,
     lastMessage: { role: record.lastMessage.role, preview: record.lastMessage.preview, at: record.lastMessage.at },
     ...(record.title === undefined ? {} : { title: record.title }),
@@ -77,10 +78,11 @@ export class ActivityStore {
         .map(([, bot]) => bot)
         .filter((bot) => filter.botId === undefined || bot.id === filter.botId)
         .sort((a, b) => compareId(a.id, b.id));
-      const owners = new Set(bots.map((bot) => bot.id));
+      const owners = new Map(bots.map((bot) => [bot.id, bot.createdAt]));
       const sessions = [...this.domain.table('activities').entries()]
         .map(([, record]) => record)
-        .filter((record) => owners.has(record.botId))
+        .filter((record) => owners.has(record.botId)
+          && (record.botCreatedAt === undefined || record.botCreatedAt === owners.get(record.botId)))
         .sort(activityOrder)
         .map(publicActivity);
       return {
@@ -129,6 +131,9 @@ export class ActivityStore {
       const table = this.domain.table('activities');
       const previous = table.get(fields.sessionId);
       if (previous && previous.botId !== fields.botId) return;
+      // Never merge a proven old session into a replacement Bot, including an
+      // unversioned caller that could otherwise inherit its stale summaries.
+      if (previous?.botCreatedAt !== undefined && previous.botCreatedAt !== bot.createdAt) return;
       if (previous) {
         const stale =
           seq !== undefined && previous.lastEventSeq !== undefined
@@ -149,6 +154,7 @@ export class ActivityStore {
       const record = parseInput(storedActivitySchema, {
         ...previous,
         ...fields,
+        ...(expected === undefined ? {} : { botCreatedAt: expected }),
         updatedAt: at,
         lastMessage: { ...fields.lastMessage, at },
         ...(previous?.firstUserPreview !== undefined
@@ -173,7 +179,8 @@ export class ActivityStore {
       async () => {
         const table = this.domain.table('activities');
         const previous = table.get(key);
-        if (!previous || !this.domain.table('bots').get(previous.botId)) {
+        const bot = previous && this.domain.table('bots').get(previous.botId);
+        if (!previous || !bot || (previous.botCreatedAt !== undefined && previous.botCreatedAt !== bot.createdAt)) {
           throw new DshBotError('activity/not-found', 'Bot session activity was not found');
         }
         // Marking read does not change recency or eviction order. Clock rollback

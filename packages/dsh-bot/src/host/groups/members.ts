@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { normalizeSessionTitle } from '@deepseek-ai/dsh-session-title';
 import type { SessionId } from '@deepseek-ai/dsh-session';
 import {
@@ -8,11 +7,12 @@ import {
   groupKey,
   groupCreateSchema,
   groupEditSchema,
+  groupSetModelSchema,
   type GroupKey,
   type GroupRecord,
   type GroupMember,
 } from '../../shared/groups.js';
-import { OperationError, digest, parse } from '../common/operations.js';
+import { OperationError, digest, need, parse } from '../common/operations.js';
 import { validateDefaultCwd } from '../home.js';
 
 import { sameBot, terminal } from './model.js';
@@ -37,12 +37,11 @@ export class GroupMembers {
       await this.state.validateMembers(input.members);
       this.state.route();
       if (!normalizeSessionTitle(input.name, Number.MAX_SAFE_INTEGER)) throw new OperationError('invalid');
-      const cwd = input.cwd ?? resolve(this.state.registry.config.dataDir, 'groups', id.slice(6));
+      const cwd = input.cwd ?? (await this.state.registry.ensureBotsWorkspace()).path;
       if (input.cwd)
         await validateDefaultCwd(cwd).catch(() => {
           throw new OperationError('invalid');
         });
-      else await mkdir(cwd, { recursive: true, mode: 0o700 });
       const at = Date.now();
       const g: GroupRecord = {
         id,
@@ -82,9 +81,10 @@ export class GroupMembers {
           setup: (ctx) => this.roots.setup(ctx),
           signal: this.state.startup.signal,
         });
-        this.state.roots.set(g.id, h);
-        const title = await this.roots.rename(g);
-        await this.roots.flush(h);
+        const root = this.roots.own(h);
+        this.state.roots.set(g.id, root);
+        await this.roots.initialize(g, root, 'create');
+        const title = this.state.titles.get(h.agent.id) ?? g.name;
         const ready: GroupRecord = { ...g, name: title, state: 'ready', nextMemberId: this.state.members(g)[0]?.id };
         await this.state.putGroup(ready);
         return ready;
@@ -93,6 +93,53 @@ export class GroupMembers {
         this.state.reasons.set(g.id, 'recovery-needed');
         throw new OperationError('recovery-needed');
       }
+    });
+  }
+  /** A group-local override: never changes the Host default or active worker selections. */
+  async setModel(key: GroupKey, value: unknown) {
+    const input = parse(groupSetModelSchema, value);
+    return this.state.queue.run(async () => {
+      const g = this.state.record(key);
+      if (g.archived || input.expectedModelRevision !== (g.modelRevision ?? 0)) throw new OperationError('conflict');
+      if (g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
+      if (input.memberId) {
+        const member = this.state.members(g).find(m => m.id === input.memberId && m.enabled && m.removedAt === undefined);
+        if (!member) throw new OperationError('invalid');
+        // Membership identity includes the Bot birthday; a recreated Bot cannot inherit an override.
+        await this.state.validateMembers([member.bot]);
+      }
+      const selected = input.modelSelection;
+      if (selected) {
+        const llm = need(this.state.ctx.get('llm'));
+        if (!llm.listProviders().some(provider => provider.id === selected.provider)) throw new OperationError('unavailable');
+        try {
+          if (!(await llm.listModels(selected.provider)).some(model => model.id === selected.model)) throw new OperationError('invalid');
+          // Public exact-route validation also rejects unsupported reasoning efforts.
+          await llm.resolveCallConfig({ ...selected,
+            reasoningEffort: selected.reasoningEffort === undefined ? undefined : ReasoningEffortId(selected.reasoningEffort) });
+        } catch (error) {
+          if (error instanceof OperationError) throw error;
+          throw new OperationError('unavailable');
+        }
+      }
+      // Route validation awaits provider services; recheck incarnation before committing the selection.
+      if (input.memberId && selected) {
+        const member = this.state.members(g).find(m => m.id === input.memberId && m.enabled && m.removedAt === undefined);
+        if (!member) throw new OperationError('invalid');
+        await this.state.validateMembers([member.bot]);
+      }
+      this.state.check();
+      const { modelSelection: _old, memberModelSelections: _members, ...record } = g;
+      const memberSelections = input.memberId
+        ? [...(g.memberModelSelections ?? []).filter(row => row.memberId !== input.memberId),
+          ...(selected ? [{ memberId: input.memberId, modelSelection: selected }] : [])]
+        : g.memberModelSelections ?? [];
+      const defaultSelection = input.memberId ? g.modelSelection : selected;
+      const next: GroupRecord = { ...record, ...(defaultSelection ? { modelSelection: defaultSelection } : {}),
+        ...(memberSelections.length ? { memberModelSelections: memberSelections } : {}),
+        revision: g.revision + 1, modelRevision: (g.modelRevision ?? 0) + 1, updatedAt: Date.now() };
+      await this.state.putGroup(next);
+      return next;
     });
   }
   async edit(key: GroupKey, value: unknown) {
@@ -109,9 +156,16 @@ export class GroupMembers {
       await this.state.validateMembers(input.members);
       const old = this.state.members(g),
         at = Date.now();
+      const retainedMemberIds = new Set(old.filter(m => m.removedAt === undefined && input.members.some(b => sameBot(b, m.bot))).map(m => m.id));
+      const memberSelections = g.memberModelSelections?.filter(row => retainedMemberIds.has(row.memberId));
+      const removedMembers = old.some(m => m.removedAt === undefined && !retainedMemberIds.has(m.id));
+      const removedSelections = (memberSelections?.length ?? 0) !== (g.memberModelSelections?.length ?? 0);
+      const { memberModelSelections: _selections, ...record } = g;
       // Write intent revision first. A partial multi-table failure makes the group unavailable until reconciled.
       const next = {
-        ...g,
+        ...record,
+        ...(memberSelections?.length ? { memberModelSelections: memberSelections } : {}),
+        ...(removedMembers || removedSelections ? { modelRevision: (g.modelRevision ?? 0) + 1 } : {}),
         name: input.name,
         mode: input.mode,
         revision: g.revision + 1,

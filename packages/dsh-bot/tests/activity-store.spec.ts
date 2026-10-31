@@ -35,6 +35,66 @@ const event = (sessionId: string, at: number, botId = 'alpha') =>
   ({ sessionId, botId, role: 'assistant' as const, text: `Reply ${sessionId}`, at, seq: at });
 
 describe('ActivityStore with the published JSON storage backend', () => {
+  it('persists only verified Bot generations through public codecs, both read branches and cold reopen', async () => stores(async (current, ctx, root) => {
+    const bot = await current.bots.create({ id: 'alpha', name: 'Alpha' });
+    const verified = await current.activities.record({ ...event('verified', 1), expectedBotCreatedAt: bot.createdAt });
+    const legacy = await current.activities.record(event('legacy', 2));
+    expect(verified).toHaveProperty('botCreatedAt', bot.createdAt);
+    expect(verified).not.toHaveProperty('lastEventSeq');
+    expect(legacy).not.toHaveProperty('botCreatedAt');
+    const now = vi.spyOn(Date, 'now').mockReturnValue(100);
+    try {
+      const read = await current.activities.markRead('verified');
+      expect(activitySessionSchema.parse(read)).toEqual(read);
+      expect(read).toHaveProperty('botCreatedAt', bot.createdAt);
+      expect(await current.activities.markRead('verified')).toEqual(read);
+    } finally { now.mockRestore(); }
+    const expected = activityListResultSchema.parse(current.activities.list());
+    expect(expected.sessions.find(row => row.sessionId === 'verified')).toHaveProperty('botCreatedAt', bot.createdAt);
+    expect(expected.sessions.find(row => row.sessionId === 'legacy')).not.toHaveProperty('botCreatedAt');
+    const disk = JSON.parse(await readFile(join(root, 'dsh_bot.json'), 'utf8'));
+    expect(disk.tables.activities.verified).toHaveProperty('botCreatedAt', bot.createdAt);
+    expect(disk.tables.activities.legacy).not.toHaveProperty('botCreatedAt');
+    await current.close();
+    const restored = await openBotStores(ctx);
+    expect(restored.activities.list()).toEqual(expected);
+    expect(await restored.activities.markRead('legacy')).not.toHaveProperty('botCreatedAt');
+    await restored.activities.record(event('legacy', 3));
+    expect(restored.activities.list().sessions.find(row => row.sessionId === 'legacy')).not.toHaveProperty('botCreatedAt');
+  }));
+
+  it('excludes proven retired generations and refuses to merge their rows into a replacement Bot', async () => stores(async ({ bots, activities }, ctx, root) => {
+    const original = await bots.create({ id: 'alpha', name: 'Original' });
+    await activities.record({ ...event('retired-session', 1), expectedBotCreatedAt: original.createdAt });
+    await activities.record(event('legacy-session', 2));
+    const domain = ctx.storageDomain.get(botDomain.name) as Domain<typeof botDomain> | undefined;
+    if (!domain) throw new Error('Missing Bot domain');
+    const table = domain.table('activities');
+    const retired = table.get('retired-session'), legacy = table.get('legacy-session');
+    if (!retired || !legacy) throw new Error('Missing stored activities');
+    await bots.remove('alpha', { deleteMemories: false });
+    const replacement = await bots.create({ id: 'alpha', name: 'Replacement' });
+    expect(replacement.createdAt).not.toBe(original.createdAt);
+    // Public storage API restores historical rows, as an older persistence
+    // snapshot could contain them. Do not mutate the current Bot's identity.
+    await table.put(retired.sessionId, retired);
+    await table.put(legacy.sessionId, legacy);
+    const before = await readFile(join(root, 'dsh_bot.json'), 'utf8');
+    expect(activities.list({ botId: 'alpha' }).sessions.map(row => row.sessionId)).toEqual(['legacy-session']);
+    expect(activities.list().bots[0]).toMatchObject({ botId: 'alpha', unreadCount: 1, lastActivityAt: 2 });
+    await expect(activities.markRead('retired-session')).rejects.toMatchObject({ code: 'activity/not-found' });
+    for (const expectedBotCreatedAt of [original.createdAt, replacement.createdAt, undefined]) {
+      expect(await activities.record({ ...event('retired-session', 3), expectedBotCreatedAt })).toBeUndefined();
+    }
+    expect(await activities.record({ ...event('late-old-agent', 4), expectedBotCreatedAt: original.createdAt })).toBeUndefined();
+    expect(await readFile(join(root, 'dsh_bot.json'), 'utf8')).toBe(before);
+    expect(table.get(retired.sessionId)).toEqual(retired);
+    expect(await activities.markRead('legacy-session')).not.toHaveProperty('botCreatedAt');
+    expect(await activities.record({ ...event('replacement-session', 5), expectedBotCreatedAt: replacement.createdAt }))
+      .toHaveProperty('botCreatedAt', replacement.createdAt);
+    expect(activities.list().sessions.map(row => row.sessionId)).toEqual(['replacement-session', 'legacy-session']);
+  }));
+
   it('aggregates all Bots, filters by botId and returns independent public values', async () => stores(async ({ bots, activities }) => {
     for (const id of ['alpha', 'beta', 'empty']) await bots.create({ id, name: id });
     await activities.record(event('a1', 1));

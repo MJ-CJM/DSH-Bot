@@ -1,3 +1,4 @@
+import { createForChatSchema, startOnboardingSchema, onboardingStatusSchema } from './onboarding.js';
 import { autoShareStatusSchema, autoShareToggleSchema } from './data-flow.js';
 import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryConfirmSchema,
   memoryResolveSchema, memoryPageSchema } from './memory-management.js';
@@ -210,6 +211,10 @@ export const dshBotRemoteSpec = {
       parameters: [],
       result: activityResultCodec('BotsWorkspace', botsWorkspaceSchema),
     },
+    'dshBot/createForChat': { ...owner, parameters: [parameter('input', 'CreateForChatInput', createForChatSchema)], result: bot },
+    'dshBot/startOnboarding': { ...owner, parameters: [parameter('input', 'StartOnboardingInput', startOnboardingSchema)], result: activityResultCodec('OnboardingStatus', onboardingStatusSchema) },
+    'dshBot/retryOnboarding': { ...owner, parameters: [parameter('input', 'StartOnboardingInput', startOnboardingSchema)], result: activityResultCodec('OnboardingStatus', onboardingStatusSchema) },
+    'dshBot/onboardingStatus': { ...owner, parameters: [botId], result: activityResultCodec('OnboardingStatus', onboardingStatusSchema) },
     'dshBot/create': { ...owner, parameters: [parameter('input', 'BotCreateInput', botCreateSchema)], result: bot },
     'dshBot/update': { ...owner, parameters: [id, parameter('patch', 'BotPatch', botPatchSchema)], result: bot },
     'dshBot/duplicate': { ...owner, parameters: [id, parameter('newId', 'BotId', botIdSchema)], result: bot },

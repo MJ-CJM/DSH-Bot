@@ -184,7 +184,7 @@ describe('single-source Remote contract', () => {
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
       .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace'
-        | 'create' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
+        | 'create' | 'createForChat' | 'startOnboarding' | 'retryOnboarding' | 'onboardingStatus' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'
       | 'autoShareStatus' | 'setAutoShare' | 'query' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
       | 'quarantineCount' | 'previewForget' | 'chooseForget' | 'cleanupStatuses' | 'retryCleanup' | 'rootInstructions'>();
@@ -196,7 +196,7 @@ describe('single-source Remote contract', () => {
     expect(() => require.resolve('dsh-bot/typert')).toThrow();
     expect(require.resolve('dsh-bot/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(35);
+    expect(TYPERT.invocations).toHaveLength(39);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -367,6 +367,10 @@ describe('single-source Remote contract', () => {
       } else if (descriptor.method === 'delete') {
         expect(codec.parse(undefined)).toBeUndefined();
         expect(() => codec.parse({ removed: true })).toThrow();
+      } else if (['startOnboarding', 'retryOnboarding', 'onboardingStatus'].includes(descriptor.method)) {
+        const result = { botId: 'alpha', state: 'pending', retryable: false };
+        expect(codec.parse(result)).toEqual(result);
+        expect(() => codec.parse({ ...result, state: 'fake' })).toThrow();
       } else {
         const result = descriptor.method === 'list' ? [record] : record;
         expect(codec.parse(result)).toEqual(result);

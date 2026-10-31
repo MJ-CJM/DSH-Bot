@@ -1,3 +1,4 @@
+import { openHistory } from './bot-ui-helpers.js';
 // @vitest-environment jsdom
 import { act } from 'react';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
@@ -31,9 +32,10 @@ describe('background refresh across mounted Bot surfaces', () => {
         updatedAt: session.updatedAt, unread: true, lastMessage: { role: 'assistant', preview: 'Mock reply', at: session.updatedAt } }));
     }, {}, undefined, false, { phase: 'pending' });
     cleanups.push(app.dispose);
+    await openHistory(app, language);
     // This is the old script's race: Bot preview + detail already exist while
     // the native list's first response has not arrived. No row lost its ID.
-    expect(app.container.querySelector('[role="option"]')?.textContent).toContain('Mock reply');
+    expect(app.container.querySelector('li > [data-bot-id]')?.textContent).toContain('Alpha Bot');
     expect(readBotsLayout()).toMatchObject({ detailBotId: 'alpha-bot', sessionIds: [], detailStatuses: [copy['activity.loading']] });
     const actions = app.main.inject?.() as unknown as BotsPageInjected;
     await act(async () => actions.onRefresh());
@@ -101,20 +103,21 @@ describe('background refresh across mounted Bot surfaces', () => {
     const app = await mount(language);
     const copy = language === 'zh' ? zh.ui : en.ui;
     const actions = app.main.inject?.() as unknown as BotsPageInjected;
-    const row = app.container.querySelector('[data-bot-id="alpha-bot"][role="option"]');
-    expect(app.container.querySelector('[data-bot-detail] header')?.textContent).not.toContain(copy['bots.ready']);
+    const row = app.container.querySelector('li > [data-bot-id="alpha-bot"]');
+    expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
     app.remote.methods.list.mockResolvedValueOnce({ ok: false, error: new RemoteError('store/unavailable', '', {}) });
     await act(async () => actions.onRefresh());
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(copy['errors.load']);
-    expect(app.container.querySelector('[data-bot-id="alpha-bot"][role="option"]')).toBe(row);
+    expect(app.container.querySelector('li > [data-bot-id="alpha-bot"]')).toBe(row);
     await act(async () => actions.onRefresh());
     expect(app.container.querySelector('[role="alert"]')).toBeNull();
-    expect(app.container.querySelector('[data-bot-id="alpha-bot"][role="option"]')).toBe(row);
+    expect(app.container.querySelector('li > [data-bot-id="alpha-bot"]')).toBe(row);
     expect(app.container.querySelector('[data-bot-detail] header [role="status"]')).toBeNull();
   });
 
   it.each(['en', 'zh'] as const)('uses localized new-conversation fallback and omits empty preview in page and dialog (%s)', async (language) => {
     const app = await mount(language);
+    await openHistory(app, language);
     const copy = language === 'zh' ? zh.ui : en.ui;
     const session = { id: 'untitled', displayTitle: 'pod_0814', cwd: '/projects/pod_0814', running: false,
       blank: false, updatedAt: Date.now(), retainedBy: {}, projectionValues: { agentPreset: 'host-selected/alpha-bot' } } as unknown as SessionSummary;

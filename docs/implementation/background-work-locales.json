@@ -1,0 +1,42 @@
+{
+  "en": {
+    "background.title": "Background tasks",
+    "background.empty": "No child tasks in this conversation.",
+    "background.refresh": "Refresh",
+    "background.open": "Open",
+    "background.stop": "Stop task",
+    "background.stopAll": "Stop all running tasks",
+    "background.stopConfirm": "Stop all currently running child tasks?",
+    "background.supplement": "Send additional input",
+    "background.queue": "Queue for next turn",
+    "background.steer": "Steer at the next step",
+    "background.input": "Additional input",
+    "background.running": "Running",
+    "background.inactive": "Inactive",
+    "background.error": "The task action or catalog is unavailable. Open the main conversation and retry.",
+    "background.recovery": "Tasks use native child conversations. Inactive does not mean completed. Continuing requires the main conversation to be open; uncertain result deliveries are not replayed after restart.",
+    "background.unknown": "Status unavailable",
+    "background.hint": "Keep chatting while tasks run. Open, add input, or stop each task here.",
+    "background.runningOnly": "Additional input is available while a task is running. Start a new task in the main conversation after it finishes."
+  },
+  "zh": {
+    "background.title": "后台任务",
+    "background.empty": "此对话还没有子任务。",
+    "background.refresh": "刷新",
+    "background.open": "打开",
+    "background.stop": "停止此任务",
+    "background.stopAll": "停止全部运行中任务",
+    "background.stopConfirm": "停止当前所有正在运行的子任务？",
+    "background.supplement": "补充输入",
+    "background.queue": "排队到下一轮",
+    "background.steer": "在下一步补充",
+    "background.input": "补充内容",
+    "background.running": "运行中",
+    "background.inactive": "未运行",
+    "background.error": "任务操作或目录暂不可用，请打开主对话后重试。",
+    "background.recovery": "任务使用原生子对话；未运行不表示已完成。继续执行需要主对话在线，重启后不会自动重放状态不明的结果投递。",
+    "background.unknown": "状态未知",
+    "background.hint": "任务运行时仍可继续聊天，也可在此打开、补充或分别停止任务。",
+    "background.runningOnly": "仅正在运行的任务可补充输入；任务结束后请回主对话发起新任务。"
+  }
+}

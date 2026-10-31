@@ -1,0 +1,16 @@
+{
+  "zh": {
+    "groups.supplement": "补充此工作",
+    "groups.quoteUnavailable": "原文不可用",
+    "groups.queued": "已排队",
+    "groups.createdOpenFailed": "群聊已创建，但打开失败。请重试打开；不会重复建群。",
+    "groups.quoteLoading": "正在加载引用…"
+  },
+  "en": {
+    "groups.supplement": "Add to this work",
+    "groups.quoteUnavailable": "Original message unavailable",
+    "groups.queued": "Queued",
+    "groups.createdOpenFailed": "Group created, but opening failed. Retry opening; no duplicate group will be created.",
+    "groups.quoteLoading": "Loading quoted message…"
+  }
+}

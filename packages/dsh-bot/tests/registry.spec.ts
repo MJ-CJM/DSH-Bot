@@ -142,6 +142,34 @@ describe('DshBotRegistry with JSON storage and a preset service double', () => {
     expect(await readFile(join(user, 'keep.txt'), 'utf8')).toBe('User data');
   }));
 
+  it('rejects stale deletion confirmations before touching memory, homes or a recreated identity', async () => withFacility(async ({ start, memories }) => {
+    const { registry } = await start();
+    const original = await registry.create({ id: 'alpha', name: 'Alpha' });
+    const home = (await registry.ensureHome('alpha')).path;
+    await writeFile(join(home, 'keep.txt'), 'Private data');
+    await memories().add({ botId: 'alpha', content: 'Remember this' });
+    const snapshot = { expectedCreatedAt: original.createdAt, expectedUpdatedAt: original.updatedAt,
+      deleteMemories: true, deleteHome: true };
+    const updated = await registry.update('alpha', { name: 'Updated' });
+    await expect(registry.remove('alpha', snapshot)).rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(await registry.get('alpha')).toEqual(updated);
+    expect(memories().listByBot('alpha', { limit: 10 })).toHaveLength(1);
+    expect(await readFile(join(home, 'keep.txt'), 'utf8')).toBe('Private data');
+    await registry.remove('alpha', { deleteMemories: false, expectedCreatedAt: updated.createdAt,
+      expectedUpdatedAt: updated.updatedAt });
+    const recreated = await registry.create({ id: 'alpha', name: 'Recreated' });
+    await memories().add({ botId: 'alpha', content: 'New private memory' });
+    await expect(registry.remove('alpha', { ...snapshot, expectedUpdatedAt: recreated.updatedAt }))
+      .rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(await registry.get('alpha')).toEqual(recreated);
+    expect(memories().listByBot('alpha', { limit: 10 })).toHaveLength(1);
+    expect(await readFile(join(home, 'keep.txt'), 'utf8')).toBe('Private data');
+    await registry.remove('alpha', { ...snapshot, expectedCreatedAt: recreated.createdAt,
+      expectedUpdatedAt: recreated.updatedAt });
+    await expect(registry.get('alpha')).rejects.toMatchObject({ code: 'bot/not-found' });
+    await expect(stat(home)).rejects.toMatchObject({ code: 'ENOENT' });
+  }));
+
   it('rejects unsafe home cleanup before Bot deletion, while default deletion never touches an unowned home',
     async () => withFacility(async ({ start, root }) => {
     const { registry } = await start();

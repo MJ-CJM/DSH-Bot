@@ -1,0 +1,26 @@
+{
+  "en": {
+    "groups.model": "Model",
+    "groups.modelDefault": "Each Bot's model",
+    "groups.reasoning": "Reasoning effort",
+    "groups.reasoningDefault": "Model default",
+    "groups.modelBack": "Back",
+    "groups.modelLoading": "Loading models…",
+    "groups.modelRetry": "Retry",
+    "groups.modelLoadFailed": "Couldn't load model choices.",
+    "groups.modelSaveFailed": "Couldn't change this group's model.",
+    "groups.modelScope": "Applies to new work in this group. Each Bot's private chats and running work keep their model."
+  },
+  "zh": {
+    "groups.model": "模型",
+    "groups.modelDefault": "各 Bot 的模型",
+    "groups.reasoning": "推理等级",
+    "groups.reasoningDefault": "模型默认",
+    "groups.modelBack": "返回",
+    "groups.modelLoading": "正在加载模型…",
+    "groups.modelRetry": "重试",
+    "groups.modelLoadFailed": "未能加载模型选项。",
+    "groups.modelSaveFailed": "未能更改本群模型。",
+    "groups.modelScope": "用于本群的新工作；各 Bot 的私聊与运行中的工作保留原模型。"
+  }
+}

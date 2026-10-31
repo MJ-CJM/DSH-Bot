@@ -1,195 +1,57 @@
+import { CapabilitiesPanel } from '../components/CapabilitiesPanel.js';
 import { MessageOverviewPanel } from '../components/MessageOverview.js';
+import { BackgroundTasksPanel } from '../components/BackgroundTasksPanel.js';
 import { RoutinePanel } from '../components/RoutinePanel.js';
-import { Button, IconEllipsisOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import { BotAvatar } from '../components/BotAvatar.js';
-import { BotList } from '../components/BotList.js';
 import styles from '../styles/bots.module.css';
-
 import type { BotsPageProps } from './bots-page-types.js';
 import type { BotsPageModel } from './use-bots-page.js';
 import { BotSessionHistory } from './BotSessionHistory.js';
-import { useEffect, useRef } from 'react';
+import { Modal } from '../components/Modal.js';
+import { useState } from 'react';
 export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageModel }) {
-  const detailTimer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(detailTimer.current), []);
-  const { onStart, routines, onOpenSession, t } = page;
-  const {
-    tab,
-    entries,
-    compact,
-    showDetail,
-    busy,
-    navigating,
-    activity,
-    selected,
-    listElement,
-    listId,
-    setSelectedId,
-    setMore,
-    setToast,
-    setShowDetail,
-    navigate,
-    backElement,
-    focusListOnReturn,
-    more,
-    open,
-    ready,
-    snapshot,
-    toast,
-  } = model;
-  return (
-    <>
-      {tab === 'bots' && entries.length > 0 && (
-        <div className={styles.twoPane}>
-          {(!compact || !showDetail) && (
-            <BotList
-              disabled={busy || navigating}
-              entries={entries}
-              activities={activity.bots}
-              t={t}
-              selectedId={selected?.bot.id}
-              listRef={listElement}
-              idPrefix={listId}
-              onSelect={(id) => {
-                setSelectedId(id);
-                setMore(false);
-                setToast(undefined);
-              }}
-              onShowDetail={() => {
-                clearTimeout(detailTimer.current);
-                // Keep the narrow row mounted through the native double-click window.
-                if (compact) detailTimer.current = setTimeout(() => setShowDetail(true), 300);
-                else setShowDetail(true);
-              }}
-              onActivate={(id) => {
-                clearTimeout(detailTimer.current);
-                setShowDetail(true);
-                void navigate((signal) => onStart(id, signal), 'errors.start');
-              }}
-            />
-          )}
-          {selected && (!compact || showDetail) && (
-            <article className={styles.botDetail} data-bot-detail={selected.bot.id}>
-              {compact && (
-                <Button
-                  ref={backElement}
-                  variant="ghost"
-                  size="sm"
-                  className={styles.backButton}
-                  onClick={() => {
-                    focusListOnReturn.current = true;
-                    setShowDetail(false);
-                    setMore(false);
-                  }}
-                >
-                  {t('bots.back')}
-                </Button>
-              )}
-              <header className={styles.detailHeader}>
-                <div className={styles.cardHeading}>
-                  <BotAvatar bot={selected.bot} size={64} />
-                  <div className={styles.cardIdentity}>
-                    <h2 className={styles.detailTitle}>{selected.bot.name}</h2>
-                    <span className={styles.botId}>{selected.bot.id}</span>
-                  </div>
-                  <Menu
-                    open={more}
-                    onClose={() => setMore(false)}
-                    align="end"
-                    className={styles.moreContainer}
-                    anchor={
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={styles.iconButton}
-                        disabled={busy}
-                        aria-label={t('card.more')}
-                        title={t('card.more')}
-                        aria-haspopup="menu"
-                        aria-expanded={more}
-                        onClick={() => setMore(!more)}
-                      >
-                        <IconEllipsisOutlineRegular size={18} />
-                      </Button>
-                    }
-                    items={[
-                      { id: 'duplicate', label: t('card.duplicate'), disabled: busy },
-                      { id: 'delete', label: t('actions.delete'), disabled: busy, danger: true },
-                    ]}
-                    onSelect={(action) => {
-                      setMore(false);
-                      if (action === 'duplicate' || action === 'delete') open({ kind: action, bot: selected.bot });
-                    }}
-                  />
-                </div>
-                <p className={styles.description}>{selected.bot.description || t('card.noDescription')}</p>
-                <p className={styles.hint}>{t('editor.cwdPermissions')}</p>
-                {selected.status?.warnings?.includes('avatar/invalid') && (
-                  <p className={styles.statusNotice}>{t('avatar.invalidStored')}</p>
-                )}
-                {!ready && (
-                  <p className={styles.statusNotice} role="status" id={`${listId}-status`}>
-                    {t(
-                      !selected.status || snapshot.error || snapshot.loading
-                        ? 'card.statusUnknown'
-                        : selected.status.preset.state === 'broken'
-                          ? 'card.statusBroken'
-                          : 'card.statusMissing',
-                    )}
-                    {selected.status?.preset.reason ? ` ${selected.status.preset.reason}` : ''}
-                  </p>
-                )}
-                <div className={styles.detailActions}>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    disabled={busy || navigating || !ready}
-                    aria-describedby={!ready ? `${listId}-status` : undefined}
-                    onClick={() => {
-                      void navigate((signal) => onStart(selected.bot.id, signal), 'errors.start');
-                    }}
-                  >
-                    {t('bots.newSession')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => open({ kind: 'edit', bot: selected.bot })}
-                  >
-                    {t('card.edit')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => open({ kind: 'memory', bot: selected.bot })}
-                  >
-                    {t('memory.title')}
-                  </Button>
-                </div>
-                {toast?.inline && (
-                  <p className={styles.error} role="alert" data-chat-error="">
-                    {toast.text}
-                  </p>
-                )}
-              </header>
-              {routines && (
-                <RoutinePanel
-                  key={selected.bot.id}
-                  actions={routines}
-                  bots={entries.map((entry) => entry.bot)}
-                  botId={selected.bot.id}
-                  onOpenSession={onOpenSession}
-                  t={t}
-                />
-              )}
-              {page.messages && <MessageOverviewPanel botId={selected.bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}
-              <BotSessionHistory page={page} model={model} />
-            </article>
-          )}
+  const [panel, setPanel] = useState<'work' | 'settings' | 'history'>();
+  const { t } = page;
+  const text = (key: string) => t(key as Parameters<typeof t>[0]);
+  const { selected, showDetail, tab, busy, open } = model;
+  if (tab !== 'bots' || !showDetail || !selected || model.dialog) return null;
+  return <Modal title={selected.bot.name} busy={busy} onClose={() => { model.setShowDetail(false); setPanel(undefined); }} t={t}>
+    <article className={styles.editorBody} data-bot-detail={selected.bot.id}>
+      <header className={styles.detailHeader}>
+        <button className={styles.button} type="button" onClick={() => open({ kind: 'edit', bot: selected.bot })}>
+          <BotAvatar bot={selected.bot} size={48} /> {selected.bot.name}
+        </button>
+        {selected.bot.description && <p>{selected.bot.description}</p>}
+        {selected.status?.preset.state !== 'ok' && <p role="status">{t(selected.status?.preset.state === 'broken' ? 'card.statusBroken' : selected.status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown')} {selected.status?.preset.reason}</p>}
+        <div className={styles.detailActions}>
+          <button type="button" className={styles.primaryButton} disabled={busy || model.navigating || !model.ready} onClick={() => { void model.navigate(signal => page.onStart(selected.bot.id, signal), 'errors.start'); }}>{text('chat.openChat')}</button>
+          <button type="button" className={styles.button} onClick={() => open({ kind: 'edit', bot: selected.bot })}>{t('card.edit')}</button>
+          <button type="button" className={styles.button} onClick={() => setPanel(panel === 'work' ? undefined : 'work')}>{text('chat.workFiles')}</button>
+          <details><summary>{t('card.more')}</summary>
+            <button type="button" className={styles.button} onClick={() => setPanel('settings')}>{text('chat.compatibility')}</button>
+            <button type="button" className={styles.button} onClick={() => setPanel('history')}>{t('bots.history')}</button>
+            <button type="button" className={styles.button} onClick={() => open({ kind: 'memory', bot: selected.bot })}>{t('memory.title')}</button>
+            <button type="button" className={styles.button} onClick={() => open({ kind: 'duplicate', bot: selected.bot })}>{t('card.duplicate')}</button>
+            <button type="button" className={styles.dangerButton} onClick={() => open({ kind: 'delete', bot: selected.bot })}>{t('actions.delete')}</button>
+          </details>
         </div>
-      )}
-    </>
-  );
+      </header>
+      <section aria-label={t('persona.title')} data-bot-persona={selected.bot.id}>
+        <h3>{t('persona.title')}</h3>
+        {selected.bot.persona.prefix ? selected.bot.persona.prefix.length > 240 ? <details>
+          <summary>{t('persona.expand')}</summary><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{selected.bot.persona.prefix}</p>
+        </details> : <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{selected.bot.persona.prefix}</p> : <p>{t('persona.empty')}</p>}
+        {page.onEditPersona && <button type="button" className={styles.button} disabled={busy || model.navigating || !model.ready} onClick={() => {
+          void model.navigate(async () => { await page.onEditPersona?.(selected.bot); model.setShowDetail(false); }, 'errors.start');
+        }}>{t('persona.edit')}</button>}
+      </section>
+      {panel === 'work' && <>
+        {page.background && <BackgroundTasksPanel key={`work:${selected.bot.id}:${selected.bot.createdAt}`} bot={selected.bot} actions={page.background} t={t} />}
+        {page.routines && <RoutinePanel actions={page.routines} bots={model.entries.map(entry => entry.bot)} botId={selected.bot.id} onOpenSession={page.onOpenSession} t={t} />}
+        {page.messages && <MessageOverviewPanel botId={selected.bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}
+      </>}
+      {panel === 'settings' && page.models && <CapabilitiesPanel bot={selected.bot} actions={page.models} t={t} />}
+      {panel === 'history' && <BotSessionHistory page={page} model={model} />}
+    </article>
+  </Modal>;
 }

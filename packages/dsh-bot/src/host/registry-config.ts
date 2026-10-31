@@ -5,6 +5,12 @@ import { shadowConfigFields, type ShadowConfig } from './shadow/config.js';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
 
 export interface Config extends MessagingConfig, ShadowConfig {
+  onboardingEnabled: boolean;
+  onboardingMaxOutputTokens: number;
+  onboardingTimeoutMs: number;
+  nativeToolPolicy: 'native' | 'restricted';
+  groupMaxContinuations: number;
+  groupConcurrentTurns: number;
   memoryGrantTtlMs: number;
   autoShareEnabled: boolean;
   autoShareBotDaily: number;
@@ -20,6 +26,7 @@ export interface Config extends MessagingConfig, ShadowConfig {
   connectorApplyTimeoutMs: number;
   notificationDailyLimit: number;
   notificationCooldownSec: number;
+  routineOutcomeLimit: number;
   notificationRetentionDays: number;
   notificationMaxRecords: number;
   notificationSendTimeoutMs: number;
@@ -47,6 +54,22 @@ const activityLimit = (name: string, fallback: number) =>
     return value;
   }).default(fallback);
 const baseConfig = Schema.object({
+  onboardingEnabled: Schema.boolean().default(true),
+  onboardingMaxOutputTokens: Schema.number().min(32).max(2048).step(1).default(256),
+  onboardingTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
+  routineOutcomeLimit: Schema.transform(Schema.number().min(1).max(10000), value => {
+    if (!Number.isSafeInteger(value)) throw new TypeError('routineOutcomeLimit must be an integer');
+    return value;
+  }).default(200),
+  nativeToolPolicy: Schema.union(['native', 'restricted']).default('native'),
+  groupConcurrentTurns: Schema.transform(Schema.number().min(1).max(16), value => {
+    if (!Number.isSafeInteger(value)) throw new TypeError('groupConcurrentTurns must be an integer');
+    return value;
+  }).default(2),
+  groupMaxContinuations: Schema.transform(Schema.number().min(0).max(64), value => {
+    if (!Number.isInteger(value)) throw new TypeError('groupMaxContinuations must be an integer');
+    return value;
+  }).default(8),
   ...messagingConfigFields,
   ...shadowConfigFields,
   memoryGrantTtlMs: Schema.number().min(1000).max(3600000).step(1).default(300000),

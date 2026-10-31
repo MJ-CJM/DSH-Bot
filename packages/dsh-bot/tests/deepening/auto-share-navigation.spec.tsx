@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 import { expect, it } from 'vitest';
 import { bot, button, click, mountClient } from '../client/helpers.js';
+import { openMaintenance } from '../client/bot-ui-helpers.js';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 
-it.each(['en', 'zh'] as const)('opens the capability panel from Management and reopens saved policy (%s, DOM only)', async language => {
+it.each(['en', 'zh'] as const)('opens the capability panel from Settings maintenance and reopens saved policy (%s, DOM only)', async language => {
   let app = await mountClient([bot()], language);
   const t = language === 'en' ? en.ui : zh.ui;
   const panel = () => app.container.querySelector(`aside[aria-label="${t['autoShare.title']}"]`);
   const requiredPanel = () => { const element = panel(); if (!element) throw new Error('Missing capability panel'); return element; };
   try {
-    await click(button(app.container, t['manage.title']));
-    await click(button(app.container, t['manage.memoryTools']));
+    await openMaintenance(app, language);
     // The real MemoryPanel initially selects legacy/private entries, just like the failed browser artifact.
     expect(panel()).toBeNull();
     expect(app.remote.methods.memory.autoShareStatus).not.toHaveBeenCalled();
@@ -27,8 +27,7 @@ it.each(['en', 'zh'] as const)('opens the capability panel from Management and r
       remote.methods.memory.autoShareStatus = policy.autoShareStatus;
       remote.methods.memory.setAutoShare = policy.setAutoShare;
     });
-    await click(button(app.container, t['manage.title']));
-    await click(button(app.container, t['manage.memoryTools']));
+    await openMaintenance(app, language);
     expect(panel()).toBeNull();
     await click(button(app.container, t['shared.scope.shared']));
     expect(button(requiredPanel(), t['autoShare.enable'])).toBeDefined();

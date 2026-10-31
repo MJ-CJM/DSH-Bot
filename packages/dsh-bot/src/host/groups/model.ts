@@ -13,6 +13,9 @@ import type { BotKey } from '../../shared/integrations.js';
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
+    'dsh-bot-group-setup': { kind: 'dsh-bot-group-setup'; group: GroupKey; operation: 'create' | 'restore' | 'open'; operationId: string };
+    'dsh-bot-group-user': { kind: 'dsh-bot-group-user'; group: GroupKey; turnId: string; replyTo?: string; rpcId?: string };
+    'dsh-bot-group-followup': { kind: 'dsh-bot-group-followup'; group: GroupKey; turnId: string; deliveryId: string; replyTo: string };
     'dsh-bot-group': {
       kind: 'dsh-bot-group';
       group: GroupKey;
@@ -21,6 +24,8 @@ declare module '@deepseek-ai/dsh-llm' {
       speaker: GroupSpeaker;
       childSessionId: string;
       stopReason: string;
+      replyTo?: string;
+      causeId?: string;
     };
   }
 }

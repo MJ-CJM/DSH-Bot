@@ -50,7 +50,7 @@ export function ManagementWorkspace({
   'management' | 'integrations' | 'routines' | 'collaboration' | 'createMemoryPanel' | 'onOpenSession'
 > & { bots: BotRecord[] } & PropsLocale<'dsh-bot'>) {
   const [tab, setTab] = useState<Tab>(
-    management ? 'records' : integrations ? 'connectors' : routines ? 'routines' : 'collaboration',
+    integrations ? 'connectors' : management ? 'records' : routines ? 'routines' : 'collaboration',
   );
   const labels = {
     records: 'manage.memoryTools',
@@ -68,8 +68,11 @@ export function ManagementWorkspace({
   ];
   return (
     <section aria-label={t('manage.navigation')}>
+      <details><summary>{t('manage.memoryTools')}</summary>
+        {management && <button type="button" className={styles.button} onClick={() => setTab('records')}>{t('manage.memoryTools')}</button>}
+      </details>
       <div role="tablist" aria-label={t('manage.navigation')} className={styles.managementTabs}>
-        {tabs.map((key) =>
+        {tabs.filter(key => key !== 'records').map((key) =>
           key === 'notifications' && integrations ? (
             <NotificationTab
               key={key}

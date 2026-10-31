@@ -109,8 +109,8 @@
   background: var(--dsw-alias-bg-layer-1);
   max-width: 100%;
 }
-/* No sticky overlay. This log owns both messages and round details, so the
-   outer page can always reach its header and composer without clipping it. */
+/* No sticky overlay. Messages scroll independently; execution details stay
+   outside the log so diagnostics cannot hide replies or clip the composer. */
 .timeline {
   min-height: 12rem;
   max-height: min(52vh, 36rem);
@@ -123,11 +123,11 @@
   border-radius: 12px;
 }
 .message {
-  background: var(--dsw-alias-bg-layer-1);
-  border: 1px solid var(--dsw-alias-border-l3);
-  border-radius: 12px;
-  padding: 12px;
-  margin-block: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 12px 4px;
+  margin-block: 4px;
 }
 .message p {
   white-space: pre-wrap;
@@ -139,6 +139,9 @@
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
 }
+.mentionInput label, .mentionInput textarea { display: block; width: 100%; }
+.mentionMenu button { display: block; width: 100%; border: 0; }
+.quote button { border: 0; padding: 0; background: transparent; }
 .editor,
 .composer,
 .picker {
@@ -170,6 +173,12 @@
 .panel legend {
   padding-inline: 4px;
   color: var(--dsw-alias-label-secondary);
+}
+.advanced label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
 }
 .picker label,
 .editor fieldset label,
@@ -274,3 +283,236 @@
     padding: 12px;
   }
 }
+/* Message bodies use the public platform Markdown renderer. */
+.message > div:not(.bar) {
+  margin-top: 8px;
+  min-width: 0;
+}
+.message :is(pre, table) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.message .replyAction {
+  margin-inline-start: auto;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.quote,
+.replyPreview {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-inline-start: 3px solid var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-base);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.replyPreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.replyPreview span {
+  flex: 1 1 12rem;
+  min-width: 0;
+  white-space: pre-wrap;
+}
+.working,
+.executions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.working {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+.attachments li > span {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.working .bar {
+  justify-content: space-between;
+}
+.working .bar > span {
+  flex: 1 1 12rem;
+}
+.executions h4 {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.advanced summary {
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+}
+.attachments {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.attachments li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+/* Flat conversation messages; theme identity comes from public aliases. */
+.message .replyAction { opacity: 0; }
+.message:hover .replyAction, .message:focus-within .replyAction { opacity: 1; }
+.mentionInput { position: relative; min-width: 0; }
+.mentionMenu { position: absolute; bottom: 100%; left: 0; z-index: 20; width: min(100%, 360px); max-height: 240px; overflow-y: auto; padding: 6px; }
+.mentionMenu button[aria-selected="true"] { background: var(--dsw-alias-interactive-bg-hover); }
+.mentionMenu small { color: var(--dsw-alias-label-secondary); }
+@media (hover: none) { .message .replyAction { opacity: 1; } }
+.composerFooter { flex-wrap: nowrap; min-width: 0; }
+.composerFooter .keyboardHint { color: var(--dsw-alias-label-tertiary); font-size: 11px; margin-inline: 4px; }
+.sendActions { display: flex; gap: 6px; align-items: center; margin-inline-start: auto; flex: none; }
+.workspace .composerFooter .attachAction { border: 0; color: var(--dsw-alias-label-secondary); padding-inline: 0; flex: none; }
+@media (max-width: 760px) { .composerFooter .keyboardHint { display: none; } }
+
+/* Business-owned composer, within the native workspace's composer seat. */
+.workspace {
+  box-sizing: border-box;
+  width: min(100%, 720px);
+  margin-inline: auto;
+  padding: 8px 12px 12px;
+  gap: 6px;
+  font-size: 13px;
+}
+.workspace .working {
+  padding: 0 4px;
+  background: none;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.workspace .working > span {
+  flex: 1 1 auto;
+}
+.workspace .working > .bar,
+.workspace .working > p {
+  flex-basis: 100%;
+}
+.workspace .working summary {
+  cursor: pointer;
+}
+.workspace .composer {
+  padding: 12px;
+  gap: 8px;
+}
+.workspace .composer:focus-within { border-color: var(--dsw-alias-state-business-primary); }
+.workspace .composer textarea {
+  min-height: 56px;
+  height: 56px;
+  max-height: 144px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+  resize: none;
+}
+.workspace .composer button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.workspace .composer .bar {
+  gap: 6px;
+}
+.workspace .composer .keyboardHint {
+  font-size: 11px;
+  line-height: 16px;
+  margin: 0;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.sessionBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l3);
+  padding: 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .sessionBadgeText { display: none; }
+}
+/* One input container with a single footer; textarea inherits its outer frame. */
+.modelControl { display: flex; align-items: center; position: relative; min-width: 0; max-width: min(100%, 320px); }
+.modelMenuAnchor { min-width: 0; max-width: 100%; }
+.panel .modelTrigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+.modelTriggerLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.modelTrigger svg { flex: none; }
+.modelEffort { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+.modelMenu { width: min(320px, calc(100vw - 24px)); }
+.modelMenuValue { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.modelMenuValue > span:last-child { max-width: 180px; color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modelError {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 8px);
+  inset-inline-start: 0;
+  width: max-content;
+  max-width: min(300px, 75vw);
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 8px;
+  color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-base);
+  font-size: 12px;
+}
+.workspace .composer .attachAction,
+.workspace .composer .sendAction { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 4px; }
+.workspace .composer .attachAction { border: 0; background: transparent; }
+.workspace .composer .sendAction { border: 0; border-radius: 50%; background: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-bg-base); }
+.workspace .composer .sendAction:disabled { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); }
+.workspace .composer .sendAction:hover:enabled { background: var(--dsw-alias-state-business-primary); }
+@media (max-width: 440px) {
+  .modelControl { max-width: calc(100% - 80px); }
+  .modelEffort { display: none; }
+}
+.modelMemberRow { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; }
+.modelMemberText { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.modelMemberName { display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modelMemberLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.modelMemberName small { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+.modelMemberDetail { color: var(--dsw-alias-label-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modelMemberSource { color: var(--dsw-alias-label-tertiary); font-size: 11px; }

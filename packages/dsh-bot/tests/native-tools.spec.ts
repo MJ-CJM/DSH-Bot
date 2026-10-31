@@ -1,3 +1,4 @@
+import { personaRegistryDouble } from './fixtures/persona-registry.js';
 import { registerAutomationGuard } from '../lib/host/delegate/guard.js';
 import { NativeSchedules, bindingDomain, legacyDomain } from '../lib/host/native-schedule/service.js';
 import { NativeScheduleRemote } from '../lib/host/automation/remote.js';
@@ -60,7 +61,9 @@ async function setup(ctx: Context, root: string) {
   } as unknown as Context['sessionPersistence']);
   await ctx.plugin(ScheduleService, {}).await();
   const records = new Map<string, ReturnType<typeof botSchema.parse>>();
+  const personaRegistry = personaRegistryDouble(() => [...records.values()]);
   ctx.provide('dshBots', {
+    ...personaRegistry,
     config: RegistryConfig({ dataDir: root }),
     list: async () => [...records.values()],
     get: async (id: string) => { const bot = records.get(id); if (!bot) throw new Error('missing'); return bot; },
@@ -112,7 +115,7 @@ async function setup(ctx: Context, root: string) {
   const execute = (agent: Agent, name: string, args: unknown = {}) => ctx.tools.execute({
     agent, name, arguments: args, callId: ToolCallId(randomUUID()), signal: new AbortController().signal,
   });
-  return { ctx, root, records, headers, preset, names, text, execute, resolve };
+  return { ctx, root, records, headers, preset, names, text, execute, resolve, personaRegistry };
 }
 
 describe('R01 native scheduling with real Agents, ToolRuntime, schedule plugin and JSON storage', () => {
@@ -132,6 +135,7 @@ describe('R01 native scheduling with real Agents, ToolRuntime, schedule plugin a
     }
     if (!preset.plugin) throw new Error('Missing Bot context plugin');
     await preset.plugin.dispose();
+    expect(f.personaRegistry.personaListenerCount()).toBe(0);
     expect((await f.text(agent)).some(section => section.name === 'dsh-bot:schedule')).toBe(false);
     expect(f.names(agent).filter(name => name.startsWith('schedule_'))).toEqual(nativeNames);
     await preset.scope.dispose();

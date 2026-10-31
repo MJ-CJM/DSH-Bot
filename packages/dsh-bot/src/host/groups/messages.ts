@@ -2,6 +2,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session';
 import {
   GROUP_ROOT_PRESET,
   groupPageSchema,
+  groupAttachmentSchema,
   type GroupKey,
   type GroupRecord,
   type GroupMessage,
@@ -22,8 +23,13 @@ export class GroupMessages {
     const agent = this.state.roots.get(g.id)?.agent ?? this.state.ctx.agents.get(g.rootSessionId as SessionId);
     if (!agent || agent.session.header.agentPreset !== GROUP_ROOT_PRESET) return [];
     const inputs = new Map(this.state.turns(g).map((t) => [t.inputMessageId, t.id]));
-    return agent.session.snapshotEvents().flatMap((e) => {
+    return agent.session.snapshotEvents().flatMap<GroupMessage>((e) => {
       if (e.type !== 'user/message') return [];
+      const attachments = e.data.content.flatMap(block => {
+        if (block.type !== 'image' && block.type !== 'file') return [];
+        const ref = groupAttachmentSchema.safeParse(block);
+        return ref.success ? [ref.data] : [];
+      });
       const s = e.data.source;
       const turnId = inputs.get(e.data.id);
       if (s.kind === 'dsh-bot-group' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
@@ -33,15 +39,42 @@ export class GroupMessages {
             seq: Number(e.seq),
             at: e.time,
             text: textOf(e.data.content),
+            ...(attachments.length ? { attachments } : {}),
             ...(e.data.content.some((b) => b.type !== 'text') ? { hasNonText: true } : {}),
             turnId: s.turnId,
             speaker: s.speaker,
+            authorKind: 'bot' as const,
+            replyTo: s.replyTo,
+            causeId: s.causeId,
             childSessionId: s.childSessionId,
             stopReason: s.stopReason,
           },
         ];
-      return turnId ? [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId }] : [];
+      if (s.kind === 'dsh-bot-group-followup' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
+        return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: s.turnId, authorKind: 'user' as const, replyTo: s.replyTo }];
+      return turnId ? [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId, ...(attachments.length ? { attachments, hasNonText: true } : {}), authorKind: 'user' as const, replyTo: this.state.turns(g).find(t => t.id === turnId)?.replyTo }] : [];
     });
+  }
+  async openAttachment(key: GroupKey, messageId: string, attachmentId: string, signal = this.state.startup.signal) {
+    const path = await this.state.queue.run(async () => {
+      signal.throwIfAborted();
+      const g = this.state.record(key);
+      await this.roots.restore(g);
+      const message = this.messages(g).find(m => m.id === messageId),
+        block = message?.attachments?.find(a => a.attachment.attachmentId === attachmentId);
+      if (!block) throw new OperationError('not-found');
+      const store = this.state.ctx.get('attachments');
+      if (!store) throw new OperationError('unsupported');
+      const path = block.type === 'file'
+        ? store.fileHostPath(block.attachment as Parameters<typeof store.fileHostPath>[0])
+        : store.imageHostPath(block.attachment as Parameters<typeof store.imageHostPath>[0]);
+      if (!path) throw new OperationError('unsupported');
+      return path;
+    });
+    signal.throwIfAborted();
+    const controller = this.state.ctx.get('sessionController');
+    if (!controller?.workspaceDesktop().available) throw new OperationError('unsupported');
+    return controller.openWorkspacePath({ path }, signal);
   }
   async summary(g: GroupRecord): Promise<GroupSummary> {
     const members = this.state.members(g),

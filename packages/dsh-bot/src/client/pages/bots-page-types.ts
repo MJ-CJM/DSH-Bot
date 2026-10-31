@@ -1,4 +1,6 @@
+import type { ModelActions } from '../model-catalog-state.js';
 import type { MessageActions } from '../components/MessageOverview.js';
+import type { BackgroundActions } from '../background-work-state.js';
 import type { WorkspaceActions } from '../workspace-state.js';
 import type { GroupActions } from '../groups-state.js';
 import type { CollaborationActions } from '../collaboration-state.js';
@@ -16,6 +18,8 @@ import type { BotCatalog } from '../state.js';
 import type { ChatLauncherActions } from '../chat-launcher.js';
 
 export interface BotsPageInjected extends ChatLauncherActions {
+  models?: ModelActions;
+  background?: BackgroundActions;
   messages?: MessageActions;
   management?: WorkspaceActions;
   groups?: GroupActions;
@@ -36,9 +40,12 @@ export interface BotsPageInjected extends ChatLauncherActions {
   onRefresh(): Promise<void>;
   onPollInterval(value: number): void;
   onCreate(input: BotCreateInput): Promise<void>;
+  onCreateForChat?(input: BotCreateInput, operationId: string, language: 'en' | 'zh'): Promise<void>;
+  onStartCreated?(id: string, operationId: string, signal?: AbortSignal): Promise<void>;
+  onEditPersona?(bot: BotRecord): Promise<void>;
   onUpdate(id: string, input: BotPatch): Promise<void>;
   onDuplicate(id: string, newId: string): Promise<void>;
-  onDelete(id: string, deleteMemories: boolean, deleteHome: boolean): Promise<void>;
+  onDelete(id: string, deleteMemories: boolean, deleteHome: boolean, expected: { createdAt: number; updatedAt: number }): Promise<void>;
   onEnsureHome(id: string): Promise<string>;
   onEnsureBotsWorkspace(): Promise<string>;
   onPickDirectory?: () => Promise<string | null>;

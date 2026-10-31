@@ -1,3 +1,4 @@
+import { matchesCreation } from './recent-conversations.js';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { BotCreateInput, BotPatch } from '../../shared/schema.js';
 import { botSessionRows, sortBotEntries } from '../activity-view.js';
@@ -18,10 +19,16 @@ export function useBotsPage({
   onDetailConsumed,
   onCountMemories,
   onCreate,
+  onCreateForChat,
+  onStartCreated,
   onUpdate,
+  onStart,
+  onRefresh,
   t,
 }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
+  const catalogRef = useRef(snapshot);
+  catalogRef.current = snapshot;
   const activity = useActivity((value) => value);
   const sessions = useSessionCatalog((value) => value);
   const requestedDetail = useBotDetail((value) => value);
@@ -46,7 +53,8 @@ export function useBotsPage({
   const listId = useId();
   const locale = t('activity.locale');
   const entries = sortBotEntries(snapshot.entries, activity.bots, locale);
-  const selected = entries.find(({ bot }) => bot.id === selectedId) ?? entries[0];
+  const selected = entries.find(({ bot }) => bot.id === (requestedDetail?.botId ?? selectedId)) ??
+    (selectedId === undefined && requestedDetail === undefined ? entries[0] : undefined);
   const rows = selected
     ? botSessionRows(
         selected.bot.id,
@@ -79,9 +87,11 @@ export function useBotsPage({
   const lifetime = useRef<AbortController>();
   useEffect(() => {
     // Lock the first complete ordering, then retain that Bot across activity polls.
-    if (!snapshot.loaded || (!activity.loaded && !activity.error)) return;
-    if (!entries.some(({ bot }) => bot.id === selectedId)) setSelectedId(entries[0]?.bot.id);
-  }, [snapshot.loaded, activity.loaded, activity.error, entries, selectedId]);
+    if (!snapshot.loaded || (!activity.loaded && !activity.error) || requestedDetail) return;
+    // A synchronous detail-request consumption can schedule another render
+    // before its explicit selection commits. Preserve the latest queued target.
+    setSelectedId(current => entries.some(({ bot }) => bot.id === current) ? current : entries[0]?.bot.id);
+  }, [snapshot.loaded, activity.loaded, activity.error, entries, requestedDetail]);
   useEffect(() => {
     if (!compact || dialog) return;
     if (showDetail) backElement.current?.focus();
@@ -124,7 +134,7 @@ export function useBotsPage({
       setSelectedId(found.bot.id);
       setShowDetail(true);
       cancelNavigation();
-      setDialog({ kind: 'edit', bot: found.bot });
+      setDialog(undefined);
       setToast(undefined);
     } else setToast({ text: t('errors.detailMissing'), error: true });
     onDetailConsumed(requestedDetail.requestId);
@@ -207,16 +217,47 @@ export function useBotsPage({
       if (alive()) setBusy(false);
     }
   }
-  function save(input: BotCreateInput | BotPatch) {
-    return perform(
-      () => (dialog?.kind === 'edit' ? onUpdate(dialog.bot.id, input as BotPatch) : onCreate(input as BotCreateInput)),
-      'errors.save',
-      'bots.saveSuccess',
+  const [createdId, setCreatedId] = useState<string>();
+  const acceptedCreation = useRef<string>();
+  const creationOperation = useRef<string>();
+  async function save(input: BotCreateInput | BotPatch) {
+    if (dialog?.kind !== 'create') return perform(
+      () => dialog?.kind === 'edit' ? onUpdate(dialog.bot.id, input as BotPatch) : Promise.resolve(),
+      'errors.save', 'bots.saveSuccess',
     );
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); setToast(undefined);
+    const id = (input as BotCreateInput).id;
+    try {
+      if (acceptedCreation.current !== id) {
+        try {
+          if (onCreateForChat) {
+            creationOperation.current ??= crypto.randomUUID();
+            await onCreateForChat(input as BotCreateInput, creationOperation.current, locale.startsWith('zh') ? 'zh' : 'en');
+          } else await onCreate(input as BotCreateInput);
+        }
+        catch (error) {
+          // An onboarding create response is recovered only by the Host's
+          // stable operation, never by treating a matching name as ownership.
+          if (onCreateForChat) throw error;
+          // Reconcile an unknown response before offering another create attempt.
+          await onRefresh();
+          if (!catalogRef.current.entries.some(entry => entry.bot.id === id && matchesCreation(input as BotCreateInput, entry.bot))) throw error;
+        }
+        acceptedCreation.current = id; setCreatedId(id);
+      }
+      if (onStartCreated && creationOperation.current) await onStartCreated(id, creationOperation.current, lifetime.current?.signal);
+      else await onStart(id, lifetime.current?.signal);
+      if (alive()) setDialog(undefined);
+    } catch (error) {
+      if (alive()) setToast({ text: `${acceptedCreation.current === id ? t('chat.savedOpenFailed' as Parameters<typeof t>[0]) : t('errors.save')} ${detail(error)}`.trim(), error: true });
+      throw error;
+    } finally { busyRef.current = false; if (alive()) setBusy(false); }
   }
   function open(next: Dialog) {
     // Editing supersedes pending navigation, not the Host operation itself.
     cancelNavigation();
+    acceptedCreation.current = undefined; creationOperation.current = undefined; setCreatedId(undefined);
     setDialog(next);
     setToast(undefined);
     if (next.kind === 'delete') {
@@ -275,6 +316,7 @@ export function useBotsPage({
     navigate,
     perform,
     save,
+    createdId,
     open,
     unavailable,
   };

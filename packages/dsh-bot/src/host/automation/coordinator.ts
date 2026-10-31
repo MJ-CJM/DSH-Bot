@@ -4,6 +4,7 @@ import type { RunRequest } from '../../shared/automation.js';
 import { MainSessionDelivery } from './delivery.js';
 import { openAutomationStores } from './store.js';
 import { NativeScheduleRemote, RunRemote } from './remote.js';
+import { routineOutcomes } from '../native-schedule/outcomes.js';
 import { NativeSchedules } from '../native-schedule/service.js';
 import { registerAutomationGuard } from '../delegate/guard.js';
 import { AutomationError } from './errors.js';
@@ -25,6 +26,12 @@ export async function startAutomation(ctx: Context, bots: DshBotRegistry) {
   let delivery: MainSessionDelivery | undefined;
   let stopped = false;
   const admissions = new Set<Promise<unknown>>();
+  ctx.effect(() => {
+    const fork = ctx.inject(['sessionProjections'], scoped => {
+      scoped.effect(() => scoped.sessionProjections.register(routineOutcomes(bots.config.routineOutcomeLimit)), 'dsh-bot: routine outcomes');
+    });
+    return () => fork.dispose();
+  }, 'dsh-bot: optional native projections');
   const native = new NativeSchedules(ctx, bots);
   const close = async () => {
     stopped = true;

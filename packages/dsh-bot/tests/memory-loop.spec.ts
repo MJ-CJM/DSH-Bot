@@ -1,3 +1,4 @@
+import { personaRegistryDouble } from './fixtures/persona-registry.js';
 import { ManagedOutlets } from '../lib/host/data-flow/outlets.js';
 import { EgressChecker } from '../lib/host/data-flow/egress.js';
 import { OnceGrants } from '../lib/host/data-flow/grants.js';
@@ -65,7 +66,9 @@ async function runtime(ctx: Context, root: string) {
     key => stores.bots.list().some(b => b.id === key.botId && b.createdAt === key.botCreatedAt)));
   await memoryOutlets.recover();
   ctx.effect(() => async () => { await memoryOutlets.close(); memoryOutlets.checker.close(); });
+  const personaRegistry = personaRegistryDouble(() => stores.bots.list());
   ctx.provide('dshBots', {
+    ...personaRegistry,
     config: RegistryConfig({}),
     presetBot: (botId: string) => stores.bots.get(botId),
     memoryFor, memoryAdmission, memoryOutlets, memoryKernel: stores.memoryKernel,
@@ -107,7 +110,7 @@ async function runtime(ctx: Context, root: string) {
     callId: ToolCallId(`memory-call-${++sequence}`), name, arguments: args, agent,
     signal: new AbortController().signal,
   });
-  return { ctx, stores, harness, memoryFor, presets, create, assemble, memoryText, execute };
+  return { ctx, stores, harness, memoryFor, presets, create, assemble, memoryText, execute, personaRegistry };
 }
 
 async function send(agent: Agent, text: string) {
@@ -183,7 +186,7 @@ describe('Bot memory through the production Agent loop and local Messages mock',
   }), 15_000);
 
   it('isolates Agent tools and snapshots, skips disabled Bots, and releases owned registrations', async () => withRuntime(async ({
-    ctx, stores, harness, memoryFor, presets, create, memoryText, execute,
+    ctx, stores, harness, memoryFor, presets, create, memoryText, execute, personaRegistry,
   }) => {
     const alphaMemory = await stores.memories.add({ botId: 'alpha', content: 'Alpha private long-term fact.' });
     await stores.memories.add({ botId: 'beta', content: 'Beta private long-term fact.' });
@@ -219,12 +222,15 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     expect(forget.isError).toBe(true);
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toHaveLength(1);
 
+    expect(personaRegistry.personaListenerCount()).toBe(5);
     await first.dispose();
+    expect(personaRegistry.personaListenerCount()).toBe(4);
     expect(botContext.getBotBinding(first.agent)).toBeUndefined();
     expect(ctx.tools.schemas(first.agent)).toEqual([]);
     expect(await memoryText(first.agent)).toBeUndefined();
     expect(ctx.tools.schemas(second.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
     await presets.get('alpha')?.plugin.dispose();
+    expect(personaRegistry.personaListenerCount()).toBe(3);
     expect(botContext.getBotBinding(second.agent)).toBeUndefined();
     expect(ctx.tools.schemas(second.agent)).toEqual([]);
     expect(await memoryText(second.agent)).toBeUndefined();
@@ -240,13 +246,9 @@ describe('Bot memory through the production Agent loop and local Messages mock',
       await stores.memories.add({ botId, content: literal });
       const preset = presets.get(botId);
       if (!preset) throw new Error('Missing fixture preset');
-      // These are the same public section semantics used by dsh-persona; this
-      // test does not import the first-party plugin's implementation internals.
-      preset.ctx.effect(() => preset.ctx.systemPrompt.section({
-        name: PERSONA_PREFIX_SECTION,
-        order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
-        text: `${botId} persona`, complete: botId === 'beta',
-      }));
+      // The committed Bot record is authoritative for live persona scopes.
+      // Keep first-party section semantics under test through bot-context's real registration.
+      await stores.bots.update(botId, { persona: { prefix: `${botId} persona`, complete: botId === 'beta' } });
       preset.ctx.effect(() => preset.ctx.systemPrompt.section({
         name: 'fixture:tool-guidance', order: ctx.systemPrompt.getSectionOrder('TOOL_BASH'),
         text: 'Fixture tool guidance.',

@@ -142,12 +142,12 @@ export function registerDelegateTool(owner: Agent): () => void {
                 delivery: 'parent',
                 signal: AbortSignal.any([exec.signal, lifetime.signal]),
                 request: { parent: owner, agentPreset: status.presetId, prompt: [{ type: 'text', text: args.task }] },
-              });
+              }, lifetime.signal);
               starts.add(pending);
               const receipt = pending
                 .then(async (activation) => {
                   active.add(activation);
-                  // Native settlement delivers the result and owns normal teardown.
+                  // Native settlement owns teardown; managed caller delivery checks the result separately.
                   void activation.result
                     .catch(() => ctx.logger.warn('[dsh-bot] native delegate result unavailable'))
                     .finally(() => active.delete(activation));

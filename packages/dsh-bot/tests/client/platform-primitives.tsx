@@ -17,6 +17,15 @@ export const IconPlusOutlineRegular = Icon;
 export const IconRefreshOutlineRegular = Icon;
 export const IconEllipsisOutlineRegular = Icon;
 export const IconMoreHorizontalOutlineRegular = Icon;
+export const IconDataOutlineRegular = Icon;
+export const IconChevronDownOutlineRegular = Icon;
+export const IconPaperclipOutlineRegular = Icon;
+export const IconSendOutlineRegular = Icon;
+
+/** Provider double: verifies MarkdownText props/ownership, not the native parser's HTML output. */
+export function MarkdownText({ text }: { text: string; labels: unknown; variant?: string }) {
+  return <div data-platform-markdown="">{text}</div>;
+}
 
 export function Menu({ open, anchor, items = [], onSelect, children, className }: {
   open: boolean; anchor: ReactNode; className?: string; children?: ReactNode;
@@ -26,4 +35,12 @@ export function Menu({ open, anchor, items = [], onSelect, children, className }
   return <span className={className}>{anchor}{open && <div role="menu">{items.map((item) => item.type
     ? <hr key={item.id} />
     : <button type="button" role="menuitem" key={item.id} disabled={item.disabled} onClick={() => onSelect?.(item.id)}>{item.label}</button>)}{children}</div>}</span>;
+}
+
+export function MenuSurface({ children, ...props }: import('react').HTMLAttributes<HTMLDivElement>) { return <div {...props}>{children}</div>; }
+export function observeComposition(document: Document) {
+  let composing = false, ended = false;
+  const start = () => { composing = true; }, end = () => { composing = false; ended = true; }, release = () => { ended = false; };
+  document.addEventListener('compositionstart', start); document.addEventListener('compositionend', end); document.addEventListener('keyup', release);
+  return { guards(event: KeyboardEvent) { const guarded = composing || ended || event.isComposing || event.keyCode === 229; ended = false; return guarded; }, dispose() { document.removeEventListener('compositionstart', start); document.removeEventListener('compositionend', end); document.removeEventListener('keyup', release); } };
 }

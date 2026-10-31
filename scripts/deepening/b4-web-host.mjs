@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { auditArtifact, auditInstalled } from '../p34-artifact.mjs';
 
 /** Real DSH Web profile and shipped Client; all data and credentials paths are isolated under .dsh-dev. */
-export async function webHost(dir, suite, artifact) {
+export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig = []) {
   const root = process.cwd(), commands = [], children = new Set(), profile = 'b4-browser';
   const env = { PATH: process.env.PATH, USER: 'synthetic', SHELL: process.env.SHELL,
     HOME: resolve(dir, 'environment-home'), DSH_HOME: resolve(dir, 'home'), TMPDIR: resolve(dir, 'tmp'),
@@ -68,8 +68,9 @@ export async function webHost(dir, suite, artifact) {
       '- id: agent-default-model', '  config:', '    provider: dp-loopback', '    model: fixture',
       ...['llm-deepseek', 'llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry',
         'session-log-deepseek', 'session-telemetry-otel', 'desktop-product-telemetry'].flatMap(id => [`- id: ${id}`, '  disabled: true']),
+      ...fixtureConfig,
       '- insert:', '    - id: b4-web-fixture',
-      `      name: ${JSON.stringify(resolve(root, 'packages/dsh-bot/tests/deepening/b4-web-profile.mjs'))}`,
+      `      name: ${JSON.stringify(fixturePath ?? resolve(root, 'packages/dsh-bot/tests/deepening/b4-web-profile.mjs'))}`,
       '      config:', `        outputDir: ${JSON.stringify(dir)}`, `        endpoint: ${JSON.stringify(endpoint)}`, `        suite: ${suite}`,
     ].join('\n');
     await writeFile(resolve(env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);

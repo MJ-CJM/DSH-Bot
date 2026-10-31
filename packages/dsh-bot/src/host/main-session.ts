@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-api-session-controller';
 import type {} from '@deepseek-ai/dsh-session-persistence';
-import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session';
+import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session';
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain';
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace';
 import { z } from 'zod';
@@ -34,6 +35,10 @@ export class MainSessions {
   /** Host-only immutable IDs, including retired Bot generations. No resolve or title writes during forget CAS. */
   boundSessionIds(): string[] {
     return this.domain ? [...this.domain.table('bindings').entries()].map(([, row]) => row.sessionId) : [];
+  }
+  /** Exact persisted pointer for explicit recovery CAS, including an unavailable former main. */
+  boundSessionId(botId: string, botCreatedAt: number): string | undefined {
+    return this.domain?.table('bindings').get(JSON.stringify([botId, botCreatedAt]))?.sessionId;
   }
   constructor(
     private readonly ctx: Context,
@@ -182,6 +187,36 @@ export class MainSessions {
       const result = await this.resolve(botId, true);
       if (!result) throw new DshBotError('bot/unavailable', 'Main session unavailable');
       return result;
+    });
+  }
+  /** Explicit user recovery: create a new native conversation without copying or erasing lineage. */
+  fresh(botId: string, expectedBotCreatedAt: number, expectedSessionId: string | null): Promise<MainSession> {
+    return this.serialize(async () => {
+      const bot = await this.bots.get(botId);
+      if (bot.createdAt !== expectedBotCreatedAt) throw new DshBotError('bot/conflict', 'Bot identity changed');
+      const key = keyOf(bot), table = this.domain.table('bindings');
+      const matches = () => (table.get(key)?.sessionId ?? null) === expectedSessionId;
+      if (!matches()) throw new DshBotError('bot/conflict', 'Main conversation changed');
+      const presetId = `${this.bots.config.presetIdPrefix}${bot.id}`;
+      const preset = (await this.ctx.agentPresets.list()).find(row => row.id === presetId);
+      if (!preset || preset.broken) throw new DshBotError('bot/unavailable', 'Bot preset is unavailable');
+      const workspace = await this.bots.ensureBotsWorkspace();
+      const newId = SessionId(randomUUID());
+      const created = await this.ctx.sessionController.create({ sessionId: newId, workspaceId: workspace.workspaceId as WorkspaceId, agentPreset: presetId });
+      if (created.sessionId !== newId) throw new DshBotError('bot/conflict', 'Native conversation identity changed');
+      const session = this.ctx.sessions.get(created.sessionId);
+      if (!session || !(await this.ctx.sessions.flush(session))) throw new DshBotError('bot/unavailable', 'Fresh main header flush failed');
+      const current = await this.bots.get(botId);
+      if (current.createdAt !== expectedBotCreatedAt) throw new DshBotError('bot/conflict', 'Bot identity changed');
+      try {
+        const latest = await this.bots.get(botId);
+        if (latest.createdAt !== expectedBotCreatedAt || !matches()) throw new DshBotError('bot/conflict', 'Main conversation changed');
+        // This serialized service is the sole binding writer. Recheck after every native await.
+        await table.put(key, { botId, botCreatedAt: expectedBotCreatedAt, sessionId: created.sessionId });
+      } catch (error) { this.pinned.delete(created.sessionId); throw error; }
+      if (expectedSessionId) this.pinned.delete(expectedSessionId);
+      this.bots.invalidate();
+      return { sessionId: created.sessionId };
     });
   }
   close(): Promise<void> {

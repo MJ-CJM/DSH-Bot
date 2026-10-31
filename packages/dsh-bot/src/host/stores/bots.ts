@@ -90,13 +90,17 @@ export class BotStore {
     });
   }
 
+  retiredCreation(operationId: string): boolean {
+    return read(() => this.domain.table('registry_state').get(`creation:${operationId}`)?.retiredCreationOperation === operationId);
+  }
+
   avatarWarnings(): string[] {
     return read(() =>
       [...this.domain.table('bots').entries()].filter(([, row]) => invalidAvatar(row)).map(([, row]) => row.id),
     );
   }
 
-  async create(input: BotCreateInput, createdAt = Date.now()): Promise<BotRecord> {
+  async create(input: BotCreateInput, createdAt = Date.now(), onboarding?: BotRecord['onboarding']): Promise<BotRecord> {
     const fields = parseInput(botCreateSchema, input);
     if (fields.tools) fields.tools = { ...fields.tools, deny: migrateMemoryDeny(fields.tools.deny) };
     await validateDefaultCwd(fields.defaultCwd);
@@ -104,7 +108,7 @@ export class BotStore {
     return write(this.domain, async () => {
       const table = this.domain.table('bots');
       if (table.get(fields.id)) throw new DshBotError('bot/conflict', `Bot '${fields.id}' already exists`);
-      const record = parseInput(botSchema, { ...fields, createdAt: now, updatedAt: now, schemaVersion: 1 });
+      const record = parseInput(botSchema, { ...fields, createdAt: now, updatedAt: now, schemaVersion: 1, ...(onboarding ? { onboarding } : {}) });
       await table.put(record.id, record);
       return structuredClone(record);
     });
@@ -140,7 +144,9 @@ export class BotStore {
     const key = parseInput(botIdSchema, id);
     const { deleteMemories } = parseInput(botRemoveOptionsSchema, options);
     return write(this.domain, async () => {
-      if (!this.domain.table('bots').get(key)) throw missingBot(key);
+      const current = this.domain.table('bots').get(key);
+      if (!current) throw missingBot(key);
+      if (current.onboarding) await this.domain.table('registry_state').put(`creation:${current.onboarding.operationId}`, { retiredCreationOperation: current.onboarding.operationId });
       if (deleteMemories) await deleteBotMemories(this.domain, key);
       // Activity is never retained, including when the user keeps memories.
       await deleteBotActivities(this.domain, key);

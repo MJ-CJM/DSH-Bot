@@ -1,3 +1,4 @@
+import { personaRegistryDouble } from './fixtures/persona-registry.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -35,7 +36,8 @@ async function setup(ctx: Context, root: string) {
     createdAt: 1, updatedAt: 1, schemaVersion: 1,
   })]));
   const get = async (id: string) => { const bot = bots.get(id); if (!bot) throw new Error('missing'); return structuredClone(bot); };
-  ctx.provide('dshBots', { config: RegistryConfig({}), presetBot: (id: string) => bots.get(id), get,
+  const personaRegistry = personaRegistryDouble(() => [...bots.values()]);
+  ctx.provide('dshBots', { ...personaRegistry, config: RegistryConfig({}), presetBot: (id: string) => bots.get(id), get,
     status: async () => [...bots.values()].map(bot => ({ id: bot.id, presetId: `custom-${bot.id}`, preset: { state: 'ok' } })),
     ensureHome: async () => ({ path: join(root, 'bots/alpha/home') }) } as unknown as Context['dshBots']);
   ctx.provide('llm', {} as Context['llm']); ctx.provide('agents', {} as Context['agents']);
@@ -64,7 +66,7 @@ async function setup(ctx: Context, root: string) {
   const execute = (agent: Agent, args: unknown, callId = randomUUID(), name = 'bot_delegate') => ctx.tools.execute({
     agent, name, arguments: args, callId: ToolCallId(callId), signal: new AbortController().signal,
   });
-  return { ctx, bots, stores, create, execute, startActivation, dispose, provider, settle };
+  return { ctx, bots, stores, create, execute, startActivation, dispose, provider, settle, personaRegistry };
 }
 
 const args = { targetBotId: 'beta', task: 'Task only', title: 'Research' };
@@ -138,6 +140,7 @@ describe('native bot delegation wrapper (native service double, real ToolRuntime
     f.ctx.on('approval/request', async () => 'allowed-once'); const origin = await f.create();
     await f.execute(origin.agent, args); await origin.plugin.dispose();
     expect(f.ctx.tools.get('bot_delegate', origin.agent)).toBeUndefined();
+    expect(f.personaRegistry.personaListenerCount()).toBe(0);
     await vi.waitFor(() => expect(f.dispose).toHaveBeenCalledOnce());
     const spec = f.startActivation.mock.calls[0]?.[0] as { signal: AbortSignal };
     expect(spec.signal.aborted).toBe(true);

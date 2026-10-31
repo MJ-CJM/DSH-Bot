@@ -1,3 +1,5 @@
+import { requireValue } from './test-required.js';
+import { openProfile, refreshBots } from './bot-ui-helpers.js';
 // @vitest-environment jsdom
 import { act } from 'react';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
@@ -23,13 +25,14 @@ afterEach(async () => {
 describe('Bots editor, explicit launch and lifecycle', () => {
   it('renders Bot details and opens the server-selected preset, without constructing a Client prefix', async () => {
     const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha Bot', avatar: '🦊', description: 'A careful helper' })]);
+    await openProfile(app);
     expect(app.sidebarLabel()).toBe(t['bots.title']);
     expect(app.main.options.key).toBe('dsh-bot');
     expect(app.core.entries('sidebar.panellist')[0]?.options.id).toBe('dsh-bot');
-    expect(app.container.querySelector('article')?.textContent).toContain('Alpha Bot');
+    expect(app.container.textContent).toContain('Alpha Bot');
     expect(app.container.querySelector('article')?.textContent).toContain('A careful helper');
     expect(app.container.querySelector('article')?.textContent).toContain('🦊');
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, 'Alpha Bot'));
     expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
     expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
@@ -49,6 +52,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     const app = await mount([bot()], 'en', (remote) => {
       remote.data.statuses = [{ id: 'alpha-bot', presetId: 'private-server-preset', preset: { state, reason: 'Host activation failed' } }];
     });
+    await openProfile(app);
     const start = button(app.container, t['bots.newSession']);
     expect(start.disabled).toBe(true);
     expect(app.container.textContent).toContain('Host activation failed');
@@ -58,6 +62,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
 
   it('disables a Bot without a matching status instead of guessing its preset id', async () => {
     const app = await mount([bot()], 'en', (remote) => { remote.data.statuses = []; });
+    await openProfile(app);
     expect(button(app.container, t['bots.newSession']).disabled).toBe(true);
     expect(app.container.textContent).toContain(t['card.statusUnknown']);
     expect(app.openWorkspace).not.toHaveBeenCalled();
@@ -66,12 +71,9 @@ describe('Bots editor, explicit launch and lifecycle', () => {
   it('validates the create form before Remote and saves editable fields, then refetches the list', async () => {
     const app = await mount();
     await click(button(app.container, t['bots.create']));
-    await fill(field(app.container, t['editor.id']), '../bad');
     await submit(app.container);
     expect(app.remote.methods.create).not.toHaveBeenCalled();
-    expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['validation.id']);
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['validation.name']);
-    await fill(field(app.container, t['editor.id']), 'new-bot');
     await fill(field(app.container, t['editor.name']), 'New Bot');
     await fill(field(app.container, t['editor.description']), 'New description');
     await fill(field(app.container, t['editor.persona']), 'Be precise.\nAsk when needed.');
@@ -82,18 +84,18 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     expect(app.remote.methods.create).not.toHaveBeenCalled();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain(t['validation.memory']);
     await fill(field(app.container, t['editor.injectLimit']), '7');
-    await click(app.container.querySelector('details > summary') as HTMLElement);
+    await click(button(app.container, t['editor.avatar']));
     await click(button(app.container, '🧠'));
     await submit(app.container);
-    expect(app.remote.methods.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      id: 'new-bot', name: 'New Bot', avatar: '🧠', description: 'New description',
+    expect(app.remote.methods.createForChat).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ operationId: expect.any(String), language: 'en', bot: expect.objectContaining({
+      id: expect.stringMatching(/^bot-/u), name: 'New Bot', avatar: '🧠', description: 'New description',
       persona: { prefix: 'Be precise.\nAsk when needed.' }, template: 'minimal',
       tools: { deny: ['read', 'write'] }, memory: { enabled: true, injectLimit: 7 },
-    }));
-    expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
+    }) }));
+    expect(app.remote.methods.list.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(app.container.querySelector('dialog,[role="dialog"]')).toBeNull();
-    expect(app.container.querySelector('article')?.textContent).toContain('New Bot');
-    expect(app.container.textContent).toContain(t['bots.saveSuccess']);
+    expect(app.container.textContent).toContain('New Bot');
+    expect(app.remote.methods.openConversation).toHaveBeenCalledWith(requireValue(app.remote.data.records.at(-1)).id);
   });
 
   it('keeps the id immutable and sends null when an avatar is cleared, retaining advanced persona options', async () => {
@@ -104,10 +106,8 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     });
     const app = await mount([original]);
     await click(button(app.container, t['card.edit']));
-    const id = field(app.container, t['editor.id']) as HTMLInputElement;
-    expect(id.value).toBe('alpha-bot');
-    expect(id.readOnly).toBe(true);
-    await click(app.container.querySelector('details > summary') as HTMLElement);
+    expect(app.container.querySelector('label')?.textContent).not.toBe(t['editor.id']);
+    await click(button(app.container, t['editor.avatar']));
     await click(button(app.container, t['avatar.clear']));
     await fill(field(app.container, t['editor.persona']), 'Updated');
     await submit(app.container);
@@ -116,7 +116,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     }));
     const patch = app.remote.methods.update.mock.calls[0]?.[1];
     expect(patch).not.toHaveProperty('id');
-    expect(patch?.model).toEqual({ provider: 'provider', model: 'model' });
+    expect(patch).not.toHaveProperty('model');
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     expect(app.remote.data.records[0]).not.toHaveProperty('avatar');
     expect(app.remote.data.records[0]?.model).toEqual(original.model);
@@ -137,7 +137,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     await submit(app.container);
     expect(app.remote.methods.update).toHaveBeenCalledTimes(2);
     expect(app.container.querySelector('dialog,[role="dialog"]')).toBeNull();
-    expect(app.container.querySelector('article')?.textContent).toContain('Changed locally');
+    expect(app.container.textContent).toContain('Changed locally');
   });
 
   it('shows an initial read failure and a manual refresh recovers the list', async () => {
@@ -146,19 +146,19 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     });
     expect(app.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(app.container.querySelectorAll('article')).toHaveLength(0);
-    await click(button(app.container, t['bots.refresh']));
+    await refreshBots(app);
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
-    expect(app.container.querySelector('article')?.textContent).toContain('Alpha Bot');
+    expect(app.container.textContent).toContain('Alpha Bot');
   });
 
   it('awaits an asynchronous Host refusal and displays the reason on the page', async () => {
     const app = await mount([bot()]);
     app.remote.methods.openConversation.mockRejectedValueOnce(new Error('Host refused the selected preset'));
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, 'Alpha Bot'));
     expect(app.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain('Host refused the selected preset');
-    expect(button(app.container, t['bots.newSession']).disabled).toBe(false);
-    await click(button(app.container, t['bots.newSession']));
+    expect(button(app.container, 'Alpha Bot').disabled).toBe(false);
+    await click(button(app.container, 'Alpha Bot'));
     expect(app.remote.methods.openConversation).toHaveBeenCalledTimes(2);
     expect(app.container.querySelector('[role="alert"]')).toBeNull();
   });
@@ -166,7 +166,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
   it('starts immediately with no workspace and no workspace chooser', async () => {
     const app = await mount([bot()]);
     await app.setWorkspaces({ items: [] });
-    await click(button(app.container, t['bots.newSession']));
+    await click(button(app.container, 'Alpha Bot'));
     expect(app.remote.methods.ensureHome).not.toHaveBeenCalled();
     expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
     expect(app.createSession).not.toHaveBeenCalled();
@@ -177,7 +177,8 @@ describe('Bots editor, explicit launch and lifecycle', () => {
 
   it('validates a duplicate id and calls the dedicated Remote operation before refreshing', async () => {
     const app = await mount([bot()]);
-    await click(button(app.container, t['card.more']));
+    await openProfile(app);
+    await click(requireValue(app.container.querySelector('article summary')));
     await click(button(app.container, t['card.duplicate']));
     const dialog = app.container.querySelector('dialog');
     expect(dialog?.textContent).toContain('Alpha Bot');
@@ -191,14 +192,15 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     expect(app.remote.methods.duplicate).toHaveBeenCalledExactlyOnceWith('alpha-bot', 'copied-bot');
     expect(app.remote.methods.create).not.toHaveBeenCalled();
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
-    expect(app.container.querySelectorAll('[role="option"]')).toHaveLength(2);
+    expect(app.container.querySelectorAll('li > button[data-bot-id]')).toHaveLength(2);
     expect(app.container.querySelectorAll('[data-bot-detail]')).toHaveLength(1);
   });
 
   it('requires deletion confirmation with memory and history consequences; cancellation does not delete', async () => {
     const app = await mount([bot()]);
     const openDelete = async () => {
-      await click(button(app.container, t['card.more']));
+      if (!app.container.querySelector('article')) await openProfile(app);
+    await click(requireValue(app.container.querySelector('article summary')));
       await click(button(app.container, t['actions.delete']));
       const dialog = app.container.querySelector('dialog');
       if (!dialog) throw new Error('Delete dialog was not mounted');
@@ -217,7 +219,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     const call = app.remote.methods.delete.mock.calls[0];
     expect(call).toHaveLength(2);
     expect(call?.[0]).toBe('alpha-bot');
-    expect(call?.[1]).toEqual({ deleteMemories: true, deleteHome: false });
+    expect(call?.[1]).toEqual({ deleteMemories: true, deleteHome: false, expectedCreatedAt: 1, expectedUpdatedAt: 1 });
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
     expect(app.container.querySelectorAll('article')).toHaveLength(0);
     expect(app.container.textContent).toContain(t['delete.success']);
@@ -226,7 +228,8 @@ describe('Bots editor, explicit launch and lifecycle', () => {
   it('lets the user preserve memories, sends false, and resets the choice when reopening confirmation', async () => {
     const app = await mount([bot()]);
     const openDelete = async () => {
-      await click(button(app.container, t['card.more']));
+      if (!app.container.querySelector('article')) await openProfile(app);
+    await click(requireValue(app.container.querySelector('article summary')));
       await click(button(app.container, t['actions.delete']));
       return app.container.querySelector('dialog') as HTMLDialogElement;
     };
@@ -239,7 +242,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     expect((field(dialog, t['delete.memories']) as HTMLInputElement).checked).toBe(true);
     await click(field(dialog, t['delete.memories']));
     await click(button(dialog, t['actions.delete']));
-    expect(app.remote.methods.delete).toHaveBeenCalledExactlyOnceWith('alpha-bot', { deleteMemories: false, deleteHome: false });
+    expect(app.remote.methods.delete).toHaveBeenCalledExactlyOnceWith('alpha-bot', { deleteMemories: false, deleteHome: false, expectedCreatedAt: 1, expectedUpdatedAt: 1 });
     expect(app.container.textContent).toContain(t['delete.keptSuccess']);
     expect(app.container.textContent).not.toContain(t['delete.success']);
     expect(app.remote.methods.list).toHaveBeenCalledTimes(2);
@@ -255,7 +258,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     const style = app.container.querySelector('style[data-dsh-bot-styles]');
     expect(style?.textContent).toContain('.bots_page');
     expect(app.container.querySelector('section')?.className).toContain('bots_page');
-    await click(button(app.container, t['bots.refresh']));
+    await refreshBots(app);
     expect(styleCount()).toBe(1);
     expect(style?.isConnected).toBe(true);
     await app.unmountPage();

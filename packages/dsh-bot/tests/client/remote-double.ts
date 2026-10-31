@@ -38,6 +38,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		activities: [] as ActivitySession[],
 		statuses: undefined as BotStatus[] | undefined,
     cleanups: [] as CleanupStatus[],
+    onboarding: new Map<string, import('../../src/shared/onboarding.js').OnboardingStatus>(),
 	};
   let forgetTarget = '';
 	const activity = {
@@ -140,6 +141,27 @@ export function remoteDouble(initial: BotRecord[] = []) {
 			if (!record) throw new Error(`Missing test Bot ${id}`);
 			return { ok: true, value: record };
 		}),
+    createForChat: vi.fn<DshBotRemoteMethods['createForChat']>(async input => {
+      const existing = data.onboarding.get(input.bot.id);
+      if (existing?.operationId === input.operationId) {
+        const record = data.records.find(bot => bot.id === input.bot.id);
+        if (!record) throw new Error('Created Bot missing');
+        return { ok: true, value: record };
+      }
+      const record = bot(input.bot); data.records = [...data.records, record];
+      data.onboarding.set(record.id, { botId: record.id, operationId: input.operationId, state: 'pending', retryable: false });
+      return { ok: true, value: record };
+    }),
+    startOnboarding: vi.fn<DshBotRemoteMethods['startOnboarding']>(async input => {
+      const value = { ...input, state: 'submitted' as const, retryable: false };
+      data.onboarding.set(input.botId, value); return { ok: true, value };
+    }),
+    retryOnboarding: vi.fn<DshBotRemoteMethods['retryOnboarding']>(async input => {
+      const value = { ...input, state: 'submitted' as const, retryable: false };
+      data.onboarding.set(input.botId, value); return { ok: true, value };
+    }),
+    onboardingStatus: vi.fn<DshBotRemoteMethods['onboardingStatus']>(async botId => ({ ok: true,
+      value: data.onboarding.get(botId) ?? { botId, state: 'unavailable', retryable: false } })),
 		create: vi.fn<DshBotRemoteMethods["create"]>(async (input) => {
 			const record = bot(input);
 			data.records = [...data.records, record];
@@ -226,6 +248,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		updateTask: vi.fn<CollaborationMethods["updateTask"]>(),
 	};
 	const groups = {
+    openAttachment: vi.fn<GroupMethods["openAttachment"]>(),
 		markRead: vi.fn<GroupMethods["markRead"]>(async () => ({ ok: true, value: true })),
 		list: vi.fn<GroupMethods["list"]>(async () => ({ ok: true, value: data.groups })),
 		view: vi.fn<GroupMethods["view"]>(async () => {
@@ -234,6 +257,19 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		}),
 		create: vi.fn<GroupMethods["create"]>(),
 		edit: vi.fn<GroupMethods["edit"]>(),
+		setModel: vi.fn<GroupMethods["setModel"]>(async (key, input) => {
+			const current = data.groupView?.group;
+			if (!current || key.groupId !== current.id || key.groupCreatedAt !== current.createdAt) throw new Error("No matching group fixture");
+			if (input.expectedModelRevision !== (current.modelRevision ?? 0)) throw new Error("Model revision conflict");
+			const group = { ...current, revision: current.revision + 1, modelRevision: (current.modelRevision ?? 0) + 1,
+				...(input.memberId ? { memberModelSelections: [
+          ...(current.memberModelSelections ?? []).filter(row => row.memberId !== input.memberId),
+          ...(input.modelSelection ? [{ memberId: input.memberId, modelSelection: input.modelSelection }] : []),
+        ] } : { modelSelection: input.modelSelection ?? undefined }) };
+			if (data.groupView) data.groupView = { ...data.groupView, group };
+			data.groups = data.groups.map(row => row.group.id === group.id && row.group.createdAt === group.createdAt ? { ...row, group } : row);
+			return { ok: true, value: group };
+		}),
 		send: vi.fn<GroupMethods["send"]>(),
 		cancel: vi.fn<GroupMethods["cancel"]>(),
 		archive: vi.fn<GroupMethods["archive"]>(),

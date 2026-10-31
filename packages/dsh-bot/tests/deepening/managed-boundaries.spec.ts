@@ -35,7 +35,12 @@ describe('B6b product boundary wiring (UNIT: native transport doubles, real JSON
         await x.flow.inherit(activation.childId, label);
       }
       settle({ output: [{ type: 'text', text: privateChild ? 'CHILD_PRIVATE_CANARY' : 'SHARED_RESULT' }], stopReason: 'completed' });
-      if (privateChild) { await expect(activation.result).rejects.toThrow(); expect(followup).not.toHaveBeenCalled(); }
+      if (privateChild) {
+        await expect(activation.result).rejects.toThrow(); expect(followup).toHaveBeenCalledOnce();
+        const notice = JSON.stringify(followup.mock.calls);
+        expect(notice).toContain('result unavailable'); expect(notice).not.toContain('CHILD_PRIVATE_CANARY');
+        expect(notice).not.toContain('Checked delegate result');
+      }
       else { await activation.result; expect(followup).toHaveBeenCalledTimes(1); }
     } finally { await x.close(); }
   });
