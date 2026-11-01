@@ -70,7 +70,7 @@ it.each(['en', 'zh'] as const)('%s anchors each task only below its question, in
     for (const id of ['first', 'second']) {
       const question = f.question(id), disclosure = question.querySelector('button[aria-expanded]') as HTMLButtonElement;
       expect(question.querySelector(`[data-group-turn="${id}"]`)).toBeTruthy();
-      expect(disclosure.getAttribute('aria-expanded')).toBe(id === 'second' ? 'true' : 'false');
+      expect(disclosure.getAttribute('aria-expanded')).toBe('false');
       expect(question.querySelector(`[data-group-execution-card="delivery-${id}"]`)).toBeTruthy();
       expect((question.querySelector('[data-group-message]')?.compareDocumentPosition(disclosure) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
@@ -87,6 +87,7 @@ it.each(['en', 'zh'] as const)('%s anchors each task only below its question, in
 it('preserves independent disclosure choices through live updates and native message remounts', async () => {
   const f = await fixture();
   try {
+    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
     f.data.turns[1] = { ...f.data.turns[1] as GroupTurn, state: 'paused', revision: 2 };
     await f.refresh();
     expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
@@ -105,11 +106,14 @@ it('keeps native details, supplement focus, member stop and task cancellation bo
   try {
     const draft = f.element.querySelector('textarea') as HTMLTextAreaElement;
     await fill(draft, 'Keep this draft');
-    await click(button(f.question('second'), f.t('groups.executionDetails')));
+    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    await click(button(f.question('second'), f.t('execution.viewDetails')));
     expect(f.bridge.open).toHaveBeenCalledWith('child-second');
+    await click(f.question('second').querySelector('button[aria-haspopup=menu]') as HTMLButtonElement);
     await click(button(f.question('second'), f.t('groups.supplement')));
     expect(f.actions.draft('group-root-one')).toMatchObject({ text: 'Keep this draft', followup: { turnId: 'second', deliveryId: 'delivery-second' } });
     expect(document.activeElement).toBe(draft);
+    await click(f.question('second').querySelector('button[aria-haspopup=menu]') as HTMLButtonElement);
     await click(button(f.question('second'), f.t('execution.stopMember')));
     expect(f.remote.stopMember).toHaveBeenCalledWith(f.key, 'second', 'member:beta', 1);
     await click(button(f.question('second'), f.t('groups.cancelTurn')));
@@ -123,6 +127,7 @@ it('shows a failed continuation locally and retries using the refreshed task rev
   try {
     f.data.turns[1] = { ...f.data.turns[1] as GroupTurn, state: 'paused', revision: 4 };
     await f.refresh();
+    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
     f.remote.continueTurn.mockRejectedValueOnce(new Error('conflict'));
     await click(button(f.question('second'), f.t('execution.continue')));
     expect(f.question('second').querySelector('[role="alert"]')?.textContent).toBe(f.t('groups.conflict'));
@@ -134,7 +139,7 @@ it('shows a failed continuation locally and retries using the refreshed task rev
   } finally { await f.close(); }
 });
 
-it('automatically folds settled work unless the user chose otherwise, and shows a continuing child once', async () => {
+it('keeps work folded unless the user chooses otherwise, and shows a continuing child once', async () => {
   const f = await fixture();
   try {
     f.data.deliveries.push({ ...f.data.deliveries[1] as GroupView['deliveries'][number], id: 'continued-second', ordinal: 1 });

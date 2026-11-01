@@ -1,3 +1,4 @@
+import { SettingsDrafts, useSettingsNavigation, useSettingsDraft, useSettingsLeave } from './SettingsNavigation.js';
 import type { PageIdentity } from '../pages/page-navigation.js';
 import { GroupComposerInput } from './GroupComposer.js';
 import { GroupModelControl } from './GroupModelControl.js';
@@ -36,12 +37,18 @@ export function GroupsPanel({
   bots: BotRecord[];
   onOpenSession(id: string): Promise<void>;
 } & Localized) {
+  const navigation = useSettingsNavigation(t);
   const list = useSyncExternalStore(
     actions.catalog.subscribe,
     actions.catalog.getSnapshot,
     actions.catalog.getSnapshot,
   );
   const [selected, setSelected] = useState<PageIdentity>();
+  const listRef = useRef<HTMLElement>(null), origin = useRef<HTMLElement | null>(null), scroll = useRef(0);
+  const back = () => {
+    setSelected(undefined); onSelectGroup?.(undefined);
+    requestAnimationFrame(() => { const page = listRef.current?.closest('[data-bots-page]')?.firstElementChild; if (page) page.scrollTop = scroll.current; origin.current?.focus({ preventScroll: true }); });
+  };
   const [creating, setCreating] = useState(initialCreate);
   const [created, setCreated] = useState<GroupRecord>();
   const createdRef = useRef<GroupRecord>();
@@ -51,11 +58,13 @@ export function GroupsPanel({
   const choice = onSelectGroup ? selectedGroup : selected;
   const active = list.groups.find(row => row.group.id === choice?.id && row.group.createdAt === choice.createdAt);
   const select = (group: GroupRecord) => {
+    origin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    scroll.current = listRef.current?.closest('[data-bots-page]')?.firstElementChild?.scrollTop ?? 0;
     const identity = { id: group.id, createdAt: group.createdAt };
     setSelected(identity); onSelectGroup?.(identity); setCreating(false);
   };
   return (
-    <section className={styles.panel} aria-label={t('groups.title')}>
+    <SettingsDrafts.Provider value={navigation.registry}><section className={styles.panel} aria-label={t('groups.title')}>
       <style>{css}</style>
       {!initialCreate && <h2>{t('groups.title')}</h2>}
       {list.error && <p role="alert">{t('groups.disconnected')}</p>}
@@ -73,15 +82,15 @@ export function GroupsPanel({
         </button>
       </div>}
       {list.loading && !list.loaded && <p role="status">{t('groups.loading')}</p>}
-      <div className={initialCreate ? styles.content : styles.layout}>
-        {!initialCreate && <nav aria-label={t('groups.list')} className={styles.list}>
+      <div className={initialCreate ? styles.content : styles.layout} data-group-selected={!!active || creating}>
+        {!initialCreate && <nav ref={listRef} aria-label={t('groups.list')} className={styles.list}>
           {list.groups.map((row) => (
             <button
               type="button"
               key={row.group.id}
               aria-current={!creating && active?.group.id === row.group.id ? 'page' : undefined}
               onClick={() => {
-                select(row.group);
+                navigation.leave(() => select(row.group));
               }}
             >
               <GroupAvatar size={28} />
@@ -106,6 +115,7 @@ export function GroupsPanel({
           ))}
         </nav>}
         <div className={styles.content}>
+          {active && !creating && <Button className={styles.groupBack} variant="ghost" onClick={() => navigation.leave(back)}>{t('navigation.returnTo', { name: t('groups.title') })}</Button>}
           {creating ? (
             <GroupEditor
               key="create"
@@ -146,7 +156,8 @@ export function GroupsPanel({
           )}
         </div>
       </div>
-    </section>
+      {navigation.confirmation}
+    </section></SettingsDrafts.Provider>
   );
 }
 function GroupEditor({
@@ -178,6 +189,9 @@ function GroupEditor({
     () => initial?.members.filter((m) => m.enabled).map((m) => m.bot) ?? [],
   );
   const [cwd, setCwd] = useState('');
+  const initialDraft = useRef(JSON.stringify([name, mode, members, cwd]));
+  useSettingsDraft(JSON.stringify([name, mode, members, cwd]) !== initialDraft.current);
+  const leave = useSettingsLeave();
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -312,7 +326,7 @@ function GroupEditor({
         <button type="submit" disabled={busy || !confirmed || members.length < 2}>
           {t(creationSaved ? 'groups.open' : 'integrations.save')}
         </button>
-        <button type="button" disabled={busy} onClick={onCancel}>
+        <button type="button" disabled={busy} onClick={() => leave(onCancel)}>
           {t('groups.close')}
         </button>
       </div>

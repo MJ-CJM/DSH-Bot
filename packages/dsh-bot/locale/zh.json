@@ -973,6 +973,9 @@
     "detail.memoryEnabled": "已开启",
     "detail.modelAndWorkspace": "资料、模型与工作目录",
     "detail.advancedMigration": "高级与迁移",
-    "detail.clearSearch": "清空搜索"
+    "detail.clearSearch": "清空搜索",
+    "execution.viewDetails": "查看执行详情",
+    "execution.memberActions": "{name} 的操作",
+    "execution.advanced": "执行限制与诊断"
   }
 }

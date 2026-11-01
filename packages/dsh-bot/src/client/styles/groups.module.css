@@ -563,3 +563,14 @@
 .reasoningPreview { display: block; margin-inline-start: 8px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .reasoningBody { max-height: 18rem; overflow: auto; overscroll-behavior: contain; padding: 8px 0 8px 22px; }
 .reasoningBody > div + div { margin-top: 12px; }
+
+.inlineExecution > div[hidden] { display: none; }
+.inlineExecution .delivery { flex-wrap: wrap; gap: 6px; }
+.panel .memberExecution .delivery button { min-height: 36px; }
+.panel .groupBack { display: none; }
+@media (max-width: 760px) {
+  .layout[data-group-selected="true"] > .list { display: none; }
+  .layout[data-group-selected="false"] > .content { display: none; }
+  .panel .groupBack { display: inline-flex; margin-bottom: 12px; }
+  .panel .memberExecution .delivery button { min-height: 44px; }
+}

@@ -973,6 +973,9 @@
     "detail.memoryEnabled": "Enabled",
     "detail.modelAndWorkspace": "Profile, model & workspace",
     "detail.advancedMigration": "Advanced & migration",
-    "detail.clearSearch": "Clear search"
+    "detail.clearSearch": "Clear search",
+    "execution.viewDetails": "View execution",
+    "execution.memberActions": "Actions for {name}",
+    "execution.advanced": "Execution limits & diagnostics"
   }
 }

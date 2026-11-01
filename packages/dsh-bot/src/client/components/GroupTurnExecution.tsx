@@ -1,3 +1,4 @@
+import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import { useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupTurn, GroupView } from '../../shared/groups.js';
@@ -22,7 +23,8 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   const lock = useRef(false);
   const active = ['accepted', 'running', 'paused'].includes(turn.state);
-  const expanded = choice ?? active;
+  const expanded = choice ?? false;
+  const [menu, setMenu] = useState<string>();
   const disabled = busy || view.group.archived || view.group.state !== 'ready';
   // A persistent worker can have several deliveries. Its native trace appears only once.
   const deliveries = [...new Map(view.deliveries.filter(row => row.turnId === turn.id && row.reasonCode !== 'message-published' && !row.joinedDeliveryId)
@@ -54,7 +56,6 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
       {t('groups.executionDetails')} · {t('groups.turnSummary', { count: turn.orderedMemberIds.length, state: t(`groups.${turn.state}`) })}
     </button>
     <div id={bodyId} hidden={!expanded}>
-      {turn.protocol === 2 && <p className={styles.executionMeta}>{t('execution.allowance')} · {turn.automaticExecutions ?? 0} / {turn.continuationAllowance ?? 0}</p>}
       {turn.state === 'paused' && <p role="status">{t('execution.budgetPaused')} <button type="button" disabled={disabled} onClick={() => {
         void perform(async () => unwrapGroup(await actions.remote().continueTurn(key, turn.id, turn.revision)));
       }}>{t('execution.continue')}</button></p>}
@@ -63,11 +64,13 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
         <BotAvatar bot={botState.entries.find(row => row.bot.id === delivery.bot.botId && row.bot.createdAt === delivery.bot.botCreatedAt)?.bot ?? { id: delivery.bot.botId }} size={22} />
         <strong>{nameOf(delivery)}</strong><span>{t(`groups.${delivery.state}`)}</span>
         {delivery.reasonCode && <span>{t(delivery.reasonCode === 'configured-timeout' ? 'execution.timeout' : delivery.reasonCode === 'user-member-stop' ? 'execution.memberStopped' : delivery.reasonCode === 'user-task-stop' ? 'execution.taskStopped' : delivery.state === 'unknown' ? 'execution.unknown' : 'execution.failed')}</span>}
-        {delivery.childSessionId && <button type="button" onClick={() => { if (delivery.childSessionId) onOpenExecution(delivery.childSessionId); }}>{t('groups.executionDetails')}</button>}
-        {active && delivery.state === 'running' && <button type="button" disabled={disabled} onClick={() => supplement(delivery.id)}>{t('groups.supplement')}</button>}
-        {active && turn.protocol === 2 && ['starting', 'running', 'pending'].includes(delivery.state) && <button type="button" disabled={disabled} onClick={() => {
-          void perform(async () => unwrapGroup(await actions.remote().stopMember(key, turn.id, delivery.memberId, turn.revision)));
-        }}>{t('execution.stopMember')}</button>}
+        {delivery.childSessionId && <Button variant="ghost" onClick={() => { if (delivery.childSessionId) onOpenExecution(delivery.childSessionId); }}>{t('execution.viewDetails')}</Button>}
+        {active && (delivery.state === 'running' || (turn.protocol === 2 && ['starting', 'pending'].includes(delivery.state))) && <Menu
+          open={menu === delivery.id} onClose={() => setMenu(undefined)} align="end"
+          anchor={<Button variant="ghost" disabled={disabled} aria-label={t('execution.memberActions', { name: nameOf(delivery) })} aria-expanded={menu === delivery.id} aria-haspopup="menu" onClick={() => setMenu(menu === delivery.id ? undefined : delivery.id)}>···</Button>}
+          items={[...(delivery.state === 'running' ? [{ id: 'supplement', label: t('groups.supplement') }] : []), ...(turn.protocol === 2 ? [{ id: 'stop', label: t('execution.stopMember') }] : [])]}
+          onSelect={id => { setMenu(undefined); if (id === 'supplement') supplement(delivery.id); else void perform(async () => unwrapGroup(await actions.remote().stopMember(key, turn.id, delivery.memberId, turn.revision))); }} />}
+
         </div>
         {expanded && delivery.childSessionId && executionBridge && renderFactorySlot && <GroupMemberProcess
           key={delivery.childSessionId} parentId={view.group.rootSessionId} childId={delivery.childSessionId}
@@ -76,6 +79,7 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
       {active && <button type="button" disabled={disabled} onClick={() => {
         void perform(async () => unwrapGroup(await actions.remote().cancel(key, turn.id, turn.revision)));
       }}>{t('groups.cancelTurn')}</button>}
+      {turn.protocol === 2 && <details className={styles.executionMeta}><summary>{t('execution.advanced')}</summary><p>{t('execution.allowance')} · {turn.automaticExecutions ?? 0} / {turn.continuationAllowance ?? 0}</p></details>}
       {failed && <p role="alert">{t('groups.conflict')}</p>}
     </div>
   </section>;
