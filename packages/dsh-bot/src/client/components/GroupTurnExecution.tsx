@@ -1,13 +1,13 @@
-import { statisticsDeliveries } from '../group-statistics.js';
+import { defaultStatisticsTurn, statisticsDeliveries } from '../group-statistics.js';
 import { GroupMemberStatistics } from './GroupStatistics.js';
 import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
-import { useId, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupTurn, GroupView } from '../../shared/groups.js';
 import { type GroupActions, unwrapGroup } from '../groups-state.js';
 import type { BotCatalog } from '../state.js';
 import type { ExecutionBridge } from '../group-execution.js';
-import { GroupMemberProcess } from './GroupMemberProcess.js';
+import { GroupMemberProcess, GroupPermissionDenialProbe } from './GroupMemberProcess.js';
 import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/groups.module.css';
 
@@ -34,6 +34,14 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
   const nameOf = (delivery: GroupView['deliveries'][number]) => botState.entries.find(row =>
     row.bot.id === delivery.bot.botId && row.bot.createdAt === delivery.bot.botCreatedAt)?.bot.name ??
     view.messages.find(message => message.speaker?.bot.botId === delivery.bot.botId && message.speaker.bot.botCreatedAt === delivery.bot.botCreatedAt)?.speaker?.name ?? delivery.bot.botId;
+  // Only the latest question is observed while collapsed, bounding retained child histories.
+  const latest = defaultStatisticsTurn(view.turns)?.id === turn.id;
+  const [deniedChildren, setDeniedChildren] = useState<ReadonlySet<string>>(() => new Set());
+  const reportDenial = useCallback((childId: string, denied: boolean) => setDeniedChildren(current => {
+    if (current.has(childId) === denied) return current;
+    const next = new Set(current); if (denied) next.add(childId); else next.delete(childId); return next;
+  }), []);
+  const deniedNames = [...new Set(deliveries.filter(delivery => delivery.childSessionId && deniedChildren.has(delivery.childSessionId)).map(nameOf))];
   const perform = async (work: () => Promise<unknown>) => {
     if (lock.current || disabled) return;
     lock.current = true; setBusy(true); setFailed(false);
@@ -57,6 +65,11 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
       <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
       {t('groups.executionDetails')} · {t('groups.turnSummary', { count: turn.orderedMemberIds.length, state: t(`groups.${turn.state}`) })}
     </button>
+    {latest && executionBridge && deliveries.map(delivery => delivery.childSessionId && !['pending', 'starting'].includes(delivery.state) &&
+      <GroupPermissionDenialProbe key={delivery.childSessionId} parentId={view.group.rootSessionId} childId={delivery.childSessionId}
+        bridge={executionBridge} onChange={reportDenial} />)}
+    {latest && deniedNames.length > 0 && <p role="status" className={styles.permissionDenied} data-group-permission-denied="">
+      {t('groups.permissionDenied', { names: new Intl.ListFormat(t('activity.locale'), { type: 'conjunction' }).format(deniedNames) })}</p>}
     <div id={bodyId} hidden={!expanded}>
       {turn.state === 'paused' && <p role="status">{t('execution.budgetPaused')} <button type="button" disabled={disabled} onClick={() => {
         void perform(async () => unwrapGroup(await actions.remote().continueTurn(key, turn.id, turn.revision)));

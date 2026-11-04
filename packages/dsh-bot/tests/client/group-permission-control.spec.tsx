@@ -9,7 +9,9 @@ import type { PermissionCatalog, PermissionSelection } from '@deepseek-ai/dsh-pe
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import { createGroupPermissionState, type GroupPermissionState } from '../../src/client/group-permission-state.js';
 import { GroupPermissionControl } from '../../src/client/components/GroupPermissionControl.js';
-import labels from '../../../../docs/implementation/v061-permission-locales.json';
+import en from '../../locale/en.json';
+import zh from '../../locale/zh.json';
+const labels = { en: en.ui, zh: zh.ui };
 
 // Bridge tests use the public primitive's controlled checkbox contract. Native
 // modal focus, CSS, keyboard dismissal and portal placement need browser proof.

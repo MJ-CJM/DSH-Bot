@@ -16,7 +16,7 @@ import { button, click, fill } from './helpers.js';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 
-async function fixture(language: 'en' | 'zh' = 'en') {
+async function fixture(language: 'en' | 'zh' = 'en', denials?: string[]) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const ctx = new Context(), data = view();
   const key = { groupId: data.group.id, groupCreatedAt: data.group.createdAt };
@@ -40,7 +40,18 @@ async function fixture(language: 'en' | 'zh' = 'en') {
   const actions = createGroupActions(ctx, {});
   const botSnapshot = { entries: bots.map(bot => ({ bot })) };
   const catalog = { subscribe: () => () => {}, getSnapshot: () => botSnapshot } as unknown as BotCatalog;
-  const bridge = { open: vi.fn() } as unknown as ExecutionBridge;
+  // Optional native-projection doubles: statistics yields a binding; the Chat target carries tool results.
+  const retained: string[] = [];
+  const statistics = denials && { source: (_parentId: string, childId: string) => ({
+    subscribe: () => { retained.push(childId); return () => {}; },
+    getSnapshot: () => ({ state: 'ready', binding: { childId } }) }) };
+  if (denials) ctx.provide('uiConversation', { binding: (binding: { childId: string }) => ({ target: () => {
+    const nodes = denials.includes(binding.childId) ? [{ kind: 'tool-call', data: { root: { kind: 'tool-result', isError: true,
+      error: { name: 'FsError', code: 'FS_SANDBOX_DENIED' }, subCalls: [] } } }] : [];
+    const value = { nodes: { values: () => nodes } };
+    return { subscribe: () => () => {}, getSnapshot: () => value };
+  } }) } as never);
+  const bridge = { ctx, open: vi.fn(), ...(statistics ? { statistics } : {}) } as unknown as ExecutionBridge;
   const element = document.createElement('div'); document.body.append(element); let root = createRoot(element);
   const t = ((key: keyof typeof en.ui, params?: Record<string, unknown>) => (language === 'en' ? en : zh).ui[key]
     .replace(/\{(\w+)\}/g, (_match, k) => String(params?.[k] ?? k))) as PropsLocale<'dsh-bot'>['t'];
@@ -56,7 +67,7 @@ async function fixture(language: 'en' | 'zh' = 'en') {
     await vi.waitFor(() => expect(element.querySelectorAll('[data-group-turn]')).toHaveLength(2));
   };
   await render();
-  return { element, data, key, actions, bridge, remote, t,
+  return { element, data, key, actions, bridge, remote, t, retained,
     question(id: string) { return element.querySelector(`[data-workspace-group-message="question-${id}"]`) as HTMLElement; },
     async refresh() { await act(async () => actions.messageView(key).refresh()); },
     async remount() { await act(async () => root.unmount()); root = createRoot(element); await render(); },
@@ -152,5 +163,21 @@ it('keeps work folded unless the user chooses otherwise, and shows a continuing 
     await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
     await f.remount();
     expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
+  } finally { await f.close(); }
+});
+
+it.each([['en', ['child-first', 'child-second']], ['zh', ['child-first', 'child-second']], ['en', []]] as const)(
+  '%s flags access-mode denials only on the latest question while collapsed (%j)', async (language, denials) => {
+  const f = await fixture(language, [...denials]);
+  try {
+    const notice = () => f.question('second').querySelector('[data-group-permission-denied]');
+    if (denials.length) await vi.waitFor(() => expect(notice()?.textContent).toContain(bots[1]?.name));
+    else await vi.waitFor(() => expect(f.retained).toContain('child-second'));
+    if (!denials.length) expect(notice()).toBeNull();
+    expect(notice()?.getAttribute('role') ?? 'status').toBe('status');
+    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    // Earlier questions are not observed while collapsed, bounding retained native histories.
+    expect(f.question('first').querySelector('[data-group-permission-denied]')).toBeNull();
+    expect(f.retained).not.toContain('child-first');
   } finally { await f.close(); }
 });

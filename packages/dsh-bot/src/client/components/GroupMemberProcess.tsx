@@ -5,6 +5,7 @@ import type { ChatNode, ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/cli
 import { DisclosureRow, IconThinkOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots';
 import type { ExecutionBridge } from '../group-execution.js';
+import { hasPermissionDenial } from '../group-permission-denial.js';
 import styles from '../styles/groups.module.css';
 
 type Source = { subscribe(listener: () => void): () => void; getSnapshot(): ChatSnapshot | undefined };
@@ -21,14 +22,15 @@ export function memberReasoning(snapshot: ChatSnapshot | undefined) {
     });
 }
 
-/** Observe only: retaining a Session and expanding its text never starts or resumes an Agent. */
-export function GroupMemberProcess({ parentId, childId, readyToRead, bridge, renderFactorySlot, t }: {
-  parentId: string; childId: string; readyToRead: boolean; bridge: ExecutionBridge;
-} & PropsRenderFactories & PropsLocale<'dsh-bot'>) {
+/**
+ * Observe one member's native Chat projection. Read-only: retaining a Session
+ * never starts or resumes an Agent. Shares the statistics reference when present.
+ */
+export function useMemberChat(bridge: ExecutionBridge, parentId: string, childId: string, readyToRead: boolean) {
   const [source, setSource] = useState<{ childId: string; value: Source }>();
-  const [failed, setFailed] = useState(false), [open, setOpen] = useState(false);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
-    setSource(undefined); setFailed(false); setOpen(false);
+    setSource(undefined); setFailed(false);
     // The delivery reserves a child ID before native startActivation has created it.
     if (!readyToRead) return;
     let alive = true;
@@ -67,6 +69,29 @@ export function GroupMemberProcess({ parentId, childId, readyToRead, bridge, ren
   }, [bridge, parentId, childId, readyToRead]);
   const current = readyToRead && source?.childId === childId ? source.value : empty;
   const snapshot = useSyncExternalStore(current.subscribe, current.getSnapshot);
+  return { snapshot, failed };
+}
+
+/** Report whether a member's loaded native tool results include an access-mode denial; renders nothing. */
+export function GroupPermissionDenialProbe({ parentId, childId, bridge, onChange }: {
+  parentId: string; childId: string; bridge: ExecutionBridge; onChange(childId: string, denied: boolean): void;
+}) {
+  const { snapshot } = useMemberChat(bridge, parentId, childId, true);
+  const denied = hasPermissionDenial(snapshot);
+  useEffect(() => { onChange(childId, denied); }, [childId, denied, onChange]);
+  useEffect(() => () => onChange(childId, false), [childId, onChange]);
+  return null;
+}
+
+/** Observe only: retaining a Session and expanding its text never starts or resumes an Agent. */
+export function GroupMemberProcess({ parentId, childId, readyToRead, bridge, renderFactorySlot, t }: {
+  parentId: string; childId: string; readyToRead: boolean; bridge: ExecutionBridge;
+} & PropsRenderFactories & PropsLocale<'dsh-bot'>) {
+  const { snapshot, failed } = useMemberChat(bridge, parentId, childId, readyToRead);
+  // Disclosure state belongs to one exact readable child; a new identity starts folded.
+  const identity = JSON.stringify([parentId, childId, readyToRead]);
+  const [openFor, setOpenFor] = useState<string>();
+  const open = openFor === identity, setOpen = (next: (value: boolean) => boolean) => setOpenFor(next(open) ? identity : undefined);
   const reasoning = memberReasoning(snapshot);
   const latest = reasoning.at(-1);
   return <div className={styles.nativeProcess} data-group-member-process={childId}>

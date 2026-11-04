@@ -608,3 +608,22 @@
   .statisticsBar { gap: 2px 6px; }
   .statisticsStatus { max-width: 120px; }
 }
+
+/* listClassName is the only hook into the portaled native list; overflow-wrap
+   inherits into native footer labels so long workspace paths stay in the card. */
+.permissionMenu { width: min(360px, calc(100vw - 24px)); overflow-wrap: anywhere; }
+
+.workspaceField { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.workspaceValue { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.workspaceValue > :first-child { flex: 1 1 auto; min-width: 0; }
+/* The native Menu anchor wrapper holds the trigger; it never shrinks under a long path. */
+.workspaceValue > :last-child { flex: none; white-space: nowrap; }
+.workspaceDefault { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.workspaceHint { margin: 0; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.workspaceMenu { width: min(360px, calc(100vw - 24px)); }
+.permissionDenied {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+}
