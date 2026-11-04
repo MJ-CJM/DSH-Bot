@@ -16,6 +16,6 @@ A private report should include plugin/actual DSH versions, platform, a minimal 
 
 ## 版本与响应 / Versions and response
 
-当前开发基线为 0.6.3，尚无长期支持分支或旧版安全修复承诺，也不承诺固定响应时限。维护者会按可复现影响评估修复。各宿主版本的运行证据见[当前验收](docs/acceptance/community-release-ready.md)。真实模型质量、IM 与外部推送未验证，不能把未交付能力视为已安全验收。
+当前开发基线为 0.6.4，尚无长期支持分支或旧版安全修复承诺，也不承诺固定响应时限。维护者会按可复现影响评估修复。各宿主版本的运行证据见[当前验收](docs/acceptance/community-release-ready.md)。真实模型质量、IM 与外部推送未验证，不能把未交付能力视为已安全验收。
 
-The current development baseline is 0.6.3. There is no declared long-term-support branch, backport commitment or fixed response deadline. Maintainers assess reproducible impact. Unverified or unshipped integrations must not be treated as security-validated capabilities.
+The current development baseline is 0.6.4. There is no declared long-term-support branch, backport commitment or fixed response deadline. Maintainers assess reproducible impact. Unverified or unshipped integrations must not be treated as security-validated capabilities.

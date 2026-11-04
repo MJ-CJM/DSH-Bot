@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { Config as HostConfig } from './host/registry-config.js';
 
 // Deliberately no static local runtime imports: link failures must reach this boundary.
-export const VERSION = '0.6.3';
+export const VERSION = '0.6.4';
 export const name = 'dsh-bot';
 const restart = 'DSH-Bot 模块版本不一致或加载失败。请完全退出并重新打开 DSH。 '
   + 'DSH-Bot modules are stale or could not load. Fully quit and reopen DSH.';

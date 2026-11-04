@@ -19,7 +19,7 @@ Screenshots show the real DSH interface in an isolated demo environment, with fi
 
 ### Divide the work and inspect each member's progress
 
-Ask a research assistant to organize comparison criteria and a review assistant to check assumptions and evidence. Group chats support replies, attachments, per-member models and expandable execution details below each question.
+Ask a research assistant to organize comparison criteria and a review assistant to check assumptions and evidence. Group chats support replies, attachments, per-member models and expandable execution details below each question. The composer offers a `/` command menu, the statistics bar shows usage for one question or the whole group, and a failed member run shows its actual cause, such as an exhausted quota.
 
 ![Group collaboration and per-member execution details](packages/dsh-bot/assets/showcase/en-group.png)
 
@@ -35,13 +35,13 @@ A research assistant can keep responsibility for comparing sources, while a writ
 
 ### Inspect work outside the conversation
 
-Open a Bot's Tasks & messages page for native background subtasks, scheduled tasks and teammate messages. The pictured task ran through the native subagent service with scripted demo output.
+Open a Bot's Tasks & messages page for native background subtasks, scheduled tasks and teammate messages. Messages between Bots also appear in both conversations as expandable markers, and a Bot's details can open beside the conversation. The pictured task ran through the native subagent service with scripted demo output.
 
 ![Native background task record](packages/dsh-bot/assets/showcase/en-tasks.png)
 
 ## Install
 
-Requires DeepSeek Harness with a working model configuration. The current public version is **0.6.3**, licensed under **MIT**.
+Requires DeepSeek Harness with a working model configuration. The current public version is **0.6.4**, licensed under **MIT**.
 
 ### Option 1: Search the community market
 
@@ -112,7 +112,7 @@ No such guarantee is provided. Tasks depend on the local DSH Host running; cloud
 
 ## Compatibility and limits
 
-Development dependencies are pinned to DSH `0.2.1-rc.2`. The v0.6.3 archive passed installation, reinstallation and cold recovery on macOS rc.2, plus group UI checks on rc.2 / rc.5. The declared range `>=0.2.1-rc.2 <0.3.0` does not mean every version or platform has been tested. See [release verification](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.3.md).
+Development dependencies are pinned to DSH `0.2.1-rc.2`. The v0.6.4 archive passed installation, reinstallation and cold recovery on macOS rc.2, plus group UI checks on rc.2 / rc.5. The declared range `>=0.2.1-rc.2 <0.3.0` does not mean every version or platform has been tested. See [release verification](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.4.md).
 
 Bot working directories are not filesystem isolation; Host permissions, approvals and sandboxing still apply. Ongoing proactive operation, external IM ingress/egress, OS/mobile push and cloud hosting have not shipped. Automatic sharing is unavailable. Synthetic checks do not establish real-model quality, and uncertain background results after forced crashes are not automatically replayed.
 

@@ -1,8 +1,8 @@
 # 社区发布准备与验收
 
-状态：**v0.6.3 已公开发布到 [GitHub Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.3)**，社区收录申请进行中，npm 尚未发布。MIT，Copyright © 2026 MJ-CJM。当前首发记录见 [v0.6.3](releases/v0.6.3.md)。以下候选制作步骤供后续发版复用；其中历史准备记录不代表当前发布状态。
+状态：**v0.6.4 已公开发布到 [GitHub Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.4)**，为当前 latest；社区目录已收录本插件（固定 `latest/download/dsh-bot.tgz` 地址随 latest 更新，无需改条目），npm 尚未发布。MIT，Copyright © 2026 MJ-CJM。当前发布记录见 [v0.6.4](releases/v0.6.4.md)，首发记录见 [v0.6.3](releases/v0.6.3.md)。以下候选制作步骤供后续发版复用；其中历史准备记录不代表当前发布状态。
 
-Status: v0.6.3 is publicly available on GitHub Releases. Community listing is being requested; npm is not published. The following candidate instructions remain the process for future releases.
+Status: v0.6.4 is the latest GitHub Release. The community catalog lists the plugin through the fixed `latest/download/dsh-bot.tgz` URL, which follows each stable Release; npm is not published. The following candidate instructions remain the process for future releases.
 
 ## 1. 检出与基础检查
 
@@ -21,12 +21,12 @@ scripts/pnpm check:tooling
 
 ## 2. 打包与产物标识
 
-打包前先检查 `dist/dsh-bot-0.6.3.tgz` 是否已存在；如存在则保留原文件，改用新的候选输出目录，不能覆盖历史验收包。所有文档、许可证和产品构建内容必须在选定最终候选包之前完成。
+打包前先检查 `dist/dsh-bot-<版本>.tgz`（本次为 0.6.4）是否已存在；如存在则保留原文件，改用新的候选输出目录，不能覆盖历史验收包。所有文档、许可证和产品构建内容必须在选定最终候选包之前完成。
 
 ```sh
 scripts/pnpm pack:plugin
-node scripts/verify-package.mjs dist/dsh-bot-0.6.3.tgz
-shasum -a 256 dist/dsh-bot-0.6.3.tgz
+node scripts/verify-package.mjs dist/dsh-bot-0.6.4.tgz
+shasum -a 256 dist/dsh-bot-0.6.4.tgz
 ```
 
 记录当前 commit/工作树、命令结果、tgz 字节数、文件清单与 SHA256。核对 `package.json`、引导/模块版本、locale、包 README、许可证和第三方告知；安装验证使用刚打出的同一 tgz，并核对已安装文件。
@@ -34,10 +34,10 @@ shasum -a 256 dist/dsh-bot-0.6.3.tgz
 许可证确定且最终构建通过后，生成可审核的发布材料：
 
 ```sh
-scripts/pnpm release:prepare dist/dsh-bot-0.6.3.tgz
+scripts/pnpm release:prepare dist/dsh-bot-0.6.4.tgz
 ```
 
-脚本先复用实际 tarball 审计，拒绝未确定的许可证、根/包许可不一致或包与源码字节不同。输出位于 `dist/release-candidates/v0.6.3-<hash前12位>/`：字节完全一致的版本包 `dsh-bot-0.6.3.tgz` 和固定名称包 `dsh-bot.tgz`，分别对应的 `SHA256SUMS` 和 `dsh-bot.tgz.sha256`，如实记录工作树状态及两种下载地址的 `release.json`、双语 Release notes 模板、审核清单，以及使用 `latest` 地址的社区目录 YAML。同一路径重复生成会失败，不覆盖已有候选或其证据。它不启动模型、不创建 tag、不上传文件，不把构建结果写成 Host/UI 通过。运行验收后填写该候选目录中的结果，不重新打包。
+脚本先复用实际 tarball 审计，拒绝未确定的许可证、根/包许可不一致或包与源码字节不同。输出位于 `dist/release-candidates/v<版本>-<hash前12位>/`：字节完全一致的版本包 `dsh-bot-<版本>.tgz` 和固定名称包 `dsh-bot.tgz`，分别对应的 `SHA256SUMS` 和 `dsh-bot.tgz.sha256`，如实记录工作树状态及两种下载地址的 `release.json`、双语 Release notes 模板、审核清单，以及使用 `latest` 地址的社区目录 YAML。同一路径重复生成会失败，不覆盖已有候选或其证据。它不启动模型、不创建 tag、不上传文件，不把构建结果写成 Host/UI 通过。运行验收后填写该候选目录中的结果，不重新打包。
 
 GitHub Actions 的 **Release candidate** 工作流可由维护者手动触发。它只生成并上传候选 artifacts，权限为 `contents: read`，不会自动发布。必须对下载得到的同一 tgz 完成运行验收；本地另行构建的包不继承其 hash。工作流自身的新版本是否实跑，见本次验收记录。
 
@@ -58,7 +58,7 @@ GitHub Actions 的 **Release candidate** 工作流可由维护者手动触发。
 备用 CLI 方式只适用于能管理该 `desktop` profile 的桌面内置 CLI；普通 npm CLI 不保证可管理它。先正常退出桌面应用，再由用户确认原实例 `DSH_HOME`：
 
 ```sh
-DSH_HOME="<原桌面实例 DSH_HOME 的绝对路径>" scripts/dsh plugin --profile desktop add "$PWD/dist/dsh-bot-0.6.3.tgz"
+DSH_HOME="<原桌面实例 DSH_HOME 的绝对路径>" scripts/dsh plugin --profile desktop add "$PWD/dist/dsh-bot-0.6.4.tgz"
 ```
 
 这不是开发自动检查命令；项目开发任务默认禁止修改正式桌面与 `~/.dsh`。卸载插件与删除 Bot 不同；已有原位升级记录见[0.6.3 桌面验收](acceptance/V063-desktop-install.md)。迁移 Fence 后直接降级不可写入，回退需升级前独立完整备份，并考虑已遗忘内容从旧备份复活的风险。
@@ -67,14 +67,14 @@ DSH_HOME="<原桌面实例 DSH_HOME 的绝对路径>" scripts/dsh plugin --profi
 
 | 项目 | 当前状态与要求 |
 | --- | --- |
-| 版本 | 0.6.3，首次公开版本，后续公开包不得以同一 tag 静默替换 |
+| 版本 | 0.6.4（首次公开版本为 0.6.3），后续公开包不得以同一 tag 静默替换 |
 | 基础检查与链接 | 按本次实际日志填写 PASS/FAIL，不能照抄历史次数 |
 | 历史包/升级 | 独立回归；缺旧包或未跑完整 Host 时写 FAIL/NOT_RUN |
 | 同包运行与 UI | 新打包的 hash 对应新运行证据；只改文档不声称产品运行已重新验收 |
 | 真实模型质量/宿主兼容 | 真实模型质量未验证；rc.2 本轮结果见当前验收，历史 rc.3 结果不自动覆盖新包 |
 | 许可证 | MIT，Copyright © 2026 MJ-CJM；根/包文本一致，第三方通知保留 |
 | 安全入口 | GitHub 私密漏洞报告已启用并于 2026-11-01 回读确认，见 [SECURITY.md](../SECURITY.md) |
-| 发布位置 | [GitHub Release v0.6.3](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.3) 已发布；社区收录申请中，npm 未发布 |
+| 发布位置 | [GitHub Release v0.6.4](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.4) 为 latest；社区目录已收录并使用固定 latest 地址，npm 未发布 |
 | 最终动作 | 维护者完成许可/产物/验收审阅后另行决定发布；本文不执行 commit、push、tag 或发布 |
 
 未来发布时，将审核后的同一 tgz、对应校验和与实际结果附到选定渠道，再把 README 中“尚未发布”改为真实状态和真实链接。文档准备本身不授予上传、推送或发布权限。

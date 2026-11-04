@@ -56,10 +56,10 @@ Use only the repository-isolated profile. Preserve its existing data and receipt
 DSH_HOME="$PWD/.dsh-dev" scripts/dsh --version
 DSH_HOME="$PWD/.dsh-dev" scripts/dev-profile.sh
 scripts/pnpm pack:plugin
-DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.3.tgz node scripts/onboarding-native-runtime.mjs --mock-only
-DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.3.tgz node scripts/onboarding-crash-runtime.mjs --mock-only
-DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.3.tgz node scripts/live-persona-runtime.mjs --mock-only
-DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.3.tgz node scripts/onboarding-ui.mjs --mock-only
+DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.4.tgz node scripts/onboarding-native-runtime.mjs --mock-only
+DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.4.tgz node scripts/onboarding-crash-runtime.mjs --mock-only
+DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.4.tgz node scripts/live-persona-runtime.mjs --mock-only
+DSH_HOME="$PWD/.dsh-dev" DSH_BOT_ARTIFACT=dist/dsh-bot-0.6.4.tgz node scripts/onboarding-ui.mjs --mock-only
 ```
 
 完整 Host 夹具共享隔离记忆根，必须串行执行。`dev-profile.sh` 只验证安装/dump-config；真实 Host、合成请求、浏览器截图、桌面只读检查和真实模型质量须分别记录。浏览器脚本需要可用的 Chromium/Playwright 环境，具体设置参考脚本和[当前验收](docs/acceptance/V063-onboarding-avatars.md)。这些命令不等于本轮已执行通过。
