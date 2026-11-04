@@ -3,6 +3,7 @@ import {
   GROUP_ROOT_PRESET,
   groupPageSchema,
   groupAttachmentSchema,
+  groupFailureSchema,
   type GroupKey,
   type GroupRecord,
   type GroupMessage,
@@ -48,6 +49,8 @@ export class GroupMessages {
             causeId: s.causeId,
             childSessionId: s.childSessionId,
             stopReason: s.stopReason,
+            // Persisted log data: a malformed record drops only the detail, never the message.
+            ...(groupFailureSchema.safeParse(s.failure).success ? { failure: s.failure } : {}),
           },
         ];
       if (s.kind === 'dsh-bot-group-followup' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)

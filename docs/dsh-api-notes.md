@@ -1548,3 +1548,14 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
   - 读取失败的会话下次进入该视图时重试；单次读取 20 秒超时，按“不可读”处理。
 - **详情：** 弹窗显示合计（不显示单一模型或上下文估计），并按问题列出各自的 token 与缓存命中。
 - **发送新问题后：** 统计切回该问题，与原有行为一致。
+
+## 群成员运行失败原因（2026-11-03）
+
+关联 [Issue #28](https://github.com/MJ-CJM/DSH-Bot/issues/28)。现象：用户本地三成员群聊中 Bot 回复只显示“部分失败 · error”。只读检查 `~/.dsh` 中三个成员的会话日志：均以 `turn/end.reason = { kind: 'error', error: { message: 'Insufficient Balance (request_id: …)', code: 'QUOTA', status: 402 } }` 结束，即模型服务额度用尽；其余 60 次成员轮次正常完成、1 次中止。插件只保存了 `stopReason: 'error'`，丢失了原生失败原因。
+
+- **原生结果不带原因**：`SubagentResult.diagnostic`（rc.2 `@deepseek-ai/dsh-subagent` `lib/types/types.d.ts`）仅由 out-of-process 结果填写；本地 `spawn` 的 `captureLocalResult` 只返回 `output` 与 `stopReason`（`epochStopReason` 把 `turn/end` 的 `error` / `blocked` / `max-tokens` / `aborted|interrupted` 映射为 `error` / `refusal` / `max-tokens` / `aborted`）。`subagent/end` 的 `SubagentRunEndInfo` 同样没有原因字段。
+- **读取方式**：结构化原因在 child 自己的 `turn/end`：`TurnEndReason` 的 `error` 变体为 `LlmFailure { message, code, status?, providerRetryAfterMs?, requestId? }`（`@deepseek-ai/dsh-session`、`@deepseek-ai/dsh-llm` 公开类型）。`recordDeliveryResult` 在 activation 释放前（两个 runner 都在 `finally` 才 `dispose`）用公开 `agent.session.snapshotEvents()` 读取最后一个 `turn/end`；只接受本次 delivery `startedAt` 之后结束的轮次，避免把上一轮失败归给本轮。只保存 `code`、`status`、`message`（≤1000 字符），不含工具输入或文件内容。运行结束后 `ctx.agents.get(childId)` 已取不到 Agent，故不能事后补读。
+- **持久化**：`GroupDelivery.failure` 与群消息 source 的 `failure` 均为可选字段，旧数据不变；Host 投影与 Client 原生节点解析对畸形值只丢弃原因，不丢消息。
+- **文案对齐原生**：`dsh-client-ui-chat` 内部 `failureMessage(message, code, t)` 将 `QUOTA`/`ACCOUNT_QUOTA` 映射为 `message.failure.quota`（“当前请求的额度已用尽”/“Request quota exhausted.”），`AUTH`、`ACCOUNT_SIGNED_OUT`、`ACCOUNT_SIGN_IN_REQUIRED`、`INTERRUPTED` 各有文案，其余显示原始 message。该函数未导出；插件 `t` 只覆盖自身命名空间（`PropsLocale<'dsh-bot'>`），读不到 `chat` 文案，因此按相同映射与原文自备 `groups.failure.*`，并在旁边保留 `QUOTA · 402` 便于排查。原生全局额度提示 `shell.quota-notice` 只由已打开的 Chat 绑定触发，不覆盖群聊消息里的原因。
+- **重试**：rc.2 `dsh-llm` 默认可重试码为 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT`；`QUOTA` 不重试，与用户日志中单次尝试一致。
+- **验证注记**：Session 日志 `session.v4.jsonl.zstd` 为追加的多帧 zstd；Node `zlib.zstdDecompressSync` 一次只解一帧，需按 `info.engine.bytesWritten` 逐帧解码。

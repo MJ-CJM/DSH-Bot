@@ -5,6 +5,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupView } from '../../shared/groups.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from './BotAvatar.js';
+import { groupFailureCode, groupStopText } from '../group-failure.js';
 import styles from '../styles/groups.module.css';
 type Message = GroupView['messages'][number];
 type Turn = GroupView['turns'][number];
@@ -48,7 +49,10 @@ export function GroupMessageCard({ message: m, quoted, quotedLoading = false, la
       {openError && <p role="alert">{t('groups.attachmentUnavailable')}</p>}
       {m.hasNonText && <p>{t('groups.nonText')}</p>}
       {m.stopReason && ['error', 'aborted', 'max-tokens', 'refusal'].includes(m.stopReason) &&
-        <p role="status">{t('groups.partial')} · {m.stopReason}</p>}
+        <p role="status" className={styles.stopStatus} data-group-stop={m.stopReason}>
+          {t('groups.partial')} · {groupStopText(m.stopReason, m.failure, t)}
+          {m.failure && groupFailureCode(m.failure) && <span className={styles.failureCode}>{groupFailureCode(m.failure)}</span>}
+        </p>}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import {
   type GroupKey,
   type GroupTurn,
   type GroupSpeaker,
+  type GroupFailure,
 } from '../../shared/groups.js';
 import type { BotKey } from '../../shared/integrations.js';
 
@@ -24,6 +25,8 @@ declare module '@deepseek-ai/dsh-llm' {
       speaker: GroupSpeaker;
       childSessionId: string;
       stopReason: string;
+      /** Native failure facts for a failed run; older messages omit it. */
+      failure?: GroupFailure;
       replyTo?: string;
       causeId?: string;
     };
