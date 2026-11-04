@@ -1465,3 +1465,30 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 - **越权拒绝提示**：DSH 工具错误为 `HarnessError` 时，`tool/result` 事件写入 `error: { name, code }`（dsh-agent-loop `appendToolResult` 取 `result.error.info`），原生 Chat 投影原样映射到 `ToolResultNode.error.code`，PTC 子调用在 `subCalls`。结构化码：`FS_SANDBOX_DENIED`（dsh-fs-sandbox，read-only / workspace-write 越界写）、`AUTO_REVIEW_DENIED`（实验 Auto 审查拒绝）。`FS_PERMISSION_DENIED` 是 OS 权限错误，不属于访问模式，不计入。shell/进程内的沙箱失败没有结构化码，不从文本猜测。
 - 提示只读当前最新问题的成员原生 Chat 投影（`uiConversation.binding(binding).target('chat')`），与执行详情、统计共用 `GroupStatsSource` 的 parent/child 引用，不唤醒 Agent、不新增 Host 状态或持久化字段；旧问题折叠时不保留子会话引用。
 - 仍不复用、且有意不复用：`ApprovalService.setPolicy` 可公开切换 child 审批，但违背原生委派固定 `never` 的设计，且原生 `dsh-client-ui-approval` 只在该 child 自己的输入框接管审批，群聊中不可见，需自建桥接。rc.2 `dsh-client-ui-permission-presets/client` 只导出 `PermissionSelect` 类型、未导出组件或 `displayPermissionPreset`，故群聊权限标签继续自备。
+
+## Issue #30：Bot 间消息位置与右侧 Bot 详情（2026-11-03）
+
+均为公开入口；rc.2 已安装包只读核实（预定参考 checkout 不在本机），rc.2 / rc.5 隔离真实 Host + 浏览器各 30 项检查通过，详见 [Issue #30 验收](verification/bot-message-presence.md)。
+
+- **根因：Chat 节点未声明 `groupTree`。** `@deepseek-ai/dsh-client-ui-chat/client` 公开 `ChatConversationViewNode.groupTree?: ChatGroupTree`（`'exchange' | 'input' | 'turn' | 'process'`）。未设置时节点“加入周围的步骤组”，完成的轮次会把它折进原生过程区（`hidden="until-found"`、`content-visibility: hidden`）。原 `MessageCard` 未设置，DOM 中存在、约占 50px 高，但文字不可见，就是用户看到的空白。
+- **定位：** Definition 自选位置。
+  - 来信（`dsh-bot-message`，relay）设为 `input`，是该轮输入，与用户消息同级。
+  - 本方已发送通知（`dsh-bot-message-sent`，notice）设为 `turn`，留在本轮、过程折叠区之外。
+  - 未用 `exchange`，避免 Bot 来信切分用户问题的交换区。
+  - 不改变事件、source schema 或模型可见内容。
+- **为何不用原生上下文行：** 原生 Chat 的 `relay` 只显示“来自会话 {session id}”，无法解析出 Bot 身份；继续使用本包已有的 exclusive Definition 与 keyed `conversation.chat.node` 渲染器。
+- **样式：** 居中标记行（`已发消息给 / 已回复 / 消息来自 / 回复来自` + Bot 芯片 + 模式 + 时间），展开显示原文。
+  - 只用 `--dsw-alias-*` token；Bot 名字颜色复用 `BotAvatar` 的头像色映射。
+  - 图标为公开的 `IconRightUpOutlineRegular` / `IconChevronDownOutlineRegular` / `IconSettingsOutlineRegular`。
+  - 原生 `ChatNodeInjected.hooks.disclosure` 可提供“随轮次重置”的展开状态；本次保留组件内状态（与原卡片一致），未接入。
+- **内联芯片不可行：** 公开 `MarkdownText` 只接受 `fileMentions`（仅 inline-code 文件）与 `MarkdownDelegateProvider`（外链、文件打开），没有内联扩展点。模型正文中的 Bot 名字保持原生 Markdown，芯片只出现在本包的标记与面板中。
+- **右侧 Bot 详情：** 复用 `group-execution.tsx` 已验证的模式。
+  - 注册：`sidebarRightTabs.register({ id: 'dsh-bot.bot-panel', kind: 'dsh-bot-bot', title })`，正文与标题分别注册 keyed `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title`。
+  - 打开：`SidebarRightTabParamsMap` 声明 `{ botId, section? }`，用 `sidebarRight.openTab(kind, { params })`。
+  - 导航：正文读取 `useTabInfo().tab.navigation.{params,revision}`。页面类型未设 `multiple`，每个窗格只有一页，打开另一个 Bot 即在同页导航；`revision` 每次导航递增，同一 Bot 再次打开也会重置分区。
+  - 回退：无 `params` 的恢复页显示本会话的 Bot。`sidebarRight.mounted` 无值或右侧栏未安装时，回退到原 Bots 页详情。
+- **入口与复用：**
+  - 入口为会话头部徽标、空白会话 Bot 身份和消息芯片；“查看投递与回复状态”打开本会话 Bot 的“消息”分区。
+  - 复用 `BotAvatar`、`RoutinePanel`、`BackgroundTasksPanel`、`MessageOverviewPanel` 与公开的 `SegmentedTabs` / `Button`；“完整设置”仍进入 Bots 页详情，不在右栏复制编辑表单。
+  - 390px 宽度时原生右侧栏以全屏呈现，属原生行为。
+- **附带发现（未在本 issue 修复）：** 消息的来源校验（`MessagingCore.provenance`）把一轮中的非 ambient `user/message` 视为非用户来源。原生首轮会注入 `skill-catalog`，它不在 ambient 集合（`agent-instructions` / `runtime-context` / `time-context` / `tmux-context`）中。因此新 Bot 的第一轮若直接要求联系队友，`bot_message` 返回 `approval-denied`。现有 b2b fixture 与本次 fixture 都先进行一轮普通对话来规避。该检查涉及安全边界，建议单独处理。
