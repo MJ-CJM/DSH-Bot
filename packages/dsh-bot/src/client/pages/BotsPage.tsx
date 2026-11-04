@@ -79,6 +79,8 @@ export function BotsPage(page: BotsPageProps) {
               onCreateFinished={() => setCreatingGroup(false)}
               actions={groups}
               bots={entries.map((entry) => entry.bot)}
+              workspaces={model.workspaces.items}
+              onPickDirectory={page.onPickDirectory}
               t={t}
               onOpenSession={onOpenSession}
             />

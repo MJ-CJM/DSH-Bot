@@ -6,12 +6,12 @@ import { GroupComposerInput } from './GroupComposer.js';
 import { GroupModelControl } from './GroupModelControl.js';
 import { GroupPermissionControl } from './GroupPermissionControl.js';
 import type { GroupPermissionState } from '../group-permission-state.js';
-import { Button, IconPaperclipOutlineRegular, IconSendOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconPaperclipOutlineRegular, IconSendOutlineRegular, Menu, PathLabel, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { ModelActions } from '../model-catalog-state.js';
 import { GroupTimeline, groupMessagePreview } from './GroupTimeline.js';
 import { resolveGroupMentions } from '../group-mentions.js';
 import { GroupAvatar } from './GroupAvatar.js';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
 import type { BotRecord } from '../../shared/schema.js';
@@ -22,15 +22,22 @@ import css from '../styles/groups.module.css?inline';
 const keyOf = (b: BotRecord) => ({ botId: b.id, botCreatedAt: b.createdAt });
 const subscribeNoPermission = (_listener: () => void) => () => {};
 type Localized = PropsLocale<'dsh-bot'>;
+/** A Host-registered native Workspace offered as a group cwd. */
+export interface GroupWorkspaceChoice { path: string; title: string }
 export function GroupsPanel({
   actions,
   bots,
   onOpenSession,
   initialCreate = false,
   selectedGroup, onSelectGroup, onOpenBot, onCreateFinished,
+  workspaces, onPickDirectory,
   t,
 }: {
   initialCreate?: boolean;
+  /** Native Workspace catalog rows; the group cwd stays immutable after creation. */
+  workspaces?: readonly GroupWorkspaceChoice[];
+  /** Host-native directory picker; absent keeps a typed-path fallback. */
+  onPickDirectory?: () => Promise<string | null>;
   selectedGroup?: PageIdentity;
   onSelectGroup?(value: PageIdentity | undefined): void;
   onOpenBot?(bot: BotRecord): void;
@@ -124,6 +131,8 @@ export function GroupsPanel({
               creationSaved={Boolean(created)}
               createdName={created?.name}
               bots={bots}
+              workspaces={workspaces}
+              onPickDirectory={onPickDirectory}
               t={t}
               onCancel={() => { setCreating(false); onCreateFinished?.(); }}
               onSave={async (input) => {
@@ -162,6 +171,45 @@ export function GroupsPanel({
     </section></SettingsDrafts.Provider>
   );
 }
+/** Group cwd from native Workspaces or the Host directory picker; it is the workspace-write boundary. */
+function GroupWorkspaceField({ cwd, onChange, workspaces = [], onPickDirectory, disabled, t }: {
+  cwd: string; onChange(value: string): void; workspaces?: readonly GroupWorkspaceChoice[];
+  onPickDirectory?: () => Promise<string | null>; disabled: boolean;
+} & Localized) {
+  const [open, setOpen] = useState(false), [pickFailed, setPickFailed] = useState(false);
+  const hintId = useId();
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const known = workspaces.filter((row, index) => row.path && workspaces.findIndex(other => other.path === row.path) === index);
+  const items: MenuEntry[] = [
+    { id: 'default', label: t('groups.workspaceUseDefault') },
+    ...(known.length ? [{ type: 'label' as const, id: 'known', text: t('groups.workspaceKnown') },
+      ...known.map((row, index) => ({ id: `workspace:${index}`, label: <PathLabel path={row.path} /> }))] : []),
+    ...(onPickDirectory ? [{ type: 'separator' as const, id: 'pick-separator' }, { id: 'pick', label: t('groups.workspaceOtherFolder') }] : []),
+  ];
+  const selectedIndex = known.findIndex(row => row.path === cwd);
+  const choose = (id: string) => {
+    setOpen(false); setPickFailed(false);
+    if (disabled) return;
+    if (id === 'default') onChange('');
+    else if (id.startsWith('workspace:')) { const row = known[Number(id.slice('workspace:'.length))]; if (row) onChange(row.path); }
+    else if (id === 'pick' && onPickDirectory) void onPickDirectory().then(path => { if (alive.current && path) onChange(path); },
+      () => { if (alive.current) setPickFailed(true); });
+  };
+  return <fieldset className={styles.workspaceField} data-group-workspace="" aria-describedby={hintId}>
+    <legend>{t('groups.cwd')}</legend>
+    <div className={styles.workspaceValue}>
+      {cwd ? <PathLabel path={cwd} /> : <span className={styles.workspaceDefault}>{t('groups.workspaceDefault')}</span>}
+      <Menu open={open && !disabled} portal items={items} onSelect={choose} onClose={() => setOpen(false)}
+        selectedId={cwd ? (selectedIndex >= 0 ? `workspace:${selectedIndex}` : undefined) : 'default'} listClassName={styles.workspaceMenu}
+        anchor={<Button variant="outline" size="sm" disabled={disabled} aria-haspopup="menu" aria-expanded={open && !disabled}
+          onClick={() => setOpen(!open)}>{t('groups.workspaceChoose')}</Button>} />
+    </div>
+    {!onPickDirectory && <input aria-label={t('groups.workspacePath')} disabled={disabled} value={cwd} onChange={(e) => onChange(e.target.value)} />}
+    {pickFailed && <p role="alert">{t('groups.workspacePickFailed')}</p>}
+    <p id={hintId} className={styles.workspaceHint}>{t('groups.workspaceHint')}</p>
+  </fieldset>;
+}
 function GroupEditor({
   bots,
   initial,
@@ -169,9 +217,13 @@ function GroupEditor({
   createdName,
   onSave,
   onCancel,
+  workspaces,
+  onPickDirectory,
   t,
 }: {
   bots: BotRecord[];
+  workspaces?: readonly GroupWorkspaceChoice[];
+  onPickDirectory?: () => Promise<string | null>;
   initial?: GroupView;
   creationSaved?: boolean;
   createdName?: string;
@@ -267,6 +319,8 @@ function GroupEditor({
           );
         })}
       </fieldset>
+      {!initial && <GroupWorkspaceField cwd={cwd} onChange={setCwd} workspaces={workspaces} onPickDirectory={onPickDirectory}
+        disabled={busy || Boolean(creationSaved)} t={t} />}
       <details className={styles.advanced}>
         <summary>{t('groups.advanced')}</summary>
         <label>
@@ -277,12 +331,6 @@ function GroupEditor({
           <option value="round-robin">{t('groups.round-robin')}</option>
         </select>
       </label>
-      {!initial && (
-        <label>
-          {t('groups.cwd')}
-          <input disabled={busy || creationSaved} value={cwd} onChange={(e) => setCwd(e.target.value)} />
-        </label>
-      )}
       <ol>
         {members.map((k, i) => (
           <li key={`${k.botId}:${k.botCreatedAt}`}>
@@ -656,7 +704,7 @@ export function GroupConversation({
         <div className={`${styles.bar} ${styles.composerFooter}`} title={t('groups.keyboardHint')}>
           {workspace && <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.attach')} title={t('groups.attach')} disabled={busy || view.group.archived} onClick={() => attachmentInput.current?.click()}><IconPaperclipOutlineRegular size={18} /></Button>}
           {models && <GroupModelControl group={view.group} members={view.members} bots={bots} actions={actions} models={models} disabled={localBusy || sharedDraft.sending || permissionSaving || view.group.archived || view.group.state !== 'ready'} onBusyChange={setModelBusy} onSaved={() => catalog.refresh()} t={t} />}
-          {permissionState && permissionState.rootSessionId === rootId && <GroupPermissionControl state={permissionState} disabled={busy || view.running || view.turns.some(turn => turn.state === 'accepted' || turn.state === 'running') || view.group.archived || view.group.state !== 'ready'} t={t} />}
+          {permissionState && permissionState.rootSessionId === rootId && <GroupPermissionControl state={permissionState} cwd={view.group.cwd} disabled={busy || view.group.archived || view.group.state !== 'ready'} t={t} />}
           <span className={styles.keyboardHint}>{t('groups.keyboardHint')}</span>
           <div className={styles.sendActions}>
           <Button variant="primary" size="sm" className={styles.sendAction} aria-label={t('groups.send')} title={t('groups.send')}

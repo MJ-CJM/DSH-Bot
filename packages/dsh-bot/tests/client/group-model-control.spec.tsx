@@ -275,6 +275,33 @@ describe('group model control', () => {
       expect(f.element.querySelector('[role="log"]')).toBeNull();
     } finally { await act(async () => f.root.unmount()); mounted.splice(mounted.findIndex(item => item.root === f.root), 1); f.element.remove(); await ctx.fiber.dispose(); }
   });
+  it.each(['running', 'queued'] as const)('allows native permission selection with %s group work', async phase => {
+    const f = await mount(), ctx = new Context(), data = view();
+    data.running = phase === 'running';
+    if (phase === 'queued') data.turns = [{ id: 'queued', group: { groupId: data.group.id, groupCreatedAt: 1 }, operationId: 'queued', requestDigest: 'queued', inputMessageId: 'pending-question', createdAt: 1, updatedAt: 1, revision: 1, schemaVersion: 1, membershipRevision: 1, orderedMemberIds: [], mode: 'natural', contextThroughSeq: 0, protocol: 2, state: 'accepted', automaticExecutions: 0, continuationAllowance: 32 }];
+    const select = vi.fn(async () => true);
+    const permissionState = { rootSessionId: data.group.rootSessionId, store: {
+      subscribe: () => () => {}, getSnapshot: () => snapshot,
+    }, select, refresh: async () => {}, dispose: () => {} } as GroupPermissionState;
+    const snapshot: GroupPermissionSnapshot = { catalog: { options: [{ value: 'read-only', name: 'Read Only' }, { value: 'workspace-write', name: 'Workspace Write' }], defaultOptions: [], defaultPreset: 'read-only' },
+      currentValue: 'read-only', loading: false, saving: false, loadError: false, saveError: false, catalogVersion: 1 };
+    ctx.provide('remote.dshBot.groups', { view: async () => ({ ok: true, value: data }), list: async () => ({ ok: true, value: [summary()] }) } as unknown as GroupMethods);
+    const actions = createGroupActions(ctx, {}), t = ((key: keyof typeof en.ui, params?: Record<string, unknown>) => en.ui[key].replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? name))) as PropsLocale<'dsh-bot'>['t'];
+    try {
+      await act(async () => f.root.render(<GroupConversation workspace summary={summary()} actions={actions} models={f.models} permissionState={permissionState} bots={bots} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={async () => {}} t={t} />));
+      await vi.waitFor(() => expect(f.element.querySelector('textarea')).toBeTruthy());
+      const trigger = button(f.element, en.ui['groups.permissionReadOnly']);
+      expect(trigger.disabled).toBe(false);
+      await click(trigger);
+      // Guidance is native Menu label rows in the pinned footer, never extra non-menuitem children.
+      const list = document.body.querySelector('[role="menu"]'); if (!list) throw new Error('Missing permission menu');
+      expect(list.textContent).toContain(data.group.cwd);
+      expect(list.querySelector('[role="note"]')).toBeNull();
+      expect([...list.querySelectorAll('button')].every(row => row.getAttribute('role') === 'menuitem')).toBe(true);
+      await click(button(f.element, en.ui['groups.permissionWorkspaceWrite']));
+      expect(select).toHaveBeenCalledExactlyOnceWith('workspace-write', false);
+    } finally { await act(async () => f.root.unmount()); mounted.splice(mounted.findIndex(item => item.root === f.root), 1); f.element.remove(); await ctx.fiber.dispose(); }
+  });
   it.each(['accepted', 'failed', 'switched'] as const)('blocks new work and model selection while the permission command is pending, then releases after %s', async outcome => {
     const f = await mount(), ctx = new Context(), data = view(); data.group.mode = 'natural';
     const send = vi.fn(), listeners = new Set<() => void>(); let finish!: () => void;

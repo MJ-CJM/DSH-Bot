@@ -35,14 +35,21 @@ export function MarkdownText({ text }: { text: string; labels: unknown; variant?
   return <div data-platform-markdown="">{text}</div>;
 }
 
-export function Menu({ open, anchor, items = [], onSelect, children, className }: {
+type MenuEntryDouble = { id: string; label?: ReactNode; disabled?: boolean; type?: string; text?: string };
+export function Menu({ open, anchor, items = [], footer = [], onSelect, children, className }: {
   open: boolean; anchor: ReactNode; className?: string; children?: ReactNode;
-  items?: readonly ({ id: string; label?: ReactNode; disabled?: boolean; type?: string })[];
+  items?: readonly MenuEntryDouble[]; footer?: readonly MenuEntryDouble[];
   onSelect?: (id: string) => void;
 }) {
-  return <span className={className}>{anchor}{open && <div role="menu">{items.map((item) => item.type
-    ? <hr key={item.id} />
-    : <button type="button" role="menuitem" key={item.id} disabled={item.disabled} onClick={() => onSelect?.(item.id)}>{item.label}</button>)}{children}</div>}</span>;
+  // Mirrors the public entry contract: separators and non-interactive labels are presentation rows.
+  const entry = (item: MenuEntryDouble) => item.type === 'separator' ? <hr key={item.id} />
+    : item.type === 'label' ? <div key={item.id} role="presentation" data-menu-label="">{item.text}</div>
+    : <button type="button" role="menuitem" key={item.id} disabled={item.disabled} onClick={() => onSelect?.(item.id)}>{item.label}</button>;
+  return <span className={className}>{anchor}{open && <div role="menu">{items.map(entry)}{children}
+    {footer.length > 0 && <div role="presentation" data-menu-footer="">{footer.map(entry)}</div>}</div>}</span>;
+}
+export function PathLabel({ path, ...attributes }: { path: string } & import('react').HTMLAttributes<HTMLSpanElement>) {
+  return <span {...attributes} title={path} data-path-label="">{path}</span>;
 }
 
 export function MenuSurface({ children, ...props }: import('react').HTMLAttributes<HTMLDivElement>) { return <div {...props}>{children}</div>; }
