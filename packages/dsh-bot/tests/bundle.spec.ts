@@ -239,7 +239,8 @@ describe('built bundle contract', () => {
     const mountedEndpoints: string[] = [];
     const activeEndpoints = new Set<string>();
     ctx.provide('remote', {
-      $on: () => register('schedule.changed'),
+      // Each Remote event subscription is its own resource, named after the event.
+      $on: (event: string) => register(event === 'commands/change' ? 'commands.change' : 'schedule.changed'),
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
         expect(['dsh-bot', 'dsh-bot/automation', '@deepseek-ai/dsh-schedule', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
           'dsh-bot/collaboration', 'dsh-bot/groups', 'dsh-bot/capabilities', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-permission-presets']).toContain(contribution.package);
@@ -294,10 +295,11 @@ describe('built bundle contract', () => {
       expect(assembly?.events.entries().map(d => d.kind).sort() ?? []).toEqual(mode === 'native' ? ['dsh-bot-group', 'dsh-bot-message', 'dsh-bot-onboarding-notice'] : []);
       const resources = [...(mode === 'native' ?
         ['conversation.chat.node:dsh-bot-group', 'conversation.chat.node:dsh-bot-message', 'conversation.chat.node:dsh-bot-onboarding-notice'] :
-        []), 'conversation.composer', 'conversation.input.dock', 'conversation.session.header.utilities', 'dictionaries', 'main:dsh-bot',
+        // The group composer's '/' menu drops its cached native command catalog on change.
+        []), 'commands.change', 'conversation.composer', 'conversation.input.dock', 'conversation.session.header.utilities', 'dictionaries', 'main:dsh-bot',
         'remote.automation', 'remote.capabilities', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.permission', 'remote.schedule', 'remote.subagents',
         'remote.workspace', 'schedule.changed',
-        'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'];
+        'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'].sort();
       expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([
         'permissionPresets/catalog', 'dshBot.capabilities/request', 'subagents/interruptByParent', 'subagents/prompt', 'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',

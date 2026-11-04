@@ -6,7 +6,9 @@ import { GroupComposerInput } from './GroupComposer.js';
 import { GroupModelControl } from './GroupModelControl.js';
 import { GroupPermissionControl } from './GroupPermissionControl.js';
 import type { GroupPermissionState } from '../group-permission-state.js';
-import { Button, IconPaperclipOutlineRegular, IconSendOutlineRegular, Menu, PathLabel, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconDataOutlineRegular, IconDownloadOutlineRegular, IconPaperclipOutlineRegular, IconPlusOutlineRegular, IconPaperPlaneOutlineRegular, IconSendOutlineRegular, IconShieldOutlineRegular, Menu, PathLabel, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives';
+import { availableGroupCommands, bareGroupCommand, GROUP_COMMANDS, type GroupCommandName, type GroupCommandServices } from '../group-commands.js';
+import type { GroupCommandSource } from '../group-trigger.js';
 import type { ModelActions } from '../model-catalog-state.js';
 import { GroupTimeline, groupMessagePreview } from './GroupTimeline.js';
 import { resolveGroupMentions } from '../group-mentions.js';
@@ -21,6 +23,14 @@ import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
 const keyOf = (b: BotRecord) => ({ botId: b.id, botCreatedAt: b.createdAt });
 const subscribeNoPermission = (_listener: () => void) => () => {};
+/** Icon and copy of each '/' row, following the native composer menu's icons. */
+const COMMAND_FACE = {
+  file: { icon: IconPaperclipOutlineRegular, label: 'groups.commandFile', hint: 'groups.commandFileHint' },
+  model: { icon: IconDataOutlineRegular, label: 'groups.commandModel', hint: 'groups.commandModelHint' },
+  permission: { icon: IconShieldOutlineRegular, label: 'groups.commandPermission', hint: 'groups.commandPermissionHint' },
+  export: { icon: IconDownloadOutlineRegular, label: 'groups.commandExport', hint: 'groups.commandExportHint' },
+  feedback: { icon: IconPaperPlaneOutlineRegular, label: 'groups.commandFeedback', hint: 'groups.commandFeedbackHint' },
+} as const;
 type Localized = PropsLocale<'dsh-bot'>;
 /** A Host-registered native Workspace offered as a group cwd. */
 export interface GroupWorkspaceChoice { path: string; title: string }
@@ -388,6 +398,7 @@ export function GroupConversation({
   executionBridge,
   models,
   permissionState,
+  commandServices,
   expandedTurns,
   onExpandTurn,
   summary,
@@ -400,6 +411,8 @@ export function GroupConversation({
   executionBridge?: ExecutionBridge;
   models?: ModelActions;
   permissionState?: GroupPermissionState;
+  /** Native command bridge for the workspace composer's '/' menu; absent leaves '/' as text. */
+  commandServices?: GroupCommandServices;
   expandedTurns: Record<string, boolean>;
   onExpandTurn(id: string, expanded: boolean): void;
   summary: GroupSummary;
@@ -503,7 +516,51 @@ export function GroupConversation({
   const resolveMentions = (text: string) => resolveGroupMentions(text, mentionTargets, mentions, sharedDraft.mentionBindings ?? []);
   const canSend = Boolean(view && !busy && !view.group.archived && !view.reason && view.group.state === 'ready' &&
     (draft.trim() || uploads.length) && uploads.every(row => row.state === 'uploaded'));
+  const [modelOpen, setModelOpen] = useState(0), [permissionOpen, setPermissionOpen] = useState(0);
+  const commandLauncher = useRef<() => void>();
+  const permissionReady = useSyncExternalStore(permissionState?.store.subscribe ?? subscribeNoPermission,
+    () => { const value = permissionState?.rootSessionId === rootId ? permissionState.store.getSnapshot() : undefined; return Boolean(value && value.currentValue !== undefined && value.catalog); });
+  const usable = Boolean(view && !view.group.archived && view.group.state === 'ready');
+  const local = { file: workspace && usable && !busy, model: Boolean(models) && usable && !localBusy && !sharedDraft.sending && !permissionSaving,
+    permission: permissionReady && usable && !busy };
+  const commandState = useRef({ local }); commandState.current.local = local;
+  const commandLabel = (name: GroupCommandName) => t(COMMAND_FACE[name].label);
+  const runCommand = (name: GroupCommandName) => {
+    if (name === 'file') attachmentInput.current?.click();
+    else if (name === 'model') setModelOpen(value => value + 1);
+    else if (name === 'permission') setPermissionOpen(value => value + 1);
+    else if (name === 'export') commandServices?.exportLog(rootId);
+    else commandServices?.feedback(rootId);
+  };
+  const runRef = useRef(runCommand); runRef.current = runCommand;
+  const rootRef = useRef(rootId); rootRef.current = rootId;
+  const tRef = useRef(t); tRef.current = t;
+  const [commands] = useState<GroupCommandSource | undefined>(() => commandServices && {
+    async rows() {
+      const host = await commandServices.hostCommands(rootRef.current);
+      const offered = availableGroupCommands(host, commandState.current.local, commandServices.installed);
+      const translate = tRef.current;
+      return offered.map(name => ({ name, label: translate(COMMAND_FACE[name].label), description: translate(COMMAND_FACE[name].hint), icon: COMMAND_FACE[name].icon,
+        section: translate(name === 'file' ? 'groups.commandsAdd' : 'groups.commands') }));
+    },
+    run(name) { if ((GROUP_COMMANDS as readonly string[]).includes(name)) runRef.current(name as GroupCommandName); },
+  });
   const submit = (round: boolean) => {
+    // A bare command typed as the whole draft runs as the command, never as a message, as in the
+    // native composer. Like its Enter path, wait for the root's catalog rather than guess from the menu.
+    const services = commandServices;
+    const bare = services && !round && uploads.length === 0 ? bareGroupCommand(draft, GROUP_COMMANDS, commandLabel) : undefined;
+    if (services && bare) {
+      if (lock.current) return;
+      const typed = draft;
+      void services.hostCommands(rootId).then(host => {
+        const current = actions.draft(rootId);
+        if (!alive.current || current.text !== typed || !availableGroupCommands(host, commandState.current.local, services.installed).includes(bare)) return;
+        actions.patchDraft(rootId, value => ({ ...value, text: '', mentionBindings: [], mentions: [] }));
+        runRef.current(bare);
+      });
+      return;
+    }
     if (!canSend || lock.current || !view) return;
     const resolved = resolveMentions(draft);
     setMentionIssues(resolved.issues);
@@ -677,6 +734,7 @@ export function GroupConversation({
         {sharedDraft.followup && <div className={styles.replyPreview} role="status">{t('groups.supplement')} · {lookup(view.deliveries.find(row => row.id === sharedDraft.followup?.deliveryId)?.memberId ?? '')?.name ?? t('groups.unavailable')}
           <button type="button" onClick={() => actions.patchDraft(rootId, value => ({ ...value, followup: undefined }))}>{t('groups.close')}</button></div>}
         <GroupComposerInput sessionId={rootId} text={draft} bindings={sharedDraft.mentionBindings ?? []} targets={mentionTargets} inputRef={composer} t={t}
+          commands={commands} commandLauncher={commands ? commandLauncher : undefined}
           onChange={(text, mentionBindings) => { actions.patchDraft(rootId, value => ({ ...value, text, mentionBindings, mentions: [] })); setMentionIssues([]); }} onSubmit={() => submit(false)} />
         <label hidden={workspace} style={workspace ? { display: 'none' } : undefined}>
           {t('groups.attach')}
@@ -702,9 +760,12 @@ export function GroupConversation({
         ))}
         {!workspace && <p>{t('groups.routingHint')}</p>}
         <div className={`${styles.bar} ${styles.composerFooter}`} title={t('groups.keyboardHint')}>
-          {workspace && <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.attach')} title={t('groups.attach')} disabled={busy || view.group.archived} onClick={() => attachmentInput.current?.click()}><IconPaperclipOutlineRegular size={18} /></Button>}
-          {models && <GroupModelControl group={view.group} members={view.members} bots={bots} actions={actions} models={models} disabled={localBusy || sharedDraft.sending || permissionSaving || view.group.archived || view.group.state !== 'ready'} onBusyChange={setModelBusy} onSaved={() => catalog.refresh()} t={t} />}
-          {permissionState && permissionState.rootSessionId === rootId && <GroupPermissionControl state={permissionState} cwd={view.group.cwd} disabled={busy || view.group.archived || view.group.state !== 'ready'} t={t} />}
+          {workspace && (commands
+            ? <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.addOrCommand')} title={t('groups.addOrCommand')} aria-haspopup="listbox"
+              data-group-command-launcher="" disabled={view.group.archived} onMouseDown={event => event.preventDefault()} onClick={() => commandLauncher.current?.()}><IconPlusOutlineRegular size={18} /></Button>
+            : <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.attach')} title={t('groups.attach')} disabled={busy || view.group.archived} onClick={() => attachmentInput.current?.click()}><IconPaperclipOutlineRegular size={18} /></Button>)}
+          {models && <GroupModelControl group={view.group} members={view.members} bots={bots} actions={actions} models={models} disabled={localBusy || sharedDraft.sending || permissionSaving || view.group.archived || view.group.state !== 'ready'} openRequest={modelOpen || undefined} onBusyChange={setModelBusy} onSaved={() => catalog.refresh()} t={t} />}
+          {permissionState && permissionState.rootSessionId === rootId && <GroupPermissionControl state={permissionState} cwd={view.group.cwd} disabled={busy || view.group.archived || view.group.state !== 'ready'} openRequest={permissionOpen || undefined} t={t} />}
           <span className={styles.keyboardHint}>{t('groups.keyboardHint')}</span>
           <div className={styles.sendActions}>
           <Button variant="primary" size="sm" className={styles.sendAction} aria-label={t('groups.send')} title={t('groups.send')}

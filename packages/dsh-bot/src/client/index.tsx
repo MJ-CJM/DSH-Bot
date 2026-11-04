@@ -7,6 +7,8 @@ import NATIVE_SUBAGENTS_REMOTE from '@deepseek-ai/dsh-subagent/remote';
 import NATIVE_PERMISSION_REMOTE from '@deepseek-ai/dsh-permission-presets/remote';
 import { MESSAGING_REMOTE, messageOverviewSchema } from '../shared/messaging-contract.js';
 import { registerMessaging } from './messaging.js';
+import { registerBotPanel } from './bot-panel.js';
+import type { BotPanelSection } from './components/BotRightPanel.js';
 import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
 import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
 import { createWorkspaceActions } from './workspace-state.js';
@@ -130,7 +132,6 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const detail = createBotDetailSource(ctx);
   const onboardingTransport = createOnboardingTransport();
   ctx.effect(() => () => onboardingTransport.dispose(), 'dsh-bot: onboarding transport diagnostics');
-  registerMessaging(ctx, (botId) => { detail.open(botId); ctx.layout.selectPanel('dsh-bot' as MainPanelId); });
   const memories = new Set<MemoryCatalog>();
   // Client memory only: shared by page/sidebar, cleared on plugin unload.
   const preferredWorkspace = '';
@@ -307,13 +308,29 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     },
     { open: openSession, start: startBot, startInWorkspace: startBotInWorkspace },
   );
+  const showBotPage = (id: string) => {
+    if (!active) return;
+    detail.open(id);
+    ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+  };
+  // Bot details open beside the conversation; the Bots page stays the fallback and the full settings.
+  const botPanel = registerBotPanel(ctx, {
+    hooks: { catalog },
+    routines,
+    background: page.background,
+    messages: page.messages,
+    onOpenSession: (id) => openSession(id),
+    onStart: (id) => startBot(id),
+    onOpenSettings: showBotPage,
+  });
+  const openBot = (id: string, section?: BotPanelSection) => {
+    if (active && !botPanel.open(id, section)) showBotPage(id);
+  };
+  registerMessaging(ctx, { onOpenBot: (id) => openBot(id), onShowStatus: (id) => openBot(id, 'messages') });
   const firstChatInjected = () => ({
     hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity },
     onMarkRead: activity.markRead,
-    onOpenBot: (id: string) => {
-      if (!active) return;
-      detail.open(id); ctx.layout.selectPanel('dsh-bot' as MainPanelId);
-    },
+    onOpenBot: (id: string) => openBot(id),
     onboardingTransport,
     onOnboardingStatus: async (id: string) => unwrap(await remote().onboardingStatus(id)),
     onRetryOnboarding: async (input: StartOnboardingInput) => {
@@ -343,11 +360,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
             inject: () => ({
               hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity },
               onMarkRead: activity.markRead,
-              onOpenBot: (id: string) => {
-                if (!active) return;
-                detail.open(id);
-                ctx.layout.selectPanel('dsh-bot' as MainPanelId);
-              },
+              onOpenBot: (id: string) => openBot(id),
             }),
           },
           SessionBotBadge,

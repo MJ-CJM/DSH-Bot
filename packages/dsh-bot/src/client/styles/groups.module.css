@@ -586,8 +586,47 @@
   min-width: 0;
 }
 .memberStatistics { padding: 4px 0; }
-.statisticsBar { padding: 4px 8px 0; gap: 4px 8px; }
-.statisticsStatus { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.statisticsBar { padding: 4px 0 0; gap: 2px; }
+/* Native composer stat pills: borderless, icon plus tertiary label, hover fill on
+   the interactive ones; outranks the panel's bordered-button default. */
+.panel .statPill,
+.statItem,
+.statisticsStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  line-height: 20px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.panel .statPill { cursor: pointer; }
+.panel .statPill:hover:enabled,
+.panel .statPill[aria-expanded="true"] { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.statPill svg,
+.statItem svg { flex: none; width: 14px; height: 14px; }
+.panel .questionTrigger { color: var(--dsw-alias-label-secondary); }
+.panel .questionTrigger svg { width: 12px; height: 12px; }
+.statLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.statSep { color: var(--dsw-alias-label-caption); }
+/* Static readings need no hover room; only the clickable pills keep the native 8px. */
+.statItem,
+.statisticsStatus { padding-inline: 4px; }
+.statisticsStatus { color: var(--dsw-alias-label-secondary); }
+/* The native Menu anchor wrapper: lets a long question shrink to an ellipsis. */
+.questionAnchor { min-width: 0; max-width: min(220px, 32%); }
+.questionMenu { width: min(360px, calc(100vw - 24px)); }
+.questionOption { display: flex; flex-direction: column; min-width: 0; }
+.questionTitle,
+.questionMeta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.questionMeta { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 16px; }
 /* Size inside the native overlay's padded bounds; keep native chrome and footer. */
 .statisticsDialog[role="dialog"] { width: min(640px, 100%); max-height: 100%; min-height: 0; }
 .statisticsContent { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
@@ -599,14 +638,18 @@
 .statisticsDetails { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px 20px; margin: 0; font-size: 13px; line-height: 1.6; }
 .statisticsDetails dt { min-width: 0; color: var(--dsw-alias-label-secondary); }
 .statisticsDetails dd { min-width: 0; margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+/* Whole-group breakdown: one keyed row per question, still laid out by the details grid. */
+.statisticsDetails.statisticsBreakdown > div { display: contents; }
+.statisticsDetails.statisticsBreakdown dt { overflow-wrap: anywhere; }
 @media (max-width: 480px) {
   .statisticsDetails { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .statisticsDetails dd { text-align: left; margin-bottom: 12px; }
 }
 @media (max-width: 768px) {
-  .statisticsWide { display: none; }
-  .statisticsBar { gap: 2px 6px; }
+  .statisticsWide,
+  .panel .statisticsWide { display: none; }
   .statisticsStatus { max-width: 120px; }
+  .questionAnchor { max-width: 50%; }
 }
 
 /* listClassName is the only hook into the portaled native list; overflow-wrap
@@ -627,3 +670,14 @@
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary);
 }
+
+/* Native-style '/' menu: sections, icon, localized name with its command alias, trailing hint. */
+.commandMenu { width: 100%; max-height: min(360px, 50vh); }
+.mentionInput .mentionMenu.commandMenu button { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 36px; padding: 6px 10px; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: start; cursor: pointer; }
+.mentionInput .mentionMenu.commandMenu button[aria-selected="true"] { background: var(--dsw-alias-interactive-bg-hover); }
+.mentionInput .mentionMenu.commandMenu button strong { flex: none; font-weight: 500; }
+.commandSection { padding: 6px 10px 4px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 16px; }
+.commandIcon { display: inline-flex; flex: none; color: var(--dsw-alias-label-secondary); }
+.commandAlias { flex: none; }
+.commandHint { min-width: 0; margin-inline-start: auto; padding-inline-start: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 440px) { .commandHint { display: none; } }
