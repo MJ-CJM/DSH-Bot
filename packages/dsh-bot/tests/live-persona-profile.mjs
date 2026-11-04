@@ -129,7 +129,8 @@ export function apply(ctx, config) {
         adapter.expected='ROLE_FINAL';
         const turn=await ctx.typertGateway.invoke({namespace:'dshBot.groups',method:'send',args:{group:key,input:{operationId:existing?'cold-persona-role-group':'hot-persona-role-group',
           text:'PERSONA_GROUP_ROLE_FINAL',round:false,memberIds:[member.id],expectedMembershipRevision:group.membershipRevision}},peer,signal:lifetime.signal});
-        const view=await wait(async()=>{const view=await groups.view(key),row=view.turns.find(row=>row.id===turn.id);if(!row||['accepted','running'].includes(row.state))return;assert.equal(row.state,'completed');return view;});
+        const view=await wait(async()=>{const view=await groups.view(key),row=view.turns.find(row=>row.id===turn.id);if(!row||['accepted','running'].includes(row.state))return;// Concurrent groups (since 7df508f, shipped in v0.6.3) settle a finished question as idle; the member's own delivery is still checked as completed below.
+          assert.ok(['completed','idle'].includes(row.state),`unexpected group turn state ${row.state}`);return view;});
         const deliveries=view.deliveries.filter(row=>row.turnId===turn.id);assert.equal(deliveries.length,1);
         const delivery=deliveries[0];assert.deepEqual(delivery.bot,{botId:bot.id,botCreatedAt:bot.createdAt});assert.equal(delivery.state,'completed');
         assert.ok(delivery.childSessionId);assert.notEqual(delivery.childSessionId,mainAgent.id);

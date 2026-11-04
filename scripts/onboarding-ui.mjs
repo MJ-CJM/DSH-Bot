@@ -103,7 +103,12 @@ try {
       const openActiveRole = async () => {
         await page.setViewportSize({ width: 1360, height: 1000 });
         await page.getByRole('button', { name: t['badge.open'].replace('{name}', 'Active Whale'), exact: true }).click();
-        const detail = page.locator('[data-bot-detail="v063-active-whale"]:visible'); await detail.waitFor();
+        // Since #31 the badge opens the Bot panel beside the chat (falling back to the Bots page
+        // without a right sidebar); the panel's "All settings" leads to the same full detail.
+        const panel = page.locator('[data-bot-panel="v063-active-whale"]:visible'), detail = page.locator('[data-bot-detail="v063-active-whale"]:visible');
+        await panel.or(detail).first().waitFor();
+        if (!await detail.isVisible()) await panel.getByRole('button', { name: t['botPanel.settings'] }).click();
+        await detail.waitFor();
         const role = detail.locator('[data-bot-persona="v063-active-whale"]');
         const expand = role.getByText(t['persona.expand'], { exact: true });
         if (await expand.isVisible()) await expand.click();
@@ -113,9 +118,12 @@ try {
       let role = await openActiveRole();
       check('Bot details show the complete committed lasting-role prefix', await role.locator('p').textContent() === expectedRole);
       await page.setViewportSize({ width, height: 1000 });
-      check('all Bot detail actions fit inside the dialog', await role.locator('xpath=ancestor::dialog[1]').evaluate(dialog => {
-        const bounds = dialog.getBoundingClientRect();
-        return Array.from(dialog.querySelectorAll('button, summary')).filter(element => element.checkVisibility()).every(element => {
+      // The detail is a dialog when opened from the Bots list and a full page view when reached through
+      // the side panel's "All settings" (#31); either way no action may overflow it horizontally.
+      check('all Bot detail actions fit inside the detail view', await role.evaluate(element => {
+        const container = element.closest('dialog') ?? element.closest('[data-bot-detail]');
+        const bounds = container.getBoundingClientRect();
+        return Array.from(container.querySelectorAll('button, summary')).filter(element => element.checkVisibility()).every(element => {
           const box = element.getBoundingClientRect(); return box.left >= bounds.left - 1 && box.right <= bounds.right + 1;
         });
       }));
@@ -156,10 +164,9 @@ try {
       check('group sidebar and header both use composite whales');
       await shot('group-whales');
       await page.setViewportSize({ width: 1360, height: 1000 }); await openBotsPanel(page, t['bots.title']); bots = page.locator('[data-bots-page]:visible');
-      const recent = bots.getByRole('button', { name: t['chat.recent'], exact: true }); if (await recent.isVisible()) await recent.click();
-      const newMenu = bots.locator(`summary[aria-label="${t['chat.new']}"]`);
-      if (!await newMenu.evaluate(element => element.parentElement.open)) await newMenu.press('Enter');
-      await bots.getByRole('button', { name: t['bots.create'], exact: true }).click();
+      // Since the inline-details rework (616703f), "New Bot" sits on the My Bots tab instead of a "New" menu.
+      await bots.getByRole('button', { name: t['navigation.myBots'], exact: true }).click();
+      await bots.locator('[data-bots-list="bots"]').getByRole('button', { name: t['bots.create'], exact: true }).click();
       const create = bots.locator('dialog:visible'); check('creation still needs only one visible input', await create.locator('input:visible').count() === 1);
       const name = `${language === 'zh' ? '论文助手' : 'Research assistant'} ${id}`;
       await create.getByRole('textbox', { name: t['editor.name'], exact: true }).fill(name);
