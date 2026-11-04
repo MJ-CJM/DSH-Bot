@@ -1444,3 +1444,24 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 - 公开 `Modal` 支持 `closeLabel`、`description`、`footer` 与 `contentClassName`；默认模式提供标题、关闭、正文留白，`headless` 则不提供这些布局。统计页改用默认模式，保留原生 portal、Escape 与焦点恢复。
 - 依据已锁定 npm rc.2 包的 `lib/types/Modal.d.ts` 及 `lib/Modal.module.css` 只读核查：卡片应使用 `max-height: 100%` 约束在原生 overlay 的 padding box 内，不再自行按 viewport 减值；通过公开 `contentClassName` 设内部滚动，底部关闭保持可见。只从公开包入口导入。
 - 当前配置的参考源码目录不存在，本次未重建或修改参考树；rc.2/rc.5 已发布包和隔离 Host 的验证结果见 [弹窗修复记录](verification/group-statistics/dialog-layout-fix.md)。
+
+## Issue #26：运行中切换群权限与委派边界
+
+覆盖 V061 记录中“群仍有运行/排队工作时禁用权限切换”的 UI 策略；原生服务契约不变。
+
+- `GroupPermissionControl` 在有活动工作时仍可使用原生 `/permission` writer 修改群根会话；仅写入中、群归档/不可用等状态禁用。新启动的 child 捕获新 sandbox；既有 child（含多轮继续）不追随根会话权限变化。菜单明确说明这一范围，显示 `GroupRecord.cwd`，不迁移目录、不自动提权。
+- rc.2 公开安装包 `@deepseek-ai/dsh-subagent/lib/index.js` 的 `captureDelegatedPolicyOverrides` / `appendDelegatedPolicyOverrides` 核实：sandbox 捕获自 parent session override；approval 始终固定 `never`。`@deepseek-ai/dsh-user-approval` 的 `decide` 在 never 下直接 rejected，不调用交互 answerer。这里只读核实，无内部导入或事件改写。预定参考 checkout 不在本机，使用锁定已安装包并分别运行 rc.2/rc.5。
+- 复用公开 `Menu` 的内容和 `listClassName` 扩展，说明只在弹出菜单内展示，不占聊天历史/底栏高度。权限列表仍完整来自 Host catalog；保留原生 RiskConfirmation，不添加自建授权机制。
+- Auto 的群聊说明修正为：无沙箱且可能误判，群聊委派拒绝后不会转人工批准；不能用根会话的 ask 描述承诺 child 的审批能力。
+- 新增隔离 fixture 使用标准 Bot preset 的真实 `tools.execute(read/write)` 与 `approval.request`。rc.2、rc.5 均验证只读可读不可写、新任务实际写入、旧任务权限不变、never 不进入 answerer。模型为脚本适配器；无真实模型/正式桌面操作。详见 [Issue #26 验收](verification/group-permissions.md)。
+
+### Issue #26 后续：原生复用补齐（2026-11-03）
+
+均为公开入口，rc.2 已安装包只读核实，rc.2/rc.5 隔离真实 Host + 浏览器各 31 项检查通过，详见 [Issue #26 验收](verification/group-permissions.md#后续原生复用补齐2026-11-03)。
+
+- **公开 `Menu` 的 `children` 只能放 `role="menuitem"` 行**（`MenuItemButton` 等，参与键盘遍历）。上一轮把说明 `<div role="note">` 放进 children 违反该契约。改用 `footer: MenuEntry[]` 加 `MenuLabel`（`{ type: 'label', id, text }`，非交互、`role="presentation"`）：footer 固定在可滚动区域之下并带分隔线；原生 `.label` 未设 `nowrap`，长文本自然换行。`MenuLabel.text` 只接受字符串，长路径换行依靠 `listClassName` 上可继承的 `overflow-wrap: anywhere`（listClassName 是唯一能作用到 portal 列表的样式钩子）。
+- **公开 `PathLabel({ path })`**：单行路径，目录次要色、末段主色，溢出时左侧渐隐；用于建群表单显示所选工作区及原生工作区菜单行。
+- **群工作区选择**：复用已接入 Bot 编辑器的 `ctx.uiWorkspace.pickDirectory()`（Host 原生目录选择，取消返回 null）和 `ctx.workspaces.list` 快照的 `items[].path/title`（页面模型已订阅，未新增订阅）。群 cwd 即 sandbox-policy 的 workspace-write 边界，且创建后不可变（`session.header.cwd`），故在创建时选择；默认仍是 Bot 共享工作区，Host 端校验与注册（`validateDefaultCwd`、`workspaceRegistry.create`）不变。无选择器时保留手输路径。
+- **越权拒绝提示**：DSH 工具错误为 `HarnessError` 时，`tool/result` 事件写入 `error: { name, code }`（dsh-agent-loop `appendToolResult` 取 `result.error.info`），原生 Chat 投影原样映射到 `ToolResultNode.error.code`，PTC 子调用在 `subCalls`。结构化码：`FS_SANDBOX_DENIED`（dsh-fs-sandbox，read-only / workspace-write 越界写）、`AUTO_REVIEW_DENIED`（实验 Auto 审查拒绝）。`FS_PERMISSION_DENIED` 是 OS 权限错误，不属于访问模式，不计入。shell/进程内的沙箱失败没有结构化码，不从文本猜测。
+- 提示只读当前最新问题的成员原生 Chat 投影（`uiConversation.binding(binding).target('chat')`），与执行详情、统计共用 `GroupStatsSource` 的 parent/child 引用，不唤醒 Agent、不新增 Host 状态或持久化字段；旧问题折叠时不保留子会话引用。
+- 仍不复用、且有意不复用：`ApprovalService.setPolicy` 可公开切换 child 审批，但违背原生委派固定 `never` 的设计，且原生 `dsh-client-ui-approval` 只在该 child 自己的输入框接管审批，群聊中不可见，需自建桥接。rc.2 `dsh-client-ui-permission-presets/client` 只导出 `PermissionSelect` 类型、未导出组件或 `displayPermissionPreset`，故群聊权限标签继续自备。
