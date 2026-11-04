@@ -61,14 +61,14 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
   it.each(['en', 'zh'] as const)('registers a localized type, guide, keyed body/title and both openers, then releases them (%s)', async (language) => {
     const dictionary = language === 'zh' ? zh.ui : en.ui;
     const app = await mount(language);
-    expect(app.registerRightTab).toHaveBeenCalledTimes(2);
+    expect(app.registerRightTab).toHaveBeenCalledTimes(3);
     const definition = app.rightDefinitions.get(BOTS_TAB_ID);
     expect(definition).toMatchObject({ id: BOTS_TAB_ID, kind: BOTS_TAB_KIND });
     expect(definition?.title('')).toBe(dictionary['rightTab.title']);
     expect(definition?.guide?.[0]?.title()).toBe(dictionary['rightTab.title']);
     expect(definition?.guide?.[0]?.description?.()).toBe(dictionary['rightTab.description']);
     expect(definition?.multiple).toBeUndefined();
-    expect(app.core.entries('sidebar.right.pane.tab').map((entry) => entry.options.key)).toEqual(['dsh-bot.execution', BOTS_TAB_ID]);
+    expect(app.core.entries('sidebar.right.pane.tab').map((entry) => entry.options.key)).toEqual(['dsh-bot.execution', BOTS_TAB_ID, 'dsh-bot.bot-panel']);
     expect((await app.mountRightTitle()).textContent).toBe(dictionary['rightTab.title']);
     await app.setRightSession('current-session');
     const opener = await app.mountRightOpener('current-session');
@@ -90,9 +90,9 @@ describe('Bots right tab through public Cordis and SlotCore contracts', () => {
     expect(app.rightSessionListeners.size).toBe(0);
     expect(app.sessionListeners.size).toBe(0);
     await app.reloadPlugin();
-    expect(app.rightDefinitions.size).toBe(2);
-    expect(app.registerRightTab).toHaveBeenCalledTimes(4);
-    expect(app.core.entries('sidebar.right.pane.tab')).toHaveLength(2);
+    expect(app.rightDefinitions.size).toBe(3);
+    expect(app.registerRightTab).toHaveBeenCalledTimes(6);
+    expect(app.core.entries('sidebar.right.pane.tab')).toHaveLength(3);
   });
 
   it.each(['source', 'built'] as const)('opens the latest eligible Host session after markRead (%s)', async (implementation) => {

@@ -22,6 +22,8 @@ export const IconChevronDownOutlineRegular = Icon;
 export const IconPaperclipOutlineRegular = Icon;
 export const IconSendOutlineRegular = Icon;
 export const IconThinkOutlineRegular = Icon;
+export const IconRightUpOutlineRegular = Icon;
+export const IconSettingsOutlineRegular = Icon;
 
 export function DisclosureRow({ title, open, onToggle, collapsedContent, children, running }: {
   title: string; open: boolean; onToggle(): void; collapsedContent?: ReactNode; children?: ReactNode; running?: boolean;

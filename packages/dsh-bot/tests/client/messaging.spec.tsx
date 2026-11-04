@@ -1,10 +1,10 @@
 import { MessageOverviewPanel, type MessageActions } from '../../src/client/components/MessageOverview.js';
 import { messageOverviewSchema } from '../../src/shared/messaging-contract.js';
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MessageCard, messageDefinition, messageText } from '../../src/client/messaging.js';
+import { MessageCard, messageDefinition, messageGroupTree, messageLabel, messageText } from '../../src/client/messaging.js';
 import { messageSourceSchema } from '../../src/shared/messaging.js';
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 type SessionEventLike = Parameters<typeof messageDefinition.match>[0];
@@ -69,6 +69,54 @@ describe('B05 formal message projection and keyboard cards', () => {
       expect(container.querySelector('script')).toBeNull(); expect(container.textContent).toContain('方案风险');
       await act(async () => root.render(<MessageCard node={{ ...node, data: { ...node.data } }} t={t} />));
       expect(container.querySelector('button')).toBe(button); expect(document.activeElement).toBe(button); expect(button.getAttribute('aria-expanded')).toBe('true');
+    } finally { await act(async () => root.unmount()); container.remove(); }
+  });
+  it('keeps teammate messages out of the folded Turn process', () => {
+    // Received messages are the Turn's input, like a user message; the sender's notice stays in its Turn.
+    expect(messageGroupTree(source)).toBe('input');
+    const sent = messageSourceSchema.parse({ ...source, kind: 'dsh-bot-message-sent', form: 'notice', summary: 'Sent to A' });
+    expect(messageGroupTree(sent)).toBe('turn');
+    const view = (data: typeof node.data) => messageDefinition.buildViewNode?.({ key: 'k', id: 'm', state: data, start: { location: { kind: 'unresolved' } } } as never) as ChatNode<'dsh-bot-message'>;
+    expect(view(node.data).groupTree).toBe('input');
+    expect(view({ ...node.data, source: sent }).groupTree).toBe('turn');
+  });
+  it.each(['en', 'zh'] as const)('names each direction and mode and opens the peer from its chip (%s)', async (lang) => {
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    const dictionary = (lang === 'en' ? en.ui : zh.ui) as Record<string, string>;
+    const t = (key: string, params?: Record<string, unknown>) => (dictionary[key] ?? key).replace(/\{(\w+)\}/g, (_m, name: string) => String(params?.[name]));
+    const sentAsk = messageSourceSchema.parse({ ...source, kind: 'dsh-bot-message-sent', form: 'notice', summary: 'Sent to A',
+      from: source.to, to: source.from, displaySnapshots: { from: { name: 'A' }, to: { name: 'Reviewer', avatarColor: 'teal' } } });
+    const receivedReply = messageSourceSchema.parse({ ...source, mode: 'reply', replyTo: 'ask-1' });
+    const sentReply = messageSourceSchema.parse({ ...sentAsk, mode: 'reply', replyTo: 'ask-1' });
+    expect([sentAsk, sentReply, source, receivedReply].map(messageLabel)).toEqual(['messages.sentTo', 'messages.repliedTo', 'messages.receivedFrom', 'messages.replyFrom']);
+    const container = document.createElement('div'); document.body.append(container); const root = createRoot(container);
+    const onOpenBot = vi.fn(), onShowStatus = vi.fn();
+    try {
+      await act(async () => root.render(<MessageCard node={{ ...node, data: { ...node.data, source: sentAsk } }} onOpenBot={onOpenBot} onShowStatus={onShowStatus} t={t} />));
+      const marker = container.querySelector('[data-bot-message-marker]');
+      expect(marker?.textContent).toContain(t('messages.sentTo'));
+      expect(marker?.textContent).toContain(t('messages.ask'));
+      const chip = container.querySelector<HTMLButtonElement>('button[data-bot-chip="reviewer"]');
+      expect(chip?.getAttribute('aria-label')).toBe(t('badge.open', { name: 'Reviewer' }));
+      expect(chip?.querySelector<HTMLElement>('span[style]')?.style.color).toContain('color-mix');
+      await act(async () => chip?.click());
+      expect(onOpenBot).toHaveBeenCalledExactlyOnceWith('reviewer');
+      const toggle = container.querySelector<HTMLButtonElement>('button[aria-expanded]');
+      expect(toggle?.textContent).toBe(t('messages.showContent'));
+      await act(async () => toggle?.click());
+      expect(toggle?.textContent).toBe(t('messages.hideContent'));
+      expect(document.getElementById(toggle?.getAttribute('aria-controls') ?? '')?.textContent).toContain('方案风险');
+      const status = [...container.querySelectorAll('button')].find(b => b.textContent === t('messages.status'));
+      await act(async () => status?.click());
+      // Delivery and reply status belong to this conversation's own Bot.
+      expect(onShowStatus).toHaveBeenCalledExactlyOnceWith('alpha');
+      await act(async () => root.render(<MessageCard node={{ ...node, data: { ...node.data, source: receivedReply } }} t={t} />));
+      const received = container.querySelector('[data-bot-message-marker]');
+      expect(received?.textContent).toContain(t('messages.replyFrom'));
+      expect([...(received?.querySelectorAll('span') ?? [])].some(e => e.textContent === t('messages.reply'))).toBe(false);
+      // Without an opener the peer stays a label, never a dead button.
+      expect(container.querySelector('button[data-bot-chip]')).toBeNull();
+      expect(container.querySelector('[data-bot-chip="reviewer"]')?.textContent).toBe('Reviewer');
     } finally { await act(async () => root.unmount()); container.remove(); }
   });
 });

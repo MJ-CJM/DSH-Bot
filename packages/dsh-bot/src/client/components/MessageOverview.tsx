@@ -35,14 +35,14 @@ export function MessageOverviewPanel({ botId, actions, onOpen, t }: {
     catch { if (token === epoch.current) setError(true); }
     finally { if (token === epoch.current) { mutating.current = false; setBusy(false); } }
   };
-  return <section className={styles.card} aria-label={t('messages.title')}><style>{css}</style><h3>{t('messages.title')}</h3>
+  return <section className={styles.overview} data-message-overview={botId} aria-label={t('messages.title')}><style>{css}</style><h3>{t('messages.title')}</h3>
     <p>{t('messages.limited')}</p>
     {(error || snapshot?.enabled === false) && <p role="status">{t('messages.disabled')}</p>}
     <p>{t('messages.pending')}: {snapshot?.pending ?? 0}</p>
     {snapshot?.items.map((r) => {
       const sent = r.envelope.from.botId === botId, peer = sent ? r.envelope.to : r.envelope.from;
       const display = sent ? r.envelope.toDisplay : r.envelope.fromDisplay;
-      return <div key={r.envelope.id} className={styles.body}>
+      return <div key={r.envelope.id} className={styles.overviewItem}>
         <BotAvatar bot={{ id: peer.botId, ...display }} size={24} /> {t(sent ? 'messages.to' : 'messages.from')} {display.name} ({peer.botId})
         <p>{t(`messages.${r.envelope.mode}`)} · {t(`messages.delivery.${r.delivery}`)} · {t(`messages.processing.${r.processing}`)} · {t(`messages.response.${r.response}`)}</p>
         <button type="button" onClick={() => void onOpen(sent ? r.envelope.toSessionId : r.envelope.fromSessionId)}>{t('messages.open')}</button>

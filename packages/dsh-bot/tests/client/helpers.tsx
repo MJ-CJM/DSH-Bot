@@ -300,6 +300,20 @@ export async function mountClient(
       return mountRightSurface('opener');
     },
     unmountRightTab: () => unmountRightSurface('body'),
+    /** Render one registered entry with explicit runtime props, as its owning seat would. */
+    async mountEntry(slot: Parameters<typeof core.entries>[0], match: (options: Record<string, unknown>) => boolean, runtime: Record<string, unknown> = {}) {
+      const element = document.createElement('div');
+      document.body.append(element);
+      const target = createRoot(element);
+      let props = runtime;
+      const render = () => renderEntry(core.entries(slot).find(entry => match(entry.options as Record<string, unknown>)), target, props);
+      await act(async () => { render(); });
+      return {
+        container: element,
+        async rerender(next: Record<string, unknown>) { props = next; await act(async () => { render(); }); },
+        async unmount() { await act(async () => { target.unmount(); }); element.remove(); },
+      };
+    },
     async mountSidebar(wide = true) {
       sidebarWide = wide;
       if (!sidebarContainer) {
