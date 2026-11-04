@@ -85,7 +85,7 @@ try {
   check('native child Session logs record each LlmFailure', native.length === 3 && native.every(row => row.reason?.kind === 'error' && same(row.reason.error, expected[row.name])));
   check('no browser errors or real model calls', errors.length === 0 && receipt.realModelRequests === 0);
   await writeFile(join(out, 'result.json'), `${JSON.stringify({ status: 'PASS', version, dir, checks, errors, native, receipt }, null, 2)}\n`);
-  console.log(`${JSON.stringify({ status: 'PASS', version, checks: checks.length, dir, out }));
+  console.log(JSON.stringify({ status: 'PASS', version, checks: checks.length, dir, out }));
 } catch (error) {
   if (page && !page.isClosed()) { await page.screenshot({ path: join(out, 'failure.png') }); await writeFile(join(out, 'failure.txt'), await page.locator('body').ariaSnapshot()); }
   await writeFile(join(out, 'result.json'), `${JSON.stringify({ status: 'FAIL', dir, checks, errors, error: String(error.stack) }, null, 2)}\n`); throw error;

@@ -45,6 +45,15 @@
 - `DSH_HOME="$PWD/.dsh-dev" DSH_BOT_DSH_BIN="$PWD/.dsh-dev/native-api-rc2/node_modules/.bin/dsh" node scripts/group-failure-runtime.mjs --mock-only`：rc.2，17 项通过。
 - `scripts/pnpm check`、`scripts/pnpm check:tooling`：通过。
 
+## 合入 main 后复验（2026-11-04）
+
+#31（Issue #30）合入 main 后，本分支合并 main。冲突只有两处文件末尾追加：`groups.module.css`（`/` 命令菜单样式与成员失败样式）、`docs/dsh-api-notes.md`（Issue #30 与本节说明），均保留双方。locale 自动合并，中英各 1080 键、键集一致。
+
+- 修正 `scripts/group-failure-runtime.mjs` 末行汇总输出的模板字符串语法错误（缺少 `}` 与反引号，脚本无法解析；`scripts/pnpm check` 不解析 `scripts/` 下的脚本，故未报出）。`node --check` 逐个检查 `scripts/`、`packages/dsh-bot/tests/` 下 88 个 `.mjs`，均可解析。
+- `scripts/pnpm check`：PASS，154 文件，1335 通过 + 3 预期失败；lint 仍为 1 条既有 info。
+- `node scripts/group-failure-runtime.mjs --mock-only`：rc.5 / rc.2 各 17 项 PASS。
+- `node scripts/group-statistics-menu-runtime.mjs --mock-only`（Issue #30 统计栏）：rc.5 / rc.2 各 44 项 PASS，合并后的样式未影响群聊统计栏。
+
 ## 局限
 
 - 已有的历史失败消息没有保存原因，仍显示“部分失败 · 运行出错”；只有修复后的新失败带具体原因。
