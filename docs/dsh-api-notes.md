@@ -1492,3 +1492,59 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
   - 复用 `BotAvatar`、`RoutinePanel`、`BackgroundTasksPanel`、`MessageOverviewPanel` 与公开的 `SegmentedTabs` / `Button`；“完整设置”仍进入 Bots 页详情，不在右栏复制编辑表单。
   - 390px 宽度时原生右侧栏以全屏呈现，属原生行为。
 - **附带发现（未在本 issue 修复）：** 消息的来源校验（`MessagingCore.provenance`）把一轮中的非 ambient `user/message` 视为非用户来源。原生首轮会注入 `skill-catalog`，它不在 ambient 集合（`agent-instructions` / `runtime-context` / `time-context` / `tmux-context`）中。因此新 Bot 的第一轮若直接要求联系队友，`bot_message` 返回 `approval-denied`。现有 b2b fixture 与本次 fixture 都先进行一轮普通对话来规避。该检查涉及安全边界，建议单独处理。
+
+### Issue #30 后续：群聊输入框的 `/` 指令与添加按钮（2026-11-03）
+
+均为公开入口，rc.2 已安装包只读核实；rc.2 / rc.5 隔离真实 Host + 浏览器各 35 项检查通过，详见 [验收记录](verification/bot-message-presence.md#后续群聊输入框的--指令与添加按钮)。
+
+- **原生 composer 无法保留：** 原生 `/` 菜单、popupSelect 与反馈对话框都挂在原生 composer bar 的子 slot（`conversation.input.overlay` 等）里；普通消息的发送由 hub 私有的 `defaultSink` 完成，没有公开钩子把它改投给群调度。因此群聊仍以 `conversation.composer` chain 接管（V061 结论不变），在自有输入框里补齐菜单。
+- **群根会话的原生指令目录：** 公开 Remote `commands/list(rootSessionId)` 只返回 `export`、`feedback`、`permission`（rc.2 / rc.5 实测）。`compact`、`goal`、`plan`、`model` 属于带模型 Agent 的 preset 组合，无模型的群根没有，所以群聊菜单不提供，也不自造替代。
+  - 本包按此目录过滤原生行，并缓存到 `commands/change` Remote 事件或连接代际变化为止；读取失败不缓存，只隐藏原生行。
+- **菜单：** 复用群聊已有的私有 `InputTriggerController`（`@deepseek-ai/dsh-client-ui-input-trigger/client`）。
+  - 新增一个 `'/'` source，候选使用公开字段 `section` / `icon` / `label` / `description`，仅在 `position === 'leading'` 时返回，行内 `/` 保持文本。
+  - 选中返回 `{ text: '' }`：控制器经 `slash/input-insert-text` 把已输入的 `/xxx` 删除，再执行动作。
+  - 添加按钮调用公开的 `toggleSource(source, hit)`（原生“添加文件或调用指令”按钮的同一入口），以光标处的合成 span 打开同一菜单，并把焦点留在输入框，键盘仍由 `arbitrate` 处理。
+  - 整段草稿是裸指令（`/export`，或本地化名称 `/下载日志`）且菜单已关闭时，回车执行该指令，而不是发成消息，与原生 composer 一致。
+- **动作：**
+  - 文件：群聊原有的上传（`fileUpload` 回执）。
+  - 模型：打开群聊模型菜单（群默认与逐成员，V062）。
+  - 权限：打开群聊访问模式菜单，写入仍是原生 `/permission`（Issue #26）。
+  - 下载日志：`ctx.sessionLogDownload.download(rootSessionId)`（`@deepseek-ai/dsh-session-log-export/client`，与会话头部“下载 Session 日志”同一控制器和对话框）。ZIP 含群根 `session.vN.jsonl` 与每个成员的 `subagents/<id>/session.vN.jsonl`（实测）。
+  - 反馈：`ctx.feedbackUi.openSession(rootSessionId)`（`@deepseek-ai/dsh-client-ui-message-feedback/client`），原生反馈表单在群聊页正常显示（实测）。
+  - 两个服务都用 `ctx.get(name)` 按需读取，配本地结构类型，未新增依赖。服务不存在时对应行隐藏。
+- **有意不复用：**
+  - `ctx.commandUi`（`CommandUiRuntime`）只公开 `register` / `decorate` / `dismiss` / `popupFor`，候选合成与执行是私有的。
+  - 不自行触发 `command/executed`：它表示原生 composer 已完成一次 Host 指令受理，由本包伪造会误导其他监听者。导出改走上面的下载控制器。
+
+### Issue #30 后续：群聊统计栏与问题菜单（2026-11-04）
+
+全部为公开入口。参考源码目录不在本机约定位置，本轮改为只读核对已安装的 rc.2 包（`lib/types` 与构建产物）。rc.2 / rc.5 隔离真实 Host + 浏览器各 30 项新检查通过，原统计运行检查（4 个变体）同时通过，详见 [验收记录](verification/bot-message-presence.md#后续群聊统计栏与问题菜单)。
+
+- **原生 `Menu`（`@deepseek-ai/dsh-client-ui-primitives`）：**
+  - `portal`：列表渲染到 `document.body`，不再落在群聊 `.panel` 下。原先就地渲染时，面板给所有 `button` 的边框、底色和内边距会套到原生行上，所以每行看起来像一张卡片。
+  - `side="top"`：统计栏在页面底部，菜单向上展开。
+  - `selectedId`：原生行尾对勾标出“跟随最新问题”或已固定的问题。原生只用 class 和对勾图标标记，没有 ARIA 选中状态；当前问题写进了触发按钮的可访问名称。
+  - 行使用公开 `MenuItem` 的 `icon`（放状态点）与 `label: ReactNode`（问题首行 + 时间 · 状态 · 成员两行）；`{ type: 'separator' }` 把“跟随最新问题”与问题列表分开。
+  - `listClassName`：只设置卡片宽度。原生卡片最大宽度 360px，行内为单行省略，两行标签各自省略。
+- **`StateDot`**（同包）：轮次状态映射为原生语义——排队/运行 `ongoing`，暂停/待核对 `warning`，部分失败 `error`，完成 `done`，空闲/取消 `idle`。
+- **`IconGaugeOutlineRegular` / `IconDatabaseOutlineRegular` / `IconChevronDownOutlineRegular`**（同包）：与原生输入框统计胶囊相同的执行和用量图标。
+- **公共词表 `number.thousand` / `number.million`**（`@deepseek-ai/dsh-client-locale` 的 `common` 命名空间）：
+  - 框架注入的 `t` 在本包命名空间未命中时会查 `common`，类型 `TranslateNS<'dsh-bot'>` 也包含这些键。
+  - token 数沿用原生输入框的紧凑写法（517 / 12.2K / 1.2M），不再随浏览器语言变成 `69M` 或 `6900万`；原生中文同样是 `69M`。
+- **有意不复用：** 原生输入框统计胶囊（`StatsPills`、`formatTokens`、`formatCacheHitPercent`）是 `dsh-client-ui-chat` 的内部实现，没有公开导出。本包只在 CSS 里对齐它的外观（无边框、14px 图标、次级文字、可点击项悬停填充），并保留自己的百分比格式（最多一位小数）。
+- **措辞：** “缓存 x%”改为原生同款“缓存命中 x%”。统计栏和菜单的状态短语与群聊卡片保持一致（如“待核对”“已完成”“已取消”），同一状态不再有两种叫法。
+- **主题 token：** 原生分隔符颜色 `--dsw-alias-separator-primary` 不在本包 rc.2 token 白名单内（`build/theme-tokens.ts`），改用 `--dsw-alias-label-caption`。
+
+#### 统计范围提示与整个群聊合计（2026-11-04）
+
+没有新增 API；仍使用前文的 `sessions.retain` → `projections.faceOf('sessionStats'|'tokenUsage')`。
+
+- **范围提示：** 执行和用量两项的悬停提示写明统计范围——“仅本问题 · x/y 位成员可读取”，或“整个群聊 · n 个问题 · x/y 个成员会话可读取”。
+- **整个群聊：** 问题菜单新增“整个群聊”，只在用户选中时读取。
+  - 范围：群里所有已开始的成员会话，每个只计一次。被多个问题引用的会话归到第一个问题，不像单问题统计那样整条排除。
+  - 仍在变化的会话（所属问题排队、运行或暂停中，或成员状态为运行或未知）保持订阅，数字实时更新。
+  - 已结束的会话：每次最多同时读取 4 个；拿到第一份非加载中的快照就取消订阅，原生引用随即释放，读数在本视图内缓存。
+  - 这样不会同时持有群里全部成员会话。原设计（S0）只为选中的问题保留引用，这一点不变。
+  - 读取失败的会话下次进入该视图时重试；单次读取 20 秒超时，按“不可读”处理。
+- **详情：** 弹窗显示合计（不显示单一模型或上下文估计），并按问题列出各自的 token 与缓存命中。
+- **发送新问题后：** 统计切回该问题，与原有行为一致。
