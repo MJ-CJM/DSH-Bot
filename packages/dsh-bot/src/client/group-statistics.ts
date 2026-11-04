@@ -35,7 +35,7 @@ export const cachePercent = (usage: Usage) => {
   const input = tokenTotal(usage) - usage.outputTokens;
   return input > 0 ? usage.cacheReadTokens / input * 100 : undefined;
 };
-export const contextPercent = (snapshot: ChildStatistics) => {
+export const contextPercent = (snapshot: Pick<ChildStatistics, 'modelSelection' | 'pressure'>) => {
   const last = snapshot.modelSelection?.lastUsed, next = snapshot.modelSelection?.next;
   if (last && next && (last.provider !== next.provider || last.model !== next.model)) return undefined;
   const value = snapshot.pressure?.projectedTokens ?? snapshot.pressure?.pressureTokens;
@@ -67,6 +67,42 @@ export function statisticsDeliveries(view: Pick<GroupView, 'deliveries'>, turnId
   const rows = new Map<string, GroupDelivery>();
   for (const row of workers) if (row.turnId === turnId) rows.set(row.childSessionId ?? row.id, row);
   return [...rows.values()].map(delivery => ({ delivery, conflict: Boolean(delivery.childSessionId && (owners.get(delivery.childSessionId)?.size ?? 0) > 1) }));
+}
+const ACTIVE_TURN = ['accepted', 'running', 'paused'];
+/**
+ * Every started member session of the group, each once: a session claimed by several
+ * questions is counted under its first question instead of being excluded. `live`
+ * marks sessions whose numbers can still change.
+ */
+export function groupStatisticsWorkers(view: Pick<GroupView, 'deliveries' | 'turns'>) {
+  const active = new Set(view.turns.filter(turn => ACTIVE_TURN.includes(turn.state)).map(turn => turn.id));
+  const rows = new Map<string, { delivery: GroupDelivery; childId: string; live: boolean }>();
+  for (const delivery of view.deliveries) {
+    const childId = delivery.childSessionId;
+    if (!childId || delivery.reasonCode === 'message-published' || delivery.joinedDeliveryId || ['pending', 'starting'].includes(delivery.state) || rows.has(childId)) continue;
+    rows.set(childId, { delivery, childId, live: active.has(delivery.turnId) || ['running', 'unknown'].includes(delivery.state) });
+  }
+  return [...rows.values()];
+}
+/**
+ * One reading of a settled session: subscribe (which retains the native session), take
+ * the first non-loading snapshot, then unsubscribe so the lease is released at once.
+ */
+export function readStatisticsOnce(source: StatisticsSource, signal: AbortSignal, timeoutMs = 20_000): Promise<ChildStatistics> {
+  return new Promise(resolve => {
+    let off: (() => void) | undefined, timer: ReturnType<typeof setTimeout> | undefined, done = false;
+    const finish = (value: ChildStatistics) => {
+      if (done) return; done = true;
+      if (timer !== undefined) clearTimeout(timer); signal.removeEventListener('abort', abort); off?.(); resolve(value);
+    };
+    const abort = () => finish(loadingStatistics);
+    const check = () => { const value = source.getSnapshot(); if (value.state !== 'loading') finish(value); };
+    if (signal.aborted) { resolve(loadingStatistics); return; }
+    signal.addEventListener('abort', abort);
+    timer = setTimeout(() => finish({ state: 'unavailable' }), timeoutMs);
+    off = source.subscribe(check);
+    if (done) off(); else check();
+  });
 }
 export function defaultStatisticsTurn(turns: GroupTurn[]) {
   const recent = [...turns].sort((a, b) => b.createdAt - a.createdAt);

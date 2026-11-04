@@ -47,7 +47,7 @@ for (const [language, theme, mode] of process.env.DSH_BOT_STATS_COLD_ONLY === '1
     await bar.waitFor();
     assert.equal(await bar.getAttribute('data-statistics-turn'), fixture.secondTurnId);
     if (mode === 'detailed') await bar.locator('[data-group-token-total="160"]').waitFor();
-    await bar.getByRole('button', { name: t['statistics.select'], exact: true }).click();
+    await bar.locator('button[aria-haspopup="menu"]').click();
     await page.getByRole('menuitem').filter({ hasText: language === 'en' ? 'How should we compare' : '请一起讨论' }).click();
     assert.equal(await bar.getAttribute('data-statistics-turn'), fixture.turnId);
     const turn = page.locator(`[data-group-turn="${fixture.turnId}"]`);

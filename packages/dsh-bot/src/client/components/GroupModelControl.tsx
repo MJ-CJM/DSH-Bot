@@ -9,6 +9,8 @@ import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/groups.module.css';
 
 type Props = { group: GroupRecord; members?: GroupMember[]; bots?: BotRecord[]; actions: GroupActions; models: ModelActions; disabled?: boolean;
+  /** Each new value opens the menu at its root, as a click on the trigger does (the composer's '/' menu). */
+  openRequest?: number;
   onBusyChange?(busy: boolean): void; onSaved?(): Promise<void> } & PropsLocale<'dsh-bot'>;
 const routeKey = (selection: GroupModelSelection) => JSON.stringify([selection.provider, selection.model]);
 type Attempt = { selection: GroupModelSelection | null; memberId?: string; expectedModelRevision: number };
@@ -17,7 +19,7 @@ type Attempt = { selection: GroupModelSelection | null; memberId?: string; expec
 export function GroupModelControl(props: Props) {
   return <Control key={`${props.group.id}:${props.group.createdAt}`} {...props} />;
 }
-function Control({ group, members = [], bots = [], actions, models, disabled, onBusyChange, onSaved, t }: Props) {
+function Control({ group, members = [], bots = [], actions, models, disabled, openRequest, onBusyChange, onSaved, t }: Props) {
   const [open, setOpen] = useState(false), [pane, setPane] = useState<'root' | 'member' | 'model' | 'effort'>('root');
   const [target, setTarget] = useState<string>();
   const active = members.filter(member => member.enabled && member.removedAt === undefined && member.group.groupId === group.id && member.group.groupCreatedAt === group.createdAt);
@@ -157,13 +159,21 @@ function Control({ group, members = [], bots = [], actions, models, disabled, on
   ];
   if (loading) items.push({ type: 'label', id: 'loading', text: t('groups.modelLoading') });
   if (loadError) items.push({ type: 'label', id: 'load-error', text: t('groups.modelLoadFailed') }, { id: 'reload', label: t('groups.modelRetry'), disabled: loading || busy });
+  function openRoot() { setTarget(undefined); setPane('root'); failed.current = undefined; setSaveError(false); setOpen(true); void load(latest.current.modelSelection); }
+  // Compared after every render: only a new request opens the menu, never a re-render.
+  const handled = useRef(openRequest);
+  useEffect(() => {
+    if (handled.current === openRequest) return;
+    handled.current = openRequest;
+    if (openRequest !== undefined && !disabled && !busy && !locked.current && !open) openRoot();
+  });
   return <span className={styles.modelControl}>
     <Menu key={`${pane}:${target ?? ''}`} open={open} onClose={() => setOpen(false)} side="top" portal compact autoFocus
       className={styles.modelMenuAnchor} listClassName={styles.modelMenu} items={items}
       selectedIds={[selection ? modelId(selection.provider, selection.model) : 'reset', selection?.reasoningEffort ? effortId(selection.reasoningEffort) : 'effort-default']}
       anchor={<Button variant="ghost" size="sm" className={styles.modelTrigger} disabled={disabled || busy} title={t('groups.modelScope')}
         aria-label={`${t('groups.model')}: ${triggerLabel}${triggerEffort ? ` · ${triggerEffort}` : ''}`} aria-haspopup="menu" aria-expanded={open} aria-busy={busy}
-        onClick={() => { if (locked.current) return; if (open) setOpen(false); else { setTarget(undefined); setPane('root'); failed.current = undefined; setSaveError(false); setOpen(true); void load(latest.current.modelSelection); } }}>
+        onClick={() => { if (locked.current) return; if (open) setOpen(false); else openRoot(); }}>
         <IconDataOutlineRegular size={16} /><span className={styles.modelTriggerLabel}>{triggerLabel}</span>
         {triggerEffort && <span className={styles.modelEffort}>{triggerEffort}</span>}<IconChevronDownOutlineRegular size={12} />
       </Button>}

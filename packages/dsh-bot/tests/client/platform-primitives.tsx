@@ -22,6 +22,16 @@ export const IconChevronDownOutlineRegular = Icon;
 export const IconPaperclipOutlineRegular = Icon;
 export const IconSendOutlineRegular = Icon;
 export const IconThinkOutlineRegular = Icon;
+export const IconRightUpOutlineRegular = Icon;
+export const IconSettingsOutlineRegular = Icon;
+export const IconShieldOutlineRegular = Icon;
+export const IconDownloadOutlineRegular = Icon;
+export const IconPaperPlaneOutlineRegular = Icon;
+export const IconGaugeOutlineRegular = Icon;
+export const IconDatabaseOutlineRegular = Icon;
+export function StateDot({ state, className }: { state: string; size?: number; className?: string }) {
+  return <span aria-hidden="true" data-state-dot={state} className={className} />;
+}
 
 export function DisclosureRow({ title, open, onToggle, collapsedContent, children, running }: {
   title: string; open: boolean; onToggle(): void; collapsedContent?: ReactNode; children?: ReactNode; running?: boolean;
@@ -35,16 +45,18 @@ export function MarkdownText({ text }: { text: string; labels: unknown; variant?
   return <div data-platform-markdown="">{text}</div>;
 }
 
-type MenuEntryDouble = { id: string; label?: ReactNode; disabled?: boolean; type?: string; text?: string };
-export function Menu({ open, anchor, items = [], footer = [], onSelect, children, className }: {
+type MenuEntryDouble = { id: string; label?: ReactNode; icon?: ReactNode; disabled?: boolean; type?: string; text?: string };
+export function Menu({ open, anchor, items = [], footer = [], selectedId, onSelect, children, className }: {
   open: boolean; anchor: ReactNode; className?: string; children?: ReactNode;
   items?: readonly MenuEntryDouble[]; footer?: readonly MenuEntryDouble[];
+  selectedId?: string | undefined; portal?: boolean; side?: string; listClassName?: string;
   onSelect?: (id: string) => void;
 }) {
-  // Mirrors the public entry contract: separators and non-interactive labels are presentation rows.
+  // Mirrors the public entry contract: separators and non-interactive labels are presentation rows;
+  // the selected row is marked (the native list draws a trailing check).
   const entry = (item: MenuEntryDouble) => item.type === 'separator' ? <hr key={item.id} />
     : item.type === 'label' ? <div key={item.id} role="presentation" data-menu-label="">{item.text}</div>
-    : <button type="button" role="menuitem" key={item.id} disabled={item.disabled} onClick={() => onSelect?.(item.id)}>{item.label}</button>;
+    : <button type="button" role="menuitem" key={item.id} disabled={item.disabled} data-menu-selected={item.id === selectedId ? '' : undefined} onClick={() => onSelect?.(item.id)}>{item.icon}{item.label}</button>;
   return <span className={className}>{anchor}{open && <div role="menu">{items.map(entry)}{children}
     {footer.length > 0 && <div role="presentation" data-menu-footer="">{footer.map(entry)}</div>}</div>}</span>;
 }
