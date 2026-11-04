@@ -43,18 +43,29 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
     const h = { agent, dispose: vi.fn(async () => { sequence.push('root-dispose'); roots.delete(sessionId); }) }; roots.set(sessionId, h); persisted.set(sessionId, h); return h;
   });
   const resume = vi.fn(async ({ resumeSessionId }: { resumeSessionId: string }) => { const h = persisted.get(resumeSessionId); if (!h || roots.has(resumeSessionId)) throw new Error('ownership'); roots.set(resumeSessionId, h); return h; });
-  f.ctx.provide('agents', { get: (id: string) => roots.get(id)?.agent, create, resume } as unknown as typeof f.ctx.agents);
+  // Child agents are only Session holders here: the runner reads their native turn/end failure.
+  const children = new Map<string, Agent>();
+  f.ctx.provide('agents', { get: (id: string) => roots.get(id)?.agent ?? children.get(id), create, resume } as unknown as typeof f.ctx.agents);
   const flush = vi.fn(async () => true); f.ctx.provide('sessions', { flush } as unknown as typeof f.ctx.sessions);
   const rename = vi.fn(async ({ title }: { title: string }) => ({ title, renamed: true }));
   f.ctx.provide('sessionController', { rename } as unknown as typeof f.ctx.sessionController);
-  let behavior: 'success' | 'hold' | 'partial' | 'throw' = 'success';
+  let behavior: 'success' | 'hold' | 'partial' | 'throw' | 'quota' | 'quota-empty' = 'success';
   const calls: { preset: string; prompt: string; signal: AbortSignal }[] = [];
-  const start = vi.fn(async (input: { signal: AbortSignal; request: { agentPreset: string; prompt: { text: string }[] } }) => {
+  const start = vi.fn(async (input: { childId?: SessionId; signal: AbortSignal; request: { agentPreset: string; prompt: { text: string }[] } }) => {
     if (behavior === 'throw') throw new Error('sensitive-native-error');
     calls.push({ preset: input.request.agentPreset, prompt: input.request.prompt[0]?.text ?? '', signal: input.signal });
     let finish!: (r: SubagentResult) => void;
     const result = new Promise<SubagentResult>(r => { finish = r; });
-    if (behavior !== 'hold') finish({ output: [{ type: 'text', text: `reply-${calls.length}` }], stopReason: behavior === 'partial' ? 'max-tokens' : 'completed' });
+    if (behavior === 'quota' || behavior === 'quota-empty') {
+      // The runner reserves the native child id before startActivation.
+      const childId = input.childId ?? `child-${calls.length}` as SessionId;
+      const session = Session.create(childId, undefined, { version: 4, id: childId, createdAt: Date.now(), isSeeded: false });
+      session.append('turn/start', { turn: 1 });
+      session.append('turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'Insufficient Balance (request_id: r-1)', code: 'QUOTA', status: 402 } } });
+      children.set(childId, { id: childId, session } as unknown as Agent);
+      finish({ output: behavior === 'quota' ? [{ type: 'text', text: 'checked 4 files, continuing:' }] : [], stopReason: 'error' });
+      return { childId, result, dispose: vi.fn(async () => { sequence.push('child-dispose'); }) };
+    } else if (behavior !== 'hold') finish({ output: [{ type: 'text', text: `reply-${calls.length}` }], stopReason: behavior === 'partial' ? 'max-tokens' : 'completed' });
     return { childId: `child-${calls.length}`, result, dispose: vi.fn(async () => { sequence.push('child-dispose'); finish({ output: [], stopReason: 'aborted' }); }) };
   });
   f.ctx.provide('subagents', { listChildren: async () => [], drainChildren: async () => {}, getProvider: () => ({ inheritsParentContext: false, capabilities: { agentPreset: true, agentOptions: true, depthLimit: true } }), startActivation: start } as unknown as typeof f.ctx.subagents);
@@ -133,6 +144,17 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       const g = await s.createGroup(); s.setBehavior(behavior); const m = (await s.groups.view(groupKey(g))).members[0];
       await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 });
       const v = await s.settle(g); expect(v.turns[0]?.state).toBe(behavior === 'throw' ? 'recovery_needed' : 'partial'); expect(v.deliveries[0]?.state).toBe(behavior === 'throw' ? 'unknown' : 'failed'); expect(v.group.nextMemberId).toBe(g.nextMemberId); expect(JSON.stringify(v)).not.toContain('sensitive-native-error');
+    } finally { await s.close(); }
+  }));
+  it.each(['quota', 'quota-empty'] as const)('keeps the native model failure of a %s member run', behavior => withIntegrations(async f => {
+    const s = await fixture(f); try {
+      const g = await s.createGroup(); s.setBehavior(behavior); const m = (await s.groups.view(groupKey(g))).members[0];
+      await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 });
+      const v = await s.settle(g), failure = { code: 'QUOTA', status: 402, message: 'Insufficient Balance (request_id: r-1)' };
+      expect(v.deliveries[0]).toMatchObject({ state: 'failed', stopReason: 'error', failure });
+      const replies = v.messages.filter(message => message.authorKind === 'bot');
+      if (behavior === 'quota') expect(replies).toEqual([expect.objectContaining({ text: 'checked 4 files, continuing:', stopReason: 'error', failure })]);
+      else { expect(replies).toEqual([]); expect(v.deliveries[0]?.outputMessageId).toBeUndefined(); }
     } finally { await s.close(); }
   }));
   it.each(['partial', 'throw', 'hold'] as const)('round-robin %s keeps the pointer until a successful persisted reply', behavior => withIntegrations(async f => {

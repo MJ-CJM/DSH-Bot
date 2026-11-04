@@ -121,7 +121,37 @@ describe('exclusive native group message projection', () => {
         labels={{ code: { copyLabel: 'copy', copiedLabel: 'copied' }, footnotes: 'footnotes' }} onReply={() => {}} onOpenAttachment={async () => {}}
         onOpenSession={async () => {}} t={(key => en.ui[key as keyof typeof en.ui]) as PropsLocale<'dsh-bot'>['t']} />));
       expect(element.textContent?.includes(en.ui['groups.partial'])).toBe(!['completed', 'group-message'].includes(reason));
+      // The raw native stop value is never the only explanation.
+      expect(element.querySelector('[data-group-stop]')?.textContent?.trim().endsWith(` · ${reason}`) ?? false).toBe(false);
     } finally { await act(async () => root.unmount()); }
+  });
+  it.each([
+    [{ code: 'QUOTA', status: 402, message: 'Insufficient Balance (request_id: r-1)' }, en.ui['groups.failure.quota'], 'QUOTA · 402'],
+    [{ code: 'ACCOUNT_QUOTA', message: 'quota' }, en.ui['groups.failure.quota'], 'ACCOUNT_QUOTA'],
+    [{ code: 'AUTH', status: 401, message: 'bad key' }, en.ui['groups.failure.auth'], 'AUTH · 401'],
+    [{ code: 'UPSTREAM', status: 503, message: 'Service temporarily unavailable' }, 'Service temporarily unavailable', 'UPSTREAM · 503'],
+    [undefined, en.ui['groups.stop.error'], ''],
+  ] as const)('names the native failure cause on a partial reply: %o', async (failure, text, code) => {
+    const element = document.createElement('div'), root = createRoot(element);
+    try {
+      await act(async () => root.render(<GroupMessageCard message={{ ...(view().messages[0] ?? {}), id: 'message', seq: 1, at: 1, text: 'reply', turnId: 'turn',
+        stopReason: 'error', ...(failure ? { failure } : {}) }}
+        labels={{ code: { copyLabel: 'copy', copiedLabel: 'copied' }, footnotes: 'footnotes' }} onReply={() => {}} onOpenAttachment={async () => {}}
+        onOpenSession={async () => {}} t={(key => en.ui[key as keyof typeof en.ui]) as PropsLocale<'dsh-bot'>['t']} />));
+      const status = element.querySelector('[data-group-stop="error"]');
+      expect(status?.textContent).toBe(`${en.ui['groups.partial']} · ${text}${code}`);
+    } finally { await act(async () => root.unmount()); }
+  });
+  it('keeps a claimed Bot message when its stored failure detail is malformed', () => {
+    const source = { kind: 'dsh-bot-group', group: { groupId: 'g', groupCreatedAt: 1 }, memberId: 'a', turnId: 'turn',
+      speaker: { bot: { botId: 'alpha', botCreatedAt: 1 }, name: 'Alpha' }, stopReason: 'error' };
+    const event = (extra: object) => ({ type: 'user/message', surfaceOp: 'append', seq: 3, time: 1,
+      data: { id: 'bot-message', content: [{ type: 'text', text: 'partial' }], source: { ...source, ...extra } } });
+    const failure = { code: 'QUOTA', status: 402, message: 'Insufficient Balance' };
+    const start = (value: ReturnType<typeof event>) => groupMessageDefinition.start({} as never, { event: value } as never, undefined as never).message;
+    expect(start(event({ failure })).failure).toEqual(failure);
+    expect(groupMessageDefinition.match(event({ failure: { status: 'bad' } }) as never)?.exclusive).toBe(true);
+    expect(start(event({ failure: { status: 'bad' } }))).not.toHaveProperty('failure');
   });
 });
 

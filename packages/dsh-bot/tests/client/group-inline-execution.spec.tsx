@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Context } from '@deepseek-ai/cordis';
 import { expect, it, vi } from 'vitest';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import type { GroupTurn, GroupMessage, GroupView } from '../../src/shared/groups.js';
+import type { GroupDelivery, GroupTurn, GroupMessage, GroupView } from '../../src/shared/groups.js';
 import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import type { BotCatalog } from '../../src/client/state.js';
 import type { ExecutionBridge } from '../../src/client/group-execution.js';
@@ -16,7 +16,7 @@ import { button, click, fill } from './helpers.js';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 
-async function fixture(language: 'en' | 'zh' = 'en', denials?: string[]) {
+async function fixture(language: 'en' | 'zh' = 'en', denials?: string[], firstDelivery: Partial<GroupDelivery> = {}) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const ctx = new Context(), data = view();
   const key = { groupId: data.group.id, groupCreatedAt: data.group.createdAt };
@@ -30,7 +30,7 @@ async function fixture(language: 'en' | 'zh' = 'en', denials?: string[]) {
   data.deliveries = turns.map((turn, index) => ({ id: `delivery-${turn.id}`, turnId: turn.id, memberId: turn.orderedMemberIds[0] ?? '',
     ordinal: 0, bot: { botId: bots[index]?.id ?? '', botCreatedAt: bots[index]?.createdAt ?? 1 }, botRevision: 1, presetId: 'fixture',
     contextOutputMessageIds: [], contextTruncated: false, state: index ? 'running' : 'failed', childSessionId: `child-${turn.id}`,
-    ...(index ? {} : { reasonCode: 'fixture-failure' }) }));
+    ...(index ? {} : { reasonCode: 'fixture-failure', ...firstDelivery }) }));
   // Old question isn't in the latest page; its native history node still owns the task.
   data.messages = [questions[1] as GroupMessage];
   const remote = { view: vi.fn(async () => ({ ok: true, value: structuredClone(data) })),
@@ -179,5 +179,21 @@ it.each([['en', ['child-first', 'child-second']], ['zh', ['child-first', 'child-
     // Earlier questions are not observed while collapsed, bounding retained native histories.
     expect(f.question('first').querySelector('[data-group-permission-denied]')).toBeNull();
     expect(f.retained).not.toContain('child-first');
+  } finally { await f.close(); }
+});
+
+it.each([['en', undefined], ['zh', undefined], ['en', 'reply-first']] as const)('%s names a failed member cause while folded unless its reply carries it (output %s)', async (language, outputMessageId) => {
+  const failure = { code: 'QUOTA', status: 402, message: 'Insufficient Balance (request_id: r-1)' };
+  const f = await fixture(language, undefined, { failure, stopReason: 'error', ...(outputMessageId ? { outputMessageId } : {}) });
+  try {
+    const question = f.question('first'), notice = question.querySelector('[data-group-member-failure]');
+    if (outputMessageId) expect(notice).toBeNull();
+    else {
+      expect(notice?.textContent).toContain(f.t('groups.failure.quota'));
+      expect(notice?.textContent).toContain('QUOTA · 402');
+      expect(notice?.closest('[hidden]')).toBeNull();
+    }
+    expect(question.querySelector('[data-group-execution-card="delivery-first"]')?.textContent).toContain(f.t('groups.failure.quota'));
+    expect(f.question('second').querySelector('[data-group-member-failure]')).toBeNull();
   } finally { await f.close(); }
 });

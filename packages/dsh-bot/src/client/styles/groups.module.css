@@ -627,3 +627,25 @@
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary);
 }
+
+/* Native failure cause for a member run: readable text first, machine code muted beside it. */
+.stopStatus,
+.memberFailure {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.failureReason {
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.failureCode {
+  margin-inline-start: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}

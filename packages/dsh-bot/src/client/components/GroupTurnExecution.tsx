@@ -9,6 +9,7 @@ import type { BotCatalog } from '../state.js';
 import type { ExecutionBridge } from '../group-execution.js';
 import { GroupMemberProcess, GroupPermissionDenialProbe } from './GroupMemberProcess.js';
 import { BotAvatar } from './BotAvatar.js';
+import { groupFailureCode, groupFailureText } from '../group-failure.js';
 import styles from '../styles/groups.module.css';
 
 /** One disclosure owned by the original question, never by its replies or the composer. */
@@ -70,6 +71,12 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
         bridge={executionBridge} onChange={reportDenial} />)}
     {latest && deniedNames.length > 0 && <p role="status" className={styles.permissionDenied} data-group-permission-denied="">
       {t('groups.permissionDenied', { names: new Intl.ListFormat(t('activity.locale'), { type: 'conjunction' }).format(deniedNames) })}</p>}
+    {/* A failed member without a reply message would otherwise show its cause only inside the collapsed details. */}
+    {deliveries.flatMap(delivery => delivery.state === 'failed' && delivery.failure && !delivery.outputMessageId ? [{ delivery, failure: delivery.failure }] : [])
+      .map(({ delivery, failure }) => <p key={delivery.id} role="status" className={styles.memberFailure} data-group-member-failure={delivery.id}>
+        {t('groups.memberFailed', { name: nameOf(delivery), reason: groupFailureText(failure, t) })}
+        {groupFailureCode(failure) && <span className={styles.failureCode}>{groupFailureCode(failure)}</span>}
+      </p>)}
     <div id={bodyId} hidden={!expanded}>
       {turn.state === 'paused' && <p role="status">{t('execution.budgetPaused')} <button type="button" disabled={disabled} onClick={() => {
         void perform(async () => unwrapGroup(await actions.remote().continueTurn(key, turn.id, turn.revision)));
@@ -79,6 +86,7 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
         <BotAvatar bot={botState.entries.find(row => row.bot.id === delivery.bot.botId && row.bot.createdAt === delivery.bot.botCreatedAt)?.bot ?? { id: delivery.bot.botId }} size={22} />
         <strong>{nameOf(delivery)}</strong><span>{t(`groups.${delivery.state}`)}</span>
         {delivery.reasonCode && <span>{t(delivery.reasonCode === 'configured-timeout' ? 'execution.timeout' : delivery.reasonCode === 'user-member-stop' ? 'execution.memberStopped' : delivery.reasonCode === 'user-task-stop' ? 'execution.taskStopped' : delivery.state === 'unknown' ? 'execution.unknown' : 'execution.failed')}</span>}
+        {delivery.failure && <span className={styles.failureReason}>{groupFailureText(delivery.failure, t)}</span>}
         {delivery.childSessionId && <Button variant="ghost" onClick={() => { if (delivery.childSessionId) onOpenExecution(delivery.childSessionId); }}>{t('execution.viewDetails')}</Button>}
         {active && (delivery.state === 'running' || (turn.protocol === 2 && ['starting', 'pending'].includes(delivery.state))) && <Menu
           open={menu === delivery.id} onClose={() => setMenu(undefined)} align="end"

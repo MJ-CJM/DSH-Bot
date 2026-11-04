@@ -5,7 +5,7 @@ import type { ComposerChainProps, ConversationNodeDefinition } from '@deepseek-a
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { PropsLocale, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots';
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
-import { groupKeySchema, groupAttachmentSchema, speakerSchema, type GroupMessage } from '../shared/groups.js';
+import { groupKeySchema, groupAttachmentSchema, groupFailureSchema, speakerSchema, type GroupMessage } from '../shared/groups.js';
 import type { GroupActions } from './groups-state.js';
 import type { BotCatalog } from './state.js';
 import type { ModelActions } from './model-catalog-state.js';
@@ -18,6 +18,8 @@ import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
 const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: groupKeySchema, turnId: z.string().min(1),
   memberId: z.string().min(1), speaker: speakerSchema, childSessionId: z.string().optional(), stopReason: z.string().optional(),
+  // A malformed failure drops only the detail, never the claimed message.
+  failure: groupFailureSchema.optional().catch(undefined),
   replyTo: z.string().optional(), causeId: z.string().optional() });
 const userSourceSchema = z.object({ kind: z.enum(['user', 'dsh-bot-group-user', 'dsh-bot-group-followup']), group: groupKeySchema, turnId: z.string().min(1), replyTo: z.string().optional() });
 const sourceSchema = z.union([botSourceSchema, userSourceSchema]);
@@ -35,7 +37,8 @@ export const groupMessageDefinition: ConversationNodeDefinition<WorkspaceGroupMe
     return { group: source.group, message: { id: event.data.id, seq: Number(event.seq), at: event.time,
       text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
       turnId: source.turnId, authorKind: source.kind === 'dsh-bot-group' ? 'bot' : 'user', replyTo: source.replyTo,
-      ...(source.kind === 'dsh-bot-group' ? { speaker: source.speaker, causeId: source.causeId, childSessionId: source.childSessionId, stopReason: source.stopReason } : {}),
+      ...(source.kind === 'dsh-bot-group' ? { speaker: source.speaker, causeId: source.causeId, childSessionId: source.childSessionId, stopReason: source.stopReason,
+        ...(source.failure ? { failure: source.failure } : {}) } : {}),
       attachments: event.data.content.flatMap(block => { const result = groupAttachmentSchema.safeParse(block); return result.success ? [result.data] : []; }) } };
   },
   update: context => context.state,

@@ -83,6 +83,13 @@ export const groupTurnSchema = z.strictObject({
   stoppedMemberIds: z.array(resourceId).optional(),
   state: z.enum(['accepted', 'running', 'idle', 'paused', 'completed', 'partial', 'cancelled', 'recovery_needed']),
 });
+export const GROUP_FAILURE_MESSAGE_MAX = 1000;
+/** Native `LlmFailure` facts from a member's own failed `turn/end`; never tool input or file content. */
+export const groupFailureSchema = z.strictObject({
+  code: z.string().min(1).max(64).optional(),
+  status: z.number().int().optional(),
+  message: z.string().max(GROUP_FAILURE_MESSAGE_MAX),
+});
 export const groupDeliverySchema = z.strictObject({
   id: resourceId,
   turnId: resourceId,
@@ -109,6 +116,7 @@ export const groupDeliverySchema = z.strictObject({
   outputSeq: z.number().int().optional(),
   stopReason: z.string().optional(),
   reasonCode: z.string().optional(),
+  failure: groupFailureSchema.optional(),
 });
 export const groupCreateSchema = z.strictObject({
   operationId: resourceId,
@@ -169,6 +177,7 @@ export const groupMessageSchema = z.strictObject({
   speaker: speakerSchema.optional(),
   childSessionId: z.string().optional(),
   stopReason: z.string().optional(),
+  failure: groupFailureSchema.optional(),
 });
 export const groupReadSchema = z.strictObject({
   id: resourceId,
@@ -206,6 +215,7 @@ export type GroupRecord = z.output<typeof groupRecordSchema>;
 export type GroupMember = z.output<typeof groupMemberSchema>;
 export type GroupTurn = z.output<typeof groupTurnSchema>;
 export type GroupDelivery = z.output<typeof groupDeliverySchema>;
+export type GroupFailure = z.output<typeof groupFailureSchema>;
 export type GroupMessage = z.output<typeof groupMessageSchema>;
 export type GroupView = z.output<typeof groupViewSchema>;
 export type GroupSummary = z.output<typeof groupSummarySchema>;

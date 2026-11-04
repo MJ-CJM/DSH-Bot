@@ -16,6 +16,7 @@ import { OperationError, need, digest } from '../common/operations.js';
 import { groupContext } from './routing.js';
 
 import { blocks, textOf, terminal } from './model.js';
+import { memberRunFailure } from './failure.js';
 import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
 import type { GroupMessages } from './messages.js';
@@ -185,6 +186,10 @@ export class GroupTurnRunner {
         : result.stopReason === 'completed' && hasContent
           ? 'completed'
           : 'failed';
+      // Native local results carry no failure detail; read the child's own failed turn/end.
+      const failure = state === 'failed' && result.stopReason === 'error'
+        ? memberRunFailure(this.state.workers.get(childId)?.agent ?? this.state.ctx.agents.get(SessionId(childId)), d.startedAt ?? 0)
+        : undefined;
       let output: { outputMessageId: string; outputSeq: number } | undefined;
       if (hasContent) {
         const b = prepared.bot;
@@ -204,6 +209,7 @@ export class GroupTurnRunner {
             speaker,
             childSessionId: childId,
             stopReason: result.stopReason,
+            ...(failure ? { failure } : {}),
             replyTo: d.triggerMessageId ?? t.replyTo ?? t.inputMessageId,
             causeId: t.id,
           },
@@ -221,6 +227,7 @@ export class GroupTurnRunner {
         endedAt: Date.now(),
         ...output,
         stopReason: result.stopReason,
+        ...(failure ? { failure } : {}),
         ...(state !== 'completed' && state !== 'skipped'
           ? {
               reasonCode: signal.aborted ? String(signal.reason ?? 'user-stop') : text.trim() ? 'partial-output' : 'empty-or-failed',
