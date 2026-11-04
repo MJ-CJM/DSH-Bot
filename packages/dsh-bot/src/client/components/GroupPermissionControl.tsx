@@ -4,14 +4,21 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { requiresPermissionAcknowledgement, type GroupPermissionState } from '../group-permission-state.js';
 import styles from '../styles/groups.module.css';
 
-export function GroupPermissionControl({ state, cwd, disabled = false, t }: {
+export function GroupPermissionControl({ state, cwd, disabled = false, openRequest, t }: {
   state: GroupPermissionState; cwd?: string; disabled?: boolean;
+  /** Each new value opens the menu, as a click on the trigger does (the composer's '/' menu). */
+  openRequest?: number;
 } & PropsLocale<'dsh-bot'>) {
   const snapshot = useSyncExternalStore(state.store.subscribe, state.store.getSnapshot);
   const [open, setOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<{ owner: GroupPermissionState; preset: string; version: number; currentValue: string | undefined }>();
   const [acknowledged, setAcknowledged] = useState(false);
   const available = snapshot.currentValue !== undefined && snapshot.catalog !== null;
+  const [request, setRequest] = useState(openRequest);
+  if (request !== openRequest) {
+    setRequest(openRequest);
+    if (openRequest !== undefined && !disabled && available && !snapshot.saving && !confirmation) setOpen(true);
+  }
   const boundary = useRef({ state, disabled, version: snapshot.catalogVersion, currentValue: snapshot.currentValue });
   const close = () => { setConfirmation(undefined); setAcknowledged(false); };
   useEffect(() => {
