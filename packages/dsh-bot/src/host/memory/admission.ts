@@ -12,6 +12,7 @@ export class MemoryAdmission {
   private kernel?: MemoryKernel;
   private stopped = false;
   private ready = false;
+  private startupFailed = false;
   private readonly agents = new Map<string, Agent>();
   private readonly leases = new Map<string, { agent: Agent; done: Promise<void>; finish: () => void }>();
   private readonly seen = new Map<string, string[]>();
@@ -65,8 +66,14 @@ export class MemoryAdmission {
       'dsh-bot: memory final admission');
   }
   start(kernel: MemoryKernel): void {
-    this.kernel = kernel; this.ready = true;
+    this.kernel = kernel; this.startupFailed = false; this.ready = true;
     kernel.listeners.add(this.changed);
+  }
+  /** Permanent startup failure can never produce managed Agents. Recording it
+   * lets the final admission release positively unrelated sessions instead of
+   * gating the whole runtime forever on a kernel that will never arrive. */
+  markStartupFailed(): void {
+    if (!this.ready) this.startupFailed = true;
   }
   private changed = () => {
     if (!this.kernel?.blocked && !this.stopped) return;
@@ -132,10 +139,19 @@ export class MemoryAdmission {
     const agent = options.sessionId ? this.agents.get(options.sessionId) : undefined;
     if (!agent) {
       if (this.kernel?.snapshot.forgotten.size) throw new Error('Memory admission blocked: request ownership unknown after cleanup');
+      let preset: string | undefined, presetKnown = false;
+      try {
+        const live = options.sessionId ? this.ctx.get('agents')?.get(options.sessionId) : undefined;
+        preset = live && this.ctx.get('agentPresets')?.composedPreset(live.ctx);
+        presetKnown = true;
+      } catch {
+        // Ownership stays unknown; the gate below still applies.
+      }
+      if (this.startupFailed && !this.stopped && presetKnown && !preset?.startsWith(this.presetPrefix)) {
+        yield* next(); return;
+      }
       // During startup, unknown ownership, a pending cleanup or shutdown, block the whole runtime.
       try { this.assertAllowed(); } catch (error) { this.denied++; throw error; }
-      const live = options.sessionId ? this.ctx.get('agents')?.get(options.sessionId) : undefined;
-      const preset = live && this.ctx.get('agentPresets')?.composedPreset(live.ctx);
       if (preset?.startsWith(this.presetPrefix)) { this.denied++; throw new Error('Legacy Bot generation requires safe reattachment'); }
       yield* next(); return;
     }

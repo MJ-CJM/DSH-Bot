@@ -92,6 +92,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
       this.initialized = true;
     })().catch((error: unknown) => {
       this.startupError = messageOf(error);
+      this.memoryAdmission.markStartupFailed();
       this.ctx.logger.error(`[dsh-bot] startup failed bot=*: ${this.startupError}`);
     });
     // Publish the service before Loader settlement. Never join the Loader from
