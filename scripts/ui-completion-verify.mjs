@@ -85,13 +85,18 @@ try {
         await main.locator('[data-settings-navigation]').click();
         await click('groups.title');
         const groups = main.getByRole('navigation', { name: t['groups.list'], exact: true });
-        if (await groups.isVisible()) await groups.getByRole('button').first().click();
-        await main.getByRole('article').waitFor(); await capture('group-profile');
+        if (await groups.locator('[data-group-directory-row]').count()) await groups.locator('[data-group-directory-row]').first().click();
+        await main.locator('[data-group-overview]').waitFor(); await capture('group-profile');
         if (width <= 760) {
           assert.equal(await groups.isVisible(), false);
           await main.getByRole('button', { name: t['navigation.returnTo'].replace('{name}', t['groups.title']), exact: true }).click();
           assert.equal(await groups.isVisible(), true);
         }
+        await groups.getByRole('button', { name: t['groups.filter'], exact: true }).click();
+        await page.getByRole('menuitem', { name: t['groups.filter.archived'], exact: true }).click();
+        await groups.getByText(t['groups.noMatches'], { exact: true }).waitFor();
+        await groups.getByRole('button', { name: t['groups.clearFilters'], exact: true }).click();
+        await groups.locator('[data-group-directory-row]').first().waitFor();
         await click('navigation.myBots');
       }
     }

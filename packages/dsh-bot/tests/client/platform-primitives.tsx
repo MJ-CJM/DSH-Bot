@@ -15,6 +15,8 @@ function Icon({ size = 16, className }: { size?: number; className?: string }) {
 }
 export const IconPlusOutlineRegular = Icon;
 export const IconRefreshOutlineRegular = Icon;
+export const IconSearchOutlineRegular = Icon;
+export const IconCloseOutlineRegular = Icon;
 export const IconEllipsisOutlineRegular = Icon;
 export const IconMoreHorizontalOutlineRegular = Icon;
 export const IconDataOutlineRegular = Icon;
@@ -31,6 +33,13 @@ export const IconGaugeOutlineRegular = Icon;
 export const IconDatabaseOutlineRegular = Icon;
 export function StateDot({ state, className }: { state: string; size?: number; className?: string }) {
   return <span aria-hidden="true" data-state-dot={state} className={className} />;
+}
+
+export function rankByName<T extends { name: string; label?: string }>(items: readonly T[], query: string): readonly T[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return items;
+  const matches = (value: string) => [...needle].every(char => value.toLocaleLowerCase().includes(char));
+  return items.filter(item => matches(item.name) || (item.label && matches(item.label)));
 }
 
 export function DisclosureRow({ title, open, onToggle, collapsedContent, children, running }: {
@@ -73,7 +82,9 @@ export function observeComposition(document: Document) {
 }
 
 /** Contract doubles only; native portal/keyboard behavior is covered by native-settings-spike.mjs. */
-export const Input = forwardRef<HTMLInputElement, import('react').InputHTMLAttributes<HTMLInputElement>>(function Input(props, ref) { return <input {...props} ref={ref} />; });
+export const Input = forwardRef<HTMLInputElement, import('react').InputHTMLAttributes<HTMLInputElement> & { icon?: ReactNode }>(function Input({ icon, className, ...props }, ref) {
+  return <span className={className}>{icon && <span>{icon}</span>}<input {...props} ref={ref} /></span>;
+});
 export function Checkbox({ checked, onChange, label, disabled }: { checked: boolean; onChange(value: boolean): void; label: string; disabled?: boolean }) {
   return <label><input type="checkbox" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />{label}</label>;
 }
@@ -101,3 +112,7 @@ export function Modal({ open, title, onClose, children, className }: { open: boo
 export function Toast({ text, onDone }: { text: string; onDone(): void }) { return <div role="status">{text}<button type="button" onClick={onDone}>Dismiss</button></div>; }
 
 export function JsonBlock({ label, payload }: { label: string; payload: unknown }) { return <details><summary>{label}</summary><pre>{JSON.stringify(payload, null, 2)}</pre></details>; }
+
+export function ImageLightbox({ src, alt, labels, onClose }: { src: string; alt: string; labels: { dialog: string; close: string }; onClose(): void }) {
+  return <div role="dialog" aria-label={labels.dialog}><img src={src} alt={alt} /><button type="button" onClick={onClose}>{labels.close}</button></div>;
+}

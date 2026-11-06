@@ -4,6 +4,7 @@ import { Button, IconChevronDownOutlineRegular, IconDatabaseOutlineRegular, Icon
 import type { GroupDelivery, GroupTurn, GroupView } from '../../shared/groups.js';
 import type { BotRecord } from '../../shared/schema.js';
 import type { ExecutionBridge } from '../group-execution.js';
+import type { GroupActivityFocus } from '../group-management.js';
 import { aggregateStatistics, cachePercent, contextPercent, defaultStatisticsTurn, groupStatisticsWorkers, loadingStatistics, readStatisticsOnce, statisticsDeliveries, tokenTotal, type ChildStatistics } from '../group-statistics.js';
 import styles from '../styles/groups.module.css';
 
@@ -139,19 +140,29 @@ export function GroupMemberStatistics({ bridge, parentId, workers, t }: { bridge
     </>}
   </div>;
 }
-export function GroupStatisticsBar({ view, bridge, sent, bots = [], t }: {
+export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = true, bots = [], t }: {
   view: GroupView; bridge: ExecutionBridge; bots?: BotRecord[]; sent?: { turnId: string; followup: boolean; sequence: number };
+  focusRequest?: GroupActivityFocus;
+  active?: boolean;
 } & Localized) {
-  const [selected, setSelected] = useState<string>();
-  const [pinned, setPinned] = useState(false), [whole, setWhole] = useState(false), [menu, setMenu] = useState(false), [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string | undefined>(focusRequest?.turnId);
+  const [pinned, setPinned] = useState(!!focusRequest), [whole, setWhole] = useState(false), [menu, setMenu] = useState(false), [open, setOpen] = useState(false);
+  const [appliedFocus, setAppliedFocus] = useState(focusRequest);
+  // Apply explicit navigation before committing subscriptions or showing readings for another turn.
+  // Snapshot refreshes and manually chosen scopes do not reapply an already consumed request.
+  if (focusRequest?.turnId !== appliedFocus?.turnId || focusRequest?.sequence !== appliedFocus?.sequence) {
+    setAppliedFocus(focusRequest);
+    if (focusRequest) { setSelected(focusRequest.turnId); setPinned(true); setWhole(false); setMenu(false); setOpen(false); }
+  }
   useEffect(() => { if (selected === undefined) setSelected(defaultStatisticsTurn(view.turns)?.id); }, [selected, view.turns]);
   // Sending a question shows that question, as before; the whole-group scope is left with it.
   useEffect(() => { if (sent) { setSelected(sent.turnId); setPinned(sent.followup); setWhole(false); } }, [sent]);
+  useEffect(() => { if (!active) { setMenu(false); setOpen(false); } }, [active]);
   const turn = view.turns.find(row => row.id === selected) ?? (selected === undefined ? defaultStatisticsTurn(view.turns) : undefined);
   const workers = turn && !whole ? statisticsDeliveries(view, turn.id) : [];
-  const questionValues = useStatistics(bridge, view.group.rootSessionId, workers);
+  const questionValues = useStatistics(bridge, view.group.rootSessionId, active ? workers : []);
   const groupRows = whole ? groupStatisticsWorkers(view) : [];
-  const groupValues = useGroupTotals(bridge, view.group.rootSessionId, groupRows, whole);
+  const groupValues = useGroupTotals(bridge, view.group.rootSessionId, groupRows, whole && active);
   const values = whole ? groupValues : questionValues;
   const mode = useStatisticsMode(bridge), sum = aggregateStatistics(values);
   const cache = sum.usage && tokenTotal(sum.usage) > 0 ? cachePercent(sum.usage) : undefined;
@@ -168,7 +179,10 @@ export function GroupStatisticsBar({ view, bridge, sent, bots = [], t }: {
     : !workers.length || workers.every(({ delivery }) => !delivery.childSessionId || ['pending', 'starting'].includes(delivery.state)) ? 'waiting'
     : values.some(value => value.state === 'loading') ? 'loading' : !sum.readable ? 'unavailable' : 'noUsage';
   const other = whole ? 0 : view.turns.filter(row => row.id !== turn?.id && ['accepted', 'running', 'paused'].includes(row.state)).length;
-  const text = (row: GroupTurn) => view.messages.find(message => message.id === row.inputMessageId)?.text ?? `${t('statistics.historical')} · ${new Date(row.createdAt).toLocaleString()}`;
+  const text = (row: GroupTurn) => {
+    const message = view.messages.find(message => message.id === row.inputMessageId);
+    return message?.text.trim() ? message.text : `${t(message?.attachments?.length ? 'groups.attachments' : 'statistics.historical')} · ${new Date(row.createdAt).toLocaleString()}`;
+  };
   const title = (row: GroupTurn) => questionLine(text(row));
   const label = (d: GroupDelivery) => bots.find(bot => bot.id === d.bot.botId && bot.createdAt === d.bot.botCreatedAt)?.name ??
     view.messages.find(message => message.speaker?.bot.botId === d.bot.botId && message.speaker.bot.botCreatedAt === d.bot.botCreatedAt)?.speaker?.name ?? d.bot.botId;

@@ -231,6 +231,41 @@ describe('Bot catalog refresh lifecycle', () => {
     expect(list).toHaveBeenCalledTimes(4);
   });
 
+  it('keeps passive catalog watchers outside the polling subscription lifecycle', async () => {
+    vi.useFakeTimers();
+    const { ctx } = setup();
+    const load = vi.fn(async () => ({ rows: ['first'] }));
+    const catalog = createPollingCatalog(ctx, { rows: [] as string[] }, load, { pollIntervalMs: 1_000 });
+    const watcher = vi.fn();
+    const unwatch = catalog.watch?.(watcher);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(load).not.toHaveBeenCalled();
+
+    const unsubscribe = catalog.subscribe(() => {});
+    await settle();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(watcher).toHaveBeenCalledTimes(1);
+    load.mockResolvedValue({ rows: ['updated in another client'] });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(watcher).toHaveBeenCalledTimes(2);
+    expect(catalog.getSnapshot().rows).toEqual(['updated in another client']);
+
+    unsubscribe();
+    expect(vi.getTimerCount()).toBe(0);
+    ctx.emit('connection/reset');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(load).toHaveBeenCalledTimes(2);
+    load.mockResolvedValue({ rows: ['manual refresh'] });
+    await catalog.refresh();
+    expect(watcher).toHaveBeenCalledTimes(3);
+
+    unwatch?.();
+    load.mockResolvedValue({ rows: [] });
+    await catalog.refresh();
+    expect(watcher).toHaveBeenCalledTimes(3);
+  });
+
   it('does not starve a slow request when the configurable poll interval expires', async () => {
     vi.useFakeTimers();
     const { ctx, list } = setup();

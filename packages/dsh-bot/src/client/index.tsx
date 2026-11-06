@@ -9,6 +9,7 @@ import { MESSAGING_REMOTE, messageOverviewSchema } from '../shared/messaging-con
 import { registerMessaging } from './messaging.js';
 import { registerBotPanel } from './bot-panel.js';
 import type { BotPanelSection } from './components/BotRightPanel.js';
+import type { BotRecord } from '../shared/schema.js';
 import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
 import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
 import { createWorkspaceActions } from './workspace-state.js';
@@ -70,7 +71,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
-  interface SessionReferenceSourceMap { dshBotPersona: unknown }
+  interface SessionReferenceSourceMap { dshBotPersona: unknown; dshBotGroupAsk: unknown }
 }
 
 // Standard Web/Desktop composition includes locale (dsh-v0.2.1-rc.2:
@@ -182,7 +183,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ctx.uiWorkspace.openSession(id as SessionId);
     }
   };
-  registerWorkspaceGroups(ctx, groups, catalog, openSession, models);
+  registerWorkspaceGroups(ctx, groups, catalog, openSession, models,
+    bot => openBot(bot.id), (bot, prompt, signal) => askBot(bot, prompt, signal));
   registerOnboardingNotice(ctx);
   const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void, operationId?: string) => {
     if (!active || signal?.aborted) return;
@@ -313,7 +315,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     detail.open(id);
     ctx.layout.selectPanel('dsh-bot' as MainPanelId);
   };
-  // Bot details open beside the conversation; the Bots page stays the fallback and the full settings.
+  // Compact details preserve the chat width; native sidebar and full settings remain explicit actions.
   const botPanel = registerBotPanel(ctx, {
     hooks: { catalog },
     routines,
@@ -325,6 +327,29 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   });
   const openBot = (id: string, section?: BotPanelSection) => {
     if (active && !botPanel.open(id, section)) showBotPage(id);
+  };
+  const askBot = async (bot: BotRecord, prompt: string, signal?: AbortSignal) => {
+    if (!active || signal?.aborted) return;
+    const navigation = ctx.layout.beginNavigation();
+    const current = unwrap(await remote().get(bot.id));
+    if (!active || navigation.aborted || signal?.aborted) return;
+    if (current.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
+    const { sessionId } = unwrap(await remote().openConversation(bot.id));
+    const conversation = ctx.get('conversation');
+    if (!active || navigation.aborted || signal?.aborted) return;
+    if (!conversation && prompt) throw new Error(t('errors.unavailable'));
+    await sessions.using(sessionId as SessionId, { source: 'dshBotGroupAsk' }, async reference => {
+      const binding = await reference.ready;
+      if (!active || navigation.aborted || signal?.aborted) return;
+      const latest = unwrap(await remote().get(bot.id));
+      if (!active || navigation.aborted || signal?.aborted) return;
+      if (latest.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
+      if (prompt) {
+        const result = conversation?.input.requestDraftInitialization(binding, { prompt });
+        if (result !== 'applied') throw new Error(t('groups.askFailed'));
+      }
+      ctx.uiWorkspace.openSession(sessionId as SessionId);
+    });
   };
   registerMessaging(ctx, { onOpenBot: (id) => openBot(id), onShowStatus: (id) => openBot(id, 'messages') });
   const firstChatInjected = () => ({

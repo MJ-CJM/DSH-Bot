@@ -119,6 +119,8 @@ it('names the followed question on the trigger and lists questions as native row
     const follow = f.rows()[0]; assert.ok(follow); await click(follow);
     expect(f.trigger().textContent).toBe('Latest: Check the build');
     expect(f.element.querySelector('[data-statistics-turn]')?.getAttribute('data-statistics-turn')).toBe('t99');
+    await click(f.element.querySelector('[aria-haspopup="dialog"]') as HTMLButtonElement);
+    expect(f.element.querySelector('dialog')?.textContent).toContain(latest.text);
   } finally { await f.close(); }
 });
 

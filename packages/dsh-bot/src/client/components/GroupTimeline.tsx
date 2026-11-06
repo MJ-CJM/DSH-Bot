@@ -1,8 +1,8 @@
 /** biome-ignore-all lint/a11y/noNoninteractiveTabindex: The scrollable log must be reachable for keyboard users. */
 import { useMemo, useState } from 'react';
-import { MarkdownText, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives';
+import { ImageLightbox, MarkdownText, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import type { GroupView } from '../../shared/groups.js';
+import type { GroupAttachment, GroupView } from '../../shared/groups.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from './BotAvatar.js';
 import { groupFailureCode, groupStopText } from '../group-failure.js';
@@ -13,12 +13,14 @@ type Turn = GroupView['turns'][number];
 export function groupMessagePreview(text: string | undefined, limit = 180) {
   return (text ?? '').replace(/```[\s\S]*?```/g, '…').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__|~~|`)(.+?)\1/g, '$2').replace(/(?<![\p{L}\p{N}])([*_])(\S(?:.*?\S)?)\1(?![\p{L}\p{N}])/gu, '$2').replace(/(?:^|\n)\s{0,3}(?:#{1,6}|>|[-*+])\s+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
-export function GroupMessageCard({ message: m, quoted, quotedLoading = false, labels, onReply, onOpenSession, onOpenAttachment, onJump, t }: {
+export function GroupMessageCard({ message: m, quoted, quotedLoading = false, labels, onReply, onOpenSession, onOpenAttachment, onPreviewAttachment, onJump, t }: {
   message: Message; quoted?: Message; quotedLoading?: boolean; onJump?(id: string): void; labels: MarkdownLabels; onReply(message: Message): void;
   onOpenSession(id: string): Promise<void>;
   onOpenAttachment(messageId: string, attachmentId: string): Promise<void>;
+  onPreviewAttachment?(messageId: string, attachment: GroupAttachment['attachment']): Promise<string>;
 } & PropsLocale<'dsh-bot'>) {
   const [opening, setOpening] = useState(false), [openError, setOpenError] = useState(false);
+  const [preview, setPreview] = useState<{ src: string; alt: string }>();
   return (
     <div className={`${styles.message} ${m.authorKind === 'user' ? styles.userMessage : styles.botMessage}`} data-group-message={m.id} data-group-author={m.authorKind}>
       <div className={styles.bar}>
@@ -39,7 +41,10 @@ export function GroupMessageCard({ message: m, quoted, quotedLoading = false, la
           <span>{block.attachment.name ?? t('groups.image')} · {block.attachment.bytes.toLocaleString()} B</span>
           <button type="button" disabled={opening} onClick={() => {
             setOpening(true); setOpenError(false);
-            void onOpenAttachment(m.id, block.attachment.attachmentId).catch(() => setOpenError(true)).finally(() => setOpening(false));
+            const action = block.type === 'image' && onPreviewAttachment
+              ? onPreviewAttachment(m.id, block.attachment).then(src => { if (src) setPreview({ src, alt: block.attachment.name ?? t('groups.image') }); })
+              : onOpenAttachment(m.id, block.attachment.attachmentId);
+            void action.catch(() => setOpenError(true)).finally(() => setOpening(false));
           }}>{t('groups.openAttachment', { name: block.attachment.name ?? t('groups.image') })}</button>
         </li>)}
         {m.childSessionId && <li><button type="button" onClick={() => { void onOpenSession(m.childSessionId ?? ''); }}>
@@ -54,16 +59,19 @@ export function GroupMessageCard({ message: m, quoted, quotedLoading = false, la
           {m.failure && groupFailureCode(m.failure) && <span className={styles.failureCode}>{groupFailureCode(m.failure)}</span>}
         </p>}
       </div>
+      {preview && <ImageLightbox src={preview.src} alt={preview.alt}
+        labels={{ dialog: t('groups.imagePreview'), close: t('actions.close') }} onClose={() => setPreview(undefined)} />}
     </div>
   );
 }
 /** Messages are always flat and visible. Execution diagnostics have their own collapsed area;
  * expansion remains keyed by immutable turn id and is retained by the parent across polling. */
-export function GroupTimeline({ view, messages, lookup, expanded, onExpand, busy, onCancel, onReply, onOpenSession, onOpenAttachment, t }: {
+export function GroupTimeline({ view, messages, lookup, expanded, onExpand, busy, onCancel, onReply, onOpenSession, onOpenAttachment, onPreviewAttachment, t }: {
   view: GroupView; messages: Message[]; lookup(id: string): BotRecord | undefined;
   expanded: Record<string, boolean>; onExpand(id: string, open: boolean): void; busy: boolean;
   onCancel(turn: Turn): void; onReply(message: Message): void; onOpenSession(id: string): Promise<void>;
   onOpenAttachment(messageId: string, attachmentId: string): Promise<void>;
+  onPreviewAttachment?(messageId: string, attachment: GroupAttachment['attachment']): Promise<string>;
 } & PropsLocale<'dsh-bot'>) {
   const labels = useMemo<MarkdownLabels>(() => ({ code: { copyLabel: t('groups.markdownCopy'),
     copiedLabel: t('groups.markdownCopied') }, footnotes: t('groups.markdownFootnotes') }), [t]);
@@ -80,7 +88,7 @@ export function GroupTimeline({ view, messages, lookup, expanded, onExpand, busy
     <div className={styles.timeline} role="log" tabIndex={0} aria-label={t('groups.timeline')} aria-live="polite">
       {messages.map(message => <GroupMessageCard key={message.id} message={message}
         quoted={message.replyTo ? byId.get(message.replyTo) : undefined} labels={labels} onReply={onReply}
-        onOpenSession={onOpenSession} onOpenAttachment={onOpenAttachment} t={t} />)}
+        onOpenSession={onOpenSession} onOpenAttachment={onOpenAttachment} onPreviewAttachment={onPreviewAttachment} t={t} />)}
     </div>
     {view.turns.length > 0 && <section className={styles.executions} aria-label={t('groups.executionDetails')}>
       <h4>{t('groups.executionDetails')}</h4>

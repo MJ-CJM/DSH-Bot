@@ -47,3 +47,21 @@ it('loads an older quote only from its exact group, then uses public retained se
     expect(binding).toHaveBeenCalledWith('group-root-one'); expect(loadThrough).toHaveBeenCalledWith(original.seq);
   } finally { await ctx.fiber.dispose(); }
 });
+
+it('stops quoted-message pagination when the requesting view is cancelled', async () => {
+  const { view } = await import('./group-fixture.js');
+  const ctx = new Context(), controller = new AbortController();
+  let settle: (result: Awaited<ReturnType<GroupMethods['view']>>) => void = () => {};
+  const read = vi.fn<GroupMethods['view']>(() => new Promise(resolve => { settle = resolve; }));
+  ctx.provide('remote.dshBot.groups', { view: read } as unknown as GroupMethods);
+  try {
+    const actions = createGroupActions(ctx, {});
+    const pending = actions.quotedMessage(group, 'older-question', controller.signal);
+    controller.abort();
+    settle({ ok: true, value: { ...view(), hasEarlier: true } });
+    expect(await pending).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(await actions.quotedMessage(group, 'older-question', controller.signal)).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
+  } finally { await ctx.fiber.dispose(); }
+});

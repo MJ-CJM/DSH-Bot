@@ -5,6 +5,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SessionSeq } from '@deepseek-ai/dsh-session';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
+import type { UiConversation } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { GroupMethods } from '../shared/groups-contract.js';
 import {
   groupViewSchema,
@@ -13,6 +14,7 @@ import {
   type GroupSummary,
   type GroupView,
   type GroupSend,
+  type GroupAttachment,
 } from '../shared/groups.js';
 import { createPollingCatalog, type PollingCatalog, type BotCatalogOptions } from './state.js';
 export const unwrapGroup = <T>(r: RemoteResult<T>): T => {
@@ -25,19 +27,24 @@ export interface GroupDraft {
   operation?: { signature: string; request: GroupSend };
   sending: boolean; error: boolean;
 }
+export interface GroupRunRequest { sessionId: string; turnId: string; requestId: number }
 export interface GroupActions {
   reply(sessionId: string, message: GroupView['messages'][number]): void;
   replies: { subscribe(listener: () => void): () => void; getSnapshot(): { sessionId: string; message: GroupView['messages'][number] } | undefined };
   open(group: GroupKey, signal?: AbortSignal): Promise<void>;
+  openRun(group: GroupKey, turnId: string, signal?: AbortSignal): Promise<void>;
+  runRequests: { subscribe(listener: () => void): () => void; getSnapshot(): GroupRunRequest | undefined };
+  consumeRunRequest(requestId: number): void;
   drafts: Map<string, GroupDraft>;
   draft(sessionId: string): GroupDraft;
   patchDraft(sessionId: string, update: (draft: GroupDraft) => GroupDraft): void;
   draftUpdates: { subscribe(listener: () => void): () => void; getSnapshot(): number };
   consumeReply(sessionId: string): void;
   upload(sessionId: string, file: File, signal: AbortSignal): Promise<{ receiptId: string; name: string; bytes: number }>;
+  imageUrl(sessionId: string, attachment: GroupAttachment['attachment']): Promise<string>;
   remote(): GroupMethods;
   catalog: PollingCatalog<{ groups: GroupSummary[] }>;
-  quotedMessage(key: GroupKey, id: string): Promise<GroupView['messages'][number] | undefined>;
+  quotedMessage(key: GroupKey, id: string, signal?: AbortSignal): Promise<GroupView['messages'][number] | undefined>;
   loadThrough(key: GroupKey, seq: number): Promise<void>;
   messageView(key: GroupKey): PollingCatalog<{ view?: GroupView }>;
   createView(key: GroupKey): PollingCatalog<{ view?: GroupView }>;
@@ -65,12 +72,23 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
   const patchDraft = (id: string, update: (value: GroupDraft) => GroupDraft) => { if (!live) return; drafts.set(id, update(draft(id))); draftRevision++; for (const listener of draftListeners) listener(); };
   let reply: ReturnType<GroupActions['replies']['getSnapshot']>;
   const replyListeners = new Set<() => void>();
-  let live = true, openEpoch = 0;
-  ctx.effect(() => () => { live = false; openEpoch++; drafts.clear(); draftListeners.clear(); replyListeners.clear(); reply = undefined; }, 'dsh-bot: group navigation');
+  let live = true, openEpoch = 0, runRequest: GroupRunRequest | undefined, runRequestSequence = 0;
+  const runRequestListeners = new Set<() => void>();
+  const publishRunRequest = (request?: GroupRunRequest) => { runRequest = request; for (const listener of runRequestListeners) listener(); };
+  ctx.effect(() => () => { live = false; openEpoch++; drafts.clear(); draftListeners.clear(); replyListeners.clear(); reply = undefined; runRequest = undefined; runRequestListeners.clear(); }, 'dsh-bot: group navigation');
   ctx.effect(() => () => { turnExpansion.clear(); modelMetadata.clear(); }, 'dsh-bot: group display preferences');
   let requested: { selectedId?: string; createdAt?: number; requestId?: number } = {};
   let requestSequence = 0;
   const selection = createPollingCatalog(ctx, requested, async () => requested, options);
+  const open = async (group: GroupKey, signal?: AbortSignal, turnId?: string) => {
+    if (!live || signal?.aborted) return;
+    const epoch = ++openEpoch;
+    const navigation = ctx.get('layout')?.beginNavigation();
+    const receipt = unwrapGroup(await remote().open(group));
+    if (!live || epoch !== openEpoch || navigation?.aborted || signal?.aborted) return;
+    publishRunRequest(turnId ? { sessionId: receipt.sessionId, turnId, requestId: ++runRequestSequence } : undefined);
+    ctx.uiWorkspace.openSession(receipt.sessionId as SessionId);
+  };
   return {
     drafts, draft, patchDraft,
     draftUpdates: { subscribe(listener) { draftListeners.add(listener); return () => { draftListeners.delete(listener); }; }, getSnapshot: () => draftRevision },
@@ -80,14 +98,10 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
       patchDraft(sessionId, value => ({ ...value, replyTo: message }));
       reply = { sessionId, message }; for (const listener of replyListeners) listener();
     },
-    async open(group, signal) {
-      if (!live || signal?.aborted) return;
-      const epoch = ++openEpoch;
-      const navigation = ctx.get('layout')?.beginNavigation();
-      const receipt = unwrapGroup(await remote().open(group));
-      if (!live || epoch !== openEpoch || navigation?.aborted || signal?.aborted) return;
-      ctx.uiWorkspace.openSession(receipt.sessionId as SessionId);
-    },
+    open(group, signal) { return open(group, signal); },
+    openRun(group, turnId, signal) { return open(group, signal, turnId); },
+    runRequests: { subscribe(listener) { runRequestListeners.add(listener); return () => { runRequestListeners.delete(listener); }; }, getSnapshot: () => runRequest },
+    consumeRunRequest(requestId) { if (runRequest?.requestId === requestId) publishRunRequest(); },
     async upload(sessionId, file, signal) {
       // Structural facade of the public fileUpload.upload contract; optional service avoids
       // making every Bot page depend on an upload provider. Never construct upload URLs.
@@ -98,6 +112,11 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
       const value = unwrapGroup(await service.upload(sessionId as SessionId, file, file.name, signal));
       signal.throwIfAborted();
       return { receiptId: value.receiptId, name: value.file.name, bytes: value.file.bytes };
+    },
+    async imageUrl(sessionId, attachment) {
+      const service = ctx.get('uiConversation') as unknown as UiConversation | undefined;
+      if (!service) throw new Error('Native image preview unavailable');
+      return service.imageUrl(sessionId as SessionId, attachment as Parameters<UiConversation['imageUrl']>[1]);
     },
     turnExpansion, modelMetadata,
     remote,
@@ -117,10 +136,11 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
       async () => ({ groups: unwrapGroup(await remote().list()).map((g) => groupSummarySchema.parse(g)) }),
       options,
     ),
-    async quotedMessage(key, id) {
+    async quotedMessage(key, id, signal) {
       let beforeSeq: number | undefined;
-      while (live) {
+      while (live && !signal?.aborted) {
         const page = groupViewSchema.parse(unwrapGroup(await remote().view(key, beforeSeq === undefined ? {} : { beforeSeq })));
+        if (!live || signal?.aborted) return;
         const message = page.messages.find(row => row.id === id); if (message) return message;
         const next = page.messages[0]?.seq;
         if (!page.hasEarlier || next === undefined || (beforeSeq !== undefined && next >= beforeSeq)) return;

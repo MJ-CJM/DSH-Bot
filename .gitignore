@@ -7,3 +7,6 @@ dist/
 *.tgz
 .dsh-desktop
 .dsh-pack*
+/.agents/
+/.taste-skill/
+/output/

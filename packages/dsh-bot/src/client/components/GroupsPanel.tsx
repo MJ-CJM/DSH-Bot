@@ -11,8 +11,9 @@ import { availableGroupCommands, bareGroupCommand, GROUP_COMMANDS, type GroupCom
 import type { GroupCommandSource } from '../group-trigger.js';
 import type { ModelActions } from '../model-catalog-state.js';
 import { GroupTimeline, groupMessagePreview } from './GroupTimeline.js';
+import { GroupDirectory } from './GroupDirectory.js';
+import { GroupOverview } from './GroupOverview.js';
 import { resolveGroupMentions } from '../group-mentions.js';
-import { GroupAvatar } from './GroupAvatar.js';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
@@ -87,51 +88,13 @@ export function GroupsPanel({
       <style>{css}</style>
       {!initialCreate && <h2>{t('groups.title')}</h2>}
       {list.error && <p role="alert">{t('groups.disconnected')}</p>}
-      {!initialCreate && <div className={styles.bar}>
-        <button type="button" onClick={() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); }}>
-          {t('groups.create')}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            void actions.catalog.refresh();
-          }}
-        >
-          {t('bots.refresh')}
-        </button>
-      </div>}
       {list.loading && !list.loaded && <p role="status">{t('groups.loading')}</p>}
       <div className={initialCreate ? styles.content : styles.layout} data-group-selected={!!active || creating}>
         {!initialCreate && <nav ref={listRef} aria-label={t('groups.list')} className={styles.list}>
-          {list.groups.map((row) => (
-            <button
-              type="button"
-              key={row.group.id}
-              aria-current={!creating && active?.group.id === row.group.id ? 'page' : undefined}
-              onClick={() => {
-                navigation.leave(() => select(row.group));
-              }}
-            >
-              <GroupAvatar size={28} />
-              <span className={styles.bar}>
-                {row.members
-                  .filter((m) => m.enabled)
-                  .map((m) => {
-                    const b = bots.find((b) => b.id === m.bot.botId && b.createdAt === m.bot.botCreatedAt);
-                    return b ? <BotAvatar key={m.id} bot={b} size={22} /> : <span key={m.id}>?</span>;
-                  })}
-              </span>
-              <strong>{row.group.name}</strong>{' '}
-              {row.unread && (
-                <span role="status" aria-label={t('groups.unread')}>
-                  ●
-                </span>
-              )}{' '}
-              <span>{t('navigation.memberCount', { count: row.members.filter(m => m.removedAt === undefined).length })}</span>
-              {row.latest?.speaker?.name && <span>{t('navigation.lastSpeaker', { name: row.latest.speaker.name })}</span>}
-              {row.running ? t('groups.running') : row.group.archived ? t('groups.archived') : ''}
-            </button>
-          ))}
+          <GroupDirectory rows={list.groups} bots={bots} selectedId={!creating ? active?.group.id : undefined}
+            onSelect={group => { navigation.leave(() => select(group)); }}
+            onCreate={() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); }}
+            onRefresh={() => { void actions.catalog.refresh(); }} t={t} />
         </nav>}
         <div className={styles.content}>
           {active && !creating && <Button className={styles.groupBack} variant="ghost" onClick={() => navigation.leave(back)}>{t('navigation.returnTo', { name: t('groups.title') })}</Button>}
@@ -220,7 +183,7 @@ function GroupWorkspaceField({ cwd, onChange, workspaces = [], onPickDirectory, 
     <p id={hintId} className={styles.workspaceHint}>{t('groups.workspaceHint')}</p>
   </fieldset>;
 }
-function GroupEditor({
+export function GroupEditor({
   bots,
   initial,
   creationSaved = false,
@@ -425,6 +388,38 @@ export function GroupConversation({
   useEffect(() => () => { if (!workspace) catalog.dispose(); }, [catalog, workspace]);
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
   const view = snapshot.view;
+  const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
+  const focusRequest = workspace && runRequest?.sessionId === summary.group.rootSessionId ? runRequest : undefined;
+  const focusMessageId = focusRequest && view?.turns.find(row => row.id === focusRequest.turnId)?.inputMessageId;
+  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
+  useEffect(() => {
+    if (!focusRequest || !focusMessageId) return;
+    const { requestId } = focusRequest;
+    const group = { groupId, groupCreatedAt };
+    const controller = new AbortController();
+    const isCurrent = () => !controller.signal.aborted && actions.runRequests.getSnapshot()?.requestId === requestId;
+    let frame: number | undefined;
+    void actions.quotedMessage(group, focusMessageId, controller.signal).then(async message => {
+      if (!message || !isCurrent()) return;
+      await actions.loadThrough(group, message.seq);
+      if (!isCurrent()) return;
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (!isCurrent()) return;
+          const target = [...document.querySelectorAll<HTMLElement>('[data-workspace-group-message]')].find(element =>
+            element.dataset.workspaceGroupMessage === message.id && element.dataset.workspaceGroup === `${groupId}:${groupCreatedAt}`);
+          if (!target) return;
+          actions.consumeRunRequest(requestId);
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          target.focus({ preventScroll: true });
+        });
+      });
+    }).catch(() => {});
+    return () => {
+      controller.abort();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, [actions, focusRequest, focusMessageId, groupId, groupCreatedAt]);
   const readSeq = view?.messages.at(-1)?.seq;
   useEffect(() => {
     if (!view?.unread || readSeq === undefined || document.visibilityState === 'hidden') return;
@@ -710,6 +705,7 @@ export function GroupConversation({
         onOpenAttachment={async (messageId, attachmentId) => {
           unwrapGroup(await actions.remote().openAttachment(groupKey(view.group), messageId, attachmentId));
         }}
+        onPreviewAttachment={(_messageId, attachment) => actions.imageUrl(rootId, attachment)}
         onReply={message => {
           setReplyTo(message);
           composer.current?.focus({ preventScroll: true });
@@ -790,48 +786,18 @@ export function GroupConversation({
 }
 
 function GroupManager({ summary, actions, bots, t, onOpenBot }: Parameters<typeof GroupConversation>[0] & { onOpenBot?(bot: BotRecord): void }) {
-  const navigation = useRef(new AbortController());
-  useEffect(() => {
-    if (navigation.current.signal.aborted) navigation.current = new AbortController();
-    const owner = navigation.current;
-    return () => owner.abort();
-  }, []);
-  const [catalog] = useState(() => actions.createView(groupKey(summary.group)));
-  useEffect(() => () => catalog.dispose(), [catalog]);
-  const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
-  const view = snapshot.view;
-  const [editing, setEditing] = useState<GroupView>(), [error, setError] = useState(false), [busy, setBusy] = useState(false);
-  const perform = async (work: () => Promise<void>) => {
-    setBusy(true); setError(false);
-    try { await work(); await Promise.all([catalog.refresh(), actions.catalog.refresh()]); }
-    catch { setError(true); } finally { setBusy(false); }
-  };
-  if (!view) return <p role="status">{t('groups.loading')}</p>;
-  return <article aria-label={view.group.name} className={styles.conversation}>
-    <h3>{t('navigation.groupProfile', { name: view.group.name })}</h3>
-    <ul className={styles.memberList} aria-label={t('groups.members')}>
-      {view.members.filter(member => member.removedAt === undefined).map(member => {
-        const bot = bots.find(bot => bot.id === member.bot.botId && bot.createdAt === member.bot.botCreatedAt);
-        const unavailable = !bot || view.unavailableMemberIds.includes(member.id);
-        return <li key={member.id}>
-          {bot && <BotAvatar bot={bot} size={28} />}<span>{bot?.name ?? member.bot.botId}</span>
-          <span>{t(unavailable ? 'groups.unavailable' : member.enabled ? 'navigation.memberEnabled' : 'navigation.memberDisabled')}</span>
-          {bot && onOpenBot && <button type="button" onClick={() => onOpenBot(bot)}>{t('chat.profile')}</button>}
-        </li>;
-      })}
-    </ul>
-    {error && <p role="alert">{t('groups.conflict')}</p>}
-    <div className={styles.bar}>
-    <button type="button" disabled={busy} onClick={() => { void perform(() => actions.open(groupKey(view.group), navigation.current.signal)); }}>{t('groups.open')}</button>
-    <button type="button" disabled={busy} onClick={() => setEditing(view)}>{t('groups.edit')}</button>
-    <details><summary>{t('card.more')}</summary>
-    <button type="button" disabled={busy || view.group.archived} onClick={() => { void perform(async () => { unwrapGroup(await actions.remote().archive(groupKey(view.group), view.group.revision)); }); }}>{t('groups.archive')}</button></details>
-    </div>
+  const [editing, setEditing] = useState<GroupView>();
+  const [generation, setGeneration] = useState(0);
+  return <>
+    <GroupOverview key={`${summary.group.id}:${generation}`} summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
+      onEdit={setEditing} t={t} />
     {editing && <GroupEditor bots={bots} initial={editing} t={t} onCancel={() => setEditing(undefined)} onSave={async input => {
       const { operationId: _operation, cwd: _cwd, ...edit } = input;
-      unwrapGroup(await actions.remote().edit(groupKey(view.group), { ...edit, expectedRevision: editing.group.revision,
+      unwrapGroup(await actions.remote().edit(groupKey(editing.group), { ...edit, expectedRevision: editing.group.revision,
         expectedMembershipRevision: editing.group.membershipRevision }));
-      await catalog.refresh(); await actions.catalog.refresh(); setEditing(undefined);
+      await actions.catalog.refresh();
+      setEditing(undefined);
+      setGeneration(value => value + 1);
     }} />}
-  </article>;
+  </>;
 }

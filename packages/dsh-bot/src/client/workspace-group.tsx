@@ -15,6 +15,8 @@ import { GroupConversation } from './components/GroupsPanel.js';
 import { GroupMessageCard } from './components/GroupTimeline.js';
 import { GroupTurnExecution } from './components/GroupTurnExecution.js';
 import { registerGroupExecution, type ExecutionBridge } from './group-execution.js';
+import { registerGroupViews } from './group-views.js';
+import type { BotRecord } from '../shared/schema.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
 const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: groupKeySchema, turnId: z.string().min(1),
@@ -107,16 +109,23 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
     onOpenSession={onOpenSession} onReply={message => { const row = actions.catalog.getSnapshot().groups.find(group =>
       group.group.id === node.data.group.groupId && group.group.createdAt === node.data.group.groupCreatedAt);
       if (row) actions.reply(row.group.rootSessionId, message);
-    }} onOpenAttachment={async (messageId, attachmentId) => { const result = await actions.remote().openAttachment(node.data.group, messageId, attachmentId); if (!result.ok) throw result.error; }} />{jumpUnavailable && <p role="status">{t('groups.quoteUnavailable')}</p>}
+    }} onOpenAttachment={async (messageId, attachmentId) => { const result = await actions.remote().openAttachment(node.data.group, messageId, attachmentId); if (!result.ok) throw result.error; }}
+    onPreviewAttachment={(_messageId, attachment) => {
+      const row = actions.catalog.getSnapshot().groups.find(group => group.group.id === node.data.group.groupId && group.group.createdAt === node.data.group.groupCreatedAt);
+      if (!row) throw new Error('Group session unavailable');
+      return actions.imageUrl(row.group.rootSessionId, attachment);
+    }} />{jumpUnavailable && <p role="status">{t('groups.quoteUnavailable')}</p>}
     {node.data.message.authorKind === 'user' && turn && snapshot.view && bots && executionBridge && <GroupTurnExecution
       key={JSON.stringify([node.data.group.groupId, node.data.group.groupCreatedAt, turn.id])} view={snapshot.view} turn={turn} actions={actions} bots={bots}
       onOpenExecution={executionBridge.open} executionBridge={executionBridge} renderFactorySlot={renderFactorySlot} t={t} />}
   </div>;
 }
-export function registerWorkspaceGroups(ctx: Context, actions: GroupActions, bots: BotCatalog, onOpenSession: (id: string) => Promise<void>, models?: ModelActions) {
+export function registerWorkspaceGroups(ctx: Context, actions: GroupActions, bots: BotCatalog, onOpenSession: (id: string) => Promise<void>, models?: ModelActions,
+  onOpenBot?: (bot: BotRecord) => void, onAskBot?: (bot: BotRecord, prompt: string, signal?: AbortSignal) => void | Promise<void>) {
   const executionBridge = registerGroupExecution(ctx);
   const createPermissionState = (rootSessionId: string) => createGroupPermissionState(ctx, rootSessionId);
   const commandServices = createGroupCommandServices(ctx);
+  registerGroupViews(ctx, actions, bots, executionBridge, onOpenBot, onAskBot);
   ctx.effect(() => ctx.slots.inject('conversation.composer', () => ctx.slots.register({ name: 'conversation.composer',
     priority: -20, locale: 'dsh-bot', select: owner => selectGroupComposer(owner, actions),
   }, (props: { matched: { sessionId: string } } & PropsLocale<'dsh-bot'>) => <WorkspaceGroupComposer {...props} executionBridge={executionBridge} actions={actions} bots={bots} models={models} createPermissionState={createPermissionState} commandServices={commandServices} onOpenSession={onOpenSession} />)), 'dsh-bot: group workspace composer');

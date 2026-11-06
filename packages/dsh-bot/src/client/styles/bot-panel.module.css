@@ -15,3 +15,7 @@
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 4px 0 0; font-size: 13px; }
 .facts dt { color: var(--dsw-alias-label-secondary); }
 .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.preview[role="dialog"] { width: min(420px, 100%); max-height: 100%; min-height: 0; }
+.previewContent { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.previewPanel { height: auto; padding: 0; overflow: visible; background: transparent; }
+.sidebarAction { display: flex; justify-content: flex-end; }

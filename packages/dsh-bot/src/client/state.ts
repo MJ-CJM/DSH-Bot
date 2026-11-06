@@ -86,6 +86,7 @@ function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T | 
 export interface PollingCatalog<Payload> {
   subscribe(listener: () => void): () => void;
   observe(listener: () => void): () => void;
+  watch?(listener: () => void): () => void;
   getSnapshot(): Payload & PollingSnapshot;
   refresh(): Promise<void>;
   setPollIntervalMs(value: number): void;
@@ -105,6 +106,7 @@ export function createPollingCatalog<Payload>(
   let snapshot: Payload & PollingSnapshot = { ...initial, loading: true, loaded: false, pollIntervalMs };
   const listeners = new Set<() => void>();
   const pollers = new Set<() => void>();
+  const watchers = new Set<() => void>();
   let epoch = 0;
   let disposed = false;
   let controller: AbortController | undefined;
@@ -113,6 +115,7 @@ export function createPollingCatalog<Payload>(
     if (structuralEqual(snapshot, next)) return false;
     snapshot = next;
     for (const listener of listeners) listener();
+    for (const watcher of watchers) watcher();
     return true;
   };
   const cancelRead = () => {
@@ -162,6 +165,7 @@ export function createPollingCatalog<Payload>(
     stop();
     listeners.clear();
     pollers.clear();
+    watchers.clear();
   };
   const subscribe = (listener: () => void, polling: boolean) => {
     if (disposed) return () => {};
@@ -185,6 +189,12 @@ export function createPollingCatalog<Payload>(
       else scheduler.reschedule();
     };
   };
+  const watch = (listener: () => void) => {
+    if (disposed) return () => {};
+    const subscription = () => listener();
+    watchers.add(subscription);
+    return () => { watchers.delete(subscription); };
+  };
   const disposeOwner = ctx.effect(() => dispose, 'dsh-bot: catalog');
   return {
     getSnapshot: () => snapshot,
@@ -206,6 +216,7 @@ export function createPollingCatalog<Payload>(
     },
     subscribe: (listener) => subscribe(listener, true),
     observe: (listener) => subscribe(listener, false),
+    watch,
   };
 }
 

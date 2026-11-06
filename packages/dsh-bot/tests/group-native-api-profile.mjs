@@ -4,9 +4,9 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
-import { LlmAdapter } from '@deepseek-ai/dsh-llm';
+import { createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm';
 export const name = 'group-native-api-profile';
-export const inject = ['loader', 'llm', 'agents', 'sessions', 'dshBots', 'subagents', 'agentPresets', 'webServer'];
+export const inject = ['loader', 'llm', 'agents', 'sessions', 'dshBots', 'subagents', 'agentPresets', 'webServer', 'attachments'];
 
 class NativeAdapter extends LlmAdapter {
   calls = []; active = new Set(); maxActive = 0; endpoint; ui = false;
@@ -134,6 +134,12 @@ export function apply(ctx, config) {
         assert.ok(delivery.childSessionId);
         const second = await groups.send(key, { operationId: 'ui-trace-second', text: 'UI_TRACE_SECOND', memberIds: [members[1].id], expectedMembershipRevision: 1 });
         await wait(async () => (await groups.view(key)).turns.find(t => t.id === second.id && !['accepted', 'running'].includes(t.state)));
+        const imageContent = await ctx.attachments.admitPromptContent([{ type: 'text', text: 'UI_IMAGE_PREVIEW' },
+          { type: 'image', mediaType: 'image/png', name: 'ui-preview.png',
+            data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }]);
+        const imageMessage = createUserMessage({ source: { kind: 'dsh-bot-group-user', group: key, turnId: second.id }, content: imageContent });
+        await root.session.append('user/message', imageMessage, { surfaceOp: 'append' });
+        await ctx.sessions.flush(root.session);
         await save('ui-fixture', { rootId: g.rootSessionId, childId: delivery.childSessionId, groupName: g.name,
           inputMessageId: turn.inputMessageId, turnId: turn.id, secondInputMessageId: second.inputMessageId, secondTurnId: second.id, modelRequests: adapter.calls.length });
         if (config.suite === 'ui-completion') {

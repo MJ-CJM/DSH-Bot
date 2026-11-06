@@ -65,7 +65,9 @@ export async function mountClient(
     name: 'root',
     children: {
       main: { kind: 'keyed', scope: 'root' },
+      'shell.overlay': { kind: 'list', scope: 'root' },
       'conversation.composer': { kind: 'chain', scope: 'session' },
+      'conversation.view': { kind: 'list', scope: 'session' },
       'conversation.input.dock': { kind: 'list', scope: 'session' },
       'sidebar.panellist': { kind: 'list', scope: 'root' },
       'sidebar.footer.action': { kind: 'list', scope: 'root' },
@@ -185,8 +187,12 @@ export async function mountClient(
     bind: translate,
   } as unknown as Context['locale']);
   ctx.provide('slots', {
-    inject: (_key: string, callback: () => () => void) => callback(),
+    inject: (_key: string, callback: () => (() => void) | Array<() => void>) => {
+      const effect = callback();
+      return () => { for (const dispose of Array.isArray(effect) ? effect : [effect]) dispose(); };
+    },
     register: core.register.bind(core),
+    entries: core.entries.bind(core),
   } as unknown as Context['slots']);
   ctx.provide('remote', { $mount: mountRemote, $on: (name: string, fn: () => void) => ctx.on(name as 'schedule/changed', fn),
     schedule: remote.schedule, dshBot: remote.methods } as unknown as Context['remote']);
@@ -195,7 +201,8 @@ export async function mountClient(
   const pickDirectory = vi.fn<Context['uiWorkspace']['pickDirectory']>(async () => null);
   ctx.provide('uiWorkspace', { openWorkspace, openSession, pickDirectory } as unknown as Context['uiWorkspace']);
   ctx.provide('workspaces', { list: workspaceSource, create: createWorkspace } as unknown as Context['workspaces']);
-  ctx.provide('sessions', { list: sessionSource, create: createSession, refreshProjections: vi.fn(async () => {}) } as unknown as Context['sessions']);
+  ctx.provide('sessions', { list: sessionSource, create: createSession, refreshProjections: vi.fn(async () => {}),
+    retain: vi.fn(() => ({ ready: Promise.resolve({}), release: vi.fn() })) } as unknown as Context['sessions']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();
   const container = document.createElement('div');
