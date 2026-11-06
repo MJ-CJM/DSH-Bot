@@ -39,7 +39,8 @@ it('returns to the same group, allows member details, and consumes navigation ex
   await act(async () => page.groups?.select(group.id, group.createdAt));
   await vi.waitFor(() => expect(app.container.querySelector('article')?.getAttribute('aria-label')).toBe(group.name));
   const article = requireValue(app.container.querySelector('article'));
-  expect(article.querySelectorAll('li')).toHaveLength(2);
+  expect(article.querySelectorAll('[data-group-member]')).toHaveLength(2);
+  await click(button(article.querySelector('[data-group-member="member:alpha"]') as HTMLElement, en.ui['execution.memberActions'].replace('{name}', 'Same name')));
   await click(button(article, en.ui['chat.profile']));
   expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('alpha');
   await click(button(app.container, 'Back to Groups'));

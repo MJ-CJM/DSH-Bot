@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { LlmAdapter, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm';
 export const name = 'bot-message-presence-probe';
-export const inject = ['loader', 'llm', 'agents', 'dshBots', 'sessionController', 'sessions', 'webServer'];
+export const inject = ['loader', 'llm', 'agents', 'dshBots', 'sessionController', 'sessions', 'webServer', 'schedule'];
 const QUESTION = 'Are the release notes for 0.7 ready to publish?';
 const ANSWER = 'Ready, except the migration section still needs one example.';
 const ASK = 'Ask Reviewer whether the release notes are ready.';
@@ -17,9 +17,9 @@ const lastInstruction = messages => messages.findLast(m => m.role === 'tool' || 
 export function apply(ctx, config) {
   ctx.effect(() => {
     const controller = new AbortController(), disposers = [];
-    let mains = {}, bots = [], saving = Promise.resolve(), modelRequests = 0;
+    let mains = {}, bots = [], saving = Promise.resolve(), modelRequests = 0, nativeScheduleApi;
     const save = (extra = {}) => {
-      const json = JSON.stringify({ bots: bots.map(b => ({ id: b.id, name: b.name })), mains, modelRequests, realModelRequests: 0, ...extra }, null, 2);
+      const json = JSON.stringify({ bots: bots.map(b => ({ id: b.id, name: b.name })), mains, modelRequests, realModelRequests: 0, nativeScheduleApi, ...extra }, null, 2);
       saving = saving.then(async () => { const tmp = resolve(config.outputDir, 'presence.tmp'); await writeFile(tmp, json); await rename(tmp, resolve(config.outputDir, 'presence.json')); });
       return saving;
     };
@@ -86,6 +86,13 @@ export function apply(ctx, config) {
       };
       while (!answered()) { assert.ok(Date.now() < deadline, 'reply reaches the sender and its turn ends'); await delay(50, undefined, { signal: controller.signal }); }
       for (const id of Object.values(mains)) { const agent = ctx.agents.get(id); await agent?.whenIdle(); if (agent) assert.equal(await ctx.sessions.flush(agent.session), true); }
+      // A future synthetic reminder exercises the nested editor without running another task.
+      const reminder = { title: 'Synthetic release review', prompt: 'Review synthetic release notes.' };
+      nativeScheduleApi = typeof ctx.schedule.edit === 'function' ? 'request-target' : 'session-first';
+      // rc.2 uses a session-first request; 0.2.2 exposes edit() and an explicit timing/target request.
+      if (typeof ctx.schedule.edit === 'function') await ctx.schedule.create({ ...reminder,
+        timing: { kind: 'after', after_seconds: 86400 }, target: { kind: 'session', sessionId: mains.planner } }, mains.planner);
+      else await ctx.schedule.create(mains.planner, { ...reminder, after_seconds: 86400 });
       const sources = id => events(id).filter(e => e.type === 'user/message' && String(e.data.source?.kind).startsWith('dsh-bot-message'))
         .map(e => ({ seq: e.seq, kind: e.data.source.kind, mode: e.data.source.mode, from: e.data.source.from?.botId, to: e.data.source.to?.botId }));
       await save({ planner: sources(mains.planner), reviewer: sources(mains.reviewer), question: QUESTION, answer: ANSWER });

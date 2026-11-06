@@ -1493,6 +1493,16 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
   - 390px 宽度时原生右侧栏以全屏呈现，属原生行为。
 - **附带发现（未在本 issue 修复）：** 消息的来源校验（`MessagingCore.provenance`）把一轮中的非 ambient `user/message` 视为非用户来源。原生首轮会注入 `skill-catalog`，它不在 ambient 集合（`agent-instructions` / `runtime-context` / `time-context` / `tmux-context`）中。因此新 Bot 的第一轮若直接要求联系队友，`bot_message` 返回 `approval-denied`。现有 b2b fixture 与本次 fixture 都先进行一轮普通对话来规避。该检查涉及安全边界，建议单独处理。
 
+### Bot 详情默认紧凑预览（2026-11-06）
+
+- **宽度根因（只读契约核实）：** pinned `0.2.1-rc.2` 和本机 `0.2.2-rc.1` 的原生布局首次打开右栏默认占 frame 的 45%。公开 `sidebarRight.openTab()` 不接收宽度；`layout.openRightbar(track, fullscreen)` 仅报告呈现状态，不能设置宽度。`setRightbar(px)` 为内部存储动作，不调用。拖动宽度偏好在当前运行期间保留，刷新会重置，不能承诺跨启动记忆。
+- **默认入口：** 在公开 `shell.overlay`（root/list）注册唯一 `dsh-bot-preview`，使用 `ctx.effect` 和 `slots.inject` 管理注册/卸载。会话徽标、空白会话身份、消息芯片统一打开公开 `Modal`，不调用 `openTab()`，不改宿主布局或持久设置。
+- **原生复用：** Modal 管理 portal、遮罩、关闭按钮、Escape、焦点与嵌套模态栈。`className` 限制卡片为 `min(420px,100%)`，视口留白归原生；通过公开 `contentClassName` 增加内层滚动，因原生 content 本身不设置 overflow。
+- **共享内容与显式侧栏：** 概览、任务、消息复用同一内容组件；“在侧栏打开”才调用原生 `openTab(kind,{params:{botId,section}})`，保留当前分区。原侧栏注册保留，兼容既有恢复页。“完整设置”先关闭预览再进入现有 Bots 详情页。
+- **生命周期：** 切换会话或卸载清空预览；异步打开对话返回时，仅关闭发起该请求的预览，不能误关后来打开的 Bot。预览宿主或当前会话不可用时保留原页面回退。
+- **测试 fixture 版本差异：** `0.2.2-rc.1` 的公开 Schedule Host `create(request, actorSessionId?)` 改为显式 `timing` / `target`；rc.2 仍是 `create(sessionId,request)`。仅在隔离 fixture 通过新增公开 `edit` 方法探测并选择创建格式，不异常重试写操作。提醒设为一天后，测试期间不执行。
+- **验证：** 运行结果、截图和未执行项见 [Bot 预览验收](verification/bot-preview-layout.md)。此节的静态核实不代替运行证据。
+
 ### Issue #30 后续：群聊输入框的 `/` 指令与添加按钮（2026-11-03）
 
 均为公开入口，rc.2 已安装包只读核实；rc.2 / rc.5 隔离真实 Host + 浏览器各 35 项检查通过，详见 [验收记录](verification/bot-message-presence.md#后续群聊输入框的--指令与添加按钮)。
@@ -1559,3 +1569,30 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 - **文案对齐原生**：`dsh-client-ui-chat` 内部 `failureMessage(message, code, t)` 将 `QUOTA`/`ACCOUNT_QUOTA` 映射为 `message.failure.quota`（“当前请求的额度已用尽”/“Request quota exhausted.”），`AUTH`、`ACCOUNT_SIGNED_OUT`、`ACCOUNT_SIGN_IN_REQUIRED`、`INTERRUPTED` 各有文案，其余显示原始 message。该函数未导出；插件 `t` 只覆盖自身命名空间（`PropsLocale<'dsh-bot'>`），读不到 `chat` 文案，因此按相同映射与原文自备 `groups.failure.*`，并在旁边保留 `QUOTA · 402` 便于排查。原生全局额度提示 `shell.quota-notice` 只由已打开的 Chat 绑定触发，不覆盖群聊消息里的原因。
 - **重试**：rc.2 `dsh-llm` 默认可重试码为 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT`；`QUOTA` 不重试，与用户日志中单次尝试一致。
 - **验证注记**：Session 日志 `session.v4.jsonl.zstd` 为追加的多帧 zstd；Node `zlib.zstdDecompressSync` 一次只解一帧，需按 `info.engine.bytesWritten` 逐帧解码。
+
+
+## 群管理 UI 与原生 View（2026-11-05）
+
+实现与证据：[方案](design/group-management-ui-proposal.md)、[验收](verification/group-management-ui.md)。均使用公开入口，未新增 runtime 依赖或 Host Remote。
+
+- **`conversation.view` 的 ID 必须保持唯一**：当前群根只动态注册 `dsh-bot-group-management`，内含成员/活动/设置。原生 `ConversationSessionHeader` 以 `view.id` 作为 React key，`viewTabs()` 又直接读取全部 slot entries；用低 `priority` 再注册 `chat` / `trajectory` 虽能临时接管内容，却会制造重复 key。真实 desktop 断点证明临时注册和 `conversationViews` 均已恢复后 DOM 仍可能残留，因此不能靠 disposer、`await` 或隐藏 CSS 修补。最终完全移除临时 activator，不再复用其他 View ID。
+- **不要把父级注入当成公共子 slot 能力**：`ConversationSessionHeader` 自有 `selectView` 属于其父注册的 inject，不会自动提供给 `conversation.session.header.utilities` 的贡献；实测直接读取得到 `selectView is not a function`。`uiConversation.binding(sessionId).activate(target)` 激活的是消息装配 target，不是原生会话 View 切换。本包不伪造这些能力，也不读取宿主私有 Store。
+- **运行定位遵循当前原生 View**：目录打开仍复用一次性 `runRequests`，只有 Host `groups.open` 成功且导航未失效才发布。管理页已激活时，`GroupWorkspaceView` 消费请求并定位活动；在“对话”中，`GroupConversation` 通过公开 `quotedMessage` 找到原问题、`loadThrough` 加载真实历史，再聚焦原问题及既有内联执行。管理页内部继续使用 `openView(view, turnId)` 和 `completeViewRequest()`。不强制覆盖原生 View 偏好，不复制消息或执行状态，不启动模型。
+- **公开原语与搜索**：群目录/详情使用 `Button`、`Input`、`Menu`、`PathLabel`、`SegmentedTabs`、`StateDot` 和 `rankByName`。共享 `SearchField` 同时用于群目录和最近对话；筛选收进原生 `Menu`，刷新使用图标按钮。目录只读取 catalog 快照，不逐行读取 `GroupView`。
+- **成员与相似列表**：成员显示真实描述、状态、有效模型及来源，`bot-…` 占位 ID 不再冒充职责。资料、查看执行、单聊追问进入成员 `Menu`。Bots 与最近对话复用同样的搜索、头像、摘要和低权重操作，不引入另一套卡片或主题。
+- **窄屏**：原生会话 `conversation.view` 的内容区可以没有内边距。仅在 `[data-group-view="dsh-bot-group-management"]` 且宽度不超过 760px 时为概览增加 16px 左右留白；Bots 目录和桌面布局不受影响。实际 desktop 以 `dt` 的位置验证边距，不只检查页面 `scrollWidth`。
+- **单聊草稿**：复用 `sessions.using` → `reference.ready` → `conversation.input.requestDraftInitialization(binding,{prompt})`，目标为精确 Bot 代际的主会话。仅填草稿，`blocked` 时不覆盖已有草稿，不发送消息或启动模型。
+- **目录订阅**：本包 `PollingCatalog.watch()` 是纯被动 listener，与主动订阅独立计数，没有 scheduler 首订阅/末订阅副作用；`GroupView` 和 `BotCatalog` 继续使用原 subscribe/dispose。它不是新增的 DSH 公共 API。群根切换后注销 View，全部注册和监听纳入所属 `ctx.effect`。
+- **`uiConversation.imageUrl` / `ImageLightbox`**：仅对真实图片 attachment 获取授权 URL 并预览，其他附件走原打开流程。夹具通过公开 `attachments.admitPromptContent` 和 `session.append` 创建合成图片消息，不调用模型；普通文件上传不冒充图片预览。
+- **验收边界**：当前 `scripts/dsh` 为 rc.1，另有显式 rc.2 CLI 矩阵；均使用真实 Host + Chromium + 合成模型。正式 desktop 为 `0.2.2-rc.1`，30 项交互检查通过、renderer error=0，临时调试端口已关闭。正式数据无图片附件，正式图片预览仍 FAIL(NOT_RUN)，以隔离真实图片链路补充而非冒充正式数据通过。
+
+### 群管理评审修复（2026-11-06）
+
+- `PropsRuntime<'conversation.view'>` 包含公开的 Session 标准属性 `sessionId`：rc.2 的 `ui-conversation` `slots.d.ts` 引入 `ui-session/client`，后者通过 `SessionStandardProps` 扩展该属性。渲染器用它核对当前群根，避免会话 retain 交接期间把另一个群的设置渲染出来。未读取私有 View Store，也未新增运行时依赖。
+- 动态 View 注册把同一事件循环内的变化合并，执行时重读公开 `sessions.list` 与群目录；空目录不访问 Session 服务。所有定时器、监听和注册由同一个 `ctx.effect` 清理。普通会话、瞬时子会话以及 A→B→A 切换均有回归。
+- 原生 `openView` 请求及已有目录请求分别携带一次性序号；管理页将同一请求用于活动定位和既有 `GroupStatisticsBar`。手动统计范围不会被目录轮询覆盖，失活时释放 `sessionStats` / `tokenUsage` 引用，恢复时保留用户选项。对话页的历史查找、动画帧和消费也核对精确请求编号。
+- 历史问题缺页时展示本地化占位；只有明确点击单聊追问才复用 `quotedMessage` 的既有分页查询，新增的可选 `AbortSignal` 是本包 Client 参数，不是新的 Host Remote。正文、附件占位与消息 ID 分开，只有真实正文填入草稿；失活、离开或目标 Bot 代际变化会取消交接。
+- 搜索框复用公开 `Input.icon` / `ref` / `className`：原生包装元素负责边框和焦点，内层 input 不再重复绘制。清空使用原生 `Button` 与已有中英文文案，支持键盘并恢复输入焦点。未导入内部组件。
+- 会话设置页重用已有 `GroupEditor` 和 revision / membershipRevision 冲突校验；归档群保留禁用语义。本轮未新增模型请求入口或更改 Host 调度与持久结构。
+
+本轮命令、运行证据与未覆盖项见[评审修复验收](verification/group-management-review-fixes.md)；此前 desktop 截图不能作为本轮代码的验收结果。

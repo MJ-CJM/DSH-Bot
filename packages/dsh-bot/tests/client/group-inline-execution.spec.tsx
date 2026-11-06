@@ -33,10 +33,17 @@ async function fixture(language: 'en' | 'zh' = 'en', denials?: string[], firstDe
     ...(index ? {} : { reasonCode: 'fixture-failure', ...firstDelivery }) }));
   // Old question isn't in the latest page; its native history node still owns the task.
   data.messages = [questions[1] as GroupMessage];
-  const remote = { view: vi.fn(async () => ({ ok: true, value: structuredClone(data) })),
+  const remote = { view: vi.fn(async (_key: unknown, options: { beforeSeq?: number } = {}) => {
+    const page = structuredClone(data);
+    page.hasEarlier = options.beforeSeq === undefined;
+    if (options.beforeSeq !== undefined) page.messages = [questions[0] as GroupMessage];
+    return { ok: true, value: page };
+  }), open: vi.fn(async () => ({ ok: true, value: { sessionId: data.group.rootSessionId, workspaceId: 'bots' } })),
     list: vi.fn(async () => ({ ok: true, value: [summary()] })), cancel: vi.fn(async () => ({ ok: true, value: true })),
     stopMember: vi.fn(async () => ({ ok: true, value: true })), continueTurn: vi.fn(async () => ({ ok: true, value: true })) };
   ctx.provide('remote.dshBot.groups', remote as unknown as GroupMethods);
+  ctx.provide('uiWorkspace', { openSession: vi.fn() } as never);
+  ctx.provide('sessions', { binding: () => ({ session: { loadThrough: vi.fn(async () => {}) } }) } as never);
   const actions = createGroupActions(ctx, {});
   const botSnapshot = { entries: bots.map(bot => ({ bot })) };
   const catalog = { subscribe: () => () => {}, getSnapshot: () => botSnapshot } as unknown as BotCatalog;
@@ -195,5 +202,53 @@ it.each([['en', undefined], ['zh', undefined], ['en', 'reply-first']] as const)(
     }
     expect(question.querySelector('[data-group-execution-card="delivery-first"]')?.textContent).toContain(f.t('groups.failure.quota'));
     expect(f.question('second').querySelector('[data-group-member-failure]')).toBeNull();
+  } finally { await f.close(); }
+});
+
+it('loads and focuses the requested historical question in the native chat without changing views', async () => {
+  const f = await fixture();
+  try {
+    const question = f.question('first');
+    const scroll = vi.fn();
+    question.scrollIntoView = scroll;
+    await act(async () => { await f.actions.openRun(f.key, 'first'); });
+    await act(async () => { await vi.waitFor(() => expect(f.actions.runRequests.getSnapshot()).toBeUndefined()); });
+    expect(f.remote.open).toHaveBeenCalledWith(f.key);
+    expect(f.remote.view).toHaveBeenCalledWith(f.key, { beforeSeq: 2 });
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+    expect(document.activeElement).toBe(question);
+    expect(question.querySelector('[data-group-turn="first"]')).not.toBeNull();
+    expect(f.remote.cancel).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+});
+
+it('lets a repeated run request replace its older lookup without restarting on catalog refresh', async () => {
+  const f = await fixture();
+  const pending: Array<(message: GroupMessage) => void> = [];
+  const lookup = vi.spyOn(f.actions, 'quotedMessage').mockImplementation(() => new Promise(resolve => { pending.push(resolve); }));
+  const loadThrough = vi.spyOn(f.actions, 'loadThrough');
+  const scroll = vi.fn();
+  f.question('first').scrollIntoView = scroll;
+  const message: GroupMessage = { id: 'question-first', seq: 1, at: 1, text: 'Question first', turnId: 'first', authorKind: 'user' };
+  try {
+    await act(async () => { await f.actions.openRun(f.key, 'first'); });
+    expect(lookup).toHaveBeenCalledTimes(1);
+    const initial = f.actions.runRequests.getSnapshot()?.requestId;
+    await f.refresh();
+    expect(lookup).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await f.actions.openRun(f.key, 'first'); });
+    expect(lookup).toHaveBeenCalledTimes(2);
+    const latest = f.actions.runRequests.getSnapshot()?.requestId;
+    expect(latest).not.toBe(initial);
+    expect(lookup.mock.calls[0]?.[2]?.aborted).toBe(true);
+
+    await act(async () => { pending[0]?.(message); });
+    expect(loadThrough).not.toHaveBeenCalled();
+    expect(f.actions.runRequests.getSnapshot()?.requestId).toBe(latest);
+    await act(async () => { pending[1]?.(message); });
+    await act(async () => { await vi.waitFor(() => expect(f.actions.runRequests.getSnapshot()).toBeUndefined()); });
+    expect(loadThrough).toHaveBeenCalledExactlyOnceWith(f.key, message.seq);
+    expect(scroll).toHaveBeenCalledTimes(1);
   } finally { await f.close(); }
 });

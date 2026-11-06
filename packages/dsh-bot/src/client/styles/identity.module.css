@@ -2,4 +2,4 @@
 .body { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.meta, .preview { color: var(--dsw-alias-label-secondary); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.meta, .preview { color: var(--dsw-alias-label-secondary); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

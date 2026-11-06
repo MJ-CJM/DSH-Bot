@@ -602,14 +602,20 @@
 
 
 .recentList { list-style: none; padding: 0; margin: 12px 0; }
-.recentRow { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--dsw-alias-border-l3); min-width: 0; }
-.recentOpen { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 14px 8px; border: 0; background: transparent; color: var(--dsw-alias-label-primary); text-align: start; cursor: pointer; font: inherit; }
-.recentOpen > span { overflow-wrap: anywhere; }
-.recentBody { flex: 1; min-width: 0; }
-.listTools { display: flex; justify-content: space-between; align-items: end; gap: 12px; flex-wrap: wrap; }
+.recentRow { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--dsw-alias-border-l3); min-width: 0; }
+.recentRow:last-child { border-bottom: 0; }
+.recentOpen { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 12px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-primary); text-align: start; cursor: pointer; font: inherit; }
+.recentOpen > span { min-width: 0; }
+.recentBody { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.recentSearch { min-width: 0; max-width: 320px; }
+.listTools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .listTools .field { min-width: 0; max-width: 100%; }
 .recentOpen:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .recentOpen:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
+.recentRow .quietAction { border: 0; padding-inline: 6px; color: var(--dsw-alias-label-secondary); background: transparent; }
+.recentRow > div { min-width: 0; }
+.activityPreview { display: block; overflow: hidden; font-size: 13px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.relativeTime { flex: none; color: var(--dsw-alias-label-secondary); font-size: 12px; white-space: nowrap; }
 
 .sectionNavigation[hidden] { display: none; }
 
@@ -618,4 +624,8 @@
 .identityEditor > button { flex: none; width: 60px; height: 60px; padding: 6px; }
 
 .page [hidden] { display: none; }
-.recentRow > button, .recentRow > div > button { min-height: 44px; }
+.recentRow > button, .recentRow > div > button { min-height: 32px; }
+@media (max-width: 640px) {
+  .recentSearch { flex-basis: 100%; max-width: none; order: -1; }
+  .recentRow > button, .recentRow > div > button { min-height: 44px; }
+}

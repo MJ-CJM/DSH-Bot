@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openSidebarSession } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, openSidebarSession } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 assert.deepEqual(process.argv.slice(2), ['--mock-only']);
 const root = process.cwd(); assert.equal(process.env.DSH_HOME, resolve(root, '.dsh-dev'));
@@ -15,6 +15,14 @@ const require = createRequire(resolve(root, 'packages/dsh-bot/package.json'));
 const { chromium } = require('playwright-core');
 let host, browser, page, phase = 'host'; const errors = [], checks = [];
 const check = (name, condition) => { assert.ok(condition, name); checks.push(name); };
+const checkUniqueConversationTabs = async (stage, t) => {
+  for (const delay of [0, 100, 1000]) {
+    if (delay) await page.waitForTimeout(delay);
+    const labels = (await page.locator('[data-conversation-tabs]:visible [role="tab"]').allTextContents()).map(label => label.trim());
+    const count = pattern => labels.filter(label => pattern.test(label)).length;
+    check(`${stage} keeps one chat and management tab at ${delay}ms`, count(/^(?:Chat|对话)$/) === 1 && count(/^trajectory$|^轨迹$/i) <= 1 && labels.filter(label => label === t['groups.manage']).length === 1);
+  }
+};
 try {
   host = await webHost(dir, 'group-api', process.env.DSH_BOT_ARTIFACT && resolve(process.env.DSH_BOT_ARTIFACT), resolve(root, 'packages/dsh-bot/tests/group-native-api-profile.mjs'), ['- id: agent-default-model', '  config:', '    provider: dp-b6b', '    model: fixture']);
   const fixture = JSON.parse(await readFile(resolve(dir, 'ui-fixture.json'), 'utf8'));
@@ -34,8 +42,8 @@ try {
     const t = JSON.parse(await readFile(resolve(root, `packages/dsh-bot/locale/${language}.json`), 'utf8')).ui;
     const context = await browser.newContext({ colorScheme: theme, locale: language === 'en' ? 'en-US' : 'zh-CN', viewport: { width: 1360, height: 1000 }, reducedMotion: 'reduce' });
     page = await context.newPage(); page.setDefaultTimeout(15000);
-    page.on('pageerror', error => errors.push(`${id}: ${error}`));
-    page.on('console', message => { if (message.type() === 'error' || message.type() === 'warn') errors.push(`${id}: ${message.text()}`); });
+    page.on('pageerror', error => errors.push(`${phase}: ${error}`));
+    page.on('console', message => { if (message.type() === 'error' || message.type() === 'warning') errors.push(`${phase}: ${message.text()}`); });
     await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
     phase = `${id}:open`; await installOverlayHandler(page, () => {}); await page.goto(host.url, { waitUntil: 'domcontentloaded' });
     await dismissFirstRunOverlays(page, () => {}, 'group-api'); await openSidebarSession(page, fixture.rootId);
@@ -130,6 +138,139 @@ try {
       await liveDisclosure.click(); await liveProcess.nth(1).waitFor();
       check('reopening live reasoning does not execute models', host.requests() === liveCount);
       await liveQuestion.getByRole('button', { name: t['execution.stopTurn'], exact: true }).click();
+    }
+    const viewRequestCount = host.requests();
+    const executionClose = page.locator('[data-rightbar-col] [data-dockkit-tab-close]:visible');
+    if (await executionClose.count()) await executionClose.last().click();
+    const managementTab = page.getByRole('tab', { name: t['groups.manage'], exact: true });
+    if (await managementTab.isVisible()) {
+      await managementTab.click();
+    } else {
+      await page.getByRole('button', { name: language === 'zh' ? '更多会话视图' : 'More conversation views', exact: true }).click();
+      await page.getByRole('menuitem', { name: t['groups.manage'], exact: true }).click();
+    }
+    const management = page.locator('[data-group-view="dsh-bot-group-management"]');
+    const members = management.locator('[data-group-member]');
+    await members.first().waitFor();
+    check('native members view shows real member configuration', await members.count() === 2);
+    check(`${id}: management content is inset from the native view edge`, await management.evaluate(element => {
+      const bounds = element.getBoundingClientRect(), content = element.querySelector('[data-group-overview]').getBoundingClientRect();
+      return content.left - bounds.left >= 15 && bounds.right - content.right >= 15;
+    }));
+    await page.screenshot({ path: resolve(dir, 'group-members.png'), fullPage: true });
+    phase = `${id}:management-activity`;
+    await management.getByRole('tab', { name: t['groups.view.activity'], exact: true }).click();
+    const runButton = management.locator(`[data-group-activity="${fixture.turnId}"]`).getByRole('button', { name: t['groups.viewRun'], exact: true });
+    const statistics = management.locator('[data-group-statistics-bar]');
+    const statisticsFor = turnId => management.locator(`[data-group-statistics-bar][data-statistics-scope="question"][data-statistics-turn="${turnId}"]`);
+    await runButton.click();
+    await statisticsFor(fixture.turnId).waitFor();
+    check(`${id}: native run view focuses the selected question and scopes statistics without executing models`,
+      await management.locator('[data-group-activity-focus]').getAttribute('data-group-activity-focus') === fixture.turnId && host.requests() === viewRequestCount);
+    check(`${id}: management statistics retain borderless native-style pills`, await statistics.locator('button[aria-haspopup="dialog"]').evaluate(element => {
+      const style = getComputedStyle(element);
+      return ['flex', 'inline-flex'].includes(style.display) && parseFloat(style.borderTopWidth) === 0 && parseFloat(style.borderRadius) >= 6;
+    }));
+    await page.screenshot({ path: resolve(dir, 'group-runs.png'), fullPage: true });
+    await statistics.locator('button[aria-haspopup="menu"]').click();
+    await page.getByRole('menuitem').filter({ has: page.locator(`[data-statistics-question="${fixture.secondTurnId}"]`) }).click();
+    await statisticsFor(fixture.secondTurnId).waitFor();
+    check(`${id}: the question menu can manually scope statistics to the second run`, host.requests() === viewRequestCount);
+    await runButton.click();
+    await statisticsFor(fixture.turnId).waitFor();
+    check(`${id}: viewing the first run again restores its statistics scope without executing models`, host.requests() === viewRequestCount);
+
+    phase = `${id}:management-settings`;
+    await management.getByRole('tab', { name: t['groups.view.settings'], exact: true }).click();
+    const editGroup = management.getByRole('button', { name: t['groups.edit'], exact: true });
+    await editGroup.waitFor();
+    await page.screenshot({ path: resolve(dir, `${id}-group-management-settings.png`), fullPage: true });
+    await editGroup.click();
+    const editor = management.getByRole('form', { name: t['groups.edit'], exact: true });
+    await editor.waitFor();
+    check(`${id}: native management settings opens the editor for the selected group`, await editor.getByRole('textbox', { name: t['groups.name'], exact: true }).inputValue() === fixture.groupName);
+    check(`${id}: reused editor controls retain their themed base styling`, await editor.getByRole('textbox', { name: t['groups.name'], exact: true }).evaluate(element => {
+      const style = getComputedStyle(element);
+      return parseFloat(style.borderRadius) >= 6 && parseFloat(style.paddingLeft) >= 8 && style.boxSizing === 'border-box';
+    }));
+    await page.screenshot({ path: resolve(dir, `${id}-group-management-editor.png`), fullPage: true });
+    if (width === 390) {
+      check(`${id}: native management settings and the group editor fit the viewport`, await management.evaluate(element =>
+        element.scrollWidth <= element.clientWidth + 1 && document.scrollingElement.scrollWidth <= innerWidth + 1));
+    }
+    await editor.getByRole('button', { name: t['groups.close'], exact: true }).click();
+    await editor.waitFor({ state: 'hidden' });
+    check(`${id}: cancelling native group editing returns to settings without executing models`, await editGroup.isVisible() && host.requests() === viewRequestCount);
+    if (id === 'en-light-1360') {
+      await checkUniqueConversationTabs('active management view', t);
+      await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+      await openBotsPanel(page, 'Bots');
+      const botsPage = page.locator('[data-bots-page]:visible');
+      await botsPage.getByRole('button', { name: t['groups.title'], exact: true }).click();
+      phase = `${id}:directory-search`;
+      const search = botsPage.getByRole('searchbox', { name: t['groups.search'], exact: true });
+      await search.waitFor();
+      check(`${id}: the directory search has one native wrapper border`, await search.evaluate(input =>
+        getComputedStyle(input).borderTopWidth === '0px' && parseFloat(getComputedStyle(input.parentElement).borderTopWidth) > 0));
+      await search.fill(fixture.groupName);
+      await botsPage.locator('[data-group-directory-row]').filter({ hasText: fixture.groupName }).waitFor();
+      const clear = botsPage.getByRole('button', { name: t['detail.clearSearch'], exact: true });
+      await clear.waitFor();
+      await page.screenshot({ path: resolve(dir, `${id}-group-directory-search.png`), fullPage: true });
+      await search.press('Tab');
+      check(`${id}: Tab reaches the directory search clear button`, await clear.evaluate(element => element === document.activeElement));
+      await page.keyboard.press('Enter');
+      check(`${id}: Enter clears the directory search and restores input focus`, await search.inputValue() === '' && await search.evaluate(element => element === document.activeElement));
+      await search.fill(fixture.groupName);
+      await search.press('Escape');
+      check(`${id}: Escape clears the directory search and keeps input focus`, await search.inputValue() === '' && await search.evaluate(element => element === document.activeElement));
+      phase = `${id}:directory-run`;
+      await botsPage.locator('[data-group-directory-row]').first().click();
+      const directoryOverview = botsPage.locator('[data-group-overview]');
+      await directoryOverview.getByRole('tab', { name: t['groups.view.activity'], exact: true }).click();
+      await directoryOverview.locator(`[data-group-activity="${fixture.turnId}"]`).getByRole('button', { name: t['groups.viewRun'], exact: true }).click();
+      await page.waitForFunction(id => document.activeElement?.getAttribute('data-workspace-group-message') === id, fixture.inputMessageId);
+      await page.waitForFunction(() => {
+        const rect = document.activeElement?.querySelector('[data-group-turn]')?.getBoundingClientRect();
+        return rect && rect.top >= 0 && rect.bottom <= innerHeight;
+      });
+      const inlineRun = page.locator(`[data-workspace-group-message="${fixture.inputMessageId}"] [data-group-turn="${fixture.turnId}"]`);
+      await inlineRun.waitFor();
+      check('directory activity focuses the exact inline question without executing models', host.requests() === viewRequestCount);
+      check('directory activity preserves the native Chat view', await page.getByRole('tab', { name: 'Chat', exact: true }).getAttribute('aria-selected') === 'true');
+      await checkUniqueConversationTabs('cold directory run', t);
+      await page.screenshot({ path: resolve(dir, 'group-directory-run.png'), fullPage: true });
+      await page.getByRole('tab', { name: t['groups.manage'], exact: true }).click();
+      await page.getByRole('tab', { name: t['groups.view.members'], exact: true }).click();
+      const followupMember = page.locator('[data-group-member]').filter({ hasText: 'api-alpha' });
+      phase = `${id}:ask-draft`;
+      await followupMember.getByRole('button', { name: t['execution.memberActions'].replace('{name}', 'api-alpha'), exact: true }).click();
+      await page.getByRole('menuitem', { name: t['groups.askInChat'], exact: true }).click();
+      await page.waitForFunction(rootId => [...document.querySelectorAll('[data-conversation-content]')]
+        .some(element => element.checkVisibility() && element.getAttribute('data-conversation-session') !== rootId), fixture.rootId);
+      const privateContent = page.locator('[data-conversation-content]:visible').last();
+      check('follow-up opens the Bot conversation rather than the group root', await privateContent.getAttribute('data-conversation-session') !== fixture.rootId);
+      const privateDraft = page.locator('[contenteditable="true"]:visible').first();
+      await privateDraft.waitFor();
+      await page.waitForFunction(() => [...document.querySelectorAll('[contenteditable="true"]')].some(element => element.checkVisibility() && element.textContent?.includes('UI_TRACE')));
+      check('follow-up initializes a native draft without executing models', host.requests() === viewRequestCount);
+      await page.screenshot({ path: resolve(dir, 'group-ask-draft.png'), fullPage: true });
+      await privateDraft.press('ControlOrMeta+A'); await privateDraft.press('Backspace');
+      check('clearing the follow-up draft does not send it', host.requests() === viewRequestCount);
+      phase = `${id}:ask-return`;
+      await openSidebarSession(page, fixture.rootId);
+      await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+      const imageQuestion = page.locator('[data-workspace-group-message]').filter({ has: page.locator('[data-group-author="user"]', { hasText: 'UI_IMAGE_PREVIEW' }) });
+      const openImage = imageQuestion.getByRole('button', { name: t['groups.openAttachment'].replace('{name}', 'ui-preview.png'), exact: true });
+      await openImage.waitFor();
+      const previewRequests = host.requests();
+      await openImage.click();
+      const imageDialog = page.getByRole('dialog', { name: t['groups.imagePreview'], exact: true });
+      await imageDialog.waitFor();
+      await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] img')].some(image => image.complete && image.naturalWidth > 0));
+      await page.screenshot({ path: resolve(dir, 'group-image-preview.png'), fullPage: true });
+      await page.keyboard.press('Escape'); await imageDialog.waitFor({ state: 'hidden' });
+      check('native image preview loads the actual attachment without new model requests', host.requests() === previewRequests);
     }
     await context.close(); page = undefined;
   }

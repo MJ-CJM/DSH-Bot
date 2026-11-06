@@ -298,7 +298,7 @@ describe('built bundle contract', () => {
         // The group composer's '/' menu drops its cached native command catalog on change.
         []), 'commands.change', 'conversation.composer', 'conversation.input.dock', 'conversation.session.header.utilities', 'dictionaries', 'main:dsh-bot',
         'remote.automation', 'remote.capabilities', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.permission', 'remote.schedule', 'remote.subagents',
-        'remote.workspace', 'schedule.changed',
+        'remote.workspace', 'schedule.changed', 'shell.overlay',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'].sort();
       expect([...active].sort()).toEqual(resources);
       expect(mountedEndpoints.sort()).toEqual([

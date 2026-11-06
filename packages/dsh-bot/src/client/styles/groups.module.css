@@ -22,7 +22,8 @@
 .panel h3 {
   font-size: 16px;
 }
-.panel :is(button, input, textarea, select) {
+/* Management uses native controls outside its legacy group editor. */
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) :is(button, input, textarea, select) {
   appearance: none;
   font: inherit;
   color: var(--dsw-alias-label-primary);
@@ -36,15 +37,15 @@
 .panel :is(input:not([type="checkbox"]), textarea, select) {
   width: 100%;
 }
-.panel button {
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button {
   cursor: pointer;
   line-height: 20px;
   text-align: start;
 }
-.panel button:hover:enabled {
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button:hover:enabled {
   background: var(--dsw-alias-interactive-bg-hover);
 }
-.panel button:disabled {
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button:disabled {
   color: var(--dsw-alias-label-tertiary);
   cursor: default;
 }
@@ -68,7 +69,7 @@
 }
 .layout {
   display: grid;
-  grid-template-columns: minmax(9rem, 13rem) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 264px) minmax(0, 1fr);
   gap: 20px;
   margin-top: 16px;
   align-items: start;
@@ -289,15 +290,8 @@
   transform: rotate(-45deg) translateY(-1px);
 }
 .panel select {
+  appearance: auto;
   padding-right: 28px;
-  background-image:
-    linear-gradient(45deg, var(--dsw-alias-label-secondary) 50%, transparent 50%),
-    linear-gradient(135deg, var(--dsw-alias-label-secondary) 50%, transparent 50%);
-  background-position:
-    calc(100% - 15px) 50%,
-    calc(100% - 11px) 50%;
-  background-size: 4px 4px;
-  background-repeat: no-repeat;
 }
 @media (max-width: 760px) {
   .layout {
@@ -353,6 +347,292 @@
   min-width: 0;
   white-space: pre-wrap;
 }
+/* Group directory and owner-bound overview. */
+.directory {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.directoryTools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.panel .directoryFilter,
+.panel .directoryRefresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 4px;
+  width: 28px;
+  min-height: 32px;
+  padding: 5px 6px;
+  border: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+}
+.panel .directoryFilter { width: auto; }
+.directoryCount {
+  margin: -2px 8px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+.directoryList {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.panel .directoryRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: start;
+}
+.directoryRow[aria-current="page"] { background: var(--dsw-alias-bg-layer-1); }
+.directoryRow:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.directoryRowBody {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.directoryRowTitle,
+.directoryRowMeta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.directoryRowTitle { gap: 6px; }
+.directory .directoryRowTitle strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.directoryRowMeta {
+  gap: 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.directoryRowMeta > span + span::before,
+.directoryRowMeta > time::before {
+  margin-inline-end: 4px;
+  content: "·";
+  color: var(--dsw-alias-label-tertiary);
+}
+.directorySpeaker {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.directoryRowMeta time { flex: none; }
+.unreadMark { flex: none; color: var(--dsw-alias-state-business-primary); }
+.directoryEmpty {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 24px 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+}
+.directoryEmpty p { margin: 0; }
+.directoryFooter { display: flex; padding-top: 2px; }
+.panel .directoryCreate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+}
+.directory :global(.group-avatar-single) { grid-column: 1 / -1; }
+
+.managementPanel {
+  display: grid;
+  gap: 16px;
+  padding-inline: 24px;
+}
+.overview {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.overviewHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+}
+.overviewIdentity {
+  flex: 1;
+  min-width: 0;
+}
+.overviewIdentity h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  overflow-wrap: anywhere;
+}
+.overviewIdentity p {
+  margin: 3px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+}
+.overviewIdentity [data-path-label] {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.overviewFacts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+}
+.overviewFacts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.overviewTabs {
+  width: min(100%, 360px);
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+.overviewTabs > div { min-width: 0; }
+.memberOverview,
+.activityOverview {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+.memberOverviewRow,
+.activityOverviewRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l3);
+}
+.memberOverviewRow:last-child,
+.activityOverviewRow:last-child { border-bottom: 0; }
+.memberOverviewIdentity,
+.activityOverviewMain {
+  flex: 1;
+  min-width: 0;
+}
+.memberOverviewHeadline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.memberOverviewHeadline .memberOverviewName {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.memberOverviewState {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 5px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.memberOverviewIdentity p,
+.activityOverviewMain p { margin: 4px 0 0; }
+.memberOverviewDescription {
+  font-size: 14px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+.memberOverviewMeta,
+.activityOverviewMeta {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.memberOverviewActions {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+}
+.panel .quietAction {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 5px 6px;
+  border: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+}
+.activityOverviewFailure {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.settingsOverview dl {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr);
+  gap: 12px 20px;
+  margin: 0;
+}
+.settingsOverview dt { color: var(--dsw-alias-label-secondary); font-size: 13px; }
+.settingsOverview dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; }
+@media (max-width: 1100px) {
+  .overviewHeader { flex-wrap: wrap; }
+  .overviewIdentity { flex-basis: 240px; }
+  .overviewActions { flex-basis: 100%; justify-content: flex-start; }
+}
+@media (max-width: 760px) {
+  .managementPanel { padding-inline: 16px; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .overviewTabs { width: 100%; }
+  .memberOverviewHeadline { align-items: flex-start; }
+  .memberOverviewRow,
+  .activityOverviewRow { flex-wrap: wrap; }
+  .memberOverviewActions { flex-basis: auto; margin-inline-start: auto; }
+  .memberOverviewActions button,
+  .activityOverviewRow button { min-width: 44px; min-height: 44px; }
+  .settingsOverview dl { grid-template-columns: minmax(110px, 1fr) minmax(0, 2fr); }
+}
+
 .working,
 .executions {
   display: flex;
@@ -587,6 +867,7 @@
 }
 .memberStatistics { padding: 4px 0; }
 .statisticsBar { padding: 4px 0 0; gap: 2px; }
+.managementPanel .statisticsBar { position: relative; z-index: 1; }
 /* Native composer stat pills: borderless, icon plus tertiary label, hover fill on
    the interactive ones; outranks the panel's bordered-button default. */
 .panel .statPill,
