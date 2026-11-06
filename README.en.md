@@ -41,7 +41,7 @@ Open a Bot's Tasks & messages page for native background subtasks, scheduled tas
 
 ## Install
 
-Requires DeepSeek Harness with a working model configuration. The current public version is **0.6.4**, licensed under **MIT**.
+Requires DeepSeek Harness with a working model configuration. The current public version is **[0.6.5](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5)**, licensed under **MIT**.
 
 ### Option 1: Search the community market
 
@@ -112,7 +112,7 @@ No such guarantee is provided. Tasks depend on the local DSH Host running; cloud
 
 ## Compatibility and limits
 
-Development dependencies are pinned to DSH `0.2.1-rc.2`. The v0.6.4 archive passed installation, reinstallation and cold recovery on macOS rc.2, plus group UI checks on rc.2 / rc.5. The declared range `>=0.2.1-rc.2 <0.3.0` does not mean every version or platform has been tested. See [release verification](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.4.md).
+Development dependencies are pinned to DSH `0.2.1-rc.2`. The declared Host range is `>=0.2.1-rc.2 <0.3.0`. The user confirmed that the v0.6.5 archive passed their local checks. The exact Host version and individual check results were not recorded. The installation, reinstallation and cold recovery checks on macOS rc.2 and the group UI checks on rc.2 / rc.5 apply to v0.6.4. [v0.6.5 release notes](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5) · [v0.6.4 verification matrix](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.4.md)
 
 Bot working directories are not filesystem isolation; Host permissions, approvals and sandboxing still apply. Ongoing proactive operation, external IM ingress/egress, OS/mobile push and cloud hosting have not shipped. Automatic sharing is unavailable. Synthetic checks do not establish real-model quality, and uncertain background results after forced crashes are not automatically replayed.
 
