@@ -41,7 +41,7 @@
 
 ## 安装
 
-需要已配置模型的 DeepSeek Harness。当前公开版本为 **0.6.4**，采用 **MIT** 许可证。
+需要已配置模型的 DeepSeek Harness。当前公开版本为 **[0.6.5](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5)**，采用 **MIT** 许可证。
 
 ### 方式一：在社区市场中搜索
 
@@ -112,7 +112,7 @@ dsh plugin --profile web add "https://github.com/MJ-CJM/DSH-Bot/releases/latest/
 
 ## 兼容性与功能边界
 
-开发依赖锁定 DSH `0.2.1-rc.2`。v0.6.4 发布包已在 macOS rc.2 完成安装、重装和冷恢复，并在 rc.2 / rc.5 完成群聊 UI 复验。声明范围 `>=0.2.1-rc.2 <0.3.0` 不表示每个版本、平台都已实测，详见 [发布验证](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.4.md)。
+开发依赖锁定 DSH `0.2.1-rc.2`，宿主声明范围为 `>=0.2.1-rc.2 <0.3.0`。用户已确认 v0.6.5 发布包在本机验收通过，具体宿主版本和逐项结果未记录。macOS rc.2 的安装、重装、冷恢复以及 rc.2 / rc.5 的群聊 UI 验证属于 v0.6.4。 [v0.6.5 发布说明](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5) · [v0.6.4 验证矩阵](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.4.md)
 
 Bot 的工作目录不是文件隔离边界；沿用宿主权限、审批和沙箱。持续主动运行、外部 IM 收发、系统/手机推送和云托管尚未交付；自动共享不可用。合成模型检查不代表真实模型质量，强杀后不确定的后台结果不会自动重放。
 
