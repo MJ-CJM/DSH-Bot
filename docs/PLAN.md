@@ -1,5 +1,7 @@
 # DSH-Bot 开发计划（v1）
 
+> 2026-11-06 主动协作准备：设计与任务单已从 worktree 同步至当前项目，并基于重新拉取的最新 main 创建 `codex/proactive-bot-implementation` 分支。完整方案见[主动协作设计](design/proactive-bot/README.md)。当前等待用户通知，尚未开始实现；通知后从 [PB00 兼容性验证](../tasks/proactive-bot/PB00-compatibility-spike.md)开始。优先复用 DSH 原生能力和已有 Bot 服务。下文旧 Routine/自建调度描述保留为历史，不作为新实现依据。
+
 > 2026-11-01 后续实施：用户已批准 U0/U1，先验证原生 UI API，再统一配置入口、Bot 上下文和记忆页布局。见[任务单](../tasks/U0-U1-native-settings.md)及 [Issue #12](https://github.com/MJ-CJM/DSH-Bot/issues/12)。U2–U4 已完成实现和隔离验证，见 [验收报告](verification/ui-completion/README.md)、[任务单](../tasks/U2-U4-ui-completion.md)和 [Issue #14](https://github.com/MJ-CJM/DSH-Bot/issues/14)。
 
 > 2026-11-01 实施更新：获批的[整体优化方案](design/group-concurrent-discussion-proposal.md)由 [Issue #8](https://github.com/MJ-CJM/DSH-Bot/issues/8) 跟踪。Bot 展示与设置返回已随 [PR #9](https://github.com/MJ-CJM/DSH-Bot/pull/9) 合入，并发、多轮与原生执行过程 A–D 已随 [PR #10](https://github.com/MJ-CJM/DSH-Bot/pull/10) 合入。执行状态已移至各问题下方，见[任务单](../tasks/U-inline-execution.md)；本轮继续修复[原生思考展示和消息左右布局](../tasks/U-native-member-process.md)。下文旧环境快照保留历史日期，开发依赖仍锁 rc.2。

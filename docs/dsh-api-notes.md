@@ -1,5 +1,9 @@
 # DSH API 核实记录
 
+## 主动协作设计入口（2026-11-06，未新增运行时 API）
+
+本轮仅形成[完整设计](design/proactive-bot/README.md)和[原生复用矩阵](design/proactive-bot/native-reuse.md)。公开包类型核对、既有实现证据与待运行组合分别记录；新 Source、CoreBridge、ExecutionAdapter、Remote 等均为拟定契约，不是已经实现的 DSH 接口。开发依赖保持 rc.2、锁文件未改。PB00 完成后再按实际使用的公开入口补充签名、作用域、版本和运行证据；当前不能将原型根导出、原生 schedule 或 webhook 直接视为已验证的完整主动执行链路。
+
 ## V041-rework：真实安装目录与激活边界（2026-10-28）
 
 完整证据见 [V041 返工](deepening/V041.md#v041-rework2026-10-28基于-da0371f)。未新增依赖、peer 或 Remote。
