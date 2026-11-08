@@ -1,3 +1,4 @@
+import {createFeedbackActions} from "./proactive/feedback-api.js";
 import { matchesCreation, restoreRecentPreferences } from './pages/recent-conversations.js';
 import { CAPABILITIES_REMOTE } from '../shared/capabilities-contract.js';
 import { createModelCatalog } from './model-catalog-state.js';
@@ -22,6 +23,7 @@ import { createCollaborationActions } from './collaboration-state.js';
 import { INTEGRATIONS_REMOTE } from '../shared/integrations-contract.js';
 import { createIntegrationActions } from './integrations-state.js';
 import NATIVE_SCHEDULE_REMOTE from '@deepseek-ai/dsh-schedule/remote';
+import { PROACTIVE_REMOTE } from '../shared/proactive/remote-contract.js';
 import { AUTOMATION_REMOTE } from '../shared/automation-contract.js';
 import { createRoutineActions } from './automation-state.js';
 import type { Context } from '@deepseek-ai/cordis';
@@ -103,6 +105,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SUBAGENTS_REMOTE), 'dsh-bot: native subagent Remote');
   if (!ctx.get('remote.permissionPresets'))
     await ctx.effect(async () => await ctx.remote.$mount(NATIVE_PERMISSION_REMOTE), 'dsh-bot: native permission Remote');
+  await ctx.effect(() => ctx.remote.$mount(PROACTIVE_REMOTE), 'dsh-bot: proactive Remote');
   await ctx.effect(async () => await ctx.remote.$mount(AUTOMATION_REMOTE), 'dsh-bot: automation Remote');
   await ctx.effect(async () => await ctx.remote.$mount(INTEGRATIONS_REMOTE), 'dsh-bot: integration Remote');
   await ctx.effect(async () => await ctx.remote.$mount(COLLABORATION_REMOTE), 'dsh-bot: collaboration Remote');
@@ -210,7 +213,32 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     signal?: AbortSignal,
     beforeOpen?: (id: SessionId) => void,
   ) => startBot(id, signal, beforeOpen);
+  const proactiveRemote = () => {
+    const remote = ctx.get('remote.dshBot.proactive');
+    if (!active || !remote) throw new Error('Proactive coordinator unavailable');
+    return remote;
+  };
   const page: BotsPageInjected = {
+ proactiveGovernance:{status:async()=>unwrap(await proactiveRemote().status()),forget:async input=>unwrap(await proactiveRemote().forgetSource(input))},
+ proactiveFeedback:createFeedbackActions(ctx,()=>active),
+ proactiveResponsibilities:{list:async owner=>unwrap(await proactiveRemote().responsibilities(owner)),mutate:async input=>unwrap(await proactiveRemote().changeResponsibility(input))},
+    proactive: {
+      status: async () => unwrap(await proactiveRemote().status()),
+      suggestions: async owner => unwrap(await (owner ? proactiveRemote().botSuggestions(owner) : proactiveRemote().listSuggestions())),
+      adjust:async input=>unwrap(await proactiveRemote().adjustSuggestion(input)),
+      change: async input => unwrap(await proactiveRemote().changeSuggestion(input)),
+      feedback: async input => unwrap(await proactiveRemote().feedback(input)),
+      work: async () => unwrap(await proactiveRemote().listWork()),
+ workHistory:async input=>unwrap(await proactiveRemote().workHistory(input)),
+ workspaceReview:async input=>unwrap(await proactiveRemote().workspaceReview(input)),
+      groupReview: async input => unwrap(await proactiveRemote().groupReview(input)),
+      externalNotice: async input => unwrap(await proactiveRemote().externalNotice(input)),
+      accept: async input => unwrap(await proactiveRemote().accept(input)),
+      cancel: async input => unwrap(await proactiveRemote().cancel(input)),
+      pause: async input => unwrap(await proactiveRemote().pause(input)),
+      revokeSource: async input => unwrap(await proactiveRemote().revokeSource(input)),
+      review: async input => unwrap(await proactiveRemote().review(input)),
+    },
     models,
     background: createBackgroundActions(ctx, config),
     messages: { subscribe(refresh) { return ctx.effect(() => sharedPollingScheduler(ctx, config).register({

@@ -1,3 +1,4 @@
+import { capabilities } from '../../src/shared/proactive/protocol.js';
 import type { BotsPageInjected } from '../../src/client/pages/BotsPage.js';
 import { Context } from '@deepseek-ai/cordis';
 import { readFileSync } from 'node:fs';
@@ -119,6 +120,21 @@ export async function mountClient(
       interruptByParent: vi.fn(async () => ({ ok: true, value: undefined })),
     } as never);
     if (contribution?.package === '@deepseek-ai/dsh-schedule') return ctx.provide('remote.schedule', remote.schedule);
+    if (contribution?.package === 'dsh-bot/proactive') return ctx.provide('remote.dshBot.proactive', {
+      status: async () => ({ ok: true as const, value: { state: 'disabled' as const,
+        capabilities: { ...capabilities, ingest: false, snapshot: false } } }),
+      listSuggestions: async () => ({ ok: true as const, value: [] }),
+      groupReview: async () => { throw new Error('Unsupported fixture action'); },
+      revokeSource: async () => { throw new Error('Unsupported fixture action'); },
+      externalNotice: async () => { throw new Error('Unsupported fixture action'); },
+      listWork: async () => ({ ok: true as const, value: [] }),
+      feedback: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
+      changeSuggestion: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
+      accept: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
+      cancel: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
+      review: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
+      pause: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
+    });
     if (contribution?.package === 'dsh-bot/automation') {
       const releases = [ctx.provide('remote.dshBot.nativeSchedule', remote.routine), ctx.provide('remote.dshBot.run', remote.run),
         ctx.provide('remote.dshBot.automation', remote.automation)];

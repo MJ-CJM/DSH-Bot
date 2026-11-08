@@ -63,6 +63,45 @@ export class Groups {
   send(...args: Parameters<GroupTurns['send']>) {
     return this.turns.send(...args);
   }
+  startProactiveReview(...args: Parameters<GroupTurns['startProactiveReview']>) {
+    return this.turns.startProactiveReview(...args);
+  }
+  async waitForProactiveReview(turnId: string) {
+    await this.state.chains.get(turnId);
+  }
+  proactiveRequestAllowance(turnId: string) {
+    const deliveries = this.state.deliveries(turnId);
+    if (deliveries.length !== 1) return;
+    const delivery = deliveries[0];
+    if (!delivery) return;
+    const allowance = this.state.proactiveAllowances.get(delivery.id);
+    if (allowance) return { turnId, deliveryId: delivery.id, ...allowance };
+  }
+  cancelProactiveRepair(assignmentId: string) {
+    for (const [, turn] of this.state.table('turns').entries()) {
+      if (!turn.proactive?.repair || turn.proactive.assignmentId !== assignmentId || !this.state.chains.has(turn.id)) continue;
+      this.state.cancelledTurns.add(turn.id);
+      this.state.wakeTurns.get(turn.id)?.();
+      for (const delivery of this.state.deliveries(turn.id)) this.state.controllers.get(delivery.id)?.abort('proactive-repair-cancelled');
+    }
+  }
+  async drainProactiveRepair(assignmentId: string): Promise<boolean> {
+    const turns = [...this.state.table('turns').entries()].map(([, turn]) => turn)
+      .filter(turn => turn.proactive?.repair && turn.proactive.assignmentId === assignmentId);
+    this.cancelProactiveRepair(assignmentId);
+    await Promise.allSettled(turns.map(turn => this.state.chains.get(turn.id)));
+    // Only this Host's observed create/dispose path proves cleanup. Persisted
+    // cancelled/unknown states alone cannot prove an agent has stopped.
+    return turns.every(turn => {
+      const deliveries = this.state.deliveries(turn.id);
+      return deliveries.length > 0 && deliveries.every(delivery => this.state.proactiveDrains.get(delivery.id) === true);
+    });
+  }
+  stopProactiveReviews() {
+    for (const turnId of this.state.proactiveChecks.keys())
+      for (const delivery of this.state.deliveries(turnId))
+        this.state.controllers.get(delivery.id)?.abort('proactive-paused');
+  }
   cancel(...args: Parameters<GroupTurns['cancel']>) {
     return this.turns.cancel(...args);
   }
@@ -93,6 +132,8 @@ export class Groups {
       this.state.offTitle?.();
       this.state.offWorkers?.();
       this.state.workers.clear();
+      this.state.proactiveDrains.clear();
+      this.state.proactiveAllowances.clear();
       this.state.shutdownPhase = 'disposing-roots';
       for (const a of this.state.activations.values()) await attempt(() => a.dispose());
       for (const h of this.state.roots.values()) {

@@ -4,7 +4,9 @@ import { extname } from 'node:path';
 
 // Check whitespace without rewriting historical source or Markdown hard breaks.
 const files = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' }).split('\0'))]
-  .filter(file => file && !file.startsWith('.codex/') && (/\.(?:[cm]?[jt]sx?|json|ya?ml|css|sh|md)$/.test(file) || ['scripts/pnpm', 'scripts/dsh'].includes(file)));
+  // Vendored upstream bytes are separately verified against pin.json during
+  // the coordinator build; local whitespace normalization would break that pin.
+  .filter(file => file && !file.startsWith('.codex/') && !file.startsWith('packages/dsh-bot/coordinator/vendor/') && (/\.(?:[cm]?[jt]sx?|json|ya?ml|css|sh|md)$/.test(file) || ['scripts/pnpm', 'scripts/dsh'].includes(file)));
 const issues = [];
 for (const file of files) {
   let content;

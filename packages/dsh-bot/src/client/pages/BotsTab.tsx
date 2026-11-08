@@ -1,3 +1,7 @@
+import {ResponsibilityWorkspace} from "../proactive/ResponsibilityWorkspace.js";
+import {GovernancePanel} from "../proactive/GovernancePanel.js";
+import {FeedbackWorkspace} from "../proactive/FeedbackWorkspace.js";
+import { SuggestionPanel } from '../proactive/SuggestionPanel.js';
 import { Button, SegmentedTabs, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import { useEffect, useId, useRef, useState } from 'react';
 import { CapabilitiesPanel } from '../components/CapabilitiesPanel.js';
@@ -68,6 +72,11 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
       </RetainedPanel>
       <RetainedPanel active={panel === 'work'} id={`${uid}-work-panel`} labelledBy={`${uid}-work`}>
         <div className={detailStyles.section}><Button variant="ghost" disabled={busy || model.navigating || !model.ready} onClick={start}>{t('detail.createTask')}</Button></div>
+        {panel === 'work' && page.proactive && <SuggestionPanel actions={page.proactive} bot={bot} onOpen={page.onOpenSession} t={t}>
+ {page.proactiveResponsibilities&&<ResponsibilityWorkspace bot={bot} actions={page.proactiveResponsibilities} proactive={page.proactive} t={t}/>}
+ {page.proactiveGovernance&&<GovernancePanel actions={page.proactiveGovernance} t={t}/>}
+ {page.proactiveFeedback&&<FeedbackWorkspace owner={{botId:bot.id,botCreatedAt:bot.createdAt}} actions={page.proactiveFeedback} t={t} onSettings={setting=>{setPanel('settings');setSettingsPanel(setting==='notifications'?'notifications':setting==='workspace'?'profile':'capabilities');}}/>}
+ </SuggestionPanel>}
         {page.background && <BackgroundTasksPanel bot={bot} actions={page.background} t={t} />}
         {page.routines && <RoutinePanel actions={page.routines} bots={bots} botId={bot.id} onOpenSession={page.onOpenSession} t={t} />}
         {page.messages && <MessageOverviewPanel botId={bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}

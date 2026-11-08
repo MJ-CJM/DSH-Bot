@@ -1,5 +1,39 @@
 # DSH API 核实记录
 
+## 主动修复与 rc.2 替代路径（2026-11-07）
+
+- 合成修复复用 `ctx.subprocess.resolveExecutable/spawn` 和子进程的 `done/collected/waitForExit` 运行独立、只读的 Node 检查。Host 保留执行权，模型和可选 loopback 适配器只能提供结构化编辑。Typert owner Remote 增加反馈规则的显式提议、评估、采用与撤销。
+- rc.2 的 native schedule 仍没有到期 Source 回调。新增单一、本地、可关闭的 CI 文件收件箱，复用既有分页 cursor 与观察 API。没有引入 DSH 内部接口。
+- 核对锁定 tag 的公开 `SubagentActivationSpec` 和 `SubagentProvider.prepareContinuable`。两者无法向原生 group child 的初始投递附带主动来源。通知继续采用站内原生入口，外部发送需要确切文本和目标的活跃原生审批。 [验收与限制](verification/proactive-repair-and-feedback.md)
+
+## PB03–PB08：主动建议、单 Bot 派工和站内回执（2026-11-07）
+
+- Client 在现有 Bot 详情的「工作」页挂载 `dsh-bot/proactive` Typert Remote。Host 通过公开 `ctx.invocation.peer.principal` 要求 owner，使用持久操作 ID 和预期版本核验变更。来电身份取自 Host 创建的 Peer。
+- 协调进程沿用固定版本的原型 Engine/Ticket/Assignment。SQLite 内提交建议、操作收据、派工意图、模型预算及验收关联。Host 用 `ctx.agents.create`、`createUserMessage`、`agent.followup`、`agent.whenIdle` 和 `ctx.sessions.flush` 关联原生会话与证据。消息来源为 `dsh-bot-proactive-ci`。`agent/pre-step` 限制旧消息的恢复，`agent/request` 限制每次授权的模型请求，`agent/request-error` 禁止重试。通过公开 `setSandboxMode` 保持只读，`ctx.tools.restrict/guard` 禁止工具。Sandbox Policy 因实际运行时引用而加入 peer。
+- 当前单 Bot 机制发送脱敏的 CI 摘要，保留 Bot 代际和会话归属。阶段性限制为只读分析，独立验收记录原生消息、轮次、输出摘要和证据版本。
+- 通知选配现有 Bot 站内策略，复用 `Notifications.record`、现有内容和目标校验、去重 ledger、静默与日限额。回执不确定时协调器不自动重发。外部 IM 的实时原生数据审批约束见 PB00。
+- rc.2 的自动群、非模型定时 Source 和外部通知继续报告能力关闭。 [验证记录](verification/proactive-pb03-pb12.md)
+
+## PB01/PB02：协调进程与只读 CI 建议（2026-11-07）
+
+Host 使用锁定 rc.2 的公开 `ctx.subprocess.resolveExecutable`、`spawn`、`waitForExit` 和 `terminate`。协调进程由 `ctx.effect` 托管。Host 通过原生 `storageDomain` 记录安装与核心数据库的绑定关系。包内的协调核心沿用 PB00 固定源码和 SQLite Store。仅类型引用 `@deepseek-ai/dsh-subprocess`，使用原有 Host 服务实例。
+
+`dshBot.proactive/status` 和 `dshBot.proactive/listSuggestions` 为本包新增的只读 Remote。命令 IPC 保持在 Host 和协调进程之间。CI 来源的结论来自固定观察页，投影沿用原型 Decision。正式派工、接受和撤销仍需后续授权流程。 [实施与验证](verification/proactive-pb01-pb02.md)
+
+## PB00：主动协作核心与 rc.2 Host 验证（2026-11-07）
+
+完整命令、结构化收据及逐项退出结果见[兼容报告](spikes/proactive-bot-compatibility.md)。新增依赖只在独立 `spikes/proactive-bot` workspace 精确锁定；正式包源码、版本、peer 和主锁文件未改。只读参考 tag=`dsh-v0.2.1-rc.2` / `687f282e`；默认包装 CLI 实际 rc.5，本轮使用仓库内 rc.2 CLI，经已有 `DSH_BOT_DSH_BIN` 选择，未改桌面。
+
+- **原生进程能力**：公开 `@deepseek-ai/dsh-subprocess` / `ctx.subprocess.resolveExecutable(command, env?, signal?): Promise<string>`、`spawn(spec): SubprocessHandle`。`stdin/stdout/control` 为公开流，`terminate(): void` 后还须等待 `waitForExit(signal?): Promise<boolean>`；只等 `done` 不代表整个受管进程范围消失。来源：参考树 `packages/subprocess/subprocess/src/index.ts:133–153`、`types.ts:169–195`。真实 rc.2 Host 的 20 个子插件循环完成双向 stdin/stdout 与 control 往返，注销后子进程、监听、Agent、storageDomain 连接回基线。因此协调进程优先采用该服务，不因 jobs 缺 IPC 就自建进程管理。
+- **直接会话保留来源**：公开 `ctx.agents.create`、`Agent.followup(createUserMessage({source,content}))`、`whenIdle/cancel`、`ctx.sessions.flush` 和 `ctx.sessionController.inspect` 可组成一条原生单会话路线。参考 `packages/core/agent-loop/src/agent.ts:163,175,237`；夹具在自定义 `MessageSourceMap` 中声明 `pb00-event`。实际关联 effect/assignment/receipt→Session/inputId→turn/start/assistantMessageId/turn/end，冷读验证相同来源；只读 sandbox、零工具、1 次 loopback 请求、取消及原版 `assertInteractiveOrigin` 拒绝均通过。这是合成 preset 的 API 组合，不是正式 Bot 授权入口或真实编码任务通过。
+- **原生子代理来源缺口**：公开 `SubagentActivationSpec` 没有 source 字段；`manager.ts:464` 初始投递固定 `source:{kind:'user'}`。真实 rc.2 `startActivation` 的 childId/messageId 与 subagent/start/end 的 runId 成功关联，但子输入实测为 user，不能据父来源宣称子消息保留自动来源。`/internal` 的 source-preserving 符号未使用。自动子代理/群派工保持 `FAIL(CAPABILITY)`，不得伪造人工授权或删除递归 guard。
+- **定时不是零模型 Source**：公开 `schedule.create` / `history`（`packages/schedule/schedule/src/index.ts:228,303`）在真实到期时生成原 session 的 schedule 消息和 history，并产生 1 次合成模型请求；Source callback=0。`schedule/changed` 是提交后变更通知（同文件 377–384），不是到期回调。删除后新增请求/history=0。停机跨到期补偿未单独实测，不借旧证据关闭此门槛。零模型 Source 定时能力为 `FAIL(CAPABILITY)`，后续使用固定事件/人工刷新范围。
+- **原生审批与持久化**：公开 `@deepseek-ai/dsh-user-approval` 的 `setApprovalPolicy` 只用于拒绝控制组，正常直接会话不改为 never。真实 open turn 的 ask 拒绝、never 直接拒绝、无 answerer 到期 cancelled 均使 send=0。Host 收据使用 `defineDomain` / `domainTable` / `storageDomain.open` / `KvTable`，没有新增 Host SQLite 业务库；强杀后的 dispatching 收据冷读为待核对且不重发。group/notification 自动入口缺口分别是 SOURCE 结论，不能当已执行产品服务的拒绝证明。
+- **上游核心不是公开子包**：固定原型 `8c32a9dc5d72c033816c6a8110b37f40cf94fba4` 的根入口可加载，但增加 13 个信号监听和 4 个全局属性。选定 MIT 范围封装，保留 Engine、官方 Store/Effects/Outbox 和准确资源闭包；不存在上游 `/core` 稳定发布入口。SQLite 使用 `node:sqlite`，WAL/FULL 与跨表回滚、真正磁盘满、版本拒绝、强杀冷开均实测。文件租约活进程过期反例成立；独立 SQLite ownership 锁在实际 SIGSTOP 后仍拒绝竞争者，SIGKILL 后释放。路径身份和维护协议留给 PB01，不宣称跨机器互斥。
+- **语义与部署扩展分开**：observe 仍评估且明确请求仍可执行；ready/person-review/ended 不等于人工验收。真实核心回放 18 项语义检查通过，同时确认没有 acceptDecision/独立人工 Review 命令；`report(ticketId,report)` 不带 assignmentId，适配器须先拒绝迟到结果。同 eventId 异正文的 digest 冲突、人工验收版本和精确 TaskGrant 都是本部署待实现契约，不冒称原型自带能力。
+
+本轮不证明正式桌面、真实模型质量、正式 Source/IM、持久自动授权、独立生产 tgz 或 72 小时运行。PB00 的能力失败保持 FAIL，后续任务只能使用报告限定的已验证接口。
+
 ## 主动协作设计入口（2026-11-06，未新增运行时 API）
 
 本轮仅形成[完整设计](design/proactive-bot/README.md)和[原生复用矩阵](design/proactive-bot/native-reuse.md)。公开包类型核对、既有实现证据与待运行组合分别记录；新 Source、CoreBridge、ExecutionAdapter、Remote 等均为拟定契约，不是已经实现的 DSH 接口。开发依赖保持 rc.2、锁文件未改。PB00 完成后再按实际使用的公开入口补充签名、作用域、版本和运行证据；当前不能将原型根导出、原生 schedule 或 webhook 直接视为已验证的完整主动执行链路。
@@ -1600,3 +1634,18 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 - 会话设置页重用已有 `GroupEditor` 和 revision / membershipRevision 冲突校验；归档群保留禁用语义。本轮未新增模型请求入口或更改 Host 调度与持久结构。
 
 本轮命令、运行证据与未覆盖项见[评审修复验收](verification/group-management-review-fixes.md)；此前 desktop 截图不能作为本轮代码的验收结果。
+
+## rc.2 主动群审阅与外发确认
+
+- 群审阅沿用插件的 `GroupTurns` 和 delivery 记录。rc.2 的 `SubagentActivationSpec` 缺少来源字段。此处复用公开 `agents.create` 的 `parentAgent` 和 `meta.parentSession` 建立群根与子会话关联，通过 `Agent.followup` 投递显式来源 `dsh-bot-group-proactive`。子会话发布前注册所属 scope 的 `agent/pre-step` 钩子，仅允许获准的消息 ID 进入一次模型请求。沿用公开 `waitIdle`、Session 事件和 flush；所有资源随 Agent 或 Host 释放。
+- 使用公开 `sessionController.inspect(sessionId)` 验证原生子会话的 `events` 和 `meta.parentSession`。rc.2 合成 Host 工作流要求 CLI 显式版本匹配，防止在较早宿主上把缺少 `inspect` 误记为产品回归。
+- 外发通过插件现有 `OnceGrants`、`ManagedOutlets`、`Notifications` 记录和 `NotificationPort`。工作台 Remote 的所有者确认绑定正文与目标，随后按原通知生命周期创建单次发送凭证。此路径只用于已验收主动任务的固定 CI 摘要。通用通知工具继续走原生活跃会话数据审批，当前 rc.2 仍没有可复用的脱离会话通用审批接口。
+
+- CI 群跟进复用同一套公开 Agent 和 Session API。一次跟进产生新的原生 child 和明确的 `factId`、`predecessorTurnId` 来源字段。Host 在新事实摄取、前序群轮次结束和启动恢复时查询协调器，复用原群队列与数据流。既有 CI 收件箱负责摄取，没有增加定时任务或新的 DSH API。
+
+- v6 的来源撤销沿用 Typert owner principal 校验，只允许操作当前配置的收件箱 scope 与代际。群技术审阅沿用相同公开 Agent、Session 和群数据流，正文增加经核对的测试退出码和产物哈希。最终接受仍调用原工作台验收方法。 [开发交付](verification/proactive-development-handoff.md)
+
+- 工程主管协作复用同一群队列及原生 Agent，固定规划、实现、审阅三阶段。`requestBudget` 是插件 turn 的授权字段，不是新 DSH API；`agent/request` 设置输出额，所属 Agent scope 的公开 `llm/stream` 钩子核对准确 `options.sessionId` 与完整 `GenerateOptions` 的文本输入保守上界。普通产物群审阅和新事实跟进也使用该字段，不能绕过职责的 token/request 预留。原生空 `toolHistory` 合法，存在实际工具声明/新增工具时拒绝。
+- 实际用量来自公开 `assistant/message.data.usage`，含 input、cache read/write 与 output；缺失时不编造费用。群验收从 `sessionController.inspect` 重读 `meta.parentSession`、准确 input/assistant、`turn/end` 和群发布记录，校验输入/输出摘要及完整文件产物。
+- 取消只先发 `Agent.cancel` 不足以证明结束；本机清理以实际取得的 `AgentHandle.dispose()` 和 `Agent.whenIdle()` 完成为证。未尝试创建也能证明没有本机执行，已尝试但丢失 handle 的结果保留未知。群按准确 Assignment 等待已有 turn 链及成员清理证明；短期有界内存证明缓存解决协调器取消回执晚于 active 删除的竞态，不从持久 cancelled/unknown 状态推断已清理，也不退款未知用量。
+- 插件的 `Groups.startProactiveReview` 会在已有群串行队列内调用授权检查回调；回调不能再次调用 `groups.view/list`，否则重入同一队列会互相等待。完整 group grant 在队列外校验，队列内继续核对实际群成员、Bot revision 和精确来源；回调只检查配置、目标、工程范围与协调器授权。此限制由真实 Host 三阶段夹具发现，不能仅用无串行队列的 test double 推断通过。

@@ -387,6 +387,8 @@ Host adapter 接受核心 Assignment，先解析现有 BotKey，复用 registry/
 
 等待 CI 或外部决定时结束当前轮次，Source 保留跟进条件和期限。只有新的事实、明确返工或尚未满足的确定性步骤驱动续跑；普通状态心跳不调用模型。取消信号送达准确 assignment/child/group turn，取消父任务不无差别取消同一 Bot 的无关会话。
 
+rc.2 的 CI 群跟进复用已验证的只读群审阅。所有者在首次派工时选一名成员，为同一来源代际、CI run 和 job 授权一次跟进。协调器根据已提交的最新 CI 记录判定新尝试或结论，保留事实与任务、原群轮次的关联。一次跟进在既有群队列中新建一轮及一条原生子会话，使用公开的 `Agent.followup` 写入明确来源。原生 caller 没有可恢复租约时，独立的子会话也能保留准确归属与请求边界。原群轮次中选定成员须已完成，跟进只传入新 CI 摘要、一次调用上限和零工具。已领取后失去回执时保留未知状态，等待核对。
+
 ### 8.3 专项执行器扩展
 
 首版只开放 DSH native 执行。后续 executor 必须显式声明 submit/get/events/cancel/artifacts、externalRunId、幂等/查询/取消能力、数据出站范围和成本来源；这些是待适配的本包契约。MCP client 能力不等于远端提供 MCP server。外部 provider 缺 preset/agentOptions/depthLimit/续聊能力时拒绝对应群模式，不模拟这些属性。外部费用独立显示，不能写进伪造的原生 token projection。

@@ -97,7 +97,8 @@ describe('built bundle contract', () => {
         if (typeof failure === 'string') throw new Error(failure);
         expect(messages).toContain('[dsh-bot] loaded');
       });
-      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
+      expect(await ctx.dshBotProactive.status()).toMatchObject({ state: 'disabled' });
+      expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/proactive', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
         'dsh-bot/collaboration', 'dsh-bot/groups', 'dsh-bot/capabilities']);
       if (nativeEnabled === 'corrupt-memory') expect(ctx.get('dshBotReferenceMemory')).toBeUndefined();
       if (nativeEnabled === 'corrupt-transfer') expect(ctx.get('dshBotWorkspace')).toBeUndefined();
@@ -242,13 +243,14 @@ describe('built bundle contract', () => {
       // Each Remote event subscription is its own resource, named after the event.
       $on: (event: string) => register(event === 'commands/change' ? 'commands.change' : 'schedule.changed'),
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
-        expect(['dsh-bot', 'dsh-bot/automation', '@deepseek-ai/dsh-schedule', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
+        expect(['dsh-bot', 'dsh-bot/automation', 'dsh-bot/proactive', '@deepseek-ai/dsh-schedule', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
           'dsh-bot/collaboration', 'dsh-bot/groups', 'dsh-bot/capabilities', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-permission-presets']).toContain(contribution.package);
         await Promise.resolve();
         const endpoints = contribution.descriptors.map((entry) => `${entry.namespace}/${entry.method}`);
         for (const endpoint of endpoints) { expect(activeEndpoints.has(endpoint)).toBe(false); activeEndpoints.add(endpoint); }
         mountedEndpoints.push(...endpoints);
         const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' :
+          contribution.package === 'dsh-bot/proactive' ? 'remote.proactive' :
           contribution.package === 'dsh-bot/automation' ? 'remote.automation' : contribution.package === 'dsh-bot/integrations' ?
           'remote.p34' : contribution.package === '@deepseek-ai/dsh-permission-presets' ? 'remote.permission' :
           contribution.package === 'dsh-bot/capabilities' ? 'remote.capabilities' : contribution.package === '@deepseek-ai/dsh-subagent' ? 'remote.subagents' :
@@ -297,7 +299,7 @@ describe('built bundle contract', () => {
         ['conversation.chat.node:dsh-bot-group', 'conversation.chat.node:dsh-bot-message', 'conversation.chat.node:dsh-bot-onboarding-notice'] :
         // The group composer's '/' menu drops its cached native command catalog on change.
         []), 'commands.change', 'conversation.composer', 'conversation.input.dock', 'conversation.session.header.utilities', 'dictionaries', 'main:dsh-bot',
-        'remote.automation', 'remote.capabilities', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.permission', 'remote.schedule', 'remote.subagents',
+        'remote.automation', 'remote.capabilities', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.permission', 'remote.proactive', 'remote.schedule', 'remote.subagents',
         'remote.workspace', 'schedule.changed', 'shell.overlay',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'].sort();
       expect([...active].sort()).toEqual(resources);
@@ -313,6 +315,10 @@ describe('built bundle contract', () => {
         'dshBot.nativeSchedule/aggregate', 'dshBot.nativeSchedule/deleteLegacy', 'dshBot.nativeSchedule/runNow', 'dshBot.notifications/markRead',
           'dshBot.notifications/savePolicy', 'dshBot.notifications/test', 'dshBot.referenceMemory/request', 'dshBot.run/get', 'dshBot.run/list',
           'dshBot.workspace/request',
+          'dshBot.proactive/status', 'dshBot.proactive/listSuggestions', 'dshBot.proactive/changeSuggestion',
+          'dshBot.proactive/accept', 'dshBot.proactive/cancel', 'dshBot.proactive/feedback', 'dshBot.proactive/externalNotice', 'dshBot.proactive/groupReview', 'dshBot.proactive/review', 'dshBot.proactive/listWork',
+          'dshBot.proactive/pause', 'dshBot.proactive/revokeSource',
+          'dshBot.proactive/adjustSuggestion','dshBot.proactive/botSuggestions','dshBot.proactive/responsibilities','dshBot.proactive/changeResponsibility','dshBot.proactive/workHistory','dshBot.proactive/workspaceReview','dshBot.proactive/feedbackOverview','dshBot.proactive/feedbackContexts','dshBot.proactive/feedbackWorkflow','dshBot.proactive/feedbackCandidate','dshBot.proactive/feedbackHistory','dshBot.proactive/forgetSource',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/createForChat', 'dshBot/startOnboarding', 'dshBot/retryOnboarding', 'dshBot/onboardingStatus', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get',
           'dshBot/list', 'dshBot/openConversation', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',

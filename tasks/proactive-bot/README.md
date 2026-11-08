@@ -1,10 +1,14 @@
 # 主动式 Bot + Superagent：可派发任务计划
 
-状态：**设计稿；PB00–PB12 均未执行**。此表不是实现完成记录，也不授权真实模型、正式数据接入或自动外部写入。产品方向与边界见[完整设计](../../docs/design/proactive-bot/README.md)和[产品设计](../../docs/design/proactive-bot/product.md)，测试分层和退出证据见[验证计划](../../docs/design/proactive-bot/validation.md)。当前只可据本包评审下一次实现任务；[PB00](PB00-compatibility-spike.md)已细化到可单独派发的范围。
+> 2026-11-08 本轮收口：A01–A08 和补充的职责、工程/群修复、完整产物、命令桥、反馈流程已开发并通过最终包隔离验收。同一 0.6.5 包已更新到正式 desktop profile，原 Bot/会话保留及实际桌面检查通过。完整范围、命令、PASS/FAIL 和剩余操作见[交付记录](../../docs/verification/proactive-gap-completion.md)。以下原始任务与早期状态用于追溯。
+
+> 2026-11-08 完整性复核：PB00–PB12 尚未全部开发完成。已有受限合成闭环，具体已实现范围、开发缺口及最新运行结果见[方案检查](../../docs/verification/proactive-plan-audit.md)。用户已取消的长时间运行要求不再纳入本次收口条件。下文各阶段原始交付要求和历史状态保留供逐项核对。
+
+状态：PB00 验证已交付，按受限范围进入实施。PB01 已有核心接线，PB02 已有本地 CI 来源路径。完整验收、执行与后续阶段仍在推进。 [PB00 验证](../../docs/spikes/proactive-bot-compatibility.md) · [当前实施记录](../../docs/verification/proactive-pb01-pb02.md)
 
 ## 当前准备状态
 
-工作目录为 `/Users/chenjiamin/ai-workspace/DSH-Bot`，实现分支为 `codex/proactive-bot-implementation`，基于 2026-11-06 重新拉取的 main `4a0aab4`。设计文档已同步，原 worktree 保留。**等待用户通知后才开始 PB00；当前没有实施任务运行。**
+实现分支为 `codex/proactive-bot-implementation`，设计提交为 `2917262`。当前阶段使用固定合成来源和隔离 Host。各任务的运行验收、能力缺口与后续依赖以实施记录为准。
 
 ## 共同派发契约
 
@@ -168,10 +172,20 @@ PB00 未关闭时只允许不依赖未决 API 的静态准备，不可先做生�
 
 | 里程碑 | 必须交付 | 不能省略的门槛 | 当前状态 |
 | --- | --- | --- | --- |
-| M0 | PB00–PB01 的单写核心和可运行协议 | 固定 SHA、rc.2 Host、SQLite 回滚、review/授权/Source 决策 | FAIL(NOT_RUN) |
-| M1 | PB02–PB03 的只读建议 | 摄取重启/游标、零执行、浏览器、独立质量评估 | FAIL(NOT_RUN) |
-| M2 | PB04–PB06 接受到交付/返工 | 单 Bot 后群、精确证据、独立验收、崩溃恢复 | FAIL(NOT_RUN) |
-| M3 | PB07–PB09 有界自动机制 | 撤权/预算/通知 unknown、72h soak、获授权真实试点 | FAIL(NOT_RUN) |
-| M4 | PB10–PB12 逐项可选增强 | 能力/成本、常驻恢复、held-out 反馈比较 | FAIL(NOT_RUN) |
+| M0 | PB00–PB01 的单写核心和可运行协议 | 固定 SHA、rc.2 Host、SQLite 回滚、review/授权/Source 决策 | PASS（固定核心、rc.2 Host、收据与恢复） |
+| M1 | PB02–PB03 的只读建议 | 摄取重启/游标、零执行、浏览器、独立质量评估 | 部分 PASS（本地定时 CI 收件箱与工作台通过，真实 Source 和质量待验） |
+| M2 | PB04–PB06 接受到交付/返工 | 单 Bot 后群、精确证据、独立验收、崩溃恢复 | 部分 PASS（单 Bot 合成修复、产物验收、双 Bot 只读审阅和 CI 定向跟进通过隔离验收，真实试点待验） |
+| M3 | PB07–PB09 有界自动机制 | 撤权/预算/通知 unknown、72h soak、获授权真实试点 | 部分 PASS（站内通知与人工确认的外发夹具通过，72h 测试进行中，真实试点待验） |
+| M4 | PB10–PB12 逐项可选增强 | 能力/成本、常驻恢复、held-out 反馈比较 | 部分 PASS（本机外部执行器、反馈采用与撤销、隔离备份恢复通过；真实试点待验） |
 
 M0 中 PB00 是探索门槛，PB01 是其通过后的生产最小封装。M1/M2 可分别实现机制，但第一条真实业务闭环仍须独立试点授权。所有模式默认不允许发布评论、提交、推送或合并。
+
+当前实现的逐项运行记录与缺口见[主动 Bot 验证记录](../../docs/verification/proactive-pb03-pb12.md)。
+
+修复、外部执行器、反馈采用与定时来源的补充结果见[本阶段验收](../../docs/verification/proactive-repair-and-feedback.md)。
+
+双 Bot 群审阅、精确外发确认、v4 恢复及独立长跑见[后续验收](../../docs/verification/proactive-reviewed-dispatch.md)。
+
+CI 事实定向跟进、撤权和 v5 长跑见[群跟进验收](../../docs/verification/proactive-group-follow-up.md)。
+
+v6 补齐来源撤销界面、产物群审阅、外部运行额度和仓库内监督样例。交付范围及用户验收入口见[开发交付](../../docs/verification/proactive-development-handoff.md)。

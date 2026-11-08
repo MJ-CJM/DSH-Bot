@@ -72,6 +72,24 @@ export class GroupState {
     pump();
     return completed;
   }
+  readonly proactiveChecks = new Map<string, () => Promise<void>>();
+  /** Recent in-process cleanup proofs, never reconstructed from delivery status. */
+  readonly proactiveDrains = new Map<string, boolean>();
+  readonly proactiveAllowances = new Map<string, { inputAllowance: number; outputAllowance: number }>();
+  recordProactiveAllowance(deliveryId: string, allowance: { inputAllowance: number; outputAllowance: number }) {
+    this.proactiveAllowances.set(deliveryId, allowance);
+    while (this.proactiveAllowances.size > 256) {
+      const oldest = this.proactiveAllowances.keys().next().value;
+      if (oldest !== undefined) this.proactiveAllowances.delete(oldest);
+    }
+  }
+  recordProactiveDrain(deliveryId: string, proved: boolean) {
+    this.proactiveDrains.set(deliveryId, proved);
+    while (this.proactiveDrains.size > 256) {
+      const oldest = this.proactiveDrains.keys().next().value;
+      if (oldest !== undefined) this.proactiveDrains.delete(oldest);
+    }
+  }
   table<K extends 'groups' | 'members' | 'turns' | 'deliveries' | 'read_state'>(key: K) {
     return this.domain.table(key);
   }

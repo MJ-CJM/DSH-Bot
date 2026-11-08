@@ -1,6 +1,6 @@
 # PB00：核心、事务、rc.2 Host 与后台授权兼容 spike
 
-状态：**待派发，未执行**。这是一项验证任务，不是功能实现。它只产出隔离夹具、运行收据和架构决策，不开放真实模型、正式 Source、自动外部写入或桌面升级。完成此 spike 不等于 M0 全部完成；PB01 的生产最小封装仍需后续任务。
+状态：**2026-11-07 已交付隔离夹具和运行报告，限定范围 conditional go；完整能力门槛未全通过**。[本轮报告](../../docs/spikes/proactive-bot-compatibility.md)记录实际证据。这是一项验证任务，不是功能实现。它只产出隔离夹具、运行收据和架构决策，不开放真实模型、正式 Source、自动外部写入或桌面升级。完成此 spike 不等于 M0 全部完成；PB01 的生产最小封装仍需后续任务。
 
 ## 目标和读前置
 
@@ -91,13 +91,19 @@ scripts/pnpm check
 
 | ID | 必须有的证据 | 当前结果 |
 | --- | --- | --- |
-| P00-01 | full upstream SHA/许可证/依赖闭包；公开入口独立加载或可审计最小封装 | FAIL(NOT_RUN) |
-| P00-02 | Engine 重复/串行/关联正反例；SQLite 跨表回滚及冷重开 | FAIL(NOT_RUN) |
-| P00-03 | 单写者、强杀、版本拒绝；事件 cursor 不丢失 | FAIL(NOT_RUN) |
-| P00-04 | observe/accept/review/ready/ended/返工的真实迁移与产品验收映射 | FAIL(NOT_RUN) |
-| P00-05 | 真实 rc.2 Host + 合成模型受理/派工/回报/卸载；准确版本 | FAIL(NOT_RUN) |
-| P00-06 | Source 定时触发 0 LLM 的正证据，或能力失败和明确降级范围 | FAIL(NOT_RUN) |
-| P00-07 | 自动来源、可信授权、撤权、Bot 重建、group/通知能力拒绝；零真实出站 | FAIL(NOT_RUN) |
-| P00-08 | 20 次生命周期、针对性 checks 与全量 check 的实际退出码 | FAIL(NOT_RUN) |
+| P00-01 | full upstream SHA/许可证/依赖闭包；公开入口独立加载或可审计最小封装 | PASS；选择固定受控封装，根导入副作用已记录 |
+| P00-02 | Engine 重复/串行/关联正反例；SQLite 跨表回滚及冷重开 | PASS |
+| P00-03 | 单写者、强杀、版本拒绝；事件 cursor 不丢失 | PASS；本地 ownership SQLite 候选实测，生产路径/维护合同待 PB01 |
+| P00-04 | observe/accept/review/ready/ended/返工的真实迁移与产品验收映射 | PASS；18 项语义检查，人工接受/验收能力仍 FAIL(CAPABILITY) |
+| P00-05 | 真实 rc.2 Host + 合成模型受理/派工/回报/卸载；准确版本 | FAIL(CAPABILITY)；直接会话路线 PASS，原生子代理首条来源为 user |
+| P00-06 | Source 定时触发 0 LLM 的正证据，或能力失败和明确降级范围 | FAIL(CAPABILITY)；到期实际 1 次模型请求，仅放行事件 fixture/人工刷新 |
+| P00-07 | 自动来源、可信授权、撤权、Bot 重建、group/通知能力拒绝；零真实出站 | FAIL(CAPABILITY)；夹具拒绝/原生 guard/审批 PASS，自动子代理/群/外推保持关闭 |
+| P00-08 | 20 次生命周期、针对性 checks 与全量 check 的实际退出码 | PASS；Host gate exit 1 的四项能力缺口如实保留 |
 
 **Go**：核心加载/事务、rc.2 Host、授权拒绝及验收映射均有运行证据，下一阶段只开启通过的能力。**Conditional go**：如唯一定时/外部通知能力失败，可以进入事件 fixture/人工接受的受限路径，必须在 PB01/PB02/配置和 UI 明列停用能力；失败项保留 FAIL，不关闭对应里程碑。**No go**：核心无法隔离、同步事务不可保留、派工必须伪造人源/放宽权限、重复副作用或未知态会自动重发；停止产品实现并提交最小上游需求/替代方案供重新评审。
+
+## 2026-11-07 执行附录
+
+27 项核心断言与主仓 1369 项回归通过（另 3 项预期失败）；真实 rc.2 Host 的直接自动来源会话、取消、原有递归 guard、原生审批拒绝、20 次资源回收及强杀冷读通过。该直接路径仅为合成 preset、只读 sandbox、无工具、1 次模型预算；不是正式自动授权产品。
+
+原定子代理来源方案不成立：公开 startActivation 首消息为 user。已运行公开 Agents/Agent.followup 替代，因此不需要伪造来源或放宽原生权限；下一阶段仅限核心封装/协议和受限直接会话的合成验证。schedule Source、自动子代理、群和外部通知能力全部保留 FAIL/关闭，人工建议接受和验收核心扩展尚未实现。PB01 的准确约束、完整文件清单、命令与收据见[本轮兼容报告](../../docs/spikes/proactive-bot-compatibility.md)，不能从本附录推导 M0 或完整主动 Bot 已完成。

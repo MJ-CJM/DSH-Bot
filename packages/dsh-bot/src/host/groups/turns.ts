@@ -21,16 +21,31 @@ export class GroupTurns {
   ) {}
   async send(key: GroupKey, value: unknown) {
     const input = parse(groupSendSchema, value);
+    return this.accept(key, input);
+  }
+  startProactiveReview(
+    key: GroupKey, value: unknown, review: NonNullable<GroupTurn['proactive']>, check: () => Promise<void>,
+  ) {
+    return this.accept(key, parse(groupSendSchema, value), { review, check });
+  }
+  private accept(key: GroupKey, input: ReturnType<typeof groupSendSchema.parse>,
+    proactive?: { review: NonNullable<GroupTurn['proactive']>; check: () => Promise<void> }) {
     return this.state.queue.run(async () => {
       const g = this.state.record(key),
         id = `turn:${digest([key, input.operationId])}`,
-        hash = digest({ ...input, ...(input.fileReceiptIds.length ? {} : { fileReceiptIds: undefined }) });
+        hash = digest({ ...input, ...(input.fileReceiptIds.length ? {} : { fileReceiptIds: undefined }),
+          ...(proactive ? { proactive: proactive.review } : {}) });
       const used = this.state.turns(g).flatMap(t => [
         ...(t.operationId === input.operationId ? [{ requestDigest: t.requestDigest }] : []),
         ...(t.followups ?? []).filter(row => row.operationId === input.operationId),
       ]);
       if (used.some(row => row.requestDigest !== hash)) throw new OperationError('conflict');
-      if (input.followup) return this.followup(key, input, hash);
+      if (input.followup && !proactive) return this.followup(key, input, hash);
+      const followUp = proactive?.review.followUp;
+      const repair = proactive?.review.repair;
+      if (proactive && (input.followup || input.fileReceiptIds.length || input.replyTo || input.round ||
+          (followUp && repair) || input.memberIds.length !== (followUp || repair ? 1 : 2) || proactive.review.botRevisions.length !== input.memberIds.length))
+        throw new OperationError('invalid');
       const old = this.state.table('turns').get(id);
       if (old) {
         if (old.requestDigest !== hash) throw new OperationError('conflict');
@@ -39,6 +54,23 @@ export class GroupTurns {
       if (g.archived || g.state !== 'ready' || this.state.reasons.has(g.id))
         throw new OperationError('recovery-needed');
       if (g.membershipRevision !== input.expectedMembershipRevision) throw new OperationError('conflict');
+      if (followUp && proactive) {
+        const parent = this.state.turns(g).find(t => t.id === followUp.predecessorTurnId);
+        if (!parent || !['completed', 'partial'].includes(parent.state) ||
+            parent.proactive?.assignmentId !== proactive.review.assignmentId ||
+            parent.proactive?.ticketId !== proactive.review.ticketId ||
+            !this.state.deliveries(parent.id).some(d => d.memberId === input.memberIds[0] && d.state === 'completed'))
+          throw new OperationError('conflict');
+      }
+      if (repair && proactive) {
+        if (Date.parse(repair.deadlineAt) <= Date.now() || repair.outputTokens >= repair.maxTokens) throw new OperationError('invalid');
+        if (repair.phase === 'plan') { if (repair.predecessorTurnId) throw new OperationError('invalid'); }
+        else {
+          const parent = this.state.turns(g).find(turn => turn.id === repair.predecessorTurnId);
+          if (!parent || parent.state !== 'completed' || parent.proactive?.assignmentId !== proactive.review.assignmentId ||
+            parent.proactive.ticketId !== proactive.review.ticketId || parent.proactive.repair?.phase !== (repair.phase === 'implement' ? 'plan' : 'implement')) throw new OperationError('conflict');
+        }
+      }
       const root = await this.roots.restore(g);
       const replied = input.replyTo ? this.messages.messages(g).find(m => m.id === input.replyTo) : undefined;
       if (input.replyTo && !replied) throw new OperationError('invalid');
@@ -53,7 +85,8 @@ export class GroupTurns {
       );
       await this.state.validateMembers(selected.map((m) => m.bot));
       const provider = this.state.ctx.subagents.getProvider('spawn');
-      if (
+      if (proactive) await proactive.check();
+      else if (
         !provider ||
         provider.inheritsParentContext ||
         !provider.capabilities.agentPreset ||
@@ -70,7 +103,12 @@ export class GroupTurns {
       });
       // Keep native user attribution: fileUploads retires bound receipts by user rpcId.
       // Extra protocol metadata is public JSON source data for the workspace projection.
-      const source = { kind: 'user' as const, group: key, turnId: id,
+      const source = proactive ? {
+        kind: 'dsh-bot-group-proactive' as const, group: key, turnId: id,
+        ticketId: proactive.review.ticketId, assignmentId: proactive.review.assignmentId,
+        ...(repair ? { repairPhase: repair.phase } : {}),
+        ...(followUp ? { factId: followUp.factId, predecessorTurnId: followUp.predecessorTurnId } : {}),
+      } : { kind: 'user' as const, group: key, turnId: id,
         ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(files.length ? { rpcId: id } : {}) };
       const message = createUserMessage({ source, content: [...blocks(input.text), ...files] });
       const at = Date.now();
@@ -82,14 +120,16 @@ export class GroupTurns {
         inputMessageId: message.id,
         membershipRevision: g.membershipRevision,
         orderedMemberIds: selected.map((m) => m.id),
-        mode: g.mode,
-        ...(g.mode !== 'round-robin' ? { protocol: 2 as const, automaticExecutions: 0, continuationAllowance: this.state.registry.config.groupMaxContinuations } : {}),
+        mode: proactive ? 'round-robin' : g.mode,
+        ...(proactive ? { proactive: proactive.review } : {}),
+        ...(!proactive && g.mode !== 'round-robin' ? { protocol: 2 as const, automaticExecutions: 0, continuationAllowance: this.state.registry.config.groupMaxContinuations } : {}),
         ...(g.modelSelection ? { modelSelection: { ...g.modelSelection } } : {}),
         ...(g.memberModelSelections ? { memberModelSelections: g.memberModelSelections.map(row => ({
           memberId: row.memberId, modelSelection: { ...row.modelSelection },
         })) } : {}),
-        contextThroughSeq: this.messages.messages(g).at(-1)?.seq ?? -1,
-        predecessorTurnIds: g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
+        contextThroughSeq: proactive ? -1 : (this.messages.messages(g).at(-1)?.seq ?? -1),
+        predecessorTurnIds: repair?.predecessorTurnId ? [repair.predecessorTurnId] : followUp ? [followUp.predecessorTurnId] :
+          proactive || g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
         state: 'accepted',
         revision: 1,
@@ -115,6 +155,8 @@ export class GroupTurns {
         const statuses = await this.state.registry.status();
         for (const [ordinal, m] of selected.entries()) {
           const bot = await this.state.bot(m.bot);
+          if (proactive && bot.updatedAt !== proactive.review.botRevisions[ordinal])
+            throw new OperationError('conflict');
           const status = need(statuses.find((s) => s.id === bot.id));
           await this.state.putDelivery({
             id: `${id}:${ordinal}`,
@@ -130,12 +172,14 @@ export class GroupTurns {
           });
         }
         using receiptBinding = uploads?.bindPrompt(root.agent, receiptIds as Parameters<NonNullable<typeof uploads>['bindPrompt']>[1], id);
-        const send = () => root.agent.session.append('user/message', message, { surfaceOp: 'append' });
-        const event = flowId ? await need(flow).dispatch(flowId, send) : send();
+        const append = () => root.agent.session.append('user/message', message, { surfaceOp: 'append' });
+        const send = proactive ? async () => { await proactive.check(); return append(); } : append;
+        const event = flowId ? await need(flow).dispatch(flowId, send) : proactive ? await send() : append();
         receiptBinding?.commit();
         await this.roots.flush(root);
         const accepted = await this.state.putTurn({ ...turn, inputSeq: Number(event.seq) });
         const limit = accepted.protocol === 2 ? Number.MAX_SAFE_INTEGER : 1;
+        if (proactive) this.state.proactiveChecks.set(id, proactive.check);
         const running = this.state.schedule(g.id, limit, async () => {
           try { await this.runner.execute(id); }
           catch {
@@ -146,7 +190,10 @@ export class GroupTurns {
           }
         });
         this.state.chains.set(id, running);
-        void running.finally(() => this.state.chains.delete(id)).catch(() => {});
+        void running.finally(() => {
+          this.state.chains.delete(id);
+          this.state.proactiveChecks.delete(id);
+        }).catch(() => {});
         return accepted;
       } catch {
         await this.state.putTurn({ ...turn, state: 'recovery_needed' });
@@ -159,6 +206,7 @@ export class GroupTurns {
     const g = this.state.record(key), target = need(input.followup);
     const t = this.state.turns(g).find(row => row.id === target.turnId);
     if (!t) throw new OperationError('not-found');
+    if (t.proactive) throw new OperationError('unsupported');
     const old = t.followups?.find(row => row.operationId === input.operationId);
     if (old) {
       if (old.requestDigest !== hash) throw new OperationError('conflict');

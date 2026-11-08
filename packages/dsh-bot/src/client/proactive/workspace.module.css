@@ -1,0 +1,29 @@
+.content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.content pre {
+  max-width: 100%;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.content fieldset {
+  min-width: 0;
+}
+
+.content button,
+.content input,
+.content textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.content button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -55,6 +55,8 @@ export class GroupMessages {
         ];
       if (s.kind === 'dsh-bot-group-followup' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
         return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: s.turnId, authorKind: 'user' as const, replyTo: s.replyTo }];
+      if (s.kind === 'dsh-bot-group-proactive' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
+        return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: s.turnId, authorKind: 'proactive' as const }];
       return turnId ? [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId, ...(attachments.length ? { attachments, hasNonText: true } : {}), authorKind: 'user' as const, replyTo: this.state.turns(g).find(t => t.id === turnId)?.replyTo }] : [];
     });
   }

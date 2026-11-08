@@ -1,3 +1,4 @@
+import { mountProactive } from './proactive/index.js';
 import { Onboarding } from './onboarding/coordinator.js';
 import { Capabilities } from './capabilities/service.js';
 import { CapabilitiesRemote, CAPABILITIES_HOST } from './capabilities/remote.js';
@@ -70,6 +71,9 @@ export function apply(ctx: Context, config: Config): void {
     .then(async () => {
       if (stopping) return;
       registry.shadow = await startShadow(ctx, registry.config);
+      const capabilities = new Capabilities(ctx, registry);
+      ctx.effect(() => () => capabilities.close(), 'dsh-bot: capabilities');
+      await mountProactive(ctx, registry.config, capabilities);
       const sidecars = await openIntegrationStores(ctx);
       const connectors = new Connectors(ctx, sidecars, registry, registry.config.connectorApplyTimeoutMs, () =>
         registry.invalidate(),
@@ -198,10 +202,9 @@ export function apply(ctx: Context, config: Config): void {
       if (!groups) throw new Error('Groups startup failed');
       await groups.start();
       ctx.effect(() => ctx.provide('dshBotGroups', groups as Groups), 'dsh-bot: groups service');
+      ctx.get('dshBotProactive')?.scheduleGroupFollowUps();
       new GroupsRemote(ctx, groups);
       await ctx.effect(() => ctx.typert.register(GROUPS_HOST), 'dsh-bot: groups Remote');
-      const capabilities = new Capabilities(ctx, registry);
-      ctx.effect(() => () => capabilities.close(), 'dsh-bot: capabilities');
       new CapabilitiesRemote(ctx, capabilities);
       await ctx.effect(() => ctx.typert.register(CAPABILITIES_HOST), 'dsh-bot: capabilities Remote');
       automation = await startAutomation(ctx, registry);

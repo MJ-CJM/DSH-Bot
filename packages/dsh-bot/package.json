@@ -1,6 +1,6 @@
 {
   "name": "dsh-bot",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "type": "module",
   "description": "Your personal agent workspace for DeepSeek Harness. Create multiple personal agents, each with its own persona, long-term memory, tools and skills, working alongside you over time.",
   "exports": {
@@ -60,9 +60,9 @@
     "dsh": ">=0.2.1-rc.2 <0.3.0"
   },
   "scripts": {
-    "build": "node build/clean.mjs && tsc -p tsconfig.build.json && node build/host-versions.mjs && node build/client.config.ts",
+    "build": "node build/clean.mjs && tsc -p tsconfig.build.json && node build/host-versions.mjs && node build/client.config.ts && node build/proactive-coordinator.mjs",
     "test": "vitest run --config ../../vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p coordinator/tsconfig.json"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
@@ -71,6 +71,7 @@
     "@deepseek-ai/dsh-credentials": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-llm": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-mcp-client": ">=0.2.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-sandbox-policy": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-scope": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-session": ">=0.2.1-rc.2 <0.3.0",
     "@deepseek-ai/dsh-session-title": ">=0.2.1-rc.2 <0.3.0",
@@ -121,6 +122,8 @@
     "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.2",
     "@deepseek-ai/dsh-permission-presets": "0.2.1-rc.2",
     "@deepseek-ai/dsh-plugin-market-index": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.2",
     "@deepseek-ai/dsh-schedule": "0.2.1-rc.2",
     "@deepseek-ai/dsh-scope": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session": "0.2.1-rc.2",
@@ -131,6 +134,7 @@
     "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
     "@deepseek-ai/dsh-storage-json": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subagent": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-subprocess": "0.2.1-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tool-schedule": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",

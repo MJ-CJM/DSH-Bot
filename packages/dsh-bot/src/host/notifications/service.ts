@@ -13,6 +13,7 @@ import {
 } from '../../shared/integrations.js';
 import type { DshBotRegistry } from '../registry.js';
 import { digest, need, OperationError, parse, Serial } from '../common/operations.js';
+import {proactiveCopyScopeSchema,type ProactiveCopyScope} from '../../shared/proactive/governance.js';
 import type { IntegrationStores } from '../common/integration-stores.js';
 export interface NotificationPort {
   /** Safe display identity. Adapter must recheck this digest immediately before sending. */
@@ -129,11 +130,12 @@ export class Notifications {
       return row;
     });
   }
-  async record(owner: BotKey, input: NotifyInput, source: NotificationRecord['source']) {
+  async record(owner: BotKey, input: NotifyInput, source: NotificationRecord['source'], signal?: AbortSignal) {
     if (this.stopping) throw new OperationError('unavailable');
     const value = parse(notifyInputSchema, input);
     await this.assertBot(owner);
     return this.queue.run(async () => {
+      signal?.throwIfAborted();
       const existing = this.stores.notifications.table('intents').get(value.operationId);
       if (existing) {
         if (
@@ -147,6 +149,17 @@ export class Notifications {
       }
       const p = this.policy(value.policyId);
       if (!sameBot(p.owner, owner)) throw new OperationError('not-found');
+      if (source.kind === 'proactive-review' && (p.channel !== 'im' || !p.enabled || !outlets(this.registry)))
+        throw new OperationError('unsupported');
+      if (source.kind === 'proactive') {
+        const at = this.now();
+        const day = localTime(at, p.timezone).day;
+        const prior = this.list().filter(row => row.policyId === p.id && row.source.kind === 'proactive');
+        if (!p.enabled || p.channel !== 'in-app' || quietAt(at, p) ||
+            prior.filter(row => localTime(row.createdAt, p.timezone).day === day).length >= p.dailyLimit ||
+            prior.some(row => row.createdAt > at || row.createdAt + p.cooldownSec * 1000 > at))
+          throw new OperationError('approval-denied');
+      }
       // Keep a durable dedup ledger even after visible content retention expires.
       const ledger = this.stores.notifications.table('read_state');
       if (ledger.get(value.operationId)) throw new OperationError('recovery-needed');
@@ -172,12 +185,13 @@ export class Notifications {
       const flow = outlets(this.registry), flowId = await notificationAdmission(this.registry, owner, row);
       if (flowId) row.flowId = flowId;
       const save = async () => {
+      signal?.throwIfAborted();
       // Intent is the authoritative ledger. Tombstone first means a partial write
       // can lose a local record but can never authorize a duplicate external send.
       await ledger.put(row.id, { id: row.id, owner, revision: 1, createdAt: at, updatedAt: at, schemaVersion: 1 });
       await this.stores.notifications.table('intents').put(row.id, row);
       };
-      if (flowId) await need(flow).dispatch(flowId, save); else await save();
+      if (flowId) await need(flow).dispatch(flowId, save, signal); else await save();
       this.changed();
       return row;
     });
@@ -218,10 +232,37 @@ export class Notifications {
     this.changed();
     return value;
   }
-  async deliver(id: string, approvedScope?: string, signal?: AbortSignal) {
+  private reviewDigest(row: NotificationRecord, label: string) {
+    return digest([row.operationId, row.owner, row.policyId, row.policyRevision, row.scopeDigest,
+      row.targetDigest, label, row.text, row.source]);
+  }
+  async previewReviewed(id: string) {
+    const row = this.get(id), policy = this.policy(row.policyId), port = this.port;
+    if (this.stopping || row.source.kind !== 'proactive-review' || !port || !policy.enabled ||
+        policy.channel !== 'im' || policy.revision !== row.policyRevision ||
+        policy.scopeDigest !== row.scopeDigest || policy.targetDigest !== row.targetDigest)
+      throw new OperationError('unsupported');
+    const target = await port.describe(need(policy.targetRef));
+    if (this.port !== port || target.targetDigest !== policy.targetDigest)
+      throw new OperationError('conflict');
+    return {
+      id: row.id, state: row.state, text: row.text, targetRef: need(policy.targetRef),
+      label: target.label, digest: this.reviewDigest(row, target.label),
+    };
+  }
+  deliver(id: string, approvedScope?: string, signal?: AbortSignal) {
+    return this.deliverInternal(id, approvedScope, signal);
+  }
+  deliverReviewed(id: string, reviewedDigest: string, signal: AbortSignal, check: () => Promise<void>) {
+    return this.deliverInternal(id, undefined, signal, { digest: reviewedDigest, check });
+  }
+  private async deliverInternal(id: string, approvedScope?: string, signal?: AbortSignal,
+    review?: { digest: string; check: () => Promise<void> }) {
     const reserved = await this.queue.run(async () => {
       const r = this.get(id);
       if (!['recorded', 'waiting_approval'].includes(r.state)) return { record: r };
+      const reviewed = r.source.kind === 'proactive-review';
+      if (reviewed !== !!review) throw new OperationError('approval-denied');
       const p = this.policy(r.policyId);
       await this.assertBot(r.owner);
       if (p.revision !== r.policyRevision || p.scopeDigest !== r.scopeDigest || p.targetDigest !== r.targetDigest)
@@ -229,17 +270,23 @@ export class Notifications {
       if (!p.enabled) return { record: await this.put({ ...r, state: 'suppressed', reasonCode: 'disabled' }) };
       if (signal?.aborted || this.stopping)
         return { record: await this.put({ ...r, state: 'cancelled', reasonCode: 'stopping' }) };
+      if (r.source.kind === 'proactive' && p.channel !== 'in-app')
+        return { record: await this.put({ ...r, state: 'cancelled', reasonCode: 'unsupported' }) };
       if (p.channel === 'in-app') return { record: await notificationSend(this.ctx, this.registry, r, p, () => this.policy(r.policyId),
         () => this.put({ ...r, state: 'recorded' }), signal ?? this.lifetime.signal) };
-      if (p.authorization.mode === 'ask' && approvedScope !== r.scopeDigest)
+      if (!reviewed && p.authorization.mode === 'ask' && approvedScope !== r.scopeDigest)
         return { record: await this.put({ ...r, state: 'cancelled', reasonCode: 'approval-denied' }) };
-      if (!this.port) return { record: await this.put({ ...r, state: 'failed', reasonCode: 'unsupported' }) };
+      const port = this.port;
+      if (!port) return { record: await this.put({ ...r, state: 'failed', reasonCode: 'unsupported' }) };
+      const portSignal = this.portLifetime.signal;
       let target: Awaited<ReturnType<NotificationPort['describe']>>;
       try {
-        target = await this.port.describe(need(p.targetRef));
+        target = await port.describe(need(p.targetRef));
       } catch {
         return { record: await this.put({ ...r, state: 'failed', reasonCode: 'unsupported' }) };
       }
+      if (review && this.reviewDigest(r, target.label) !== review.digest)
+        throw new OperationError('conflict');
       if (target.targetDigest !== p.targetDigest)
         return { record: await this.put({ ...r, state: 'cancelled', reasonCode: 'changed' }) };
       const at = this.now(),
@@ -257,8 +304,12 @@ export class Notifications {
         reason = 'daily-limit';
       else if (latest > 0 && at - latest < p.cooldownSec * 1000) reason = 'cooldown';
       if (reason) return { record: await this.put({ ...r, state: 'suppressed', reasonCode: reason }) };
-      const record = await this.put({ ...r, state: 'sending', reservation: { at, day }, attemptId: randomUUID() });
-      return { record, policy: p, port: this.port, portSignal: this.portLifetime.signal };
+      await review?.check();
+      signal?.throwIfAborted();
+      if (this.port !== port || portSignal.aborted) throw new OperationError('conflict');
+      const record = await this.put({ ...r, state: 'sending', reservation: { at, day }, attemptId: randomUUID(),
+        ...(review ? { reviewedDigest: review.digest } : {}) });
+      return { record, policy: p, port, portSignal };
     });
     if (!reserved.policy) return reserved.record;
     const task = (async () => {
@@ -269,20 +320,29 @@ export class Notifications {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new AbortController();
       try {
+        const dispatchSignal = AbortSignal.any([
+          ...(signal ? [signal] : []), this.lifetime.signal, need(reserved.portSignal), deadline.signal,
+        ]);
+        const send = async () => {
+          const port = need(reserved.port), targetRef = need(reserved.policy.targetRef);
+          if (review) {
+            await review.check();
+            const target = await port.describe(targetRef);
+            if (target.targetDigest !== reserved.policy.targetDigest ||
+                this.reviewDigest(reserved.record, target.label) !== review.digest)
+              throw new OperationError('conflict');
+          }
+          dispatchSignal.throwIfAborted();
+          const current = this.policy(reserved.record.policyId);
+          if (!current.enabled || current.revision !== reserved.record.policyRevision ||
+              current.targetDigest !== reserved.record.targetDigest || current.scopeDigest !== reserved.record.scopeDigest)
+            throw new OperationError('conflict');
+          return port.send({ targetRef, targetDigest: reserved.policy.targetDigest, text: reserved.record.text,
+            attemptId: need(reserved.record.attemptId), signal: dispatchSignal });
+        };
         result = await Promise.race([
           notificationSend(this.ctx, this.registry, reserved.record, reserved.policy,
-            () => this.policy(reserved.record.policyId), () => need(reserved.port).send({
-            targetRef: need(reserved.policy.targetRef),
-            targetDigest: reserved.policy.targetDigest,
-            text: reserved.record.text,
-            attemptId: need(reserved.record.attemptId),
-            signal: AbortSignal.any([
-              ...(signal ? [signal] : []),
-              this.lifetime.signal,
-              need(reserved.portSignal),
-              deadline.signal,
-            ]),
-          }), AbortSignal.any([...(signal ? [signal] : []), this.lifetime.signal, need(reserved.portSignal), deadline.signal])),
+            () => this.policy(reserved.record.policyId), send, dispatchSignal, !!review),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
               deadline.abort();
@@ -359,6 +419,32 @@ export class Notifications {
         await this.stores.notifications.table('intents').delete(row.id);
       }
       this.changed();
+    });
+  }
+  private proactiveCopies(input:ProactiveCopyScope) {
+    const scope=proactiveCopyScopeSchema.parse(input),assignments=new Set(scope.assignmentIds),operations=new Set(scope.notificationOperationIds);
+    return this.list().filter(row=>['proactive','proactive-review'].includes(row.source.kind)&&(operations.has(row.operationId)||assignments.has(row.source.id)));
+  }
+  proactiveCopyStatus(scope:ProactiveCopyScope) {
+    const rows=this.proactiveCopies(scope),flow=outlets(this.registry);
+    const refs=[...rows.map(row=>({operationId:row.operationId,flowId:row.flowId,sessionId:row.source.sessionId})),...(flow?.proactiveNotificationCopyRefs(scope.notificationOperationIds)??[])];
+    return {blockedOperationIds:[...new Set([...rows.filter(row=>row.state==='sending'||row.state==='unknown').map(row=>row.operationId),...(flow?.notificationCopyStatus(refs)??[])])]};
+  }
+  /** Source-specific redaction leaves dedup, attempt state and attention charges
+   * intact. It cannot erase uncertain external sends or any ordinary notices. */
+  async purgeProactiveCopies(scope:ProactiveCopyScope) {
+    return this.queue.run(async()=>{
+      const rows=this.proactiveCopies(scope),status=this.proactiveCopyStatus(scope);
+      if(status.blockedOperationIds.length)return {...status,purged:0,flowCopies:0};
+      const flow=outlets(this.registry),refs=[...rows.map(row=>({operationId:row.operationId,flowId:row.flowId,sessionId:row.source.sessionId})),...(flow?.proactiveNotificationCopyRefs(scope.notificationOperationIds)??[])];
+      const flows=await flow?.purgeNotificationCopies(refs);
+      if(flows?.blockedOperationIds.length)return {blockedOperationIds:flows.blockedOperationIds,purged:0,flowCopies:0};
+      let purged=0;
+      for(const row of rows){
+        if(row.redactedAt!==undefined)continue;
+        await this.put({...row,text:'[redacted]',bodyDigest:digest({text:row.text,source:row.source}),redactedAt:this.now(),...(row.state==='waiting_approval'?{state:'cancelled' as const}:{} )});purged++;
+      }
+      return {purged,flowCopies:flows?.purged??0,blockedOperationIds:[]};
     });
   }
   async close() {

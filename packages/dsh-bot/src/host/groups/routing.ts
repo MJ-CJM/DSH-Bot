@@ -38,11 +38,11 @@ export function groupContext(
       earlierContentOmitted: truncated,
       question: question.text,
       attachments: question.attachments,
-      questionSource: { authorKind: question.speaker ? 'bot' : 'user', speaker: question.speaker, id: question.id, replyTo: question.replyTo },
+      questionSource: { authorKind: question.authorKind ?? (question.speaker ? 'bot' : 'user'), speaker: question.speaker, id: question.id, replyTo: question.replyTo },
       history: rows.map((m) => ({
         id: m.id,
         speaker: m.speaker?.name ?? 'user',
-        authorKind: m.speaker ? 'bot' : 'user',
+        authorKind: m.authorKind ?? (m.speaker ? 'bot' : 'user'),
         bot: m.speaker?.bot,
         replyTo: m.replyTo,
         text: m.text,

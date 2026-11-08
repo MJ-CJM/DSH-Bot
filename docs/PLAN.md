@@ -1,5 +1,7 @@
 # DSH-Bot 开发计划（v1）
 
+> 2026-11-08 最新实施：主动协作 A01–A08 及 PB03/PB05/PB10 补充范围已实现，最终 0.6.5 包通过 24 项隔离验收。同一安装包已更新到日常 DSH 桌面版，并通过数据保留及实际界面检查；[当前交付与证据](verification/proactive-gap-completion.md)。下文 11-06 的“等待通知”是历史准备状态。
+
 > 2026-11-06 主动协作准备：设计与任务单已从 worktree 同步至当前项目，并基于重新拉取的最新 main 创建 `codex/proactive-bot-implementation` 分支。完整方案见[主动协作设计](design/proactive-bot/README.md)。当前等待用户通知，尚未开始实现；通知后从 [PB00 兼容性验证](../tasks/proactive-bot/PB00-compatibility-spike.md)开始。优先复用 DSH 原生能力和已有 Bot 服务。下文旧 Routine/自建调度描述保留为历史，不作为新实现依据。
 
 > 2026-11-01 后续实施：用户已批准 U0/U1，先验证原生 UI API，再统一配置入口、Bot 上下文和记忆页布局。见[任务单](../tasks/U0-U1-native-settings.md)及 [Issue #12](https://github.com/MJ-CJM/DSH-Bot/issues/12)。U2–U4 已完成实现和隔离验证，见 [验收报告](verification/ui-completion/README.md)、[任务单](../tasks/U2-U4-ui-completion.md)和 [Issue #14](https://github.com/MJ-CJM/DSH-Bot/issues/14)。
