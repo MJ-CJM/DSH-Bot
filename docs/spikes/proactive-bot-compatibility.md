@@ -6,7 +6,7 @@
 
 | 项目 | 实际基线 |
 | --- | --- |
-| 当前仓库 | `/Users/youzihui/ai-workspace/DSH-Bot`，`codex/proactive-bot-implementation` |
+| 当前仓库 | `~/ai-workspace/DSH-Bot`，`codex/proactive-bot-implementation` |
 | 起始 HEAD | `2917262415d815258580687189b5465a22510919` |
 | 已有未跟踪内容 | `.codex/deep/review-append.md`、`.codex/screens/`，保留 |
 | DSH 参考源码 | `dsh-v0.2.1-rc.2`，`687f282e8625c6b8d11ff58211a90524be2e4317`，只读 |
