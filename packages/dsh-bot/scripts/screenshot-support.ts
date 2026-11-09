@@ -347,7 +347,8 @@ export function readBotsLayout() {
   };
   return {
     capturedAt: new Date().toISOString(),
-    detailStatuses: Array.from(detail?.querySelectorAll('[role="status"]') ?? []).map((element) => element.textContent),
+    detailStatuses: Array.from(detail?.querySelectorAll('[role="status"]') ?? [])
+      .filter(element => !element.closest('[hidden]')).map(element => element.textContent),
     listVisible: visible(list), detailVisible: visible(detail), list: box(list), detail: box(detail),
     selectedBotId: list?.querySelector('[aria-selected="true"]')?.getAttribute('data-bot-id') ?? null,
     detailBotId: detail?.getAttribute('data-bot-detail') ?? null,

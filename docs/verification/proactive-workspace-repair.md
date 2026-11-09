@@ -1,5 +1,7 @@
 # 工程修复、执行器与完整产物验收
 
+本文记录旧包的历史验收。N01 在 rc.2 上关闭会执行工程产物的路径，保留已存证据的只读查看。见[当前隔离能力](../dsh-api-notes.md)。
+
 实现契约见[工程协议](../design/proactive-bot/workspace-repair-protocol.md)。本轮只使用仓库内隔离目录、真实 rc.2 Host、合成 LLM adapter 与 Node 命令夹具；没有调用真实模型、改动桌面安装或用户原有 Bot/会话数据。
 
 ## 最终安装包与证据

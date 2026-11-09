@@ -40,11 +40,13 @@ export function GroupsPanel({
   bots,
   onOpenSession,
   initialCreate = false,
+  visible = true,
   selectedGroup, onSelectGroup, onOpenBot, onCreateFinished,
   workspaces, onPickDirectory,
   t,
 }: {
   initialCreate?: boolean;
+  visible?: boolean;
   /** Native Workspace catalog rows; the group cwd stays immutable after creation. */
   workspaces?: readonly GroupWorkspaceChoice[];
   /** Host-native directory picker; absent keeps a typed-path fallback. */
@@ -129,6 +131,7 @@ export function GroupsPanel({
                 setExpandedTurns((old) => ({ ...old, [id]: expanded }));
               }}
               summary={active}
+              visible={visible}
               onOpenBot={onOpenBot}
               actions={actions}
               bots={bots}
@@ -390,7 +393,7 @@ export function GroupConversation({
   const view = snapshot.view;
   const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
   const focusRequest = workspace && runRequest?.sessionId === summary.group.rootSessionId ? runRequest : undefined;
-  const focusMessageId = focusRequest && view?.turns.find(row => row.id === focusRequest.turnId)?.inputMessageId;
+  const focusMessageId = focusRequest?.source?.messageId ?? (focusRequest && view?.turns.find(row => row.id === focusRequest.turnId)?.inputMessageId);
   const { id: groupId, createdAt: groupCreatedAt } = summary.group;
   useEffect(() => {
     if (!focusRequest || !focusMessageId) return;
@@ -400,7 +403,7 @@ export function GroupConversation({
     const isCurrent = () => !controller.signal.aborted && actions.runRequests.getSnapshot()?.requestId === requestId;
     let frame: number | undefined;
     void actions.quotedMessage(group, focusMessageId, controller.signal).then(async message => {
-      if (!message || !isCurrent()) return;
+      if (!message || (focusRequest.source && message.seq !== focusRequest.source.seq) || !isCurrent()) return;
       await actions.loadThrough(group, message.seq);
       if (!isCurrent()) return;
       frame = requestAnimationFrame(() => {
@@ -785,12 +788,14 @@ export function GroupConversation({
   );
 }
 
-function GroupManager({ summary, actions, bots, t, onOpenBot }: Parameters<typeof GroupConversation>[0] & { onOpenBot?(bot: BotRecord): void }) {
+function GroupManager({ summary, actions, bots, t, onOpenBot, visible }: Parameters<typeof GroupConversation>[0] & {
+  onOpenBot?(bot: BotRecord): void; visible?: boolean;
+}) {
   const [editing, setEditing] = useState<GroupView>();
   const [generation, setGeneration] = useState(0);
   return <>
     <GroupOverview key={`${summary.group.id}:${generation}`} summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
-      onEdit={setEditing} t={t} />
+      onEdit={setEditing} visible={visible} t={t} />
     {editing && <GroupEditor bots={bots} initial={editing} t={t} onCancel={() => setEditing(undefined)} onSave={async input => {
       const { operationId: _operation, cwd: _cwd, ...edit } = input;
       unwrapGroup(await actions.remote().edit(groupKey(editing.group), { ...edit, expectedRevision: editing.group.revision,

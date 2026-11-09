@@ -1,5 +1,13 @@
 # DSH-Bot 主动协作完整设计
 
+> 2026-11-09：**0.6.6 非定时个人/群主动跟进**已实现并形成同包验收候选；用户确认定时能力留到后续版本。当前[验收与边界](../../verification/v066-local-follow-up.md)、[交付记录](../../releases/v0.6.6.md)和[实施台账](../../../tasks/proactive-bot/V066-implementation.md)优先于下方历史准备状态。完整目标保留在[设计](v0.6.6-personal-group-follow-up.md)，GitHub 是可选来源。
+
+> C/D 更新：用户已授权继续完成剩余开发；等待/核对、文档任务、归因、方法评估与交换、结果观察已实现，按同包隔离验证交付。具体能力边界与验收证据见 [C/D 验收记录](../../verification/proactive-optimization-cd.md)。普通入口保持现有侧栏与任务/反馈页，未升级桌面版。
+
+> A+B 更新：A 剩余查询/维护项与 B 批 CI 个人质量 Bot 已实现，最终验证、边界与交付文件见 [A+B 验收记录](../../verification/proactive-optimization-ab.md)。复用原 Bot 侧栏与工作页；工程产物执行仍关闭，本轮未更新桌面版。下文旧状态保留用于追溯。
+
+2026-11-08 更新：本页保留最初开发设计基线。当前实现及 review 后的优化请优先阅读 [优化方案与目标体验](optimization-proposal.md)、[重构技术合同](optimization-contracts.md) 与 [下一步落地清单](../../../tasks/proactive-bot/NEXT-personal-proactive-superagent.md)。D1–D6 已批准，A 批基础修复与简化侧栏已通过隔离验收；[实际验收](../../verification/proactive-optimization-a.md)与后续目标分别记录。
+
 日期：2026-11-06。状态：开发设计基线，运行功能尚未实施。代码基线：远端 main `4a0aab42a2e4e005542528ada4c985d0786e1fc9`；DSH-Bot `0.6.4`；开发 API 锁定 DSH `0.2.1-rc.2`。
 
 DSH-Bot 将长期 Bot 身份、主动发现、持续任务、多 Bot 协作和证据验收连成完整工作流程。用户可以给 Bot 一项长期职责，Bot 在规定范围内观察变化、判断是否值得处理、提出建议或按授权行动，直到交付被验收。**执行基础尽量复用 DSH，任务协调优先复用 DeepSeek 原型，DSH-Bot 专注于职责、接入适配、用户体验与交付质量。**
@@ -150,10 +158,9 @@ M2 试点不自动发表评论、commit、push、合并或部署。它们若要�
 
 设计最初在独立 worktree 的 `codex/proactive-bot-design` 分支形成。按用户后续要求，完整设计和任务单已经同步回当前项目目录；再次执行 `git fetch origin main`，确认最新 main 仍为 `4a0aab42a2e4e005542528ada4c985d0786e1fc9`，并在当前目录创建实现分支 `codex/proactive-bot-implementation`。原 worktree 保留为设计快照。
 
-后续实施位置已经统一为：
+在 DSH-Bot 仓库根目录确认实施分支：
 
 ```sh
-cd /Users/chenjiamin/ai-workspace/DSH-Bot
 git branch --show-current
 # codex/proactive-bot-implementation
 ```

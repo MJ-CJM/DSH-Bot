@@ -73,12 +73,26 @@ export async function openResultJournal(ctx: Context) {
 				return Boolean(await acknowledgeRow(row, reply));
 			});
 		},
-		flush(storeId: string, send: Sender) {
+		flush(storeId: string, send: Sender, assignmentIds?: readonly string[]) {
 			return queue.run(async () => {
 				z.uuid().parse(storeId);
+				const selected = assignmentIds ? new Set(assignmentIds) : undefined;
+				const scoped = () => entries(storeId).filter(row => {
+					const assignmentId = row.body?.assignmentId ?? row.assignmentId;
+					return !selected || (assignmentId !== undefined && selected.has(assignmentId));
+				});
 				let acknowledged = 0, rejected = 0;
-				for (const row of entries(storeId)) {
-					if (row.state !== "pending") continue;
+				for (const row of scoped()) {
+					if (row.state !== "pending") {
+						// Older journal rows may retain a body after acknowledgement.
+						if (selected && row.body) {
+							const { body, ...metadata } = row;
+							await table.put(key(row.storeId, row.commandId), {
+								...metadata, assignmentId: body.assignmentId,
+							});
+						}
+						continue;
+					}
 					if (!row.body || digest(row.body) !== row.digest) throw new Error("Proactive result journal integrity mismatch");
 					let reply: Reply;
 					try { reply = await send(row.commandId, row.body); }
@@ -87,7 +101,7 @@ export async function openResultJournal(ctx: Context) {
 					if (result === "acknowledged") acknowledged++;
 					if (result === "rejected") rejected++;
 				}
-				return { acknowledged, rejected, pending: entries(storeId).filter(row => row.state === "pending").length };
+				return { acknowledged, rejected, pending: scoped().filter(row => row.state === "pending").length };
 			});
 		},
 		pending(storeId: string) {

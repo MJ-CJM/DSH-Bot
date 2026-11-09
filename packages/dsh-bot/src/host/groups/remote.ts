@@ -4,6 +4,8 @@ import type { TypertContribution } from '@deepseek-ai/dsh-typert-registry';
 import { GROUPS_REMOTE } from '../../shared/groups-contract.js';
 import type { GroupKey } from '../../shared/groups.js';
 import type { Groups } from './service.js';
+import { botKeySchema, type BotKey } from '../../shared/identity.js';
+import { groupRecallInputSchema, type GroupRecallInput } from '../../shared/group-recall.js';
 export const GROUPS_HOST = {
   package: 'dsh-bot/groups',
   face: 'host',
@@ -19,6 +21,11 @@ export class GroupsRemote extends TypertRemoteService {
     private groups: Groups,
   ) {
     super(ctx, 'dshBotGroupsRemote', { namespace: 'dshBot.groups' });
+  }
+  @Remote async recallForBot(bot: BotKey, input: GroupRecallInput) {
+    const invocation = this.ctx.invocation;
+    if (invocation?.peer.principal.kind !== 'owner') throw new Error('Owner access required');
+    return this.groups.recall(botKeySchema.parse(bot), groupRecallInputSchema.parse(input), invocation.signal);
   }
   @Remote async open(group: GroupKey) { return this.groups.open(group); }
   @Remote async openAttachment(group: GroupKey, messageId: string, attachmentId: string) {

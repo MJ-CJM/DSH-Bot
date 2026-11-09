@@ -29,11 +29,13 @@ test("cancel drains claimed pre-create work, waits native disposal, and never ce
 				return { dispose, agent: { id: "session", session: {}, cancel: vi.fn(), whenIdle: async () => {} } };
 			});
 			const ctx = { agents: { create }, dshBots: { config: { presetIdPrefix: "bot:" } }, tools: { schemas: () => [] }, logger: { warn: vi.fn() } } as unknown as Context;
+			const submit = vi.fn(async () => ({ kind: "receipt", receipt: { status: "committed" } }));
 			const service = {
 				executionTimeoutMs: 10000, modelOutputTokens: 1024,
 				validateTarget: async () => ({ id: "bot" }),
+				verifyDispatch: async () => {},
 				read: async () => { if (mode === "before-create") { entered.resolve(); await release.promise; } return { kind: "work", work: { ...work, revision: 2, state: "claimed" } }; },
-				submit: async () => ({ kind: "receipt", receipt: { status: "committed" } }),
+				submit,
 			} as unknown as ProactiveService;
 			const execution = new DirectExecution(ctx, service, root);
 			execution.enqueue(work);
@@ -52,8 +54,62 @@ test("cancel drains claimed pre-create work, waits native disposal, and never ce
 			expect(await execution.cancelAndDrain(work.ticketId, work.assignmentId)).toBe(mode !== "unknown-create");
 			expect(await execution.cancelAndDrain(work.ticketId, "different-assignment")).toBe(false);
 			if (mode === "before-create") expect(create).not.toHaveBeenCalled();
+			if (mode === "unknown-create")
+				expect(submit).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ kind: "report-result", result: { state: "unknown" } }), expect.any(Function));
 			await execution.close();
 		}
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a verifier with unconfirmed process exit remains unknown and cannot be drained", async () => {
+	const base = resolve("../../.dsh-dev/proactive-bot");
+	await mkdir(base, { recursive: true });
+	const root = await mkdtemp(resolve(base, "unit-verifier-drain-"));
+	try {
+		const work = workSchema.parse({
+			ticketId: "ticket", assignmentId: "assignment", decisionId: "decision", triggerId: "trigger",
+			sourceId: `ci:${"a".repeat(64)}`, title: "Bounded repair",
+			target: { bot: { botId: "bot", botCreatedAt: 1 }, botUpdatedAt: 1, provider: "fixture", model: "fixture" },
+			repair: { fixtureId: "fixture", specDigest: "a".repeat(64), executor: "native" },
+			expiresAt: "2099-01-01T00:00:00.000Z", policyVersion: "v1", revision: 1, generation: 1, state: "pending",
+		});
+		const spawned = deferred<AbortSignal>();
+		const terminate = vi.fn(), waitForExit = vi.fn(async () => false);
+		const ctx = {
+			get: () => ({
+				resolveExecutable: async () => process.execPath,
+				spawn: ({ signal }: { signal: AbortSignal }) => {
+					const done = new Promise<never>((_resolve, reject) => {
+						signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+					});
+					spawned.resolve(signal);
+					return { done, terminate, waitForExit };
+				},
+			}),
+			logger: { warn: vi.fn() },
+		} as unknown as Context;
+		const submit = vi.fn(async () => ({ kind: "receipt", receipt: { status: "committed" } }));
+		const verifyDispatch = vi.fn(async () => {});
+		const service = {
+			executionTimeoutMs: 10000, modelOutputTokens: 1024, verifyDispatch, submit,
+			validateTarget: async () => ({ id: "bot" }),
+			read: async () => ({ kind: "work", work: { ...work, revision: 2, state: "claimed" } }),
+			repairConfiguration: () => ({ node: process.execPath, fixture: { initial: { enabled: false }, field: "enabled", expected: true } }),
+		} as unknown as ProactiveService;
+		const execution = new DirectExecution(ctx, service, root);
+		execution.enqueue(work);
+		const signal = await spawned.promise;
+		execution.cancelSource("unrelated-source");
+		expect(signal.aborted).toBe(false);
+		execution.cancelSource(work.sourceId);
+		expect(signal.aborted).toBe(true);
+		await execution.idle();
+		expect(verifyDispatch).toHaveBeenLastCalledWith(expect.objectContaining({ assignmentId: work.assignmentId }), expect.objectContaining({ dispatchRevision: 2 }));
+		expect(terminate).toHaveBeenCalledOnce();
+		expect(waitForExit).toHaveBeenCalledOnce();
+		expect(submit).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ kind: "report-result", result: { state: "unknown" } }), expect.any(Function));
+		expect(await execution.cancelAndDrain(work.ticketId, work.assignmentId)).toBe(false);
+		await execution.close();
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
 

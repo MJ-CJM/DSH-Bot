@@ -143,6 +143,25 @@ test("versioned per-Bot CRUD rejects stale revisions and recreated identities; t
 	);
 });
 
+test("route-less duties observe and suggest, and only an explicit acceptance can bind a full route", () => {
+	const { core, create, admit } = setup();
+	const policyTarget = { bot: owner, botUpdatedAt: target.botUpdatedAt };
+	const policy = { ...draft(), target: policyTarget, mode: "suggest" as const };
+	create("rule-one", { ...policy, mode: "off" });
+	expect(core.match({ ...binding(), target: policyTarget })).toEqual([]);
+	const saved = core.apply({ kind: "update", id: "rule-one", owner, expectedRevision: 0, draft: policy });
+	expect(core.match({ ...binding(), target: policyTarget })).toEqual([saved]);
+	expect(core.match({ ...binding(), target: { ...target, botUpdatedAt: 21 } })).toEqual([]);
+	expect(core.match(binding(), true)).toEqual([]);
+	expect(() => admit()).toThrow("forbidden");
+	expect(() => core.apply({ kind: "mode", id: "rule-one", owner, expectedRevision: 1, mode: "auto" }))
+		.toThrow("forbidden");
+	expect(admit("ticket-one", "rule-one", { automatic: false })).toMatchObject({
+		binding: { target },
+	});
+	expect(responsibilityDraftSchema.safeParse({ ...policy, mode: "auto" }).success).toBe(false);
+});
+
 test("structured matching binds source and Bot generations, targets, actions, conditions and event age", () => {
 	const { core, create, now } = setup();
 	create();

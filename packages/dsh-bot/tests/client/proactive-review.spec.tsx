@@ -70,6 +70,83 @@ async function click(container: HTMLElement, name: string) {
 	});
 }
 
+test("supplements the current assignment and rechecks an unknown response with the same approval", async () => {
+  const run = vi.fn<NonNullable<ComponentProps<typeof ReviewPanel>['continuationControls']>['run']>()
+    .mockImplementationOnce(async input => ({ kind: 'unknown', commandId: input.commandId }))
+    .mockResolvedValueOnce({ kind: 'rejected', code: 'stale' });
+  const waiting = workSchema.parse({ ...row, wait: {
+    reason: 'Which client?', request: 'Name the client', operationId: '15269bb4-45c8-4d2b-9b63-6e3ee5ef2639',
+    recordedAt: '2026-11-01T00:00:00Z',
+  } });
+  const { container } = await mount({ row: waiting, continuationControls: { policyRevision: 7, canLaunch: true, run } });
+  expect(container.textContent).toContain('proactive.workWaiting');
+  expect(container.textContent).toContain('Name the client');
+  await act(async () => {
+    fireEvent.change(getByLabelText(container, 'proactive.workSupplement'), { target: { value: 'Mobile app' } });
+  });
+  await click(container, 'proactive.workContinue');
+  expect(run).toHaveBeenCalledExactlyOnceWith({
+    action: 'supplement', text: 'Mobile app', approved: true, commandId: expect.any(String),
+    owner: row.target.bot, ticketId: row.ticketId, assignmentId: row.assignmentId,
+    expectedRevision: row.revision, expectedPolicyRevision: 7,
+  });
+  const original = run.mock.calls[0]?.[0];
+  await click(container, 'followUp.recheck');
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(run.mock.calls[1]?.[0]).toEqual(original);
+});
+
+test("a parent refresh and remount exposes reconciliation on the durably accepted attempt", async () => {
+  const run = vi.fn<NonNullable<ComponentProps<typeof ReviewPanel>['continuationControls']>['run']>()
+    .mockImplementation(async input => ({ kind: 'unknown', commandId: input.commandId }));
+  const onReconcile = vi.fn(async () => {});
+  const failed = workSchema.parse({ ...row, state: 'failed', evidenceDigest: undefined });
+  const { container, root, props } = await mount({
+    row: failed, continuationControls: { policyRevision: 7, canLaunch: true, run }, onReconcile,
+  });
+  await click(container, 'proactive.workRetry');
+  const operation = run.mock.calls[0]?.[0];
+  if (!operation) throw new Error('Approval was not submitted');
+  const accepted = workSchema.parse({ ...failed, assignmentId: 'assignment-3', state: 'pending', admission: 'manual',
+    taskLimits: { maxAttempts: 3, maxTokens: 1024, deadlineAt: failed.expiresAt },
+    generation: failed.generation + 1, revision: failed.revision + 1, continuation: {
+      kind: 'retry', previousAssignmentId: failed.assignmentId, operationId: operation.commandId, requestedAt: '2026-11-01T00:00:00Z',
+    } });
+  await act(async () => {
+    root.render(<ReviewPanel key={accepted.assignmentId} {...props} row={accepted} continuationControls={undefined} />);
+  });
+  expect(container.querySelector('[data-work-progress]')?.textContent).toBe('proactive.reconcileAccepted');
+  await click(container, 'proactive.reconcileAccepted');
+  expect(run).toHaveBeenCalledOnce();
+  expect(onReconcile).toHaveBeenCalledExactlyOnceWith({
+    owner: failed.target.bot, ticketId: failed.ticketId, expectedRevision: accepted.revision,
+  });
+});
+
+test("opens the persisted group review after polling replaces a previous revision", async () => {
+	const group = { groupId: "group-fixture", groupCreatedAt: 1 };
+	const accepted = { ...row, state: "accepted" as const };
+	const request = vi.fn<NonNullable<ComponentProps<typeof ReviewPanel>["onGroupReview"]>>()
+		.mockResolvedValueOnce({
+			kind: "preview", choice: { group, title: "CI review", rootSessionId: "preview-root", memberIds: ["one", "two"], memberBotIds: ["one", "two"] },
+			text: "Review the result", digest: "b".repeat(64), followUpAvailable: false,
+		})
+		.mockResolvedValueOnce({ kind: "linked", rootSessionId: "latest-root", turnId: "turn" });
+	const { container, onOpen, root, props } = await mount({ row: accepted, onGroupReview: request });
+	await click(container, "proactive.groupReview");
+	expect(container.textContent).toContain("proactive.groupConfirm");
+	await act(async () => {
+		root.render(<ReviewPanel {...props} row={workSchema.parse({
+			...accepted, revision: 6,
+			groupReview: { state: "linked", group, digest: "b".repeat(64), turnId: "turn" },
+		})} />);
+	});
+	expect(container.textContent).not.toContain("proactive.groupConfirm");
+	await click(container, "proactive.groupOpen");
+	expect(request).toHaveBeenLastCalledWith({ ticketId: "ticket", expectedRevision: 6 });
+	expect(onOpen).toHaveBeenCalledExactlyOnceWith("latest-root");
+});
+
 test("inspect and successful JSON repair evidence can be accepted without workspace evidence", async () => {
 	const hash = "d".repeat(64);
 	const repair = { fixtureId: "switch", specDigest: hash, executor: "native" };

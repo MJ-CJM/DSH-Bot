@@ -4,7 +4,7 @@
 
 ## 当前开发位置
 
-- 项目目录：`/Users/chenjiamin/ai-workspace/DSH-Bot`。
+- 项目目录为 DSH-Bot 仓库根目录。
 - 当前分支：`codex/proactive-bot-implementation`。
 - 基线：本轮重新执行 `git fetch origin main` 后，远端 main 为 `4a0aab42a2e4e005542528ada4c985d0786e1fc9`；使用 `git switch --no-track -c codex/proactive-bot-implementation origin/main` 创建分支。
 - 原设计 worktree 和 `codex/proactive-bot-design` 分支保留。本次同步操作没有 commit、push、删除 worktree 或启动 PB00。

@@ -1,6 +1,8 @@
 import { executeRootSetup } from '../src/host/groups/root-guard.js';
 import { describe, expect, it, vi } from 'vitest';
 import { Session, type SessionId } from '@deepseek-ai/dsh-session';
+import { scopeTarget } from '@deepseek-ai/dsh-scope';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent';
 import { withIntegrations, alpha, beta } from './integration-support.js';
@@ -9,6 +11,7 @@ import { Groups, groupsDomain } from '../src/host/groups/service.js';
 import { groupContext, routeMembers } from '../src/host/groups/routing.js';
 import { groupKey, GROUP_ROOT_PRESET, type GroupMessage, type GroupRecord } from '../src/shared/groups.js';
 import { groupsSpec } from '../src/shared/groups-contract.js';
+import { flowFixture } from './deepening/managed-flow-fixture.js';
 async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0]) {
   const roots = new Map<string, AgentHandle>(); const persisted = new Map<string, AgentHandle>(); const sequence: string[] = [];
   const config = Config({ dataDir: f.root, seedExamples: false, groupRoundTimeoutMs: 1000, groupTaskTimeoutMs: 1000 });
@@ -51,7 +54,7 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
   f.ctx.provide('sessionController', { rename } as unknown as typeof f.ctx.sessionController);
   let behavior: 'success' | 'hold' | 'partial' | 'throw' | 'quota' | 'quota-empty' = 'success';
   const calls: { preset: string; prompt: string; signal: AbortSignal }[] = [];
-  const start = vi.fn(async (input: { childId?: SessionId; signal: AbortSignal; request: { agentPreset: string; prompt: { text: string }[] } }) => {
+  const start = vi.fn(async (input: { childId?: SessionId; signal: AbortSignal; request: { parent: Agent; agentPreset: string; prompt: { text: string }[] } }) => {
     if (behavior === 'throw') throw new Error('sensitive-native-error');
     calls.push({ preset: input.request.agentPreset, prompt: input.request.prompt[0]?.text ?? '', signal: input.signal });
     let finish!: (r: SubagentResult) => void;
@@ -72,7 +75,7 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
   let domain = await f.ctx.storageDomain.open(groupsDomain); let groups = new Groups(f.ctx, f.registry, domain, () => {}); await groups.start();
   const createGroup = (op = 'create-1') => groups.create({ operationId: op, name: 'Same name', members: [alpha, beta], mode: 'mention', historyConfirmed: true });
   const settle = async (g: GroupRecord) => { await vi.waitFor(async () => expect((await groups.view(groupKey(g))).turns.every(t => !['running', 'accepted'].includes(t.state))).toBe(true)); return groups.view(groupKey(g)); };
-  return { get groups() { return groups; }, createGroup, settle, calls, create, resume, flush, rename, roots, workspaces, sequence, start, setBehavior(b: typeof behavior) { behavior = b; },
+  return { get groups() { return groups; }, get domain() { return domain; }, createGroup, settle, calls, create, resume, flush, rename, roots, workspaces, sequence, start, setBehavior(b: typeof behavior) { behavior = b; },
     async seedUncertain(turnId: string) {
       const t = domain.table('turns').get(turnId); if (!t) throw new Error();
       await domain.table('turns').put(t.id,{...t,state:'running'});
@@ -80,7 +83,137 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
     },
     async reopen() { await groups.close(); domain = await f.ctx.storageDomain.open(groupsDomain); groups = new Groups(f.ctx, f.registry, domain, () => {}); await groups.start(); }, close: () => groups.close() };
 }
+it('clears exact proactive group input and result copies while preserving the native root and ordinary flows', async () => {
+  const x = await flowFixture();
+  try {
+    await withIntegrations(async f => {
+      const s = await fixture(f);
+      try {
+        Object.assign(f.registry, x.registry());
+        const group = await s.createGroup();
+        const key = groupKey(group);
+        const root = s.roots.get(group.rootSessionId)?.agent.session;
+        const member = (await s.groups.view(key)).members[0];
+        if (!root || !member) throw new Error('Missing group fixture');
+        const assignmentId = 'proactive-assignment', ticketId = 'proactive-ticket';
+        const turnId = 'turn:proactive', deliveryId = `${turnId}:0`, childId = 'native-child';
+        const text = 'SCOPED_PROACTIVE_GROUP_BODY';
+        const message = createUserMessage({
+          source: { kind: 'dsh-bot-group-proactive', group: key, turnId, ticketId, assignmentId },
+          content: [{ type: 'text', text }],
+        });
+        const at = Date.now();
+        await s.domain.table('turns').put(turnId, {
+          id: turnId, group: key, operationId: 'scope-operation', requestDigest: 'fixture',
+          inputMessageId: message.id, createdAt: at, updatedAt: at, revision: 1, schemaVersion: 1,
+          membershipRevision: group.membershipRevision, orderedMemberIds: [member.id],
+          mode: 'round-robin', contextThroughSeq: -1, state: 'completed',
+          proactive: { ticketId, assignmentId, provider: 'fixture', model: 'fixture', botRevisions: [1] },
+        });
+        await s.domain.table('deliveries').put(deliveryId, {
+          id: deliveryId, turnId, memberId: member.id, ordinal: 0, bot: alpha, botRevision: 1, presetId: 'bot-alpha',
+          contextOutputMessageIds: [], contextTruncated: false, state: 'completed', childSessionId: childId,
+        });
+        const label = { readers: [alpha], originTrust: 'candidate' as const, sourceVersions: [], restrictions: [], grants: [] };
+        await x.flow.inherit(group.rootSessionId, label);
+        await x.flow.inherit(childId, label);
+        const target = { kind: 'bot' as const, bot: alpha };
+        const input = await x.flow.admit(x.flow.draft('group-input', alpha, group.rootSessionId, turnId, target, JSON.stringify(message)));
+        await x.flow.dispatch(input, () => root.append('user/message', message, { surfaceOp: 'append' }));
+        const child = await x.flow.admit(x.flow.draft('group-input', alpha, group.rootSessionId, deliveryId, target, text));
+        const result = await x.flow.admit(x.flow.draft('group-result', alpha, childId, `${deliveryId}:result`, target, text));
+        const ordinary = await x.flow.admit(x.flow.draft('group-input', alpha, group.rootSessionId, 'turn:ordinary', target, 'ordinary group body'));
+
+        const delivery = s.domain.table('deliveries').get(deliveryId);
+        if (!delivery) throw new Error('Missing delivery fixture');
+        await s.domain.table('deliveries').put(deliveryId, { ...delivery, state: 'unknown' });
+        expect(await s.groups.purgeProactiveCopies([assignmentId])).toBe(false);
+        expect(x.flow.get(input).envelope?.content).toContain(text);
+        await s.domain.table('deliveries').put(deliveryId, delivery);
+
+        const native = root.snapshotEvents();
+        expect(await s.groups.purgeProactiveCopies([assignmentId])).toBe(true);
+        for (const id of [input, child, result]) {
+          const row = x.flow.get(id);
+          expect(row.envelope).toBeUndefined();
+          expect(row.envelopeDigest).toMatch(/^[a-f0-9]{64}$/);
+        }
+        expect(await s.groups.purgeProactiveCopies([assignmentId])).toBe(true);
+        expect(x.flow.get(ordinary).envelope?.content).toBe('ordinary group body');
+        expect(root.snapshotEvents()).toEqual(native);
+        expect(JSON.stringify(native)).toContain(text);
+
+        const orphanTurn = 'turn:orphan', orphanAssignment = 'orphan-assignment';
+        const orphan = await x.flow.admit(x.flow.draft('group-input', alpha, group.rootSessionId, orphanTurn, target, JSON.stringify(createUserMessage({
+          source: { kind: 'dsh-bot-group-proactive', group: key, turnId: orphanTurn, ticketId, assignmentId: orphanAssignment },
+          content: [{ type: 'text', text }],
+        }))));
+        expect(await s.groups.purgeProactiveCopies([orphanAssignment])).toBe(false);
+        expect(x.flow.get(orphan).envelope?.content).toContain(text);
+      } finally { await s.close(); }
+    });
+  } finally { await x.close(); }
+});
 describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
+  it('binds follow-up only to the exact human group input of a live owned worker', () => withIntegrations(async f => {
+    const s = await fixture(f);
+    let worker: Agent | undefined;
+    let startupFailure: unknown;
+    try {
+      const group = await s.createGroup();
+      const key = groupKey(group);
+      const member = (await s.groups.view(key)).members[0];
+      const root = s.roots.get(group.rootSessionId)?.agent.session;
+      if (!member || !root) throw new Error('Missing group fixture');
+      s.start.mockImplementationOnce(async input => {
+        const childId = input.childId;
+        if (!childId) throw new Error('Missing reserved child');
+        const session = Session.create(childId, undefined, { version: 4, id: childId, createdAt: Date.now(),
+          isSeeded: false, origin: 'subagent', parentSession: input.request.parent.session.id, agentPreset: input.request.agentPreset });
+        const { agent, scope, value } = f.createAgent(childId);
+        value.session = session;
+        try { await f.ctx.serial(scopeTarget(agent, agent), 'agent/created', { agent, source: 'startup' }); }
+        catch (error) { startupFailure = error; await scope.dispose(); throw error; }
+        worker = agent;
+        let finish!: (value: SubagentResult) => void;
+        const result = new Promise<SubagentResult>(resolve => { finish = resolve; });
+        return { childId, result, dispose: vi.fn(async () => {
+          finish({ output: [], stopReason: 'aborted' });
+          await scope.dispose();
+        }) };
+      });
+      const accepted = await s.groups.send(key, { operationId: 'follow-up-source', text: 'User-authorized question',
+        memberIds: [member.id], expectedMembershipRevision: group.membershipRevision });
+      await vi.waitFor(async () => {
+        if (startupFailure) throw startupFailure;
+        expect(worker).toBeDefined();
+        if (worker) expect(await s.groups.followUpWorker(worker)).toMatchObject({ subject: { kind: 'group', group: key },
+          sessionId: root.id, messageId: accepted.inputMessageId });
+      });
+      if (!worker) throw new Error('Missing worker');
+      const turn = s.domain.table('turns').get(accepted.id);
+      if (!turn) throw new Error('Missing durable turn');
+      await s.domain.table('turns').put(turn.id, { ...turn, inputSeq: Number(turn.inputSeq) + 1 });
+      expect(await s.groups.followUpWorker(worker)).toBeUndefined();
+      const forwarded = root.append('user/message', createUserMessage({
+        source: { kind: 'dsh-bot-group-followup', group: key, turnId: turn.id, deliveryId: 'relay', replyTo: turn.inputMessageId },
+        content: [{ type: 'text', text: 'Group relay' }],
+      }), { surfaceOp: 'append' });
+      await s.domain.table('turns').put(turn.id, { ...turn, inputSeq: Number(forwarded.seq), inputMessageId: forwarded.data.id });
+      expect(await s.groups.followUpWorker(worker)).toBeUndefined();
+      await s.domain.table('turns').put(turn.id, turn);
+      await s.domain.table('members').put(member.id, { ...member, enabled: false });
+      expect(await s.groups.followUpWorker(worker)).toBeUndefined();
+      await s.domain.table('members').put(member.id, member);
+      const bot = f.bots.get(member.bot.botId);
+      if (!bot) throw new Error('Missing current Bot');
+      f.bots.set(bot.id, { ...bot, updatedAt: bot.updatedAt + 1 });
+      expect(await s.groups.followUpWorker(worker)).toBeUndefined();
+      f.bots.set(bot.id, bot);
+      await s.groups.archive(key, group.revision);
+      expect(await s.groups.followUpWorker(worker)).toBeUndefined();
+    } finally { await s.close(); }
+  }));
   it('deduplicates create before native side effects and enforces birthday/CAS/member identity', () => withIntegrations(async f => {
     const s = await fixture(f); try {
       const [g, again] = await Promise.all([s.createGroup(), s.createGroup()]); expect(g.id).toBe(again.id); expect(s.create).toHaveBeenCalledTimes(1);

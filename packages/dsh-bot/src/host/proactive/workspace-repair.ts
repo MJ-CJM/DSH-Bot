@@ -20,7 +20,12 @@ import {
 } from "../../shared/proactive/workspace-repair.js";
 import type { ProactiveWork } from "../../shared/proactive/work.js";
 import { digest } from "./wire.js";
-import { runManagedCommand } from "./workspace-process.js";
+import {
+	runManagedCommand,
+	workspaceExecutionAvailable,
+	workspaceExecutionUnavailable,
+	type ProcessGate,
+} from "./workspace-process.js";
 
 type WorkspaceWork = Pick<
 	ProactiveWork,
@@ -199,8 +204,11 @@ export async function prepareWorkspaceRepair(
 	work: WorkspaceWork,
 	config: WorkspaceRepairConfig,
 	signal: AbortSignal,
+	gate: ProcessGate,
 	command?: CommandExecutorConfig,
 ) {
+	if (!workspaceExecutionAvailable)
+		throw new Error(workspaceExecutionUnavailable);
 	config = workspaceRepairConfig.parse(config);
 	const grant = work.workspaceRepair;
 	if (
@@ -220,6 +228,8 @@ export async function prepareWorkspaceRepair(
 	const before = await capture(config);
 	if (before.digest !== grant.baselineDigest)
 		throw new Error("Workspace changed since approval");
+	await gate.beforeSpawn();
+	signal.throwIfAborted();
 	const directory = await artifactDirectory(root, work.assignmentId, true);
 	await writeSnapshot(join(directory, "before"), before);
 	const verify = async (name: string, snapshot: Snapshot) => {
@@ -230,6 +240,7 @@ export async function prepareWorkspaceRepair(
 			...config.verifier,
 			cwd,
 			signal,
+			gate,
 		});
 		signal.throwIfAborted();
 		await writeExclusive(directory, `${name}.stdout.txt`, result.stdout);

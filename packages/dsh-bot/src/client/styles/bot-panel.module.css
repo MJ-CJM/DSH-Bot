@@ -11,7 +11,15 @@
 .tabs { min-width: 0; overflow-x: auto; }
 .section { display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 .section h3 { margin: 0; font-size: 13px; color: var(--dsw-alias-label-secondary); }
-.persona { margin: 0; white-space: pre-wrap; font-size: 13px; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
+.role { font-size: 13px; }
+.role summary { cursor: pointer; }
+.persona { margin: 8px 0 0; white-space: pre-wrap; font-size: 13px; line-height: 20px; }
+.taskGroup { display: grid; gap: 4px; }
+.taskOverview { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.taskOverview h3 { color: var(--dsw-alias-label-primary); }
+.taskList { margin: 0; padding: 0; list-style: none; }
+.taskList button { display: flex; align-items: flex-start; flex-direction: column; gap: 2px; max-width: 100%; height: auto; text-align: start; white-space: normal; overflow-wrap: anywhere; }
+.taskList small { color: var(--dsw-alias-label-secondary); }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 4px 0 0; font-size: 13px; }
 .facts dt { color: var(--dsw-alias-label-secondary); }
 .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }

@@ -1,3 +1,13 @@
+import { followUpPolicyRequest, followUpStatusReply, proactiveSetupRequest, proactiveSetupReply } from "./setup.js";
+import { followUpGroupChoiceRequestSchema, followUpGroupChoiceReplySchema, followUpGroupAcceptRequestSchema, followUpGroupAbandonRequestSchema, followUpGroupReplySchema } from './group-follow-up.js';
+import {
+  followUpActionSchema, followUpPageRequestSchema, followUpPageSchema, followUpWatchCreateSchema, subjectSchema,
+} from './follow-up.js';
+import { exportMethodRequest, importMethodRequest, methodPackage } from "./method-package.js";
+import { documentRequestSchema } from "./document.js";
+import { activityRequestSchema, workDetailRequestSchema } from './activity.js';
+import { activityPageSchema } from './protocol.js';
+import { workSchema } from './work.js';
 import { beginForgetSchema, forgetReceiptSchema } from "./governance.js";
 import {
 	workspaceReviewRequest,
@@ -21,7 +31,7 @@ import {
 	feedbackCandidate,
 	feedbackContextsSchema,
 } from "./feedback.js";
-import { groupKeySchema } from "../groups.js";
+import { groupKeySchema, groupMemberModelSelectionsSchema } from "../groups.js";
 import { notificationState } from "../notifications.js";
 import { feedbackAction } from "./feedback.js";
 import {
@@ -39,6 +49,7 @@ import {
 	reviewSchema,
 	workListSchema,
 	workMutation,
+  workContinuationRequestSchema,
 	workHistoryRequestSchema,
 	workHistorySchema,
 	workId,
@@ -91,7 +102,7 @@ export const responsibilityMutationReply = z.discriminatedUnion("kind", [
 export const feedbackWorkflowRequestSchema = z.strictObject({
 	commandId: z.uuid(),
 	input: feedbackWorkflowAction.refine(
-		(value) => value.action !== "settle-candidate",
+		(value) => value.action !== "settle-candidate" && value.action !== "settle-method-evaluation",
 		"Feedback settlement is Host-only",
 	),
 });
@@ -104,6 +115,10 @@ export const feedbackHistoryRequestSchema = z.strictObject({
 	afterRevision: z.number().int().nonnegative().optional(),
 });
 export type ResponsibilityRequest = z.input<typeof responsibilityRequestSchema>;
+export const followUpWatchRequest = followUpWatchCreateSchema.extend({ commandId: z.uuid() });
+export const followUpActionRequest = followUpActionSchema.extend({ commandId: z.uuid() });
+export type FollowUpWatchRequest = z.output<typeof followUpWatchRequest>;
+export type FollowUpActionRequest = z.output<typeof followUpActionRequest>;
 export type FeedbackWorkflowRequest = z.input<
 	typeof feedbackWorkflowRequestSchema
 >;
@@ -122,12 +137,15 @@ export const externalNoticeResult = z.strictObject({
 export type ExternalNoticeRequest = z.input<typeof externalNoticeRequest>;
 export type ExternalNoticeResult = z.output<typeof externalNoticeResult>;
 export const groupReviewRequest = workMutation.extend({
+  memberIds: z.tuple([workId, workId]).optional(),
 	group: groupKeySchema.optional(),
 	reviewedDigest: hash.optional(),
 	followUpMemberId: workId.optional(),
 	cancelFollowUp: z.literal(true).optional(),
 });
 const groupChoice = z.strictObject({
+  memberModels: groupMemberModelSelectionsSchema.optional(),
+  audienceBotIds: z.array(z.string()).max(16).optional(),
 	group: groupKeySchema,
 	title: z.string(),
 	rootSessionId: z.string(),
@@ -178,6 +196,17 @@ function mutation<S extends z.ZodType>(name: string, schema: S) {
 const spec = {
 	package: "dsh-bot/proactive",
 	methods: {
+    "dshBot.proactive/setup": { ...request("ProactiveSetupRequest", proactiveSetupRequest), result: codec("ProactiveSetupReply", proactiveSetupReply) },
+    "dshBot.proactive/followUpSummary": { ...request("FollowUpSubject", subjectSchema), result: codec("FollowUpStatus", followUpStatusReply) },
+    "dshBot.proactive/followUpPage": { ...request("FollowUpPageRequest", followUpPageRequestSchema), result: codec("FollowUpPage", followUpPageSchema) },
+    "dshBot.proactive/followUpPolicy": mutation("FollowUpPolicyRequest", followUpPolicyRequest),
+    "dshBot.proactive/followUpWatchCreate": mutation("FollowUpWatchRequest", followUpWatchRequest),
+    "dshBot.proactive/followUpAction": mutation("FollowUpActionRequest", followUpActionRequest),
+    "dshBot.proactive/followUpGroupChoice": { ...request('FollowUpGroupChoiceRequest', followUpGroupChoiceRequestSchema), result: codec('FollowUpGroupChoiceReply', followUpGroupChoiceReplySchema) },
+    "dshBot.proactive/followUpGroupAccept": { ...request('FollowUpGroupAcceptRequest', followUpGroupAcceptRequestSchema), result: codec('FollowUpGroupReply', followUpGroupReplySchema) },
+    "dshBot.proactive/followUpGroupAbandon": mutation('FollowUpGroupAbandonRequest', followUpGroupAbandonRequestSchema),
+    "dshBot.proactive/activityPage": { ...request('ActivityRequest', activityRequestSchema), result: codec('ActivityPage', activityPageSchema) },
+    "dshBot.proactive/workDetail": { ...request('WorkDetailRequest', workDetailRequestSchema), result: codec('WorkDetail', workSchema) },
 		"dshBot.proactive/adjustSuggestion": mutation(
 			"SuggestionAdjustment",
 			suggestionAdjustmentSchema.extend({ commandId: z.uuid() }),
@@ -205,7 +234,9 @@ const spec = {
 			...request("ResponsibilityRequest", responsibilityRequestSchema),
 			result: codec("ResponsibilityMutationReply", responsibilityMutationReply),
 		},
-		"dshBot.proactive/feedbackOverview": {
+		"dshBot.proactive/exportMethod": { ...request('ExportMethodRequest', exportMethodRequest), result: codec('MethodPackage', methodPackage) },
+    "dshBot.proactive/importMethod": mutation('ImportMethodRequest', importMethodRequest),
+    "dshBot.proactive/feedbackOverview": {
 			...request("FeedbackOverviewRequest", feedbackOverviewRequestSchema),
 			result: codec("FeedbackOverview", feedbackWorkflowView),
 		},
@@ -249,7 +280,12 @@ const spec = {
 			"SuggestionRequest",
 			suggestionRequestSchema,
 		),
-		"dshBot.proactive/accept": mutation("AcceptRequest", acceptRequestSchema),
+		"dshBot.proactive/submitDocument": mutation("DocumentRequest", documentRequestSchema),
+    "dshBot.proactive/reconcileWork": {
+      ...request("ReconcileWorkRequest", workDetailRequestSchema),
+      result: codec("ReconciledWork", workSchema),
+    },
+    "dshBot.proactive/accept": mutation("AcceptRequest", acceptRequestSchema),
 		"dshBot.proactive/cancel": mutation("CancelRequest", cancelRequestSchema),
 		"dshBot.proactive/pause": mutation("PauseRequest", pauseRequestSchema),
 		"dshBot.proactive/revokeSource": mutation(
@@ -269,9 +305,14 @@ const spec = {
 			result: codec("ExternalNoticeResult", externalNoticeResult),
 		},
 		"dshBot.proactive/review": mutation("ReviewRequest", reviewRequestSchema),
+    "dshBot.proactive/workContinuation": mutation("WorkContinuationRequest", workContinuationRequestSchema),
 		"dshBot.proactive/listWork": {
 			...owner,
 			parameters: [],
+			result: codec("WorkList", workListSchema),
+		},
+		"dshBot.proactive/botWork": {
+			...request("WorkOwner", botKeySchema),
 			result: codec("WorkList", workListSchema),
 		},
 	},

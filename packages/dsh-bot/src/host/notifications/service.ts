@@ -130,7 +130,13 @@ export class Notifications {
       return row;
     });
   }
-  async record(owner: BotKey, input: NotifyInput, source: NotificationRecord['source'], signal?: AbortSignal) {
+  async record(
+    owner: BotKey,
+    input: NotifyInput,
+    source: NotificationRecord['source'],
+    signal?: AbortSignal,
+    beforeRecord?: () => Promise<void>,
+  ) {
     if (this.stopping) throw new OperationError('unavailable');
     const value = parse(notifyInputSchema, input);
     await this.assertBot(owner);
@@ -182,16 +188,22 @@ export class Notifications {
         updatedAt: at,
         schemaVersion: 1,
       });
-      const flow = outlets(this.registry), flowId = await notificationAdmission(this.registry, owner, row);
+      const flow = outlets(this.registry);
+      if (flow && beforeRecord) await beforeRecord();
+      const flowId = await notificationAdmission(this.registry, owner, row);
       if (flowId) row.flowId = flowId;
       const save = async () => {
-      signal?.throwIfAborted();
-      // Intent is the authoritative ledger. Tombstone first means a partial write
-      // can lose a local record but can never authorize a duplicate external send.
-      await ledger.put(row.id, { id: row.id, owner, revision: 1, createdAt: at, updatedAt: at, schemaVersion: 1 });
-      await this.stores.notifications.table('intents').put(row.id, row);
+        signal?.throwIfAborted();
+        // A tombstone written first prevents duplicate external sends even if
+        // the intent write fails after it.
+        await ledger.put(row.id, { id: row.id, owner, revision: 1, createdAt: at, updatedAt: at, schemaVersion: 1 });
+        await this.stores.notifications.table('intents').put(row.id, row);
       };
-      if (flowId) await need(flow).dispatch(flowId, save, signal); else await save();
+      if (flowId) await need(flow).dispatch(flowId, save, signal, beforeRecord);
+      else {
+        if (beforeRecord) await beforeRecord();
+        await save();
+      }
       this.changed();
       return row;
     });

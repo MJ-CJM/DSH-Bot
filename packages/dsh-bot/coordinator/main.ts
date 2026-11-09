@@ -12,6 +12,7 @@ import {
 import { frame, frames } from "../src/host/proactive/wire.js";
 import { openCoordinator } from "./commands.js";
 import { Rejection } from "./rejection.js";
+import { QueryPages, validateReadReply } from "./query-pages.js";
 
 type Payload<T> = T extends Reply
 	? Omit<T, "protocolVersion" | "correlationId">
@@ -23,6 +24,7 @@ async function serve() {
 	const secret = Buffer.from(channel, "hex");
 	let core: ReturnType<typeof openCoordinator> | undefined;
 	let poison = false;
+	const pages = new QueryPages();
 	try {
 		for await (const input of frames(process.stdin)) {
 			const parsed = requestSchema.safeParse(input);
@@ -42,13 +44,12 @@ async function serve() {
 			}
 			const request = parsed.data;
 			const respond = async (payload: Payload<Reply>) => {
-				const encoded = frame(
-					replySchema.parse({
+				const reply = (request.kind === 'command' ? replySchema.parse : validateReadReply)({
 						protocolVersion,
 						correlationId: request.correlationId,
 						...payload,
-					}),
-				);
+					});
+				const encoded = frame(request.kind === 'command' || reply.kind === 'read-page' ? reply : pages.encode(reply, core?.readVersion() ?? 0));
 				if (!process.stdout.write(encoded)) await once(process.stdout, "drain");
 			};
 			try {
@@ -67,12 +68,14 @@ async function serve() {
 						request.feedbackSource,
 						request.noticeConfig,
 						request.governanceConfig,
+						request.followUpBootstrap,
 					);
 					await respond({
 						kind: "hello",
 						storeId: core.storeId,
 						bootId: randomUUID(),
 						capabilities,
+						...(core.scopedRecovery ? { scopedRecovery: true as const } : {}),
 					});
 					continue;
 				}
@@ -82,6 +85,23 @@ async function serve() {
 				)
 					throw new Rejection("forbidden");
 				switch (request.kind) {
+          case 'follow-up-summary':
+            await respond({ kind: 'follow-up-summary', summary: core.followUpSummary(request.subject) }); break;
+          case 'follow-up-page':
+            await respond({ kind: 'follow-up-page', page: core.followUpPage(request.input) }); break;
+          case 'follow-up-group-plan':
+            await respond({ kind: 'follow-up-group-plan', ...core.followUpGroupPlan(request.input) }); break;
+          case 'follow-up-subjects':
+            await respond({ kind: 'follow-up-subjects', ...core.followUpSubjects(request.cursor) }); break;
+          case 'follow-up-source':
+            await respond({ kind: 'follow-up-source', cursor: core.followUpSource(request) }); break;
+          case 'activity-page':
+            await respond({ kind: 'activity-page', page: core.activityPage(request.input) }); break;
+          case 'work-detail':
+            await respond({ kind: 'work', work: core.workDetail(request.input) }); break;
+					case "read-page":
+						await respond(pages.read(request, core.readVersion(), request.correlationId));
+						break;
  case "source-cleanup-scope":await respond({kind:"source-cleanup-scope",scope:core.sourceCleanupScope(request.sourceId,request.generation)});break;
 					case "forget-receipt":
 						await respond({
@@ -153,6 +173,7 @@ async function serve() {
 						});
 						break;
 					case "command":
+						pages.clear();
 						await respond({
 							kind: "receipt",
 							receipt: core.command(request.command),
@@ -196,6 +217,7 @@ async function serve() {
 								request.groupReviewDigest,
 								request.noticeRevision,
 								request.groupFactId,
+								request.dispatchRevision,
 							),
 						});
 						break;
@@ -212,7 +234,7 @@ async function serve() {
 						});
 						break;
 					case "work-list":
-						await respond({ kind: "work-list", work: core.workList() });
+						await respond({ kind: "work-list", work: core.workList(request.owner) });
 						break;
 					case "shutdown":
 						core.close();
@@ -236,6 +258,7 @@ async function serve() {
 			}
 		}
 	} finally {
+		pages.clear();
 		core?.close();
 	}
 	if (poison) process.exitCode = 1;

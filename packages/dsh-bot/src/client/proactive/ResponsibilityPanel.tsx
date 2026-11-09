@@ -12,7 +12,6 @@ import {
 	type ResponsibilityMutationRequest,
 	type ResponsibilityMutationResult,
 	type ResponsibilitySource,
-	type ResponsibilityTarget,
 	type ResponsibilityView,
 } from "../../shared/proactive/responsibility.js";
 import styles from "./responsibility.module.css";
@@ -68,6 +67,7 @@ const splitLines = (value: string) =>
 export function ResponsibilityPanel({
 	owner,
 	target,
+	canAuto = true,
 	source,
 	availableActions,
 	availableActionScopes = [],
@@ -75,7 +75,8 @@ export function ResponsibilityPanel({
 	t,
 }: PropsLocale<"dsh-bot"> & {
 	owner: BotKey;
-	target?: ResponsibilityTarget;
+	target?: ResponsibilityDraft["target"];
+	canAuto?: boolean;
 	source?: ResponsibilitySource;
 	availableActions: readonly ResponsibilityAction[];
 	availableActionScopes?: readonly {
@@ -412,6 +413,7 @@ export function ResponsibilityPanel({
 						event.preventDefault();
 						const parsed = responsibilityDraftSchema.safeParse({
 							...draft,
+							target: target ?? draft.target,
 							conditions: {
 								...draft.conditions,
 								jobs: draft.conditions.jobs.filter(Boolean),
@@ -426,6 +428,7 @@ export function ResponsibilityPanel({
 						});
 						if (
 							!parsed.success ||
+							(draft.mode === "auto" && !canAuto) ||
 							!availableActions.includes(draft.action) ||
 							(draft.action !== "inspect-ci-result" &&
 								!availableActionScopes.some(
@@ -479,21 +482,22 @@ export function ResponsibilityPanel({
 								}
 							>
 								{modeNames.map((mode) => (
-									<option key={mode} value={mode}>
+									<option key={mode} value={mode} disabled={mode === "auto" && !canAuto}>
 										{t(`responsibility.mode.${mode}`)}
 									</option>
 								))}
 							</select>
 						</label>
 						<p>{t("responsibility.pauseHint")}</p>
-						{draft.mode === "auto" && <p>{t("responsibility.autoHint")}</p>}
+						{canAuto ? (draft.mode === "auto" && <p>{t("responsibility.autoHint")}</p>)
+							: <p>{t("responsibility.autoUnavailable")}</p>}
 						<p>
 							{t("responsibility.source")}: {draft.source.repository} ·{" "}
 							{draft.source.branch} · {draft.source.generation}
 						</p>
 						<p>
-							{t("responsibility.target")}: {draft.target.bot.botId} ·{" "}
-							{draft.target.provider} / {draft.target.model}
+							{t("responsibility.target")}: {draft.target.bot.botId}
+							{"provider" in draft.target && ` · ${draft.target.provider} / ${draft.target.model}`}
 						</p>
 						{source && target && (
 							<Button

@@ -43,7 +43,7 @@ interface TestStore {
 	decisions: Repository<Decision>;
 }
 interface TestGovernance {
-	blockForget(id: string, reason: "notification-copy-unknown"): ForgetReceipt;
+	blockForget(id: string, reason: NonNullable<ForgetReceipt["blockedReason"]>): ForgetReceipt;
 	sweep(): GovernanceSweep;
 	beginForget(input: BeginForget): ForgetReceipt;
 	finishForget(input: FinishForget): ForgetReceipt;
@@ -464,18 +464,18 @@ test("forget completes when retention already recorded the same artifact purge",
 	).toBe("complete");
 });
 
-test("copy uncertainty is a durable blocked receipt that can resume only through finish revalidation", () => {
+test.each(["notification-copy-unknown", "result-copy-unknown", "group-copy-unknown"] as const)("copy uncertainty (%s) is durable until finish revalidation", reason => {
 	const { core, seed } = setup();
 	seed("copy");
 	core.beginForget({ operationId: "copy-forget", sourceId, generation: 1 });
 	expect(
-		core.blockForget("copy-forget", "notification-copy-unknown"),
+		core.blockForget("copy-forget", reason),
 	).toMatchObject({
 		phase: "blocked",
-		blockedReason: "notification-copy-unknown",
+		blockedReason: reason,
 	});
 	expect(core.forget("copy-forget")?.blockedReason).toBe(
-		"notification-copy-unknown",
+		reason,
 	);
 	expect(
 		core.finishForget({ operationId: "copy-forget", drained: [] }),

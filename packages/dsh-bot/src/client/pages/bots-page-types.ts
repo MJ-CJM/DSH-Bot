@@ -2,6 +2,9 @@ import type {GovernanceActions} from "../proactive/GovernancePanel.js";
 import type {FeedbackWorkspaceActions} from "../proactive/feedback-api.js";
 import type {ResponsibilityActions} from "../proactive/ResponsibilityPanel.js";
 import type { ProactiveActions } from '../proactive/SuggestionPanel.js';
+import type { ProactiveWorkSource } from '../proactive/work-state.js';
+import type { FollowUpSource } from '../proactive/follow-up-state.js';
+import type { BotKey } from '../../shared/identity.js';
 import type { ModelActions } from '../model-catalog-state.js';
 import type { MessageActions } from '../components/MessageOverview.js';
 import type { BackgroundActions } from '../background-work-state.js';
@@ -24,6 +27,9 @@ import type { BotsPageNavigation } from './page-navigation.js';
 
 export interface BotsPageInjected extends ChatLauncherActions {
   proactive?: ProactiveActions;
+  proactiveWork?: ProactiveWorkSource;
+  followUp?: FollowUpSource;
+  onOpenFollowUpWork?(owner: BotKey, id: string): void;
   proactiveGovernance?:GovernanceActions;
   proactiveFeedback?:FeedbackWorkspaceActions;
   proactiveResponsibilities?:ResponsibilityActions;

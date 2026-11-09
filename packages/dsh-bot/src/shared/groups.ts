@@ -53,14 +53,31 @@ export const groupMemberSchema = z.strictObject({
   removedAt: z.number().optional(),
   enabled: z.boolean(),
 });
+export const ownerFollowUpChoiceSchema = z.strictObject({
+  predecessorTurnId: resourceId,
+  predecessorTurnRevision: rev,
+  membershipRevision: rev,
+  modelRevision: z.number().int().nonnegative(),
+  memberId: resourceId,
+  bot: botKeySchema,
+  botRevision: z.number(),
+  modelSelection: groupModelSelectionSchema,
+});
+export const ownerFollowUpBindingSchema = ownerFollowUpChoiceSchema.extend({
+  cardId: resourceId,
+  cardRevision: z.number().int().nonnegative(),
+});
 export const groupTurnSchema = z.strictObject({
   id: resourceId,
   group: groupKeySchema,
   operationId: resourceId,
   requestDigest: z.string(),
   inputMessageId: z.string(),
+  ownerFollowUp: ownerFollowUpBindingSchema.optional(),
   proactive: z.strictObject({
     ticketId: resourceId, assignmentId: resourceId,
+    memberModels: groupMemberModelSelectionsSchema.optional(),
+    modelRevision: z.number().int().nonnegative().optional(),
     provider: z.string().min(1), model: z.string().min(1),
     botRevisions: z.union([z.tuple([z.number(), z.number()]), z.tuple([z.number()])]),
     followUp: z.strictObject({ predecessorTurnId: resourceId, factId: resourceId }).optional(),
@@ -100,6 +117,9 @@ export const groupFailureSchema = z.strictObject({
 });
 export const groupDeliverySchema = z.strictObject({
   id: resourceId,
+  /** Monotonic committed delivery revision; absent on records written before 0.6.6. */
+  revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  updatedAt: z.number().int().nonnegative().optional(),
   turnId: resourceId,
   memberId: resourceId,
   ordinal: z.number().int().nonnegative(),
@@ -217,6 +237,8 @@ export const groupPageSchema = z.strictObject({
   limit: z.number().int().min(1).max(GROUP_TIMELINE_LIMIT).default(100),
 });
 export type GroupModelSelection = z.output<typeof groupModelSelectionSchema>;
+export type OwnerFollowUpChoice = z.output<typeof ownerFollowUpChoiceSchema>;
+export type OwnerFollowUpBinding = z.output<typeof ownerFollowUpBindingSchema>;
 export type GroupSetModel = z.input<typeof groupSetModelSchema>;
 export type GroupKey = z.output<typeof groupKeySchema>;
 export type GroupRecord = z.output<typeof groupRecordSchema>;

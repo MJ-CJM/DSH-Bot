@@ -25,7 +25,7 @@ const dataset = (): FeedbackDataset => ({
 });
 function fixture() {
 	const db = new DatabaseSync(":memory:");
-	db.exec("CREATE TABLE pb_source (id TEXT PRIMARY KEY,generation INTEGER)");
+	db.exec("CREATE TABLE pb_source (id TEXT PRIMARY KEY,generation INTEGER); CREATE TABLE pb_source_revocation (id TEXT PRIMARY KEY,generation INTEGER NOT NULL); CREATE TABLE pb_governance_tombstone (kind TEXT NOT NULL,id TEXT NOT NULL)");
 	db.prepare("INSERT INTO pb_source VALUES (?,1)").run(sourceId);
 	return { db, service: openFeedback(db) };
 }
@@ -177,13 +177,15 @@ describe("independent feedback workflow", () => {
 			adopt(service, evaluated);
 			const unadopted = candidate(service, { kind: "preference", origin: { ...origin, source: { id: sourceId, generation: 1 } }, reason: "CANDIDATE_PRIVATE_REASON", content: "CANDIDATE_PRIVATE_BODY" });
 			const unrelated = candidate(service, { kind: "preference", origin, reason: "Profile preference", content: "Keep independent preference" });
+			expect(service.purgeSourceBody(sourceId, 2, [])).toEqual({ candidates: 2, datasets: 1 });
 			expect(service.purgeSourceBody(sourceId, 2, [])).toEqual({ candidates: 0, datasets: 0 });
-			expect(service.purgeSourceBody(sourceId, 1, [])).toEqual({ candidates: 1, datasets: 1 });
 			expect(service.candidate(unadopted.id)?.proposalDigest).toBe(unadopted.proposalDigest);
 			expect(service.candidate(unadopted.id)?.bodyPurgedAt).toEqual(expect.any(Number));
 			expect(JSON.stringify(service.history(unadopted.id))).not.toContain("CANDIDATE_PRIVATE");
 			expect(service.candidate(unrelated.id)?.proposal).toEqual(unrelated.proposal);
 			expect(service.candidate(adopted.id)?.state).toBe("adopted");
+			expect(service.candidate(adopted.id)?.bodyPurgedAt).toEqual(expect.any(Number));
+			expect(service.visibility({ sourceId, sourceGeneration: 1, job: "docs", attempt: 1 }, origin.bot)).toBeUndefined();
 			expect(service.datasets()).toEqual([]);
 			expect(db.prepare("SELECT digest FROM pb_feedback_dataset_tombstone").get()?.digest).toBe(digest(imported));
 			expect(() => service.workflow({ action: "import-dataset", dataset: imported })).toThrow();
@@ -194,27 +196,37 @@ describe("independent feedback workflow", () => {
 	});
 });
 
-test("preference adoption uses existing memory and withdrawal refuses a subsequently edited version", async () => {
+test("source forgetting preserves independently adopted memory and withdrawal refuses a subsequently edited version", async () => {
 	const f = await v2Fixture();
+	const { db, service } = fixture();
 	const registry = {
 		get: async (id: string) => f.bots.get(id), personaSnapshot: () => f.bots.get("alpha").persona,
 		manageMemory: async <T>(operation: (memory: ReturnType<typeof management>) => T | Promise<T>) => operation(management(f)),
 		invalidate() {},
 	};
 	const handler = new FeedbackApplications(registry, { request: async () => { throw new Error("Unexpected skill call"); } }, async () => { throw new Error("Unexpected rework"); });
-	const pref = feedbackProposal.parse({ kind: "preference", origin, reason: "Explicit preference", content: "Use concise summaries" });
-	const row: FeedbackCandidate = { id: randomUUID(), revision: 1, createdAt: Date.now(), datasetDigests: [], proposal: pref,
-		proposalDigest: digest(pref), state: "applying", operationId: randomUUID() };
 	try {
+		const pref = feedbackProposal.parse({
+			kind: "preference", origin: { ...origin, source: { id: sourceId, generation: 1 } },
+			reason: "Explicit preference", content: "Use concise summaries",
+		});
+		const row = adopt(service, candidate(service, pref));
+		if (!row.operationId) throw new Error("Missing application operation");
 		const receipt = await handler.apply(row);
 		expect(await handler.apply(row)).toEqual(receipt);
 		if (receipt.kind !== "memory") throw new Error("Expected memory");
+		service.workflow({ action: "settle-candidate", candidateId: row.id, expectedRevision: row.revision,
+			operationId: row.operationId, outcome: "applied", receipt });
+		expect(service.purgeSourceBody(sourceId, 2, [])).toEqual({ candidates: 1, datasets: 0 });
+		expect(service.candidate(row.id)).toMatchObject({ state: "adopted", application: receipt });
+		expect(JSON.stringify(service.history(row.id))).not.toContain("Use concise summaries");
 		const saved = management(f).query({ botId: "alpha", scope: "private", view: "all" });
 		expect(saved.rows).toHaveLength(1);
+		expect(saved.rows[0]?.payload.content).toBe("Use concise summaries");
 		await management(f).revise({ id: receipt.memoryId, expectedRevision: saved.revision, patch: { content: "My later independent edit" } });
 		await expect(handler.apply({ ...row, state: "revoking", operationId: randomUUID(), application: receipt })).rejects.toThrow("changed after adoption");
 		expect(management(f).query({ botId: "alpha", scope: "private", view: "facts" }).rows[0]?.payload.content).toBe("My later independent edit");
-	} finally { await f.close(); }
+	} finally { db.close(); await f.close(); }
 });
 
 test("preference withdrawal rejects only its exact adopted memory version", async () => {

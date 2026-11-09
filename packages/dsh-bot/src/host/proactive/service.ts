@@ -1,3 +1,20 @@
+import { withProactiveBinding } from "./setup.js";
+import { reconcilePendingWorkContinuation, runWorkContinuation } from './work-continuation.js';
+import { prepareGroupFollowUp, acceptGroupFollowUp, abandonGroupFollowUp } from './group-follow-up.js';
+import type { FollowUpGroupAbandonRequest, FollowUpGroupChoiceRequest, FollowUpGroupAcceptRequest } from '../../shared/proactive/group-follow-up.js';
+import type {
+	FollowUpAction, FollowUpGroupWatchProposal, FollowUpIngest, FollowUpPageRequest, FollowUpPolicyChange, FollowUpWatchCreate, FollowUpWatchUpdate, Subject,
+} from "../../shared/proactive/follow-up.js";
+import { SessionId } from "@deepseek-ai/dsh-session";
+import { judgeMethodAnswer } from "./method-evaluation.js";
+import type { FeedbackCandidate } from "../../shared/proactive/feedback.js";
+import type { MethodRunReceipt } from "../../shared/proactive/method-evaluation.js";
+import { documentRequestSchema, type DocumentRequest } from "../../shared/proactive/document.js";
+import { taskCost } from './task-cost.js';
+import { credentialRef } from '@deepseek-ai/dsh-credentials';
+import { groupMemberModel } from '../groups/model-selection.js';
+import { taskHandoff } from '../../shared/proactive/handoff.js';
+import type { ActivityRequest, WorkDetailRequest } from '../../shared/proactive/activity.js';
 import { GroupBudgetAccounting } from "./group-budget.js";
 import { verifyGroupRepairEvidence } from "./group-repair.js";
 import type { GroupRepairGrant } from "../../shared/proactive/group-repair.js";
@@ -16,10 +33,11 @@ import {
 } from "./result-journal.js";
 import type { Reply, Request } from "../../shared/proactive/protocol.js";
 import type { BotKey } from "../../shared/identity.js";
-import type {
-	Responsibility,
-	ResponsibilityMutationRequest,
-	ResponsibilityMutationResult,
+import {
+	hasResponsibilityRoute,
+	type Responsibility,
+	type ResponsibilityMutationRequest,
+	type ResponsibilityMutationResult,
 } from "../../shared/proactive/responsibility.js";
 import type { WorkHistoryRequest } from "../../shared/proactive/work.js";
 import type { WorkspaceRepairGrant } from "../../shared/proactive/workspace-repair.js";
@@ -28,13 +46,16 @@ import {
 	workspaceSpecification,
 	readWorkspaceReview,
 } from "./workspace-repair.js";
+import {
+	workspaceExecutionAvailable,
+	workspaceExecutionUnavailable,
+} from "./workspace-process.js";
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Context } from "@deepseek-ai/cordis";
-import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
-import { z } from "zod";
+import type { z } from "zod";
 import { sameBot } from "../../shared/identity.js";
 import type {
 	AcceptWork,
@@ -75,24 +96,19 @@ import {
 	type CiScope,
 } from "./sources/ci.js";
 
-const bindingSchema = z.strictObject({
-	installationId: z.uuid(),
-	storeId: z.uuid().nullable(),
-});
-const bindingDomain = defineDomain({
-	name: "dsh_bot_proactive",
-	version: 1,
-	tables: { identity: domainTable(bindingSchema) },
-});
 const unavailable = { ...capabilities, ingest: false, snapshot: false };
 
 export class ProactiveService {
 	#client?: CoordinatorClient;
+	#scopeOnly = false;
+	#retired = false;
+	#noticesClosing?: Promise<void>;
 	#resultJournal?: ResultJournal;
 	#storeId?: string;
 	readonly #feedStop = new AbortController();
 	#feed?: Promise<void>;
 	#feedStatus?: FeedStatus;
+  #feedLastSuccessAt?: string;
 	readonly #groupFollowUpQueue = new Serial();
 	#maintenance?: Promise<void>;
 	#recoveries = 0;
@@ -160,7 +176,7 @@ export class ProactiveService {
 		admit: async ({ row, rule, policy }) => {
 			const target = policy?.target ?? rule?.target,
 				ruleId = policy?.id ?? rule?.id;
-			if (!target || !ruleId) return "skip";
+			if (!target || !hasResponsibilityRoute(target) || !ruleId) return "skip";
 			let repair: AcceptWork["repair"],
 				workspaceRepair: AcceptWork["workspaceRepair"];
 			try {
@@ -302,8 +318,18 @@ export class ProactiveService {
 		);
 		this.#state = config.proactiveEnabled ? "starting" : "disabled";
 	}
+	get scopeOnly() { return this.#scopeOnly || !!this.config.proactiveFollowUpBootstrap; }
+	get acceptsNativeInput() { return !this.#retired; }
+	stopAdmission() {
+		if (this.#retired) return;
+		this.#retired = true;
+		this.#feedStop.abort();
+		this.execution.cancelAll();
+		this.ctx.get("dshBotGroups")?.stopProactiveReviews();
+		this.#noticesClosing = this.deferredNotices.close();
+	}
 	async start() {
-		if (!this.config.proactiveEnabled) return;
+		if (!this.config.proactiveEnabled || this.#retired) return;
 		this.#resultJournal = await openResultJournal(this.ctx);
 		await this.connect();
 		if (!this.#feedStop.signal.aborted) this.#maintenance = this.maintain();
@@ -343,10 +369,13 @@ export class ProactiveService {
 				} else {
 					if (Date.now() - healthySince > 60000) this.#recoveries = 0;
 					await this.status();
-					await this.groupBudgets.flush();
-					await this.deferredNotices.pump();
-					await this.governance.maintain();
-					this.#automatic.wake();
+					if (!this.#retired) await this.ctx.get("dshBotFollowUpEvents")?.flush();
+					if (!this.scopeOnly && !this.#retired) {
+						await this.groupBudgets.flush();
+						await this.deferredNotices.pump();
+						await this.governance.maintain();
+						this.#automatic.wake();
+					}
 				}
 			} catch {
 				if (!signal.aborted)
@@ -362,15 +391,12 @@ export class ProactiveService {
 			const runtime = this.ctx.get("subprocess");
 			if (!runtime) throw new Error("Native subprocess service unavailable");
 			const root = await realpath(resolveDshHome());
-			const domain = await this.ctx.storageDomain.open(bindingDomain);
-			try {
-				const table = domain.table("identity");
-				const existing = table.get("binding");
-				const binding = existing ?? {
-					installationId: randomUUID(),
-					storeId: null,
-				};
-				if (!existing) await table.put("binding", binding);
+			const token = this.config.proactiveFollowUpBootstrap;
+			await withProactiveBinding(this.ctx, async (binding, saveStore) => {
+				if (token && (token.installationId !== binding.installationId ||
+					(token.storeId !== null && token.storeId !== binding.storeId)))
+					throw new Error("Proactive bootstrap identity changed");
+				this.#feedStop.signal.throwIfAborted();
 				this.#client = await CoordinatorClient.launch(
 					runtime,
 					this.config.proactiveNodeExecutable,
@@ -378,19 +404,21 @@ export class ProactiveService {
 					root,
 					this.config.proactiveTimeoutMs,
 				);
+				this.#feedStop.signal.throwIfAborted();
 				const hello = await this.#client.request({
 					kind: "hello",
 					installationId: binding.installationId,
 					expectedStoreId: binding.storeId,
 					budget: this.config.proactiveModelDailyBudget,
 					externalBudget: this.config.proactiveExternalDailyBudget,
-					notice: !!this.config.proactiveNotificationPolicy,
+					notice: !this.scopeOnly && !!this.config.proactiveNotificationPolicy,
 					noticeConfig: this.config.proactiveNoticeConfig,
 					governanceConfig: this.config.proactiveGovernance,
-					...(this.config.proactiveRepairFixture
+					...(token ? { followUpBootstrap: token.operation } : {}),
+					...(!this.scopeOnly && this.config.proactiveRepairFixture
 						? { feedbackSource: this.config.proactiveRepairFixture.sourceId }
 						: {}),
-					...(this.config.proactiveAutoCiRule
+					...(!this.scopeOnly && this.config.proactiveAutoCiRule
 						? { autoRule: this.config.proactiveAutoCiRule }
 						: {}),
 				});
@@ -398,15 +426,17 @@ export class ProactiveService {
 					hello.kind !== "hello" ||
 					!hello.capabilities.ingest ||
 					!hello.capabilities.snapshot ||
+					(token && hello.scopedRecovery !== true) ||
 					(binding.storeId !== null && binding.storeId !== hello.storeId)
 				)
 					throw new Error("Proactive capability handshake failed");
 				this.#storeId = hello.storeId;
-				await table.put("binding", {
-					installationId: binding.installationId,
-					storeId: hello.storeId,
-				});
+				this.#scopeOnly = hello.scopedRecovery === true;
+				await saveStore(hello.storeId);
+				this.#feedStop.signal.throwIfAborted();
 				this.#state = "ready";
+				this.ctx.get("dshBotFollowUpEvents")?.reset();
+				if (this.scopeOnly) return;
 				await this.#resultJournal?.flush(hello.storeId, (id, body) =>
 					this.sendCommand(id, body),
 				);
@@ -415,8 +445,9 @@ export class ProactiveService {
 				for (const row of await this.workList()) {
 					// Only a pending assignment is known to have never been dispatched.
 					// Claimed/sent rows are parked by the coordinator before handshake.
-					if (row.state === "pending") this.execution.enqueue(row);
+					if (!this.#retired && row.state === "pending") this.execution.enqueue(row);
 				}
+				this.#feedStop.signal.throwIfAborted();
 				this.#automatic.wake();
 				if (this.config.proactiveCiFeed && !this.#feed) {
 					this.#feedStatus = "waiting";
@@ -426,21 +457,24 @@ export class ProactiveService {
 						this,
 						this.#feedStop.signal,
 						(status) => {
-							if (this.#feedStatus !== "revoked") this.#feedStatus = status;
+							if (this.#feedStatus !== "revoked") { this.#feedStatus = status; if (status === "ready") this.#feedLastSuccessAt = new Date().toISOString(); }
 						},
+            async () => {
+              const ref = this.config.proactiveCiFeed?.github?.credentialRef;
+              return ref ? (await this.ctx.get('credentials')?.resolve(credentialRef(ref)))?.value : undefined;
+            },
 					).catch(() => {
 						this.#feedStatus = "unavailable";
 					});
 				}
-			} finally {
-				await domain.close();
-			}
+			});
 		} catch {
 			this.#state = "unavailable";
 			await this.#client?.close(this.#storeId);
 		}
 	}
 	async status(): Promise<ProactiveStatus> {
+		if (this.#retired) return { state: "unavailable", capabilities: unavailable };
 		if (this.#state !== "ready")
 			return { state: this.#state, capabilities: unavailable };
 		const storeId = this.#storeId;
@@ -448,7 +482,7 @@ export class ProactiveService {
 			const result = await this.#client
 				.request({ kind: "snapshot", storeId })
 				.catch(() => undefined);
-			if (result?.kind === "snapshot" && result.snapshot.storeId === storeId)
+			if (!this.#retired && result?.kind === "snapshot" && result.snapshot.storeId === storeId)
 				return {
 					state: "ready",
 					capabilities: {
@@ -459,6 +493,7 @@ export class ProactiveService {
 							!!this.ctx.get("dshBotGroups") &&
 							!result.snapshot.executionControl.paused,
 						externalNotification:
+							!this.scopeOnly &&
 							!!this.config.proactiveExternalNotificationPolicy &&
 							this.ctx.get("dshBotNotifications")?.supported() === true &&
 							!result.snapshot.executionControl.paused,
@@ -467,7 +502,8 @@ export class ProactiveService {
 					},
 					snapshot: result.snapshot,
 					...(this.#feedStatus ? { localFeed: this.#feedStatus } : {}),
-					...(this.config.proactiveCiFeed
+          ...(this.#feedLastSuccessAt ? { localFeedLastSuccessAt: this.#feedLastSuccessAt } : {}),
+					...(!this.scopeOnly && this.config.proactiveCiFeed
 						? {
 								localFeedScope: {
 									id: ciSourceId(this.config.proactiveCiFeed.scope),
@@ -503,12 +539,26 @@ export class ProactiveService {
 			throw new Error("Proactive result persistence unavailable");
 		return this.#resultJournal.acknowledge(this.#storeId, commandId, reply);
 	}
+	async reconcileForgetResults(assignmentIds: readonly string[]) {
+		if (!assignmentIds.length) return true;
+		if (!this.#storeId || !this.#resultJournal) return false;
+		try {
+			const result = await this.#resultJournal.flush(
+				this.#storeId,
+				(id, body) => this.sendCommand(id, body),
+				assignmentIds,
+			);
+			return result.pending === 0;
+		} catch {
+			return false;
+		}
+	}
 	private async sendCommand(
 		commandId: string,
 		body: CommandBody,
 	): Promise<Reply> {
 		const storeId = this.#storeId;
-		if (this.#state !== "ready" || !storeId || !this.#client?.available)
+		if ((this.#retired && body.kind !== "report-result") || this.#state !== "ready" || !storeId || !this.#client?.available)
 			return {
 				kind: "unknown",
 				commandId,
@@ -544,6 +594,23 @@ export class ProactiveService {
 			onResultStaged?.();
 		}
 		const reply = await this.sendCommand(commandId, body);
+		if (
+			body.kind === "cancel" &&
+			reply.kind === "receipt" &&
+			reply.receipt?.status === "committed"
+		)
+			this.execution.cancel(body.ticketId);
+		if (
+			reply.kind === "unknown" ||
+			(reply.kind === "receipt" && reply.receipt?.status === "committed")
+		) {
+			if (body.kind === "revoke-source")
+				this.execution.cancelSource(body.sourceId);
+			if (body.kind === "forget-begin")
+				this.execution.cancelSource(body.input.sourceId);
+			if (body.kind === "pause-execution" && body.paused)
+				this.execution.cancelAll();
+		}
 		if (body.kind === "report-result")
 			await this.acknowledgeResult(commandId, body, reply);
 		return reply;
@@ -555,15 +622,80 @@ export class ProactiveService {
 				: never
 			: never,
 	) {
-		if (!this.#storeId || this.#state !== "ready" || !this.#client?.available)
+		if (this.#retired || !this.#storeId || this.#state !== "ready" || !this.#client?.available)
 			throw new Error("Proactive coordinator unavailable");
-		return this.#client.request({
+		const reply = await this.#client.request({
 			...input,
 			storeId: this.#storeId,
 		} as Request);
+		if (this.#retired) throw new Error("Proactive coordinator replaced");
+		return reply;
 	}
 	async feedbackRead(input: FeedbackRead) {
 		return this.read(input);
+	}
+	async ownsFollowUpSubject(subject: Subject, includeArchived = false) {
+		if (subject.kind === "bot") {
+			const bot = await this.ctx.dshBots.get(subject.bot.botId).catch(() => undefined);
+			return bot?.createdAt === subject.bot.botCreatedAt;
+		}
+		const group = await this.ctx.get("dshBotGroups")?.followUpSubject(subject.group).catch(() => undefined);
+		return group !== undefined && (includeArchived || !group.archived);
+	}
+	async followUpSummary(subject: Subject) {
+		if (!await this.ownsFollowUpSubject(subject, true)) throw new Error("Follow-up subject unavailable");
+		const reply = await this.read({ kind: "follow-up-summary", subject });
+		if (reply.kind !== "follow-up-summary") throw new Error("Follow-up summary unavailable");
+		return reply.summary;
+	}
+	async followUpPage(input: FollowUpPageRequest) {
+		if (!await this.ownsFollowUpSubject(input.subject, true)) throw new Error("Follow-up subject unavailable");
+		const reply = await this.read({ kind: "follow-up-page", input });
+		if (reply.kind !== "follow-up-page") throw new Error("Follow-up page unavailable");
+		return reply.page;
+	}
+	async followUpPolicy(commandId: string, input: FollowUpPolicyChange): Promise<SuggestionActionReply> {
+		if (!await this.ownsFollowUpSubject(input.subject)) return { kind: "rejected", code: "stale" };
+		const reply = await this.change(commandId, { kind: "follow-up-policy", input });
+		if (reply.kind === "receipt") this.ctx.get("dshBotFollowUpEvents")?.reset(false);
+		return reply;
+	}
+	async createFollowUpWatch(commandId: string, input: FollowUpWatchCreate): Promise<SuggestionActionReply> {
+		if (!await this.ownsFollowUpSubject(input.subject)) return { kind: "rejected", code: "stale" };
+		return this.change(commandId, { kind: "follow-up-watch-create", input });
+	}
+	async proposeGroupFollowUpWatch(commandId: string, input: FollowUpGroupWatchProposal): Promise<SuggestionActionReply> {
+		if (!await this.ownsFollowUpSubject(input.subject)) return { kind: 'rejected', code: 'stale' };
+		return this.change(commandId, { kind: 'follow-up-group-watch-propose', input });
+	}
+	async followUpAction(commandId: string, input: FollowUpAction): Promise<SuggestionActionReply> {
+		if (!await this.ownsFollowUpSubject(input.subject, input.action === 'forget')) return { kind: "rejected", code: "stale" };
+		return this.change(commandId, { kind: "follow-up-action", input });
+	}
+	async updateFollowUpWatch(commandId: string, input: FollowUpWatchUpdate): Promise<SuggestionActionReply> {
+		if (!await this.ownsFollowUpSubject(input.subject)) return { kind: 'rejected', code: 'stale' };
+		return this.change(commandId, { kind: 'follow-up-watch-update', input });
+	}
+	followUpGroupChoice(input: FollowUpGroupChoiceRequest) {
+		return prepareGroupFollowUp(this, this.ctx.get('dshBotGroups'), input);
+	}
+	followUpGroupAccept(input: FollowUpGroupAcceptRequest) {
+		return acceptGroupFollowUp(this, this.ctx.get('dshBotGroups'), input);
+	}
+	followUpGroupAbandon(input: FollowUpGroupAbandonRequest) {
+		return abandonGroupFollowUp(this, this.ctx.get('dshBotGroups'), input);
+	}
+	async continueWork(commandId: string, input: import('../../shared/proactive/work.js').WorkContinuation) {
+		return runWorkContinuation(commandId, input, {
+			hasReceipt: async id => { const result = await this.receipt(id); return result.kind === 'receipt' && !!result.receipt; },
+			read: async ticketId => { const result = await this.readWork({ kind: 'work-ticket', ticketId }); return result.kind === 'work' ? result.work : null; },
+			ownerCurrent: owner => !!this.ctx.dshBots.onboardingSnapshot(owner.botId, owner.botCreatedAt),
+			validateTarget: target => this.validateTarget(target), change: (id, body) => this.change(id, body),
+			enqueue: row => { if (!this.#retired && !this.scopeOnly) this.execution.enqueue(row); },
+		});
+	}
+	ingestFollowUp(commandId: string, input: FollowUpIngest): Promise<SuggestionActionReply> {
+		return this.change(commandId, { kind: "follow-up-ingest", input });
 	}
 	async workHistory(input: WorkHistoryRequest) {
 		const reply = await this.read({ kind: "work-history", input });
@@ -584,16 +716,36 @@ export class ProactiveService {
 			const bot = await this.ctx.dshBots.get(mutation.owner.botId);
 			if (bot.createdAt !== mutation.owner.botCreatedAt)
 				throw new Error("Bot changed");
+			if (mutation.kind === "mode" && mutation.mode === "auto") {
+				const saved = (await this.responsibilities(mutation.owner)).find(
+					(row) => row.responsibility.id === mutation.id,
+				)?.responsibility;
+				if (!saved || !hasResponsibilityRoute(saved.target) ||
+					(saved.action === "repair-workspace" && !workspaceExecutionAvailable))
+					return { kind: "rejected", code: "forbidden" };
+				await this.validateTarget(saved.target);
+			}
 			if ("draft" in mutation) {
-				await this.validateTarget(mutation.draft.target);
+				const { target, mode } = mutation.draft;
+				if (!sameBot(target.bot, mutation.owner) || target.botUpdatedAt !== bot.updatedAt)
+					throw new Error("Bot changed");
+				if (mode === "auto") {
+					if (!hasResponsibilityRoute(target))
+						return { kind: "rejected", code: "forbidden" };
+					await this.validateTarget(target);
+				}
 				const source = await this.read({
 					kind: "checkpoint",
 					sourceId: mutation.draft.source.id,
 				});
+				const configured = this.config.proactiveCiFeed?.scope;
 				if (
 					source.kind !== "checkpoint" ||
-					source.source?.revoked ||
-					source.source?.generation !== mutation.draft.source.generation
+					(source.source
+						? source.source.revoked || source.source.generation !== mutation.draft.source.generation
+						: !configured || mode === "auto" ||
+							ciSourceId(configured) !== mutation.draft.source.id ||
+							configured.generation !== mutation.draft.source.generation)
 				)
 					throw new Error("Source changed");
 				const policy = mutation.draft;
@@ -624,6 +776,115 @@ export class ProactiveService {
 			? { kind: "applied", responsibility: row.responsibility }
 			: { kind: "unknown" };
 	}
+  async activityPage(input: ActivityRequest) {
+    const bot = await this.ctx.dshBots.get(input.owner.botId);
+    if (bot?.createdAt !== input.owner.botCreatedAt) throw new Error('Bot changed');
+    const reply = await this.read({ kind: 'activity-page', input });
+    if (reply.kind !== 'activity-page') throw new Error(reply.kind === 'rejected' ? reply.code : 'Activity unavailable');
+    return reply.page;
+  }
+  async runMethodEvaluation(candidate: FeedbackCandidate): Promise<MethodRunReceipt[]> {
+    const evaluation = candidate.methodEvaluation, proposal = candidate.proposal;
+    if (evaluation?.state !== 'running' || proposal.kind !== 'skill' || !evaluation.operationId) throw new Error('Evaluation is not claimed');
+    const bot = await this.ctx.dshBots.get(proposal.origin.bot.botId);
+    if (bot.createdAt !== proposal.origin.bot.botCreatedAt) throw new Error('Bot changed');
+    const target = { bot: proposal.origin.bot, botUpdatedAt: bot.updatedAt, provider: evaluation.plan.provider, model: evaluation.plan.model };
+    await this.validateTarget(target);
+    const receipts: MethodRunReceipt[] = [];
+    for (const sample of evaluation.plan.cases) for (const arm of ['parent', 'candidate', 'noop', 'negative'] as const) {
+      this.#feedStop.signal.throwIfAborted();
+      await this.validateTarget(target);
+      const content = arm === 'candidate' ? proposal.content : arm === 'negative' ? 'Always respond only with null.' : proposal.before ?? '';
+      const document = { kind: 'document-analysis' as const, version: 1 as const, name: `evaluation-${evaluation.digest.slice(0,32)}-${sample.id}-${arm}`, sourceVersion: 1,
+        content: sample.input, question: 'Apply the frozen method and return only JSON.', acceptance: 'Independent frozen exact-json-v1 judge; no owner acceptance is implied.' };
+      const result = await this.change(randomUUID(), { kind: 'submit-document', document, target, approved: true,
+        methodTrial: { planDigest: evaluation.digest, caseId: sample.id, arm, name: proposal.name, content, methodHash: digest(content), inputHash: digest(sample.input) },
+        taskLimits: { maxAttempts: 1, maxTokens: evaluation.plan.maxTokensPerCall, deadlineAt: new Date(Date.now() + this.executionTimeoutMs).toISOString() } });
+      if (result.kind !== 'receipt') break;
+      const work = (await this.workList(target.bot)).find(row => row.sourceDigest === digest(document));
+      if (!work) break;
+      this.execution.enqueue(work);
+      let settled = work;
+      while (['pending', 'claimed', 'sent'].includes(settled.state) && Date.now() < Date.parse(work.expiresAt)) {
+        await delay(150, undefined, { signal: this.#feedStop.signal });
+        const reply = await this.read({ kind: 'work-ticket', ticketId: work.ticketId });
+        if (reply.kind !== 'work' || !reply.work || reply.work.assignmentId !== work.assignmentId) break;
+        settled = reply.work;
+      }
+      const receipt: MethodRunReceipt = { caseId: sample.id, arm, ticketId: work.ticketId, assignmentId: work.assignmentId, state: 'inconclusive' };
+      if (settled.state === 'delivered' && settled.methodEvidence && settled.evidence && settled.sessionId) {
+        const session = await this.ctx.sessionController.inspect(SessionId(settled.sessionId));
+        const answer = session.events.find(event => event.type === 'assistant/message' && event.data.message.id === settled.evidence?.assistantId);
+        if (answer?.type === 'assistant/message' && digest(answer.data.message.content) === settled.evidence.outputDigest) {
+          const text = answer.data.message.content.filter(block => block.type === 'text').map(block => block.text).join('');
+          Object.assign(receipt, { state: 'completed', passed: judgeMethodAnswer(text, sample.expected), method: settled.methodEvidence, evidenceDigest: settled.evidenceDigest });
+        }
+      }
+      receipts.push(receipt);
+      if (receipt.state !== 'completed') return receipts;
+    }
+    return receipts;
+  }
+  async submitDocument(raw: DocumentRequest): Promise<SuggestionActionReply> {
+    const input = documentRequestSchema.parse(raw);
+    if (Date.parse(input.requestedAt) > Date.now() + 5000) return { kind: 'rejected', code: 'invalid' };
+    const bot = await this.ctx.dshBots.get(input.owner.botId);
+    const route = this.directRoute;
+    if (!bot || bot.createdAt !== input.owner.botCreatedAt || !route) return { kind: 'rejected', code: 'forbidden' };
+    const target = { bot: input.owner, botUpdatedAt: bot.updatedAt, ...route };
+    await this.validateTarget(target);
+    const reply = await this.change(input.commandId, { kind: 'submit-document', document: input.document,
+      target, approved: true, taskLimits: { maxAttempts: 3, maxTokens: this.config.proactiveTaskTokenLimit ?? 32768,
+        deadlineAt: new Date(Date.parse(input.requestedAt) + (this.config.proactiveDocumentLifetimeMs ?? 86400000)).toISOString() } });
+    if (reply.kind === 'receipt' && reply.receipt.status === 'committed') {
+      const rows = await this.workList(input.owner);
+      const work = rows.find(row => row.sourceDigest === digest(input.document));
+      if (work) this.execution.enqueue(work);
+    }
+    return reply;
+  }
+  async reconcileWork(input: WorkDetailRequest) {
+    const current = await this.workDetail(input);
+    if (current.state === 'pending' && current.continuation) {
+      if (this.scopeOnly) throw new Error('Accepted continuation unavailable in this activation');
+      await reconcilePendingWorkContinuation(current, {
+        receipt: async id => {
+          const reply = await this.receipt(id);
+          return reply.kind === 'receipt' ? reply.receipt : null;
+        },
+        assignment: async assignmentId => {
+          const reply = await this.read({ kind: 'work-assignment', assignmentId });
+          return reply.kind === 'work' ? reply.work : null;
+        },
+        enqueue: work => {
+          if (this.#retired || this.scopeOnly) throw new Error('Accepted continuation unavailable in this activation');
+          this.execution.enqueue(work);
+        },
+      });
+      return current;
+    }
+    if (!this.#storeId || !this.#resultJournal) throw new Error('Result journal unavailable');
+    // This branch only replays already durable result evidence.
+    await this.#resultJournal.flush(this.#storeId, (id, body) => this.sendCommand(id, body), [current.assignmentId]);
+    const reply = await this.read({ kind: 'work-ticket', ticketId: current.ticketId });
+    if (reply.kind !== 'work' || !reply.work || reply.work.assignmentId !== current.assignmentId || !sameBot(reply.work.target.bot, input.owner)) throw new Error('Work changed');
+    return reply.work;
+  }
+  async workDetail(input: WorkDetailRequest) {
+    const bot = await this.ctx.dshBots.get(input.owner.botId);
+    if (bot?.createdAt !== input.owner.botCreatedAt) throw new Error('Bot changed');
+    const reply = await this.read({ kind: 'work-detail', input });
+    if (reply.kind !== 'work' || !reply.work) throw new Error('Work changed');
+    const attempts: ProactiveWork[] = [];
+    let beforeGeneration: number | undefined;
+    do {
+      const history = await this.workHistory({ ticketId: input.ticketId, beforeGeneration, limit: 5 });
+      attempts.push(...history.versions);
+      beforeGeneration = history.nextBeforeGeneration;
+    } while (beforeGeneration !== undefined && attempts.length < 20);
+    return { ...reply.work, taskCost: { ...await taskCost(this.ctx, attempts), truncated: beforeGeneration !== undefined } };
+  }
+
 	async suggestions(owner?: BotKey, includeFiltered?: boolean) {
 		const storeId = this.#storeId;
 		if (this.#state === "disabled") return [];
@@ -692,6 +953,7 @@ export class ProactiveService {
 		return this.#client.request({ kind: "receipt", commandId, storeId });
 	}
 	private get directRoute() {
+		if (this.#retired || this.scopeOnly) return undefined;
 		const {
 			proactiveEnabled,
 			proactiveExecutionEnabled,
@@ -733,7 +995,7 @@ export class ProactiveService {
 	}
 	async workspaceOffers() {
 		const workspace = this.config.proactiveWorkspaceRepair;
-		if (!workspace) return [];
+		if (!workspaceExecutionAvailable || !workspace) return [];
 		return Promise.all([
 			createWorkspaceRepairOffer(workspace, "native"),
 			...(this.config.proactiveCommandExecutor
@@ -765,6 +1027,8 @@ export class ProactiveService {
 		];
 	}
 	workspaceConfiguration(grant: WorkspaceRepairGrant, sourceId: string) {
+		if (!workspaceExecutionAvailable)
+			throw new Error(workspaceExecutionUnavailable);
 		const workspace = this.config.proactiveWorkspaceRepair,
 			command = this.config.proactiveCommandExecutor;
 		if (
@@ -810,70 +1074,33 @@ export class ProactiveService {
 		return this.config.proactiveExecutionTimeoutMs;
 	}
 	async groupRepairOffers() {
-		const groups = this.ctx.get("dshBotGroups");
-		if (
-			!this.config.proactiveGroupRepairEnabled ||
-			!groups ||
-			!this.directRoute
-		)
-			return [];
-		const offers: Array<{ title: string; grant: GroupRepairGrant }> = [];
-		for (const row of await groups.list()) {
-			const members = row.members.filter(
-				(member) => member.enabled && member.removedAt === undefined,
-			);
-			if (
-				row.group.archived ||
-				row.group.state !== "ready" ||
-				row.reason ||
-				row.unavailableMemberIds.length ||
-				members.length !== 2
-			)
-				continue;
-			const first = members[0],
-				second = members[1];
-			if (!first || !second || sameBot(first.bot, second.bot)) continue;
-			const bots = await Promise.all([
-				this.ctx.dshBots.get(first.bot.botId),
-				this.ctx.dshBots.get(second.bot.botId),
-			]);
-			if (
-				bots[0]?.createdAt !== first.bot.botCreatedAt ||
-				bots[1]?.createdAt !== second.bot.botCreatedAt
-			)
-				continue;
-			const roles = [
-				{ memberId: first.id, bot: first.bot, botUpdatedAt: bots[0].updatedAt },
-				{
-					memberId: second.id,
-					bot: second.bot,
-					botUpdatedAt: bots[1].updatedAt,
-				},
-			];
-			for (const [supervisor, implementer] of [
-				[roles[0], roles[1]],
-				[roles[1], roles[0]],
-			]) {
-				if (supervisor && implementer)
-					offers.push({
-						title: row.group.name,
-						grant: {
-							group: {
-								groupId: row.group.id,
-								groupCreatedAt: row.group.createdAt,
-							},
-							rootSessionId: row.group.rootSessionId,
-							membershipRevision: row.group.membershipRevision,
-							supervisor,
-							implementer,
-							maxCalls: 3,
-						},
-					});
-			}
-			if (offers.length >= 32) break;
-		}
-		return offers;
-	}
+    const groups = this.ctx.get('dshBotGroups');
+    const fallback = this.directRoute;
+    if (!workspaceExecutionAvailable || !this.config.proactiveGroupRepairEnabled || !groups || !fallback) return [];
+    const offers: Array<{ title: string; grant: GroupRepairGrant }> = [];
+    for (const row of await groups.list()) {
+      if (row.group.archived || row.group.state !== 'ready' || row.reason) continue;
+      const members = row.members.filter(member => member.enabled && member.removedAt === undefined && !row.unavailableMemberIds.includes(member.id));
+      const roles = [];
+      for (const member of members) {
+        const bot = await this.ctx.dshBots.get(member.bot.botId);
+        if (bot?.createdAt !== member.bot.botCreatedAt) continue;
+        roles.push({ memberId: member.id, bot: member.bot, botUpdatedAt: bot.updatedAt,
+          modelSelection: groupMemberModel(row.group, member.id, bot, fallback) });
+      }
+      for (const supervisor of roles) for (const implementer of roles) {
+        if (sameBot(supervisor.bot, implementer.bot) || offers.length >= 32) continue;
+        offers.push({ title: row.group.name, grant: {
+          group: { groupId: row.group.id, groupCreatedAt: row.group.createdAt },
+          rootSessionId: row.group.rootSessionId, membershipRevision: row.group.membershipRevision,
+          modelRevision: row.group.modelRevision ?? 0, supervisor, implementer, maxCalls: 3,
+        } });
+      }
+      if (offers.length >= 32) break;
+    }
+    return offers;
+  }
+
 	async validateGroupRepair(
 		work: Pick<ProactiveWork, "groupRepair" | "target" | "workspaceRepair">,
 	) {
@@ -889,7 +1116,7 @@ export class ProactiveService {
 		)
 			throw new Error("Group repair authorization changed");
 	}
-	async validateTarget(target: ProactiveWork["target"]) {
+	validateTarget(target: ProactiveWork["target"]) {
 		const route = this.directRoute;
 		if (
 			this.#state !== "ready" ||
@@ -899,24 +1126,23 @@ export class ProactiveService {
 			route.model !== target.model
 		)
 			throw new Error("Proactive execution route unavailable");
-		const bot = await this.ctx.dshBots.get(target.bot.botId);
-		if (
-			!sameBot(target.bot, { botId: bot.id, botCreatedAt: bot.createdAt }) ||
-			bot.updatedAt !== target.botUpdatedAt
-		)
+		// Use the committed Bot snapshot without entering the registry queue.
+		// A managed outlet can hold its ledger while checking this target.
+		const bot = this.ctx.dshBots.onboardingSnapshot(target.bot.botId, target.bot.botCreatedAt);
+		if (!bot || bot.updatedAt !== target.botUpdatedAt)
 			throw new Error("Proactive Bot incarnation changed");
 		return bot;
 	}
-	async workList() {
+	async workList(owner?: BotKey) {
 		if (this.#state === "disabled") return [];
-		const reply = await this.readWork({ kind: "work-list" });
+		const reply = await this.readWork({ kind: "work-list", ...(owner ? { owner } : {}) });
 		if (reply.kind !== "work-list")
 			throw new Error("Proactive work unavailable");
 		return reply.work;
 	}
 	private async readWork(
 		input:
-			| { kind: "work-list" }
+			| { kind: "work-list"; owner?: BotKey }
 			| { kind: "work"; decisionId: string }
 			| { kind: "work-ticket"; ticketId: string },
 	) {
@@ -976,6 +1202,7 @@ export class ProactiveService {
 			this.execution.enqueue(current.work);
 	}
 	async notify(decisionId: string, assignmentId: string, signal: AbortSignal) {
+		if (this.scopeOnly || this.#retired) return;
 		const reply = await this.read({ kind: "work", decisionId });
 		if (reply.kind === "work" && reply.work?.assignmentId === assignmentId)
 			await this.deferredNotices.schedule(reply.work, signal);
@@ -1060,55 +1287,39 @@ export class ProactiveService {
 		await this.validateTarget(work.target);
 		if (Date.parse(work.expiresAt) <= Date.now())
 			throw new Error("Group review expired");
-		const candidates = summaries.flatMap((row) => {
-			const { group } = row;
-			const members = row.members.filter(
-				(member) => member.enabled && member.removedAt === undefined,
-			);
-			const [first, second] = members;
-			// The whole audience is shown and authorized. A larger group
-			// needs a different budget and is outside this two-reviewer route.
-			if (
-				group.archived ||
-				group.state !== "ready" ||
-				row.reason ||
-				row.unavailableMemberIds.length ||
-				members.length !== 2 ||
-				!first ||
-				!second
-			)
-				return [];
-			return [
-				{
-					row,
-					choice: {
-						group: { groupId: group.id, groupCreatedAt: group.createdAt },
-						title: group.name,
-						rootSessionId: group.rootSessionId,
-						memberIds: [first.id, second.id] as [string, string],
-						memberBotIds: [first.bot.botId, second.bot.botId] as [
-							string,
-							string,
-						],
-					},
-				},
-			];
-		});
+    const candidates = summaries.flatMap(row => {
+      const { group } = row;
+      if (group.archived || group.state !== 'ready' || row.reason) return [];
+      const members = row.members.filter(member => member.enabled && member.removedAt === undefined && !row.unavailableMemberIds.includes(member.id)).sort((a,b) => a.order - b.order);
+      return members.flatMap((first, index) => members.slice(index + 1).filter(second => !sameBot(first.bot, second.bot)).map(second => ({
+        row, choice: {
+          group: { groupId: group.id, groupCreatedAt: group.createdAt }, title: group.name,
+          rootSessionId: group.rootSessionId,
+          memberIds: [first.id, second.id] as [string, string],
+          memberBotIds: [first.bot.botId, second.bot.botId] as [string, string],
+          audienceBotIds: row.members.filter(member => member.enabled && member.removedAt === undefined).map(member => member.bot.botId),
+        },
+      })));
+    });
 		if (!input.group && input.reviewedDigest === undefined)
 			return { kind: "choices", groups: candidates.map((item) => item.choice) };
 		const selected = candidates.find(
 			(item) =>
 				item.choice.group.groupId === input.group?.groupId &&
-				item.choice.group.groupCreatedAt === input.group.groupCreatedAt,
+				item.choice.group.groupCreatedAt === input.group.groupCreatedAt &&
+        (input.memberIds ? digest(item.choice.memberIds) === digest(input.memberIds) : item.row.members.filter(member => member.enabled && member.removedAt === undefined).length === 2),
 		);
 		if (!selected) throw new Error("Group membership changed");
-		const { row, choice } = selected;
+		const { row } = selected;
+    const choice: Extract<GroupReviewResult, { kind: 'preview' }>['choice'] = selected.choice;
 		const revisions = await Promise.all(
 			choice.memberBotIds.map((id) => this.ctx.dshBots.get(id)),
 		);
 		const [first, second] = revisions;
 		if (!first || !second) throw new Error("Group reviewer unavailable");
 		const botRevisions: [number, number] = [first.updatedAt, second.updatedAt];
+    choice.memberModels = choice.memberIds.map((memberId, index) => ({ memberId, modelSelection: groupMemberModel(row.group, memberId, index === 0 ? first : second, work.target) }));
+    const modelRevision = row.group.modelRevision ?? 0;
 		const followUpAvailable = this.config.proactiveGroupFollowUpEnabled;
 		const followUpMember =
 			input.followUpMemberId &&
@@ -1122,6 +1333,8 @@ export class ProactiveService {
 		const followUp = followUpMember
 			? {
 					memberId: followUpMember.id,
+          modelSelection: choice.memberModels.find(item => item.memberId === followUpMember.id)?.modelSelection,
+          modelRevision,
 					bot: followUpMember.bot,
 					botRevision:
 						choice.memberIds[0] === followUpMember.id
@@ -1131,7 +1344,7 @@ export class ProactiveService {
 				}
 			: undefined;
 		if (artifactReview) await this.verifyGroupArtifact(work);
-		const text = artifactReview
+		const artifactText = artifactReview
 			? work.workspaceEvidence
 				? formatWorkspaceReview(
 						work,
@@ -1148,6 +1361,7 @@ export class ProactiveService {
 						),
 					)
 			: work.title;
+		const text = JSON.stringify({ context: taskHandoff(work), evidence: artifactText });
 		if (Buffer.byteLength(text, "utf8") > GROUP_TEXT_MAX_BYTES)
 			throw new Error(
 				"Full artifact exceeds group review size; narrow the approved workspace scope",
@@ -1159,6 +1373,7 @@ export class ProactiveService {
 			work.target,
 			choice,
 			row.group.membershipRevision,
+      modelRevision,
 			row.members,
 			botRevisions,
 			text,
@@ -1213,6 +1428,8 @@ export class ProactiveService {
 					provider: work.target.provider,
 					model: work.target.model,
 					botRevisions,
+          memberModels: choice.memberModels,
+          modelRevision,
 					...(budget
 						? {
 								requestBudget: {
@@ -1311,6 +1528,7 @@ export class ProactiveService {
 	scheduleGroupFollowUps() {
 		const groups = this.ctx.get("dshBotGroups");
 		if (
+			this.scopeOnly ||
 			!this.config.proactiveGroupReviewEnabled ||
 			!this.config.proactiveGroupFollowUpEnabled ||
 			this.#state !== "ready" ||
@@ -1431,6 +1649,7 @@ export class ProactiveService {
 					provider: work.target.provider,
 					model: work.target.model,
 					botRevisions: [grant.botRevision],
+          ...(grant.modelSelection ? { memberModels: [{ memberId: grant.memberId, modelSelection: grant.modelSelection }], modelRevision: grant.modelRevision } : {}),
 					...(budget
 						? {
 								requestBudget: {
@@ -1480,13 +1699,12 @@ export class ProactiveService {
 			const work = reply.kind === "work" ? reply.work : null;
 			const sessionId = work?.sessionId ?? work?.groupRepair?.rootSessionId;
 			if (
-				work?.state !== "accepted" ||
+				work?.state !== "accepted" || work.document ||
 				work.revision !== input.expectedRevision ||
 				!sessionId ||
 				Date.parse(work.expiresAt) <= Date.now()
 			)
 				throw new Error("External notice review is stale");
-			await this.validateTarget(work.target);
 			const storeId = this.#storeId;
 			const permitted = storeId
 				? await this.#client?.request({
@@ -1498,6 +1716,7 @@ export class ProactiveService {
 				: undefined;
 			if (permitted?.kind !== "dispatch-permitted" || !permitted.permitted)
 				throw new Error("External notice authorization withdrawn");
+			this.validateTarget(work.target);
 			return { work, sessionId };
 		};
 		const { work, sessionId } = await read();
@@ -1506,11 +1725,15 @@ export class ProactiveService {
 			AbortSignal.timeout(30000),
 		]);
 		const operationId = `proactive-external:${work.assignmentId}`;
+		const check = async () => {
+			await read();
+		};
 		await notices.record(
 			work.target.bot,
 			{ operationId, policyId, text: work.title, relatedId: work.ticketId },
 			{ kind: "proactive-review", id: work.assignmentId, sessionId },
 			signal,
+			check,
 		);
 		const preview = await notices.previewReviewed(operationId);
 		if (input.reviewedDigest === undefined) return preview;
@@ -1520,18 +1743,26 @@ export class ProactiveService {
 			operationId,
 			input.reviewedDigest,
 			signal,
-			async () => {
-				await read();
-			},
+			check,
 		);
 		return { ...preview, state: result.state };
 	}
 	async verifyDispatch(
 		work: ProactiveWork,
-		options?: { groupAlreadyValidated?: boolean },
+		options: { dispatchRevision: number; groupAlreadyValidated?: boolean },
 	) {
-		await this.validateTarget(work.target);
-		if (options?.groupAlreadyValidated) {
+		const storeId = this.#storeId;
+		if (!storeId || !this.#client?.available)
+			throw new Error("Proactive execution unavailable");
+		const current = await this.#client.request({
+			kind: "dispatch-permitted",
+			assignmentId: work.assignmentId,
+			dispatchRevision: options.dispatchRevision,
+			storeId,
+		});
+		if (current.kind !== "dispatch-permitted" || !current.permitted)
+			throw new Error("Proactive dispatch withdrawn");
+		if (options.groupAlreadyValidated) {
 			if (
 				work.groupRepair &&
 				(!this.config.proactiveGroupRepairEnabled ||
@@ -1539,19 +1770,10 @@ export class ProactiveService {
 			)
 				throw new Error("Group repair unavailable");
 		} else await this.validateGroupRepair(work);
+		this.validateTarget(work.target);
 		if (work.repair) this.repairConfiguration(work.repair, work.sourceId);
 		if (work.workspaceRepair)
-			await this.workspaceConfiguration(work.workspaceRepair, work.sourceId);
-		const storeId = this.#storeId;
-		if (!storeId || !this.#client?.available)
-			throw new Error("Proactive execution unavailable");
-		const current = await this.#client.request({
-			kind: "dispatch-permitted",
-			assignmentId: work.assignmentId,
-			storeId,
-		});
-		if (current.kind !== "dispatch-permitted" || !current.permitted)
-			throw new Error("Proactive dispatch withdrawn");
+			this.workspaceConfiguration(work.workspaceRepair, work.sourceId);
 		if (
 			work.autoRuleId &&
 			(!this.config.proactiveAutoCiRule ||
@@ -1578,7 +1800,6 @@ export class ProactiveService {
 					this.drainExecution(row.ticketId, row.assignmentId),
 				),
 			);
-			this.execution.cancelAll();
 			this.ctx.get("dshBotGroups")?.stopProactiveReviews();
 		}
 		if (reply.kind === "receipt" && !input.paused)
@@ -1595,7 +1816,15 @@ export class ProactiveService {
 		});
 		const row = before.kind === "work" ? before.work : null;
 		const reply = await this.change(commandId, { ...input, kind: "cancel" });
-		if (reply.kind === "receipt" && row)
+		if (reply.kind === "unknown" && row?.revision === input.expectedRevision)
+			this.execution.cancel(row.ticketId, row.assignmentId);
+		if (
+			reply.kind === "receipt" &&
+			row &&
+			(reply.receipt.status === "committed" ||
+				(row.revision === input.expectedRevision + 1 &&
+					["cancelled", "unknown"].includes(row.state)))
+		)
 			await this.drainExecution(row.ticketId, row.assignmentId);
 		return reply;
 	}
@@ -1620,6 +1849,14 @@ export class ProactiveService {
 	): Promise<SuggestionActionReply> {
 		if (input.review === "rework" && !this.directRoute)
 			return { kind: "rejected", code: "forbidden" };
+		if (input.review === "rework" && !workspaceExecutionAvailable) {
+			const current = await this.readWork({
+				kind: "work-ticket",
+				ticketId: input.ticketId,
+			});
+			if (current.kind === "work" && current.work?.workspaceRepair)
+				return { kind: "rejected", code: "forbidden" };
+		}
 		if (input.review === "accept") {
 			const previous = await this.receipt(commandId);
 			if (previous.kind === "receipt" && previous.receipt)
@@ -1671,9 +1908,7 @@ export class ProactiveService {
 		return result;
 	}
 	async close() {
-		this.#feedStop.abort();
-		this.ctx.get("dshBotGroups")?.stopProactiveReviews();
-		const noticesClosed = this.deferredNotices.close();
+		this.stopAdmission();
 		const governanceClosed = this.governance.close();
 		await this.#maintenance;
 		await this.#automatic.close();
@@ -1683,7 +1918,7 @@ export class ProactiveService {
 		await this.#resultJournal?.close();
 		await this.feedbackWorkflow.close();
 		await this.groupBudgets.close();
-		await noticesClosed;
+		await this.#noticesClosing;
 		await governanceClosed;
 		this.#state = "unavailable";
 		await this.#client?.close(this.#storeId);

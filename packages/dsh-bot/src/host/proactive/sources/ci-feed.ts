@@ -1,3 +1,4 @@
+import { githubCiSchema, observeGithubCi } from './github-ci.js';
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdir, open, realpath } from "node:fs/promises";
@@ -9,6 +10,7 @@ import { ciScopeSchema, ciPageSchema, ciSourceId } from "./ci.js";
 
 export const ciFeedSchema = z.strictObject({
 	scope: ciScopeSchema,
+  github: githubCiSchema.optional(),
 	intervalMs: z.number().int().min(1000).max(3600000).default(60000),
 });
 export type CiFeed = z.output<typeof ciFeedSchema>;
@@ -48,6 +50,7 @@ export async function pollCiFeed(
 	service: ProactiveService,
 	signal: AbortSignal,
 	setStatus: (status: FeedStatus) => void,
+  credential?: () => Promise<string | undefined>,
 ) {
 	const dir = join(root, "ci-inbox");
 	await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -66,6 +69,10 @@ export async function pollCiFeed(
 			}
 			if (current && current.generation > feed.scope.generation)
 				setStatus("invalid");
+      else if (feed.github) {
+        await observeGithubCi(feed.scope, feed.github, service, signal, credential ?? (async () => undefined));
+        setStatus('ready');
+      }
 			else {
 				const page = await readPage(path);
 				const cursor =
@@ -93,7 +100,7 @@ export async function pollCiFeed(
 				setStatus(
 					(error as NodeJS.ErrnoException).code === "ENOENT"
 						? "waiting"
-						: "invalid",
+						: feed.github ? "unavailable" : "invalid",
 				);
 		}
 		await delay(feed.intervalMs, undefined, { signal }).catch((error) => {

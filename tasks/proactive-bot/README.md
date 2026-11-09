@@ -1,5 +1,13 @@
 # 主动式 Bot + Superagent：可派发任务计划
 
+> 2026-11-09：0.6.6 非定时个人/群主动跟进本地候选完成。用户已确认定时能力延期；当前同包检查、验收与遗留见[验收报告](../../docs/verification/v066-local-follow-up.md)，执行台账见[V066](V066-implementation.md)。下文历史准备状态不替代当前结果。
+
+> C/D 更新：用户已授权继续完成剩余开发；等待/核对、文档任务、归因、方法评估与交换、结果观察已实现，按同包隔离验证交付。具体能力边界与验收证据见 [C/D 验收记录](../../docs/verification/proactive-optimization-cd.md)。普通入口保持现有侧栏与任务/反馈页，未升级桌面版。
+
+> A+B 更新：A 剩余查询/维护项与 B 批 CI 个人质量 Bot 已实现，最终验证、边界与交付文件见 [A+B 验收记录](../../docs/verification/proactive-optimization-ab.md)。复用原 Bot 侧栏与工作页；工程产物执行仍关闭，本轮未更新桌面版。下文旧状态保留用于追溯。
+
+> 2026-11-08 下一步入口：基于 `e9bcdcf`、关联 Personal Agent 分析与八类代码 review 问题，见[下一步落地清单](NEXT-personal-proactive-superagent.md)。D1–D6 已批准，N01–N05 基础修复与简化侧栏已通过隔离验收，见[本轮记录](../../docs/verification/proactive-optimization-a.md)；该记录为 A 基础阶段快照，后续状态以上方 A+B 记录为准。以下保留既有交付与历史任务记录。
+
 > 2026-11-08 本轮收口：A01–A08 和补充的职责、工程/群修复、完整产物、命令桥、反馈流程已开发并通过最终包隔离验收。同一 0.6.5 包已更新到正式 desktop profile，原 Bot/会话保留及实际桌面检查通过。完整范围、命令、PASS/FAIL 和剩余操作见[交付记录](../../docs/verification/proactive-gap-completion.md)。以下原始任务与早期状态用于追溯。
 
 > 2026-11-08 完整性复核：PB00–PB12 尚未全部开发完成。已有受限合成闭环，具体已实现范围、开发缺口及最新运行结果见[方案检查](../../docs/verification/proactive-plan-audit.md)。用户已取消的长时间运行要求不再纳入本次收口条件。下文各阶段原始交付要求和历史状态保留供逐项核对。

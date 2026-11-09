@@ -58,9 +58,14 @@ export const finishForgetSchema = z.strictObject({
 		.array(z.strictObject({ assignmentId: resourceId, receiptDigest: sha }))
 		.max(10000),
 });
+export const forgetBlockedReasonSchema = z.enum([
+	"notification-copy-unknown",
+	"result-copy-unknown",
+	"group-copy-unknown",
+]);
 export const forgetReceiptSchema = beginForgetSchema.extend({
 	phase: z.enum(["fenced", "blocked", "purging", "complete"]),
-	blockedReason: z.enum(["notification-copy-unknown"]).optional(),
+	blockedReason: forgetBlockedReasonSchema.optional(),
 	fencedAt: count,
 	updatedAt: count,
 	pendingAssignments: z.array(resourceId).max(10000),

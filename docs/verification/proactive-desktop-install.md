@@ -1,13 +1,12 @@
 # 主动协作 0.6.5：日常 DSH 桌面版安装
 
-2026-11-08，用户明确要求更新现有桌面插件并保留 Bot/会话，解锁 Mac 后由根编排完成。宿主 CLI 为 `0.2.2-rc.1`，本次更新 `desktop` profile 的 DSH-Bot；没有更新应用本体、全局 pnpm 配置、模型凭据或权限。
+2026-11-08，用户明确要求更新现有桌面插件并保留 Bot/会话，由编排方完成。宿主 CLI 为 `0.2.2-rc.1`，本次更新 `desktop` profile 的 DSH-Bot；没有更新应用本体、全局 pnpm 配置、模型凭据或权限。
 
 ## 安装包和备份
 
 - 包：`.dsh-dev/proactive-bot/gap-integration-v8/dsh-bot-0.6.5.tgz`。
 - SHA-256：`db84f3805dc3dcc99b6b60f38e36323f45b91983ad0671c615d767041c045a40`；与完成 24 项隔离验收的包相同。
-- 备份：`.dsh-dev/proactive-bot/gap-integration-v8/desktop-install/dsh-before.tar.gz`。包含完整 `~/.dsh`，5634 项、28,800,477 字节；目录 0700、归档 0600。
-- 备份 SHA-256：`bcaf4e33d7d4b40ec1884d0e4d133eb81bbc41a6262648fa52c48ffad0ae2bed`。
+- 冷备份覆盖整个 DSH 数据目录，完整归档仅留本地。私有证据目录权限为 0700，归档权限为 0600。
 - 备份在应用正常退出且所有桌面进程已退出后生成。恢复时须先退出应用并保存升级后的新增数据，再按完整快照恢复；不要让旧版直接写新版数据。
 
 ## 命令与验收
@@ -15,7 +14,7 @@
 | 项目 | 结果与证据 |
 | --- | --- |
 | 正常退出与完整备份 | PASS，桌面 Cmd-Q 后进程数 0；归档可读并包含正式 profile。 |
-| CLI 更新 | PASS，`DSH_HOME=/Users/youzihui/.dsh DSH_BOT_DSH_BIN='/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh' scripts/dsh plugin --profile desktop add <本包绝对路径>`，退出 0，`dsh-bot 0.6.4 → 0.6.5`。 |
+| CLI 更新 | PASS，`DSH_HOME="$HOME/.dsh" DSH_BOT_DSH_BIN='/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh' scripts/dsh plugin --profile desktop add <本包绝对路径>`，退出 0，`dsh-bot 0.6.4 → 0.6.5`。 |
 | 首次安装尝试 | FAIL，仓库隔离 pnpm store 与已有 profile 的 store 不同，安装器拒绝。业务文件未变；之后沿用原有 store 重试成功，未改全局配置。保留原错误日志。 |
 | 包字节与安装元数据 | PASS，`auditInstalled` 核对 716/716 文件，版本及包 SHA 一致。 |
 | 安装前后数据 | PASS，170 个原业务文件摘要全部相同；只改正式 profile 的 package.json、pnpm-lock.yaml，并新增两份安装器日志。 |
@@ -31,7 +30,7 @@
 
 ## 收据与变更文件
 
-收据目录：`.dsh-dev/proactive-bot/gap-integration-v8/desktop-install/`。包含 `before.json`、`after.json`、`comparison-after.json`、`comparison-running.json`、`backup-receipt.json`、`installed-verification.json`、`desktop-ui.json`、`session-preservation.json` 和两次安装日志。UI 证据来自本会话原生桌面可访问性检查，不冒称保存了桌面截图。
+收据保存在本地私有证据目录，包含备份与安装核验、安装前后与运行状态比对、界面检查、会话保留记录及两次安装日志。UI 证据来自本会话原生桌面可访问性检查，不冒称保存了桌面截图。
 
 正式 profile 的变更为插件安装目录、依赖清单和锁文件、安装日志；应用启动按原生行为追加上述会话系统事件/更新缓存及记忆所有权诊断。仓库本轮更新本报告、总交付记录、计划/任务状态与忽略目录中的安装收据，没有改业务源码或重新打包，没有 commit/push/公开发布。
 

@@ -1,24 +1,22 @@
-import type { BotKey } from "../../shared/identity.js";
+import type { ProactiveSetupRequest, ProactiveSetupReply } from "../../shared/proactive/setup.js";
+import { TaskOutcomes } from "./TaskOutcomes.js";
+import { DocumentTask } from "./DocumentTask.js";
+import type { DocumentRequest } from "../../shared/proactive/document.js";
 import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
 import {
-	useCallback,
 	useEffect,
 	useRef,
 	useState,
-	type ReactNode,
 } from "react";
-import type {
-	ProactiveStatus,
-	Suggestion,
-} from "../../shared/proactive/protocol.js";
+import type { Suggestion } from "../../shared/proactive/protocol.js";
+import type { ProactiveWorkSnapshot } from "./work-state.js";
+import type { ProactiveDetailTarget } from "../detail-state.js";
 import type {
 	FeedbackAction,
-	FeedbackRule,
 } from "../../shared/proactive/feedback.js";
 import type { BotRecord } from "../../shared/schema.js";
 import type {
-	ProactiveWork,
 	WorkHistory,
 	WorkHistoryRequest,
 } from "../../shared/proactive/work.js";
@@ -26,7 +24,10 @@ import type {
 	WorkspaceReview,
 	WorkspaceReviewRequest,
 } from "../../shared/proactive/workspace-repair.js";
-import { ReviewPanel } from "./ReviewPanel.js";
+import { WorkCard } from './WorkCard.js';
+import type { ActivityRequest, WorkDetailRequest } from '../../shared/proactive/activity.js';
+import type { ActivityPage } from '../../shared/proactive/protocol.js';
+import type { ProactiveWork } from '../../shared/proactive/work.js';
 import { WorkspaceOffer } from "./WorkspaceOffer.js";
 import type {
 	AcceptRequest,
@@ -45,19 +46,23 @@ import type {
 import styles from "../styles/detail.module.css";
 import workspaceStyles from "./workspace.module.css";
 import workspaceCss from "./workspace.module.css?inline";
+import type { WorkContinuationRequest } from '../../shared/proactive/work.js';
 
 export interface ProactiveActions {
+  setup?(input: ProactiveSetupRequest): Promise<ProactiveSetupReply>;
+  submitDocument?(input: DocumentRequest): Promise<SuggestionActionReply>;
+  activityPage?(input: ActivityRequest): Promise<ActivityPage>;
+  reconcileWork?(input: WorkDetailRequest): Promise<ProactiveWork>;
+  workDetail?(input: WorkDetailRequest): Promise<ProactiveWork>;
+  workContinuation?(input: WorkContinuationRequest): Promise<SuggestionActionReply>;
 	adjust?(input: {
 		commandId: string;
 		decisionId: string;
 		expectedRevision: number;
 		title: string;
 	}): Promise<SuggestionActionReply>;
-	status(): Promise<ProactiveStatus>;
-	suggestions(owner?: BotKey): Promise<Suggestion[]>;
 	change(input: SuggestionRequest): Promise<SuggestionActionReply>;
 	feedback(input: FeedbackRequest): Promise<SuggestionActionReply>;
-	work(): Promise<ProactiveWork[]>;
 	groupReview(input: GroupReviewRequest): Promise<GroupReviewResult>;
 	externalNotice(input: ExternalNoticeRequest): Promise<ExternalNoticeResult>;
 	accept(input: AcceptRequest): Promise<SuggestionActionReply>;
@@ -72,132 +77,140 @@ export interface ProactiveActions {
 export function SuggestionPanel({
 	actions,
 	bot,
+	snapshot,
+	refresh,
+	target,
+  followUpControls = false,
+  continuationPolicy,
+	onTargetReached,
 	onOpen,
-	children,
 	t,
 }: PropsLocale<"dsh-bot"> & {
 	actions: ProactiveActions;
 	bot: BotRecord;
+	snapshot: ProactiveWorkSnapshot;
+	refresh?: () => Promise<void>;
+	target?: ProactiveDetailTarget;
+  followUpControls?: boolean;
+  continuationPolicy?: number;
+	onTargetReached(): void;
 	onOpen(id: string): Promise<void>;
-	children?: ReactNode;
 }) {
-	const [state, setState] = useState<ProactiveStatus["state"]>("starting");
-	const [rows, setRows] = useState<Suggestion[]>([]);
-	const [work, setWork] = useState<ProactiveWork[]>([]);
-	const [groupReview, setGroupReview] = useState(false);
-	const [externalNotice, setExternalNotice] = useState(false);
-	const [feed, setFeed] = useState<
-		Pick<ProactiveStatus, "localFeed" | "localFeedScope">
-	>({});
+	const { status, error, refreshedAt } = snapshot;
+  const [older, setOlder] = useState<ActivityPage>();
+  const [sourceId, setSourceId] = useState('');
+  const [project, setProject] = useState<{ work: Extract<ActivityPage, { collection: 'work' }>; suggestions: Extract<ActivityPage, { collection: 'suggestions' }> }>();
+  const [pageError, setPageError] = useState(false);
+  const [paging, setPaging] = useState(false);
+  const loadedWork: readonly ProactiveWork[] = older?.collection === 'work' ? older.rows : sourceId ? project?.work.rows ?? [] : snapshot.work;
+  const [focusedWork, setFocusedWork] = useState<{ ticketId: string; row?: ProactiveWork }>();
+  const ticketId = target?.kind === 'work' ? target.id : undefined;
+  const targetAlreadyLoaded = loadedWork.some(row => row.ticketId === ticketId);
+  const directWork = (!target || focusedWork?.ticketId === ticketId) && focusedWork?.row?.target.bot.botId === bot.id
+    && focusedWork?.row?.target.bot.botCreatedAt === bot.createdAt ? focusedWork.row : undefined;
+  const work = directWork && !loadedWork.some(row => row.ticketId === directWork.ticketId) ? [directWork, ...loadedWork] : loadedWork;
+  useEffect(() => {
+    if (!ticketId || targetAlreadyLoaded || !actions.workHistory) return;
+    let active = true;
+    void actions.workHistory({ ticketId, limit: 1 }).then(({ versions }) => {
+      if (!active) return;
+      const row = versions.find(work => work.ticketId === ticketId && work.target.bot.botId === bot.id && work.target.bot.botCreatedAt === bot.createdAt);
+      setFocusedWork({ ticketId, row });
+    }, () => { if (active) setFocusedWork({ ticketId }); });
+    return () => { active = false; };
+  }, [actions.workHistory, bot.id, bot.createdAt, targetAlreadyLoaded, ticketId]);
+  const pageAlive = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing Bot incarnation must reset local pagination and invalidate pending reads.
+  useEffect(() => { ++pageAlive.current; setOlder(undefined); setSourceId(''); setProject(undefined); setPaging(false); setPageError(false); return () => { ++pageAlive.current; }; }, [bot.id, bot.createdAt]);
+  const nextPage = async (collection: 'work' | 'suggestions') => {
+    if (!actions.activityPage || paging) return;
+    const cursor = older?.collection === collection ? older.next : collection === 'work' ? (sourceId ? project?.work.next : snapshot.nextWork) : (sourceId ? project?.suggestions.next : snapshot.nextSuggestions);
+    if (!cursor) return;
+    const epoch = ++pageAlive.current;
+    setPaging(true); setPageError(false);
+    try {
+      const page = await actions.activityPage({ owner: { botId: bot.id, botCreatedAt: bot.createdAt }, collection, cursor, ...(sourceId ? { sourceId } : {}) });
+      if (epoch === pageAlive.current) setOlder(page);
+    } catch { if (epoch === pageAlive.current) setPageError(true); }
+    finally { if (epoch === pageAlive.current) setPaging(false); }
+  };
+	const state = status?.state ?? (error ? "unavailable" : "starting");
+  const selectProject = (source: string) => {
+    ++pageAlive.current;
+    setSourceId(source); setOlder(undefined); setProject(undefined); setPageError(false); setPaging(false);
+  };
+  // Reuse the shared foreground refresh cadence for the selected source. Older
+  // pages remain a deliberate snapshot until the user returns to latest.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshedAt intentionally drives this source projection from the existing shared poll.
+  useEffect(() => {
+    if (!sourceId || !actions.activityPage || older) return;
+    const epoch = ++pageAlive.current;
+    const owner = { botId: bot.id, botCreatedAt: bot.createdAt };
+    setPaging(true);
+    void Promise.all([
+      actions.activityPage({ owner, collection: 'work', sourceId }),
+      actions.activityPage({ owner, collection: 'suggestions', sourceId }),
+    ]).then(([work, suggestions]) => {
+      if (epoch === pageAlive.current && work.collection === 'work' && suggestions.collection === 'suggestions') {
+        setProject({ work, suggestions }); setPageError(false);
+      }
+    }, () => { if (epoch === pageAlive.current) setPageError(true); })
+      .finally(() => { if (epoch === pageAlive.current) setPaging(false); });
+    return () => { if (pageAlive.current === epoch) ++pageAlive.current; };
+  }, [sourceId, bot.id, bot.createdAt, actions.activityPage, refreshedAt, older]);
+  const projects = [...new Map((snapshot.responsibilities ?? []).map(({ responsibility: duty }) =>
+    [duty.source.id, { id: duty.source.id, title: `${duty.source.repository} · ${duty.source.branch}` }])).values()];
+	const route = error ? undefined : status?.directRoute;
+	const control = !error && (route || status?.snapshot?.executionControl.paused)
+		? status?.snapshot?.executionControl
+		: undefined;
+	const externalNotice = !error && status?.capabilities.externalNotification;
+	const groupReview = !error && status?.capabilities.automaticGroup;
+	const offers = status?.repairOffers ?? [];
+	const workspaceOffers = status?.workspaceOffers ?? [];
+	const groupRepairOffers = status?.groupRepairOffers ?? [];
+	const rules = status?.snapshot?.feedbackRules ?? [];
+	const feedbackSource = status?.snapshot?.feedbackSource;
 	const [revokePreview, setRevokePreview] = useState<string>();
-	const [offers, setOffers] = useState<
-		NonNullable<ProactiveStatus["repairOffers"]>
-	>([]);
-	const [workspaceOffers, setWorkspaceOffers] = useState<
-		NonNullable<ProactiveStatus["workspaceOffers"]>
-	>([]);
-	const [groupRepairOffers, setGroupRepairOffers] = useState<
-		NonNullable<ProactiveStatus["groupRepairOffers"]>
-	>([]);
-	const [route, setRoute] = useState<ProactiveStatus["directRoute"]>();
-	const [control, setControl] =
-		useState<NonNullable<ProactiveStatus["snapshot"]>["executionControl"]>();
 	const [preview, setPreview] = useState<string>();
-	const [rules, setRules] = useState<FeedbackRule[]>([]);
-	const [feedbackSource, setFeedbackSource] = useState<string>();
 	const [pending, setPending] = useState(false);
 	const [feedback, setFeedback] = useState<"unknown" | "stale">();
-	const sequence = useRef(0);
 	const busy = useRef(false);
 	const mounted = useRef(false);
-	const refresh = useCallback(async () => {
-		const revision = ++sequence.current;
-		try {
-			const status = await actions.status();
-			const [rows, work] =
-				status.state === "ready"
-					? await Promise.all([
-							actions.suggestions({
-								botId: bot.id,
-								botCreatedAt: bot.createdAt,
-							}),
-							actions.work(),
-						])
-					: [[], []];
-			if (revision !== sequence.current) return;
-			setState(status.state);
-			setExternalNotice(status.capabilities.externalNotification);
-			setGroupReview(status.capabilities.automaticGroup);
-			setFeed({
-				localFeed: status.localFeed,
-				localFeedScope: status.localFeedScope,
-			});
-			setRows(rows);
-			setWork(work);
-			setRoute(status.directRoute);
-			setOffers(status.repairOffers ?? []);
-			setGroupRepairOffers(status.groupRepairOffers ?? []);
-			setWorkspaceOffers(status.workspaceOffers ?? []);
-			setRules(status.snapshot?.feedbackRules ?? []);
-			setFeedbackSource(status.snapshot?.feedbackSource);
-			setControl(
-				status.directRoute || status.snapshot?.executionControl.paused
-					? status.snapshot?.executionControl
-					: undefined,
-			);
-		} catch {
-			if (revision !== sequence.current) return;
-			setState("unavailable");
-			setExternalNotice(false);
-			setGroupReview(false);
-			setFeed({});
-			setRows([]);
-			setWork([]);
-			setRoute(undefined);
-			setOffers([]);
-			setGroupRepairOffers([]);
-			setWorkspaceOffers([]);
-			setRules([]);
-			setFeedbackSource(undefined);
-			setControl(undefined);
-		}
-	}, [actions, bot.id, bot.createdAt]);
-
+	const section = useRef<HTMLElement>(null);
+	const [now, setNow] = useState(Date.now);
+	const rows = (older?.collection === 'suggestions' ? older.rows : sourceId ? project?.suggestions.rows ?? [] : snapshot.suggestions).filter(row => Date.parse(row.expiresAt) > Math.max(now, refreshedAt ?? 0));
+	const linkedTicket = target?.kind === "suggestion" ? work.find(row => row.decisionId === target.id) : undefined;
+	const focusTarget = linkedTicket ? { kind: "work" as const, id: linkedTicket.ticketId } : target;
+	const targetVisible = focusTarget?.kind === "work"
+		? work.some(row => row.ticketId === focusTarget.id)
+		: rows.some(row => row.id === focusTarget?.id);
+	const nextExpiry = Math.min(...rows.map(row => Date.parse(row.expiresAt)));
 	useEffect(() => {
 		mounted.current = true;
-		const reload = () => {
-			if (document.visibilityState === "visible" && !busy.current)
-				void refresh();
-			else ++sequence.current;
-		};
-		reload();
-		document.addEventListener("visibilitychange", reload);
-		return () => {
-			mounted.current = false;
-			++sequence.current;
-			document.removeEventListener("visibilitychange", reload);
-		};
-	}, [refresh]);
-	const nextExpiry = Math.min(...rows.map((row) => Date.parse(row.expiresAt)));
+		return () => { mounted.current = false; };
+	}, []);
 	useEffect(() => {
 		if (!Number.isFinite(nextExpiry)) return;
-		const timer = setTimeout(
-			() => {
-				setRows((current) =>
-					current.filter((row) => Date.parse(row.expiresAt) > Date.now()),
-				);
-			},
-			Math.max(0, nextExpiry - Date.now()),
-		);
+		const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextExpiry - Date.now()));
 		return () => clearTimeout(timer);
 	}, [nextExpiry]);
+	useEffect(() => {
+		if (!focusTarget || !targetVisible || !section.current) return;
+		const attribute = focusTarget.kind === "suggestion" ? "data-proactive-decision" : "data-proactive-ticket";
+		const row = [...section.current.querySelectorAll<HTMLElement>(`[${attribute}]`)]
+			.find(element => element.getAttribute(attribute) === focusTarget.id);
+		if (!row) return;
+		row.focus({ preventScroll: true });
+		row.scrollIntoView?.({ block: "nearest" });
+		onTargetReached();
+	}, [focusTarget, targetVisible, onTargetReached]);
 
 	async function act(run: () => Promise<SuggestionActionReply>) {
 		if (busy.current) return;
 		busy.current = true;
 		setPending(true);
 		setFeedback(undefined);
-		++sequence.current;
 		try {
 			const result = await run();
 			if (mounted.current) setPreview(undefined);
@@ -209,7 +222,7 @@ export function SuggestionPanel({
 			busy.current = false;
 			if (mounted.current) {
 				setPending(false);
-				void refresh();
+				void refresh?.();
 			}
 		}
 	}
@@ -237,51 +250,31 @@ export function SuggestionPanel({
 	};
 	const changeRule = (input: FeedbackAction) =>
 		void act(() => actions.feedback({ commandId: crypto.randomUUID(), input }));
-	const visibleWork = work.filter(
-		(row) =>
-			row.target.bot.botId === bot.id &&
-			row.target.bot.botCreatedAt === bot.createdAt,
-	);
-	if (state === "disabled")
-		return (
-			<section className={styles.section}>
-				<h2>{t("proactive.title")}</h2>
-				<p>{t("proactive.disabledHint")}</p>
-			</section>
-		);
-	const { localFeed, localFeedScope } = feed;
+
+	if (state === "disabled") return null;
+	const { localFeed, localFeedScope } = status ?? {};
+  const globalControl = control && <Button variant="ghost" disabled={pending} onClick={() => void act(() =>
+    actions.pause({ commandId: crypto.randomUUID(), paused: !control.paused, expectedRevision: control.revision }))}>
+    {t(control.paused ? 'proactive.resume' : 'proactive.pause')}
+  </Button>;
 	const feedKey =
 		localFeedScope && `${localFeedScope.id}:${localFeedScope.generation}`;
 	return (
 		<section
 			aria-label={t("proactive.title")}
+			ref={section}
 			data-proactive-suggestions=""
 			className={`${styles.section} ${workspaceStyles.content}`}
 		>
 			<style>{workspaceCss}</style>
 			<h2>{t("proactive.title")}</h2>
 			<p>{t("proactive.scope")}</p>
-			{children}
-			<Button variant="ghost" disabled={pending} onClick={() => void refresh()}>
+      {route && !control?.paused && actions.submitDocument && <DocumentTask key={`${bot.id}:${bot.createdAt}`} owner={{ botId: bot.id, botCreatedAt: bot.createdAt }} submit={actions.submitDocument} refresh={refresh} t={t} />}
+			<Button variant="ghost" disabled={pending || !refresh} onClick={() => void refresh?.()}>
 				{t("proactive.refresh")}
 			</Button>
-			{control && (
-				<Button
-					variant="ghost"
-					disabled={pending}
-					onClick={() =>
-						void act(() =>
-							actions.pause({
-								commandId: crypto.randomUUID(),
-								paused: !control.paused,
-								expectedRevision: control.revision,
-							}),
-						)
-					}
-				>
-					{t(control.paused ? "proactive.resume" : "proactive.pause")}
-				</Button>
-			)}
+      {globalControl && (followUpControls ? <details><summary>{t('followUp.advancedExecution')}</summary>{globalControl}</details> : globalControl)}
+      {ticketId && focusedWork?.ticketId === ticketId && !targetAlreadyLoaded && !directWork && <p role="status">{t('followUp.openFailed')}</p>}
 			{feedback && <p role="status">{t(`proactive.${feedback}`)}</p>}
 			{localFeed && localFeedScope && (
 				<div data-proactive-ci-feed="">
@@ -293,6 +286,7 @@ export function SuggestionPanel({
 						})}{" "}
 						· {t(`proactive.feed.${localFeed}`)}
 					</p>
+          {status?.localFeedLastSuccessAt && <p>{t('proactive.feedLastSuccess', { at: new Date(status.localFeedLastSuccessAt).toLocaleString(t('activity.locale')) })}</p>}
 					{localFeed !== "revoked" &&
 						(revokePreview === feedKey ? (
 							<>
@@ -332,10 +326,21 @@ export function SuggestionPanel({
 						))}
 				</div>
 			)}
+      {actions.activityPage && projects.length > 0 && <details>
+        <summary>{t('proactive.findProject')}</summary>
+        <select value={sourceId} aria-label={t('proactive.findProject')} disabled={paging}
+          onChange={event => void selectProject(event.currentTarget.value)}>
+          <option value="">{t('proactive.allProjects')}</option>
+          {projects.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+        </select>
+        <p>{t('proactive.projectHint')}</p>
+      </details>}
+			{error && refreshedAt !== undefined && <p role="status">{t("proactive.refreshStale", { at: new Date(refreshedAt).toLocaleString(t("activity.locale")) })}</p>}
 			{state !== "ready" && <p role="status">{t(`proactive.${state}`)}</p>}
-			{state === "ready" && rows.length === 0 && <p>{t("proactive.empty")}</p>}
+			{state === "ready" && !error && target && !targetVisible && <p role="status">{t("proactive.targetMissing")}</p>}
+			{state === "ready" && !error && rows.length === 0 && <p>{t("proactive.empty")}</p>}
 			{rows.map((row) => (
-				<article key={row.id} data-proactive-decision={row.id}>
+				<article key={row.id} data-proactive-decision={row.id} tabIndex={-1}>
 					<h3>{row.title}</h3>
 					{row.matchedResponsibilities?.map((rule) => (
 						<p key={rule.id}>{rule.name}</p>
@@ -634,27 +639,46 @@ export function SuggestionPanel({
 					})}
 				</section>
 			)}
-			{visibleWork.length > 0 && (
+			{work.length > 0 && (
 				<section aria-label={t("proactive.work")}>
 					<h2>{t("proactive.work")}</h2>
+          <TaskOutcomes rows={loadedWork} complete={!older && !(sourceId ? project?.work.next : snapshot.nextWork)} t={t} />
 					<p>{t("proactive.awaiting")}</p>
-					{visibleWork.map((row) => (
-						<ReviewPanel
+					{work.map((row) => (
+						<WorkCard
+              load={actions.workDetail}
+              continuationControls={continuationPolicy !== undefined && actions.workContinuation ? {
+                policyRevision: continuationPolicy, canLaunch: !!route,
+                run: async input => {
+                  const reply = await actions.workContinuation?.(input);
+                  if (!reply) throw new Error('Work continuation unavailable');
+                  if (reply.kind === 'receipt' && directWork?.ticketId === input.ticketId && actions.workHistory) {
+                    const result = await actions.workHistory({ ticketId: input.ticketId, limit: 1 }).catch(() => undefined);
+                    const latest = result?.versions.find(row => row.ticketId === input.ticketId
+                      && row.target.bot.botId === input.owner.botId && row.target.bot.botCreatedAt === input.owner.botCreatedAt);
+                    if (latest && mounted.current) setFocusedWork({ ticketId: input.ticketId, row: latest });
+                  }
+                  void refresh?.();
+                  return reply;
+                },
+              } : undefined}
+              selected={focusTarget?.kind === "work" && focusTarget.id === row.ticketId}
 							key={row.ticketId}
 							row={row}
 							pending={pending}
 							canRework={!!route}
 							onHistory={actions.workHistory}
 							onWorkspaceReview={actions.workspaceReview}
+              onReconcile={actions.reconcileWork ? async input => { await actions.reconcileWork?.(input); await refresh?.(); } : undefined}
 							onExternalNotice={
 								externalNotice ? actions.externalNotice : undefined
 							}
 							onGroupReview={
-								groupReview || row.groupReview?.followUp
+								groupReview || row.groupReview
 									? async (input) => {
 											const result = await actions.groupReview(input);
 											if (row.state === "delivered" && input.reviewedDigest)
-												await refresh();
+												await refresh?.();
 											return result;
 										}
 									: undefined
@@ -667,6 +691,12 @@ export function SuggestionPanel({
 					))}
 				</section>
 			)}
+      {actions.activityPage && <nav aria-label={t('proactive.moreActivity')}>
+        {(older?.collection === 'work' ? older.next : sourceId ? project?.work.next : snapshot.nextWork) && <Button variant="ghost" disabled={paging} onClick={() => void nextPage('work')}>{t('proactive.olderWork')}</Button>}
+        {(older?.collection === 'suggestions' ? older.next : sourceId ? project?.suggestions.next : snapshot.nextSuggestions) && <Button variant="ghost" disabled={paging} onClick={() => void nextPage('suggestions')}>{t('proactive.olderSuggestions')}</Button>}
+        {(older || pageError || sourceId) && <Button variant="ghost" onClick={() => { ++pageAlive.current; setPaging(false); setOlder(undefined); setSourceId(''); setProject(undefined); setPageError(false); void refresh?.(); }}>{t('proactive.latestActivity')}</Button>}
+        {pageError && <p role="status">{t('proactive.pageChanged')}</p>}
+      </nav>}
 		</section>
 	);
 }

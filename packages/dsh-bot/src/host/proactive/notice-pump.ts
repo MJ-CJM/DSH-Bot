@@ -19,7 +19,7 @@ export class DeferredNoticePump {
 	constructor(
 		private readonly ctx: Context,
 		private readonly port: ProactiveService,
-		private readonly config: ProactiveConfig,
+		private readonly config: Pick<ProactiveConfig, "proactiveNotificationPolicy" | "proactiveNoticeConfig">,
 	) {}
 	async schedule(work: ProactiveWork, signal: AbortSignal) {
 		signal.throwIfAborted();

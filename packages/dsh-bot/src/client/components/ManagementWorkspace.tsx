@@ -72,7 +72,7 @@ export function ManagementWorkspace({
       <div key={identity} data-settings-bot={identity}>
       {management && (
         <RetainedPanel active={tab === 'records'} id={`${uid}-records-panel`} labelledBy={`${uid}-records`}>
-          <ManagementPanel bots={bots} actions={management} createMemoryPanel={createMemoryPanel} t={t} />
+          <ManagementPanel bots={bots} actions={management} createMemoryPanel={createMemoryPanel} active={tab === 'records'} t={t} />
         </RetainedPanel>
       )}
       {integrations && (

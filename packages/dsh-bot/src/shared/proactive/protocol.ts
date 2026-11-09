@@ -1,3 +1,12 @@
+import { methodTrial, methodLoadEvidence } from "./method-evaluation.js";
+import { followUpGroupAbandonInputSchema, followUpGroupInputSchema, followUpGroupPlanRequestSchema, followUpGroupPlanSchema } from './group-follow-up.js';
+import { documentSnapshotSchema } from "./document.js";
+import {
+  followUpActionSchema, followUpBootstrapSchema, followUpGroupWatchProposalSchema, followUpIngestSchema, followUpPageRequestSchema,
+  followUpPageSchema, followUpPolicyChangeSchema, followUpSummarySchema, followUpWatchCreateSchema, subjectSchema,
+  followUpSourceCursorSchema, followUpSourceRequestSchema, followUpSubjectsSchema, followUpWatchUpdateSchema, followUpCardSchema,
+} from './follow-up.js';
+import { activityRequestSchema, workDetailRequestSchema, workSummarySchema } from './activity.js';
 import { groupRepairEvidence, groupRepairOffer } from "./group-repair.js";
 import {
 	governanceConfigSchema,
@@ -6,6 +15,7 @@ import {
 	finishForgetSchema,
 	governancePurgeRecordSchema,
 	forgetReceiptSchema,
+	forgetBlockedReasonSchema,
 	artifactPurgePlanSchema,
 } from "./governance.js";
 import {
@@ -53,11 +63,15 @@ import {
 	workHistoryRequestSchema,
 	workHistorySchema,
 	workMutation,
+  workContinuationSchema,
 	workSchema,
 } from "./work.js";
 
 export const protocolVersion = 1 as const;
 export const maxFrameBytes = 128 * 1024;
+// Transport bounds, not an additional user-facing capability or task store.
+export const maxReadBytes = 4 * 1024 * 1024;
+export const readPageBytes = 48 * 1024;
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 export const digestSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const seq = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -105,6 +119,22 @@ export const suggestionAdjustmentSchema = z.strictObject({
 	title: z.string().trim().min(1).max(500),
 });
 export const commandBodySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal('follow-up-policy'), input: followUpPolicyChangeSchema }),
+  z.strictObject({ kind: z.literal('follow-up-watch-create'), input: followUpWatchCreateSchema }),
+  z.strictObject({ kind: z.literal('follow-up-group-watch-propose'), input: followUpGroupWatchProposalSchema }),
+  z.strictObject({ kind: z.literal('follow-up-watch-update'), input: followUpWatchUpdateSchema }),
+  z.strictObject({ kind: z.literal('follow-up-action'), input: followUpActionSchema }),
+  z.strictObject({ kind: z.literal('follow-up-group-accept'), operationId: z.uuid(), input: followUpGroupInputSchema }),
+  z.strictObject({ kind: z.literal('follow-up-group-started'), operationId: z.uuid(), inputDigest: z.string().regex(/^[a-f0-9]{64}$/), turnId: z.string().min(1).max(256) }),
+  z.strictObject({ kind: z.literal('follow-up-group-abandon'), input: followUpGroupAbandonInputSchema }),
+  z.strictObject({ kind: z.literal('follow-up-ingest'), input: followUpIngestSchema }),
+  z.strictObject({ kind: z.literal('follow-up-work-reconcile'),
+    input: z.strictObject({ subject: followUpPolicyChangeSchema.shape.subject, expectedPolicyRevision: seq }),
+  }),
+  z.strictObject({ kind: z.literal('submit-document'), methodTrial: methodTrial.optional(), document: documentSnapshotSchema,
+    target: acceptSchema.shape.target, approved: z.literal(true),
+    taskLimits: acceptSchema.shape.taskLimits.unwrap(),
+  }),
 	workMutation.extend({
 		kind: z.literal("execution-drained"),
 		assignmentId: workId,
@@ -120,7 +150,7 @@ export const commandBodySchema = z.discriminatedUnion("kind", [
 	z.strictObject({
 		kind: z.literal("forget-block"),
 		operationId: workId,
-		reason: z.literal("notification-copy-unknown"),
+		reason: forgetBlockedReasonSchema,
 	}),
 	suggestionAdjustmentSchema.extend({ kind: z.literal("adjust-suggestion") }),
 	z.strictObject({ kind: z.literal("governance-sweep") }),
@@ -212,6 +242,7 @@ export const commandBodySchema = z.discriminatedUnion("kind", [
 	}),
 	workMutation.extend({ kind: z.literal("cancel") }),
 	reviewSchema.extend({ kind: z.literal("review") }),
+  z.strictObject({ kind: z.literal('work-continuation'), operationId: z.uuid(), input: workContinuationSchema }),
 	workMutation.extend({
 		kind: z.literal("dispatch-claim"),
 		assignmentId: workId,
@@ -239,6 +270,7 @@ export const commandBodySchema = z.discriminatedUnion("kind", [
 		result: z.discriminatedUnion("state", [
 			z.strictObject({
 				state: z.literal("delivered"),
+        methodEvidence: methodLoadEvidence.optional(),
 				usage: z
 					.strictObject({ inputTokens: seq, outputTokens: seq })
 					.optional(),
@@ -279,6 +311,21 @@ const header = {
 	channel: digestSchema,
 };
 export const requestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ ...header, kind: z.literal('follow-up-summary'), storeId: z.uuid(), subject: subjectSchema }),
+  z.strictObject({ ...header, kind: z.literal('follow-up-page'), storeId: z.uuid(), input: followUpPageRequestSchema }),
+  z.strictObject({ ...header, kind: z.literal('follow-up-group-plan'), storeId: z.uuid(), input: followUpGroupPlanRequestSchema }),
+  z.strictObject({ ...header, kind: z.literal('follow-up-subjects'), storeId: z.uuid(), cursor: followUpPageRequestSchema.shape.cursor }),
+  z.strictObject({ ...header, kind: z.literal('follow-up-source'), storeId: z.uuid(), ...followUpSourceRequestSchema.shape }),
+  z.strictObject({ ...header, kind: z.literal('activity-page'), storeId: z.uuid(), input: activityRequestSchema }),
+  z.strictObject({ ...header, kind: z.literal('work-detail'), storeId: z.uuid(), input: workDetailRequestSchema }),
+	z.strictObject({
+		...header,
+		kind: z.literal("read-page"),
+		storeId: z.uuid(),
+		readId: z.uuid(),
+		readVersion: digestSchema,
+		offset: z.number().int().min(0).max(maxReadBytes),
+	}),
 	z.strictObject({
 		...header,
 		kind: z.literal("source-cleanup-scope"),
@@ -367,6 +414,7 @@ export const requestSchema = z.discriminatedUnion("kind", [
 		governanceConfig: governanceConfigSchema.optional(),
 		autoRule: autoCiRuleSchema.optional(),
 		feedbackSource: feedbackSource.optional(),
+		followUpBootstrap: followUpBootstrapSchema.optional(),
 	}),
 	z.strictObject({
 		...header,
@@ -407,6 +455,7 @@ export const requestSchema = z.discriminatedUnion("kind", [
 		groupReviewDigest: groupReviewReceipt.shape.digest.optional(),
 		groupFactId: workId.optional(),
 		noticeRevision: z.number().int().nonnegative().optional(),
+		dispatchRevision: z.number().int().nonnegative().optional(),
 	}),
 	z.strictObject({
 		...header,
@@ -417,6 +466,7 @@ export const requestSchema = z.discriminatedUnion("kind", [
 		...header,
 		kind: z.literal("work-list"),
 		storeId: z.uuid(),
+		owner: botKeySchema.optional(),
 	}),
 	z.strictObject({
 		...header,
@@ -495,6 +545,11 @@ export const suggestionSchema = z.strictObject({
 	scope: z.literal("inspect-ci-result"),
 });
 export const suggestionsSchema = z.array(suggestionSchema).max(100);
+export const activityPageSchema = z.discriminatedUnion('collection', [
+  z.strictObject({ collection: z.literal('work'), rows: z.array(workSummarySchema).max(20), next: z.string().max(2048).optional() }),
+  z.strictObject({ collection: z.literal('suggestions'), rows: z.array(suggestionSchema).max(20), next: z.string().max(2048).optional() }),
+]);
+export type ActivityPage = z.output<typeof activityPageSchema>;
 export type Suggestion = z.output<typeof suggestionSchema>;
 export const sourceCheckpointSchema = z.strictObject({
 	generation: seq,
@@ -511,6 +566,23 @@ export const receiptSchema = z.strictObject({
 });
 const replyHeader = { protocolVersion: version, correlationId };
 export const replySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ ...replyHeader, kind: z.literal('follow-up-summary'), summary: followUpSummarySchema }),
+  z.strictObject({ ...replyHeader, kind: z.literal('follow-up-page'), page: followUpPageSchema }),
+  z.strictObject({ ...replyHeader, kind: z.literal('follow-up-group-plan'), plan: followUpGroupPlanSchema.nullable(), card: followUpCardSchema.nullable(), activationEpoch: z.uuid().nullable() }),
+  z.strictObject({ ...replyHeader, kind: z.literal('follow-up-subjects'), ...followUpSubjectsSchema.shape }),
+  z.strictObject({ ...replyHeader, kind: z.literal('follow-up-source'), cursor: followUpSourceCursorSchema }),
+  z.strictObject({ protocolVersion: version, correlationId, kind: z.literal('activity-page'), page: activityPageSchema }),
+	z.strictObject({
+		...replyHeader,
+		kind: z.literal("read-page"),
+		readId: z.uuid(),
+		readVersion: digestSchema,
+		readSeq: seq,
+		totalBytes: z.number().int().positive().max(maxReadBytes),
+		offset: z.number().int().nonnegative().max(maxReadBytes),
+		data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(4 * Math.ceil(readPageBytes / 3)),
+		nextOffset: z.number().int().positive().max(maxReadBytes).optional(),
+	}),
 	z.strictObject({
 		...replyHeader,
 		kind: z.literal("source-cleanup-scope"),
@@ -587,6 +659,7 @@ export const replySchema = z.discriminatedUnion("kind", [
 		storeId: z.uuid(),
 		bootId: z.uuid(),
 		capabilities: capabilitySchema,
+		scopedRecovery: z.literal(true).optional(),
 	}),
 	z.strictObject({
 		...replyHeader,
@@ -666,6 +739,7 @@ export const proactiveStatusSchema = z.strictObject({
 		)
 		.max(8)
 		.optional(),
+	localFeedLastSuccessAt: z.iso.datetime().optional(),
 	localFeed: z
 		.enum(["waiting", "ready", "invalid", "unavailable", "revoked"])
 		.optional(),

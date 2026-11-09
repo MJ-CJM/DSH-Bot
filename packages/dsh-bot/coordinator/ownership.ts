@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { lstatSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join, resolve } from "node:path";
 
@@ -31,6 +31,14 @@ function lockState(root: string) {
 	const lock = new DatabaseSync(lockPath);
 	try {
 		lock.exec("PRAGMA busy_timeout=0; BEGIN IMMEDIATE");
+    // Reserved maintenance copies belong to this store. A killed rehearsal must
+    // not leave a body outside the next forget/normal-start lifecycle.
+    const rehearsal = join(root, '.maintenance-rehearsal');
+    const savedRehearsal = lstatSync(rehearsal, { throwIfNoEntry: false });
+    if (savedRehearsal) {
+      if (!savedRehearsal.isDirectory() || savedRehearsal.isSymbolicLink() || realpathSync(rehearsal) !== rehearsal) throw new Error('Unsafe maintenance snapshot');
+      rmSync(rehearsal, { recursive: true });
+    }
 		const identity = fileIdentity(lockPath);
 		if (!identity || (before && before !== identity))
 			throw new Error("Proactive ownership path changed");

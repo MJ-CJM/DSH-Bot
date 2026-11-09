@@ -3,10 +3,15 @@ import { need } from '../src/host/common/operations.js';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
 import { randomUUID } from 'node:crypto';
 import { ToolCallId } from '@deepseek-ai/dsh-llm';
+import type { Context } from '@deepseek-ai/cordis';
 import { describe, expect, it, vi } from 'vitest';
 import { quietAt, localTime, Notifications, type NotificationPort } from '../src/host/notifications/service.js';
 import { registerNotifyTool } from '../src/host/notifications/tool.js';
 import { notificationSchema } from '../src/shared/integrations.js';
+import { noticePolicyDigest, recordDeferredNoticeBatch } from '../src/host/proactive/deferred-notices.js';
+import { noticeBatchSchema, type NoticeItem } from '../src/shared/proactive/notices.js';
+import { workSchema } from '../src/shared/proactive/work.js';
+import { flowFixture } from './deepening/managed-flow-fixture.js';
 import { alpha, beta, policy, withIntegrations } from './integration-support.js';
 const port = () => ({ describe: vi.fn(async () => ({ targetDigest: 'fingerprint-one', label: 'Synthetic target' })), send: vi.fn<NotificationPort['send']>(async () => ({ state: 'accepted', platformMessageId: 'msg-one' })) });
 const input = (operationId: string = randomUUID()) => ({ operationId, policyId: 'policy', text: 'Synthetic report' });
@@ -91,6 +96,80 @@ describe('P34 persistent notification admission (real JSON domain; fake platform
       await expect(f.notifications.record(alpha, input('first'), source)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
     }, p);
   });
+  it('rechecks adopted attention rules after managed dispatch preparation and leaves no uncertain record', async () => withIntegrations(async f => {
+    const saved = await f.notifications.savePolicy(policy('policy', 'in-app'), 0, false);
+    await f.notifications.record(alpha, input('expired'), source);
+    f.clock.at += 31 * 86400000;
+    const managed = await flowFixture();
+    try {
+      Object.assign(f.registry, managed.registry());
+      const sessionId = 'a6a6ff1a-f2b3-4ea6-8559-852504f4c9f1';
+      await managed.flow.inherit(sessionId, managed.flow.label('clean'));
+      const ctx = { get: () => f.notifications, dshBots: f.registry } as unknown as Context;
+      const signal = new AbortController().signal;
+      const makeBatch = (id: string) => {
+        const scope = { bot: alpha, policyId: saved.id, policyDigest: noticePolicyDigest(saved), targetDigest: saved.targetDigest };
+        return noticeBatchSchema.parse({
+          ...scope, id, state: 'claimed', claimedAt: f.clock.at,
+          items: [{ ...scope, assignmentId: id, ticketId: id, operationId: id, sourceId: 'ci-source',
+            sourceGeneration: 1, dueAt: f.clock.at, expiresAt: f.clock.at + 10000,
+            createdAt: f.clock.at, revision: 1, state: 'claimed' }],
+        });
+      };
+      let mute = false;
+      const authorize = async (item: NoticeItem) => {
+        if (mute) throw new Error('Attention rule adopted');
+        return workSchema.parse({
+          assignmentId: item.assignmentId, ticketId: item.ticketId, sourceId: item.sourceId,
+          decisionId: 'decision', triggerId: 'trigger', title: 'CI result', policyVersion: 'v1',
+          state: 'delivered', revision: 1, generation: 1, expiresAt: '2099-01-01T00:00:00.000Z',
+          sessionId,
+          target: { bot: alpha, botUpdatedAt: 1, provider: 'fixture', model: 'fixture' },
+        });
+      };
+      let reached!: (id: string) => void, release!: () => void;
+      const prepared = new Promise<string>(resolve => { reached = resolve; });
+      const held = new Promise<void>(resolve => { release = resolve; });
+      type FlowRow = ReturnType<typeof managed.flow.get>;
+      const writer = managed.flow as unknown as { put(row: FlowRow): Promise<unknown> };
+      const put = writer.put.bind(writer);
+      const heldPut = vi.spyOn(writer, 'put').mockImplementation(async row => {
+        const result = await put(row);
+        if (row.state === 'dispatching') {
+          reached(row.id);
+          await held;
+        }
+        return result;
+      });
+      const pending = recordDeferredNoticeBatch(ctx, makeBatch('blocked'), authorize, signal, () => f.clock.at);
+      let flowId: string;
+      try {
+        const result = await Promise.race([prepared, pending]);
+        if (typeof result !== 'string') throw new Error(`Managed dispatch not reached: ${result.state}`);
+        flowId = result;
+        expect(managed.flow.get(flowId).state).toBe('dispatching');
+        expect(f.notifications.list()).toEqual([]);
+        mute = true;
+      } finally {
+        release();
+      }
+      expect(await pending).toEqual({ state: 'suppressed', reason: 'authorization-changed' });
+      heldPut.mockRestore();
+      expect(f.notifications.list()).toEqual([]);
+      expect(f.stores.notifications.table('read_state').get('blocked')).toBeUndefined();
+      expect(managed.flow.get(flowId)).toMatchObject({
+        state: 'cancelled', envelopeDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+      expect(managed.flow.get(flowId).envelope).toBeUndefined();
+      const scope = { assignmentIds: [], notificationOperationIds: ['blocked'] };
+      expect(await f.notifications.purgeProactiveCopies(scope)).toEqual({ purged: 0, flowCopies: 0, blockedOperationIds: [] });
+      mute = false;
+      expect(await recordDeferredNoticeBatch(ctx, makeBatch('fresh'), authorize, signal, () => f.clock.at)).toEqual({ state: 'recorded' });
+      expect(f.notifications.list().map(row => row.id)).toEqual(['fresh']);
+    } finally {
+      await managed.close();
+    }
+  }));
   it('bounds a stuck platform send, records unknown and keeps the reservation', async () => {
     const p = port(); p.send.mockImplementation(async request => new Promise((_accept, reject) => request.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })));
     await withIntegrations(async f => {

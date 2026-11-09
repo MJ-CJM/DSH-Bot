@@ -1,11 +1,9 @@
 import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { BotRecord } from "../../shared/schema.js";
 import type { ProactiveStatus } from "../../shared/proactive/protocol.js";
 import {
 	responsibilitySourceSchema,
-	responsibilityTargetSchema,
 } from "../../shared/proactive/responsibility.js";
 import {
 	ResponsibilityPanel,
@@ -17,58 +15,26 @@ import {
 export function ResponsibilityWorkspace({
 	bot,
 	actions,
-	proactive,
+	status,
+	refresh,
+	loading,
+	failed,
 	t,
 }: PropsLocale<"dsh-bot"> & {
 	bot: BotRecord;
 	actions: ResponsibilityActions;
-	proactive: { status(): Promise<ProactiveStatus> };
+	status?: ProactiveStatus;
+	refresh?: () => Promise<void>;
+	loading: boolean;
+	failed: boolean;
 }) {
-	const [snapshot, setSnapshot] = useState<{
-		key: string;
-		value: ProactiveStatus;
-	}>();
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState(false);
-	const sequence = useRef(0);
-	const key = `${bot.id}:${bot.createdAt}:${bot.updatedAt}`;
-	const status = snapshot?.key === key ? snapshot.value : undefined;
-	const refresh = useCallback(async () => {
-		const request = ++sequence.current;
-		setBusy(true);
-		setError(false);
-		try {
-			const value = await proactive.status();
-			if (request === sequence.current) setSnapshot({ key, value });
-		} catch {
-			if (request === sequence.current) {
-				setError(true);
-				setSnapshot(undefined);
-			}
-		} finally {
-			if (request === sequence.current) setBusy(false);
-		}
-	}, [proactive, key]);
-	useEffect(() => {
-		setSnapshot(undefined);
-		void refresh();
-		return () => {
-			sequence.current++;
-		};
-	}, [refresh]);
 	const owner = { botId: bot.id, botCreatedAt: bot.createdAt };
 	const source = responsibilitySourceSchema.safeParse(
 		status?.localFeed !== "revoked" ? status?.localFeedScope : undefined,
 	);
-	const route = status?.directRoute;
-	const target = responsibilityTargetSchema.safeParse(
-		route ? { bot: owner, botUpdatedAt: bot.updatedAt, ...route } : undefined,
-	);
-	const ready =
-		status?.state === "ready" &&
-		status.capabilities.directExecution &&
-		target.success &&
-		source.success;
+	const route = status?.capabilities.directExecution ? status.directRoute : undefined;
+	const target = { bot: owner, botUpdatedAt: bot.updatedAt, ...route };
+	const ready = !failed && status?.state === "ready" && source.success;
 	const scopes = ready ? (status.actionScopes ?? []) : [];
 	const availableActions = ready
 		? [
@@ -82,15 +48,15 @@ export function ResponsibilityWorkspace({
 		<div>
 			<Button
 				variant="ghost"
-				disabled={busy}
+				disabled={loading || !refresh}
 				onClick={() => {
-					void refresh();
+					void refresh?.();
 				}}
 			>
 				{t("responsibility.refreshContext")}
 			</Button>
-			{busy && <p role="status">{t("responsibility.loading")}</p>}
-			{(error || (!busy && !ready)) && (
+			{loading && <p role="status">{t("responsibility.loading")}</p>}
+			{(failed || (!loading && !ready)) && (
 				<p role="status">{t("responsibility.contextUnavailable")}</p>
 			)}
 			<ResponsibilityPanel
@@ -99,7 +65,8 @@ export function ResponsibilityWorkspace({
 				actions={actions}
 				t={t}
 				source={ready && source.success ? source.data : undefined}
-				target={ready && target.success ? target.data : undefined}
+				target={ready ? target : undefined}
+				canAuto={!!route && ready}
 				availableActions={availableActions}
 				availableActionScopes={scopes}
 			/>

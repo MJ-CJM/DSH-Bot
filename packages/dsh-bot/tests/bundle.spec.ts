@@ -185,6 +185,8 @@ describe('built bundle contract', () => {
     for (const dictionary of [en.tools, zh.tools]) {
       expect(Object.keys(dictionary).sort()).toEqual([
         'bot_delegate.approval', 'bot_delegate.continuationBlocked', 'bot_delegate.description', 'bot_delegate.guidance',
+        'bot_follow_up.approval', 'bot_follow_up.description', 'bot_follow_up.guidance',
+        'bot_group_recall.description', 'bot_group_recall.guidance',
         'bot_manage.approval.combined', 'bot_manage.approval.create', 'bot_manage.approval.delete',
         'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories', 'bot_manage.approval.personaPreview',
         'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',
@@ -206,8 +208,8 @@ describe('built bundle contract', () => {
   });
 
   it('keeps bot_manage opt-in for standard sessions in the public Host Config', () => {
-    expect(host.Config({}).enableBotManageInStandard).toBe(false);
-    expect(host.Config({ enableBotManageInStandard: true }).enableBotManageInStandard).toBe(true);
+    expect(host.Config({}).get()?.enableBotManageInStandard).toBe(false);
+    expect(host.Config({ enableBotManageInStandard: true }).get()?.enableBotManageInStandard).toBe(true);
     expect(() => host.Config({ enableBotManageInStandard: 'yes' } as never)).toThrow();
   });
 
@@ -309,14 +311,17 @@ describe('built bundle contract', () => {
         'dshBot.connectors/applyIdle', 'dshBot.connectors/catalog', 'dshBot.connectors/importLegacy', 'dshBot.connectors/saveAssignment',
           'dshBot.connectors/saveDefinition',
         'dshBot.groups/archive', 'dshBot.groups/cancel', 'dshBot.groups/continueTurn', 'dshBot.groups/create', 'dshBot.groups/edit', 'dshBot.groups/list', 'dshBot.groups/markRead',
-          'dshBot.groups/open', 'dshBot.groups/openAttachment', 'dshBot.groups/send', 'dshBot.groups/setModel', 'dshBot.groups/stopMember', 'dshBot.groups/view',
+          'dshBot.groups/open', 'dshBot.groups/openAttachment', 'dshBot.groups/recallForBot', 'dshBot.groups/send', 'dshBot.groups/setModel', 'dshBot.groups/stopMember', 'dshBot.groups/view',
         'dshBot.im/status', 'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/quarantineCount', 'dshBot.memory/save',
           'dshBot.memory/search', 'dshBot.memory/update', 'dshBot.messaging/request',
         'dshBot.nativeSchedule/aggregate', 'dshBot.nativeSchedule/deleteLegacy', 'dshBot.nativeSchedule/runNow', 'dshBot.notifications/markRead',
           'dshBot.notifications/savePolicy', 'dshBot.notifications/test', 'dshBot.referenceMemory/request', 'dshBot.run/get', 'dshBot.run/list',
           'dshBot.workspace/request',
           'dshBot.proactive/status', 'dshBot.proactive/listSuggestions', 'dshBot.proactive/changeSuggestion',
-          'dshBot.proactive/accept', 'dshBot.proactive/cancel', 'dshBot.proactive/feedback', 'dshBot.proactive/externalNotice', 'dshBot.proactive/groupReview', 'dshBot.proactive/review', 'dshBot.proactive/listWork',
+          'dshBot.proactive/followUpSummary', 'dshBot.proactive/followUpPage', 'dshBot.proactive/followUpPolicy',
+          'dshBot.proactive/followUpWatchCreate', 'dshBot.proactive/followUpAction', 'dshBot.proactive/workContinuation',
+          'dshBot.proactive/followUpGroupChoice', 'dshBot.proactive/followUpGroupAccept', 'dshBot.proactive/followUpGroupAbandon',
+          'dshBot.proactive/accept', 'dshBot.proactive/setup', 'dshBot.proactive/submitDocument', 'dshBot.proactive/reconcileWork', 'dshBot.proactive/exportMethod', 'dshBot.proactive/importMethod', 'dshBot.proactive/cancel', 'dshBot.proactive/feedback', 'dshBot.proactive/externalNotice', 'dshBot.proactive/groupReview', 'dshBot.proactive/review', 'dshBot.proactive/listWork', 'dshBot.proactive/botWork', 'dshBot.proactive/activityPage', 'dshBot.proactive/workDetail',
           'dshBot.proactive/pause', 'dshBot.proactive/revokeSource',
           'dshBot.proactive/adjustSuggestion','dshBot.proactive/botSuggestions','dshBot.proactive/responsibilities','dshBot.proactive/changeResponsibility','dshBot.proactive/workHistory','dshBot.proactive/workspaceReview','dshBot.proactive/feedbackOverview','dshBot.proactive/feedbackContexts','dshBot.proactive/feedbackWorkflow','dshBot.proactive/feedbackCandidate','dshBot.proactive/feedbackHistory','dshBot.proactive/forgetSource',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/createForChat', 'dshBot/startOnboarding', 'dshBot/retryOnboarding', 'dshBot/onboardingStatus', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get',

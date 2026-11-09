@@ -1,3 +1,4 @@
+import { compareMethods } from "../src/host/proactive/method-evaluation.js";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { Suggestion } from "../src/shared/proactive/protocol.js";
@@ -247,8 +248,8 @@ function openWorkflow(db: DatabaseSync) {
 		purged_at INTEGER NOT NULL, PRIMARY KEY(id,version));`);
 	const decode = (row: Record<string, unknown>) => feedbackCandidate.parse(JSON.parse(String(row.payload)));
 	const candidates = () => db.prepare("SELECT payload FROM pb_feedback_candidate ORDER BY rowid DESC LIMIT 200").all().map(decode);
-	const datasets = () => db.prepare("SELECT payload FROM pb_feedback_dataset ORDER BY rowid DESC LIMIT 30").all()
-		.map(row => frozenFeedbackDataset.parse(JSON.parse(String(row.payload))));
+	const decodeDataset = (row: Record<string, unknown>) => frozenFeedbackDataset.parse(JSON.parse(String(row.payload)));
+	const datasets = () => db.prepare("SELECT payload FROM pb_feedback_dataset ORDER BY rowid DESC LIMIT 30").all().map(decodeDataset);
 	const candidate = (id: string) => {
 		const row = db.prepare("SELECT payload FROM pb_feedback_candidate WHERE id=?").get(id);
 		return row ? decode(row) : undefined;
@@ -263,11 +264,21 @@ function openWorkflow(db: DatabaseSync) {
 		if (row.state === "applying" || row.state === "revoking")
 			save({ ...row, state: "unknown", revision: row.revision + 1, unknownAction: row.state === "applying" ? "adopt" : "revoke" });
 	}
+	const fenced = (source: string, generation: number) =>
+		!!db.prepare("SELECT 1 FROM pb_source_revocation WHERE id=? AND generation>=?").get(source, generation);
+	const redactedTask = (id: string) =>
+		!!db.prepare("SELECT 1 FROM pb_governance_tombstone WHERE id=? AND kind IN ('ticket','decision','work') LIMIT 1").get(id);
+	const fencedProposal = (proposal: FeedbackCandidate["proposal"]) =>
+		(!!proposal.origin.source && fenced(proposal.origin.source.id, proposal.origin.source.generation)) ||
+		("change" in proposal && fenced(proposal.change.sourceId, proposal.change.sourceGeneration)) ||
+		redactedTask(proposal.origin.taskId) ||
+		(proposal.kind === "rework" && redactedTask(proposal.ticketId));
 	const activeFor = (row: Pick<Suggestion, "sourceId" | "job" | "attempt"> & { sourceGeneration?: number }, owner?: BotKey) => {
 		if (!owner) return [];
 		const sourceGeneration = row.sourceGeneration ?? Number(db.prepare("SELECT generation FROM pb_source WHERE id=?").get(row.sourceId)?.generation);
-		if (!Number.isSafeInteger(sourceGeneration) || !row.job) return [];
+		if (!Number.isSafeInteger(sourceGeneration) || !row.job || fenced(row.sourceId, sourceGeneration)) return [];
 		return db.prepare(`SELECT payload FROM pb_feedback_candidate WHERE state='adopted'
+			AND json_extract(payload,'$.bodyPurgedAt') IS NULL
 			AND json_extract(payload,'$.proposal.origin.bot.botId')=?
 			AND json_extract(payload,'$.proposal.origin.bot.botCreatedAt')=?
 			AND json_extract(payload,'$.proposal.change.sourceId')=?
@@ -276,36 +287,41 @@ function openWorkflow(db: DatabaseSync) {
 			AND json_extract(payload,'$.proposal.change.attempt')=? ORDER BY rowid DESC`)
 			.all(owner.botId, owner.botCreatedAt, row.sourceId, sourceGeneration, row.job, row.attempt).map(decode);
 	};
+	// An interrupted experiment cannot silently spend another attempt after restart.
+  for (const row of candidates()) if (row.methodEvaluation?.state === 'running') save({ ...row, revision: row.revision + 1, methodEvaluation: { ...row.methodEvaluation, state: 'unknown', outcome: 'inconclusive' } });
 	return {
 		candidates, candidate, datasets,
-		purgeSourceBody(sourceId: string, generation: number, ticketIds: string[], decisionIds: string[] = []) {
-			const taskIds = new Set([...ticketIds, ...decisionIds]);
+		purgeSourceBody(sourceId: string, generation: number, workIds: string[], decisionIds: string[] = []) {
+			const taskIds = new Set([...workIds, ...decisionIds]);
+			const inScope = (id: string, gen: number) => id === sourceId && gen <= generation;
 			let removedCandidates = 0, removedDatasets = 0;
 			const at = Date.now();
 			db.exec("SAVEPOINT feedback_purge");
 			try {
-				for (const row of candidates()) {
+				for (const row of db.prepare("SELECT payload FROM pb_feedback_candidate").all().map(decode)) {
 					const p = row.proposal;
-					const matches = p.origin.source?.id === sourceId && p.origin.source.generation === generation ||
-						"change" in p && p.change.sourceId === sourceId && p.change.sourceGeneration === generation ||
+					const matches = p.origin.source && inScope(p.origin.source.id, p.origin.source.generation) ||
+						"change" in p && inScope(p.change.sourceId, p.change.sourceGeneration) ||
 						taskIds.has(p.origin.taskId) || p.kind === "rework" && taskIds.has(p.ticketId);
 					if (!matches || row.bodyPurgedAt !== undefined) continue;
-					// Applied changes retain their review/withdrawal evidence. They are
-					// separate user-owned memory/skill records and are not source data.
-					const applied = db.prepare("SELECT 1 FROM pb_feedback_candidate_revision WHERE id=? AND json_extract(payload,'$.state') IN ('adopted','revoked','applying','revoking','unknown') LIMIT 1").get(row.id);
-					if (applied) continue;
-					const redact = (value: FeedbackCandidate): FeedbackCandidate => ({ ...value, bodyPurgedAt: at,
-						proposal: { ...value.proposal, reason: "[source body forgotten]",
+					// Preserve application receipts and digests. The independent
+					// Memory/Skill targets live outside this source-copy ledger.
+					const redact = (value: FeedbackCandidate): FeedbackCandidate => ({ ...value, bodyPurgedAt: at, methodEvaluation: undefined,
+						proposal: { ...value.proposal, attribution: undefined, reason: "[source body forgotten]",
 							...(value.proposal.kind === "preference" ? { content: "[source body forgotten]" } : {}),
-							...(value.proposal.kind === "skill" ? { content: "[source body forgotten]", before: null, beforeHash: null } : {}),
+							...(value.proposal.kind === "skill" ? { content: "[source body forgotten]", before: null, beforeHash: null, importedMethod: undefined } : {}),
 						} as FeedbackCandidate["proposal"] });
 					for (const old of db.prepare("SELECT payload FROM pb_feedback_candidate_revision WHERE id=?").all(row.id).map(decode))
 						db.prepare("UPDATE pb_feedback_candidate_revision SET payload=? WHERE id=? AND revision=?").run(JSON.stringify(redact(old)), row.id, old.revision);
-					save({ ...redact(row), state: "rejected", revision: row.revision + 1 });
+					const next = { ...redact(row), revision: row.revision + 1 };
+					if (row.state === "applying" || row.state === "revoking")
+						save({ ...next, state: "unknown", unknownAction: row.state === "applying" ? "adopt" : "revoke" });
+					else
+						save({ ...next, state: row.state === "candidate" || row.state === "eligible" ? "rejected" : row.state });
 					removedCandidates++;
 				}
-				for (const dataset of datasets()) {
-					if (!dataset.batches.some(batch => batch.rows.some(row => row.sourceId === sourceId && row.sourceGeneration === generation))) continue;
+				for (const dataset of db.prepare("SELECT payload FROM pb_feedback_dataset").all().map(decodeDataset)) {
+					if (!dataset.batches.some(batch => batch.rows.some(row => inScope(row.sourceId, row.sourceGeneration) || taskIds.has(row.taskId)))) continue;
 					db.prepare("INSERT INTO pb_feedback_dataset_tombstone VALUES (?,?,?,?)").run(dataset.id, dataset.version, dataset.digest, at);
 					db.prepare("DELETE FROM pb_feedback_dataset WHERE id=? AND version=?").run(dataset.id, dataset.version);
 					removedDatasets++;
@@ -353,12 +369,12 @@ function openWorkflow(db: DatabaseSync) {
 			}
 			return count;
 		},
-		visibility(row: Pick<Suggestion, "sourceId" | "job" | "attempt">, owner?: BotKey): boolean | undefined {
+		visibility(row: Pick<Suggestion, "sourceId" | "job" | "attempt" | "sourceGeneration">, owner?: BotKey): boolean | undefined {
 			const changes = activeFor(row, owner).filter(candidate => "change" in candidate.proposal && candidate.proposal.change.mode !== "mute");
 			const selected = changes[0];
 			return selected && "change" in selected.proposal ? selected.proposal.change.mode === "suppress" : undefined;
 		},
-		muted(row: Pick<Suggestion, "sourceId" | "job" | "attempt">, owner?: BotKey) {
+		muted(row: Pick<Suggestion, "sourceId" | "job" | "attempt" | "sourceGeneration">, owner?: BotKey) {
 			return activeFor(row, owner).some(candidate => "change" in candidate.proposal && candidate.proposal.change.mode === "mute");
 		},
 		workflow(raw: FeedbackWorkflowAction) {
@@ -368,6 +384,8 @@ function openWorkflow(db: DatabaseSync) {
 				if (input.action === "import-dataset") {
 					const value: FeedbackDataset = input.dataset;
 					if (datasets().length >= 30) throw new Rejection("forbidden");
+					if (value.batches.some(batch => batch.rows.some(row => fenced(row.sourceId, row.sourceGeneration) || redactedTask(row.taskId))))
+						throw new Rejection("forbidden");
 					if (db.prepare("SELECT 1 FROM pb_feedback_dataset WHERE id=? AND version=?").get(value.id, value.version))
 						throw new Rejection("conflict");
 					if (db.prepare("SELECT 1 FROM pb_feedback_dataset_tombstone WHERE (id=? AND version=?) OR digest=?").get(value.id, value.version, digest(value)))
@@ -376,14 +394,33 @@ function openWorkflow(db: DatabaseSync) {
 					db.prepare("INSERT INTO pb_feedback_dataset VALUES (?,?,?,?)").run(value.id, value.version, frozen.digest, JSON.stringify(frozen));
 				} else if (input.action === "propose-candidate") {
 					if (candidates().length >= 200) throw new Rejection("forbidden");
-					save({ id: randomUUID(), revision: 0, createdAt: Date.now(), proposal: input.proposal,
-						proposalDigest: digest(input.proposal), datasetDigests: datasets().map(row => row.digest), state: "candidate" });
+					if (fencedProposal(input.proposal)) throw new Rejection("forbidden");
+          const proposalDigest = digest(input.proposal);
+          if (candidates().some(row => row.proposalDigest === proposalDigest)) { db.exec('RELEASE feedback_workflow'); return 0; }
+          const attribution = input.proposal.attribution;
+          const failureKey = attribution ? digest([input.proposal.origin, attribution.problem, attribution.reproducer, attribution.scope]) : undefined;
+          save({ id: randomUUID(), revision: 0, createdAt: Date.now(), proposal: input.proposal,
+						proposalDigest, ...(failureKey ? { failureKey } : {}), datasetDigests: datasets().map(row => row.digest), state: "candidate" });
 				} else {
 					const row = candidate(input.candidateId);
 					if (!row || row.revision !== input.expectedRevision) throw new Rejection("stale");
 					if (row.bodyPurgedAt !== undefined) throw new Rejection("forbidden");
+					if ((input.action === "evaluate-candidate" || input.action === "adopt-candidate") && fencedProposal(row.proposal))
+						throw new Rejection("forbidden");
 					const next = { ...row, revision: row.revision + 1 };
-					if (input.action === "evaluate-candidate") {
+					if (input.action === 'register-method-evaluation') {
+            if (row.proposal.kind !== 'skill' || row.state !== 'candidate' || row.methodEvaluation) throw new Rejection('forbidden');
+            const heldOut = new Set(input.plan.cases.filter(sample => sample.split !== 'development').map(sample => digest(sample.input)));
+            if (candidates().some(previous => previous.methodEvaluation && sameBot(previous.proposal.origin.bot, row.proposal.origin.bot) &&
+              previous.methodEvaluation.plan.cases.some(sample => heldOut.has(digest(sample.input))))) throw new Rejection('conflict');
+            save({ ...next, methodEvaluation: { plan: input.plan, digest: digest([input.plan, row.proposalDigest]), candidateHash: digest(row.proposal.content), parentHash: row.proposal.beforeHash, registeredAt: Date.now(), state: 'registered', receipts: [] } });
+          } else if (input.action === 'run-method-evaluation') {
+            if (row.proposal.kind !== 'skill' || row.state !== 'candidate' || row.methodEvaluation?.state !== 'registered') throw new Rejection('forbidden');
+            save({ ...next, methodEvaluation: { ...row.methodEvaluation, state: 'running', operationId: randomUUID() } });
+          } else if (input.action === 'settle-method-evaluation') {
+            if (row.methodEvaluation?.state !== 'running' || row.methodEvaluation.operationId !== input.operationId) throw new Rejection('stale');
+            save({ ...next, methodEvaluation: { ...row.methodEvaluation, receipts: input.receipts, state: 'completed', outcome: compareMethods(row.methodEvaluation, input.receipts) } });
+          } else if (input.action === "evaluate-candidate") {
 						if (row.state !== "candidate" || row.evaluation) throw new Rejection("forbidden");
 						const dataset = datasets().find(item => item.id === input.datasetId && item.version === input.datasetVersion);
 						if (!dataset || !row.datasetDigests.includes(dataset.digest) ||

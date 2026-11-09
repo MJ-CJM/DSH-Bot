@@ -1,3 +1,4 @@
+import type { ExportMethodRequest, ImportMethodRequest, MethodPackage } from "../../shared/proactive/method-package.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { BotKey } from "../../shared/identity.js";
@@ -7,6 +8,8 @@ import { capabilityResult } from "../../shared/capabilities-contract.js";
 
 const unwrap = <T>(result: RemoteResult<T>): T => { if (!result.ok) throw result.error; return result.value; };
 export interface FeedbackWorkspaceActions {
+  exportMethod?(input: ExportMethodRequest): Promise<MethodPackage>;
+  importMethod?(input: ImportMethodRequest): Promise<SuggestionActionReply>;
 	overview(cursor?: string): Promise<FeedbackWorkflowView>;
 	contexts(owner: BotKey): Promise<FeedbackContext[]>;
 	change(input: FeedbackWorkflowRequest): Promise<SuggestionActionReply>;
@@ -20,6 +23,8 @@ export function createFeedbackActions(ctx: Context, isActive: () => boolean): Fe
 		return service;
 	};
 	return {
+    exportMethod: async input => unwrap(await remote().exportMethod(input)),
+    importMethod: async input => unwrap(await remote().importMethod(input)),
 		overview: async cursor => unwrap(await remote().feedbackOverview(cursor ? { cursor } : {})),
 		contexts: async owner => unwrap(await remote().feedbackContexts(owner)),
 		change: async input => unwrap(await remote().feedbackWorkflow(input)),

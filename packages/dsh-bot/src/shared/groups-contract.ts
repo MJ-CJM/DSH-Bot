@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info';
+import { botKeySchema } from './identity.js';
+import { groupRecallInputSchema, groupRecallPageSchema } from './group-recall.js';
 import type { RemoteResult, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import {
   groupKeySchema,
@@ -30,6 +32,10 @@ const base = { service: 'dshBotGroupsRemote', invocation: { kind: 'direct' as co
 export const groupsSpec = {
   package: 'dsh-bot/groups',
   methods: {
+    'dshBot.groups/recallForBot': {
+      ...base, parameters: [param('bot', botKeySchema), param('input', groupRecallInputSchema)],
+      result: codec('GroupRecallPage', groupRecallPageSchema),
+    },
     'dshBot.groups/open': {
       ...base, parameters: [param('group', groupKeySchema)],
       result: codec('OpenedGroup', z.strictObject({ sessionId: z.string().min(1), workspaceId: z.string().min(1) })),

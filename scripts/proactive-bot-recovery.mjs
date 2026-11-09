@@ -1,7 +1,8 @@
+import { rehearseMigration } from './proactive-maintenance.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync, backup } from 'node:sqlite';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, access } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { launch, scratch } from './proactive/worker.mjs';
 
@@ -77,6 +78,18 @@ try {
     } finally { await upgraded.stop(); }
     rows.push('previous database upgraded with receipt and cursor intact');
   }
+  const rehearsal = await rehearseMigration(entry, snapshotDir, join(dir, 'rehearsal'));
+  assert.equal(rehearsal.originalUnchanged, true);
+  assert.equal(rehearsal.backupRemoved, true);
+  rows.push('exclusive-lock migration rehearsal retains no backup body');
+  const leftover = join(snapshotDir, '.maintenance-rehearsal');
+  await mkdir(leftover, { mode: 0o700 });
+  await writeFile(join(leftover, 'stale-body'), 'synthetic interrupted rehearsal');
+  child = launch(entry, snapshotDir);
+  assert.equal((await child.send({ ...hello, expectedStoreId: storeId })).kind, 'hello');
+  await assert.rejects(access(leftover));
+  await child.stop();
+  rows.push('normal startup removes interrupted store-owned snapshots before use');
   const db = new DatabaseSync(join(snapshotDir, 'core.sqlite'));
   try { db.exec('UPDATE pb_meta SET schema_version=999'); } finally { db.close(); }
   child = launch(entry, snapshotDir);

@@ -10,16 +10,19 @@ import type { ExecutionBridge } from '../group-execution.js';
 import type { GroupPermissionState } from '../group-permission-state.js';
 import { type GroupActivityFocus, groupMemberModel, groupTurnFailure, groupTurnParticipants, groupTurnQuestion, latestMemberDelivery, recentGroupTurns } from '../group-management.js';
 import { groupFailureText } from '../group-failure.js';
+import { groupQuestionDraft } from '../group-recall.js';
 import { BotAvatar } from './BotAvatar.js';
 import { GroupAvatar } from './GroupAvatar.js';
 import { GroupStatisticsBar } from './GroupStatistics.js';
 import { RetainedPanel } from './RetainedPanel.js';
+import { FollowUpPanel, type FollowUpNavigation } from '../proactive/FollowUpPanel.js';
+import { followUpSessionTarget } from '../proactive/follow-up-state.js';
 import styles from '../styles/groups.module.css';
 
 export type GroupOverviewSection = 'members' | 'activity' | 'settings';
 
 export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpenRun, onAskBot, executionBridge, permissionState,
-  section: requestedSection, onSectionChange, showHeader = true, showTabs = true, focusTurnId, focusRequest, t }: {
+  section: requestedSection, onSectionChange, showHeader = true, showTabs = true, visible = true, focusTurnId, focusRequest, t }: {
   summary: GroupSummary;
   actions: GroupActions;
   bots: BotRecord[];
@@ -33,6 +36,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
   onSectionChange?(section: GroupOverviewSection): void;
   showHeader?: boolean;
   showTabs?: boolean;
+  visible?: boolean;
   focusTurnId?: string;
   focusRequest?: GroupActivityFocus;
 } & PropsLocale<'dsh-bot'>) {
@@ -42,6 +46,10 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
   const view = snapshot.view;
   const [section, setSection] = useState<GroupOverviewSection>(requestedSection ?? 'members');
   const currentSection = requestedSection ?? section;
+  const selectSection = (next: GroupOverviewSection) => {
+    if (onSectionChange) onSectionChange(next);
+    else setSection(next);
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -69,6 +77,28 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
   };
   const members = view.members.filter(member => member.removedAt === undefined);
   const active = members.filter(member => member.enabled);
+  const subject = { kind: 'group' as const, group: groupKey(view.group) };
+  const followUp = actions.followUp;
+  const continuationMembers = active.filter(member => !view.unavailableMemberIds.includes(member.id)).map(member => {
+    const bot = bots.find(item => item.id === member.bot.botId && item.createdAt === member.bot.botCreatedAt);
+    return { id: member.id, bot: member.bot, label: bot?.name ?? member.bot.botId };
+  });
+  const groupContinuation = followUp?.groupContinuation && !view.group.archived && view.group.state === 'ready' ? {
+    members: continuationMembers.map(member => continuationMembers.some(peer => peer.id !== member.id && peer.label === member.label)
+      ? { ...member, label: `${member.label} · ${member.bot.botId}` } : member),
+    transport: followUp.groupContinuation,
+    canContinue: (turnId: string) => view.turns.some(turn => turn.id === turnId && ['completed', 'partial'].includes(turn.state)),
+    onAccepted: () => { void Promise.allSettled([catalog.refresh(), actions.catalog.refresh()]); },
+  } : undefined;
+  const openFollowUp: FollowUpNavigation = {
+    canOpen: origin => origin.kind === 'group-turn' || !!followUpSessionTarget(origin),
+    open: (origin, signal) => {
+      if (origin.kind !== 'group-turn') return followUp?.openSession(origin, signal);
+      if (!view.turns.some(turn => turn.id === origin.turnId)) throw new Error('Original group activity unavailable');
+      if (onOpenRun) return onOpenRun(view, origin.turnId);
+      return actions.openRun(subject.group, origin.turnId, signal);
+    },
+  };
   const tabs = (['members', 'activity', 'settings'] as const).map(value => ({ value,
     label: t(`groups.view.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel`,
   })) as [import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>, ...import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>[]];
@@ -96,11 +126,18 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
       {permissionState && <GroupPermissionLabel state={permissionState} t={t} />}
     </div>
     {showTabs && <div className={styles.overviewTabs}><SegmentedTabs label={t('groups.manage')} value={currentSection}
-      onChange={next => { if (onSectionChange) onSectionChange(next); else setSection(next); }} items={tabs} /></div>}
+      onChange={selectSection} items={tabs} /></div>}
     <RetainedPanel active={currentSection === 'members'} id={`${uid}-members-panel`} labelledBy={`${uid}-members`}>
-      <GroupMembersView key={JSON.stringify(groupKey(view.group))} view={view} bots={bots} actions={actions} active={currentSection === 'members'} onOpenBot={onOpenBot} onAskBot={onAskBot} executionBridge={executionBridge} t={t} />
+      {followUp && <FollowUpPanel source={followUp} subject={subject} mode="summary" editable={!view.group.archived}
+        active={visible && currentSection === 'members'} onShowAll={() => {
+          selectSection('activity');
+          document.getElementById(`${uid}-activity`)?.focus();
+        }} t={t} />}
+      <GroupMembersView key={JSON.stringify(groupKey(view.group))} view={view} bots={bots} actions={actions} active={visible && currentSection === 'members'} onOpenBot={onOpenBot} onAskBot={onAskBot} executionBridge={executionBridge} t={t} />
     </RetainedPanel>
     <RetainedPanel active={currentSection === 'activity'} id={`${uid}-activity-panel`} labelledBy={`${uid}-activity`}>
+      {followUp && <FollowUpPanel source={followUp} subject={subject} mode="detail" editable={!view.group.archived}
+        active={visible && currentSection === 'activity'} navigation={openFollowUp} groupContinuation={groupContinuation} t={t} />}
       <GroupActivityView view={view} bots={bots} actions={actions} executionBridge={executionBridge}
         active={currentSection === 'activity'} focusTurnId={focusTurnId} focusRequest={focusRequest} t={t}
         onOpenRun={onOpenRun ?? ((target, turnId) => {
@@ -149,13 +186,24 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
     const controller = new AbortController(); pendingAsk.current = controller;
     setAsking(memberId); setAskError(undefined);
     try {
-      const turn = recentGroupTurns(view, 1)[0];
-      const message = turn ? view.messages.find(row => row.id === turn.inputMessageId)
-        ?? await actions?.quotedMessage(groupKey(view.group), turn.inputMessageId, controller.signal) : undefined;
+      const delivery = latestMemberDelivery(view, memberId, row => row.bot.botId === bot.id && row.bot.botCreatedAt === bot.createdAt
+        && Boolean(row.childSessionId) && !row.joinedDeliveryId && !['pending', 'starting'].includes(row.state));
+      const turn = view.turns.find(row => row.id === delivery?.turnId);
+      if (!delivery || !turn) {
+        await onAskBot?.(bot, '', controller.signal);
+        return;
+      }
+      const group = groupKey(view.group);
+      const messageId = (bot.memory.enabled && delivery.triggerMessageId) || turn.inputMessageId;
+      const message = view.messages.find(row => row.id === messageId)
+        ?? await actions?.quotedMessage(group, messageId, controller.signal);
       if (controller.signal.aborted) return;
-      if (turn && !message) throw new Error('Question unavailable');
-      // Only the original question is a draft; labels, IDs and attachment placeholders are not.
-      await onAskBot?.(bot, message?.text.trim() ?? '', controller.signal);
+      if (!message) throw new Error('Question unavailable');
+      const prompt = bot.memory.enabled ? groupQuestionDraft(t, {
+        group, groupName: view.group.name, turnId: turn.id, deliveryId: delivery.id,
+        sessionId: view.group.rootSessionId, messageId: message.id, seq: message.seq,
+      }) : message.text.trim();
+      await onAskBot?.(bot, prompt, controller.signal);
     } catch {
       if (!controller.signal.aborted) setAskError(memberId);
     } finally {

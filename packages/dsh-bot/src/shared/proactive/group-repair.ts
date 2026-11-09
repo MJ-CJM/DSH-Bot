@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { groupKeySchema } from "../groups.js";
+import { groupKeySchema, groupModelSelectionSchema } from "../groups.js";
 import { botKeySchema, resourceId } from "../identity.js";
 import { workspaceFilePath } from "./workspace-repair.js";
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const member = z.strictObject({
 	memberId: resourceId,
+  modelSelection: groupModelSelectionSchema.optional(),
 	bot: botKeySchema,
 	botUpdatedAt: z.number().int().nonnegative(),
 });
@@ -14,6 +15,7 @@ export const groupRepairGrant = z
 		group: groupKeySchema,
 		rootSessionId: resourceId,
 		membershipRevision: z.number().int().nonnegative(),
+    modelRevision: z.number().int().nonnegative().optional(),
 		supervisor: member,
 		implementer: member,
 		maxCalls: z.literal(3),

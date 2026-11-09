@@ -8,9 +8,11 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import { afterEach, expect, test, vi } from "vitest";
+import type { Ticket } from "../coordinator/vendor/src/core/model.js";
 import type {
 	CommandBody,
 	Suggestion,
@@ -46,6 +48,18 @@ const { openWork } = (await import(coordinatorUrl)) as {
 		getTicket(id: string): ProactiveWork | null;
 		history(input: WorkHistoryRequest): WorkHistory;
 	};
+};
+interface NativeReviewStore {
+	db: DatabaseSync;
+	atomic<T>(operation: () => T): T;
+	close(): void;
+	tickets: { get(id: string): Ticket | undefined; save(ticket: Ticket): void };
+}
+const { Engine, Store } = (await import(
+	pathToFileURL(resolve("lib/proactive-coordinator/core.mjs")).href
+)) as {
+	Store: new (path: string) => NativeReviewStore;
+	Engine: new (options: object) => { retryTicket(id: string): Ticket };
 };
 
 const roots: string[] = [];
@@ -97,7 +111,8 @@ function work(patch: Partial<ProactiveWork> = {}): ProactiveWork {
 	});
 }
 function open(path: string) {
-	const db = new DatabaseSync(path);
+	const store = new Store(path);
+	const { db } = store;
 	db.exec(`CREATE TABLE IF NOT EXISTS pb_source (id TEXT,generation INTEGER);
 		CREATE TABLE IF NOT EXISTS pb_source_revocation (id TEXT,generation INTEGER);
 		CREATE TABLE IF NOT EXISTS pb_ci_head (source TEXT,generation INTEGER,thread TEXT,attempt INTEGER,conclusion TEXT,observed_at TEXT,decision TEXT);`);
@@ -106,18 +121,71 @@ function open(path: string) {
 		triggerId: "trigger-one",
 		observedAt: new Date().toISOString(),
 	} as Suggestion;
-	const core = openWork(db, {}, () => source, 20, 20, false);
+	const core = openWork(db, store, () => source, 20, 20, false);
+	const unavailable = () => {
+		throw new Error("Unexpected fixture side effect");
+	};
+	const engine = new Engine({
+		repo: store,
+		scope: { scope: () => ({ listened: true, observed: true }) },
+		policy: () => ({
+			version: "v1",
+			paused: true,
+			evalTimeoutMs: 0,
+			gate: () => ({ admissible: false, reason: "fixture" }),
+			revalidate: () => false,
+			admitsInferred: () => false,
+		}),
+		assessor: { request: unavailable },
+		executor: { start() {}, deliver() {}, stop() {} },
+		outbox: {
+			send: unavailable,
+			withdraw: unavailable,
+			status: () => undefined,
+		},
+	});
 	const seed = (row: ProactiveWork) =>
-		db
-			.prepare("INSERT INTO pb_work VALUES (?,?,?,?,?)")
-			.run(
+		store.atomic(() => {
+			const at = new Date().toISOString();
+			store.tickets.save({
+				id: row.ticketId,
+				title: row.title,
+				decisionId: row.decisionId,
+				mandate: {
+					strength: "inferred",
+					scope: row.title,
+					policyVersion: row.policyVersion,
+					actor: { source: row.sourceId, id: "fixture" },
+					basis: { via: "bot", observation: { mode: "auto" } },
+				},
+				channels: [],
+				assignments: [
+					{
+						id: row.assignmentId,
+						state: "running",
+						createdAt: at,
+						report: {
+							state: row.state === "delivered" ? "waiting" : "progress",
+							summary: "Fixture evidence",
+							at,
+						},
+					},
+				],
+				inputs: [],
+				undelivered: [],
+				createdAt: at,
+				updatedAt: at,
+				origin: { triggerId: row.triggerId, triggerIds: [row.triggerId] },
+			});
+			db.prepare("INSERT INTO pb_work VALUES (?,?,?,?,?)").run(
 				row.assignmentId,
 				row.ticketId,
 				row.decisionId,
 				row.generation,
 				JSON.stringify(row),
 			);
-	return { db, core, seed };
+		});
+	return { store, engine, core, seed };
 }
 
 test("owner findings survive reopening, bind the previous evidence, and appear in the next execution", async () => {
@@ -126,20 +194,18 @@ test("owner findings survive reopening, bind the previous evidence, and appear i
 	let connection = open(path);
 	const original = work();
 	connection.seed(original);
-	const engine = {
-		report: vi.fn(),
-		retryTicket: vi.fn(() => ({ assignments: [{ id: "assignment-two" }] })),
-	};
 	try {
-		connection.core.apply(engine, {
-			kind: "review",
-			ticketId: original.ticketId,
-			expectedRevision: original.revision,
-			evidenceDigest: required(original.evidenceDigest),
-			approved: true,
-			review: "rework",
-			feedback,
-		});
+		connection.store.atomic(() =>
+			connection.core.apply(connection.engine, {
+				kind: "review",
+				ticketId: original.ticketId,
+				expectedRevision: original.revision,
+				evidenceDigest: required(original.evidenceDigest),
+				approved: true,
+				review: "rework",
+				feedback,
+			}),
+		);
 		const next = required(connection.core.getTicket(original.ticketId));
 		expect(next.rework).toMatchObject({
 			previousAssignmentId: original.assignmentId,
@@ -147,12 +213,17 @@ test("owner findings survive reopening, bind the previous evidence, and appear i
 			feedback,
 			requestedBy: "owner",
 		});
-		expect(next.assignmentId).toBe("assignment-two");
+		expect(
+			required(connection.store.tickets.get(original.ticketId)).assignments,
+		).toMatchObject([
+			{ id: original.assignmentId, state: "ended", endedReason: "retried" },
+			{ id: next.assignmentId, state: "pending" },
+		]);
 		const prompt = executionPrompt(next);
 		expect(prompt).toContain(required(feedback.failures[0]).actual);
 		expect(prompt).toContain(required(feedback.failures[0]).expected);
 		expect(prompt).toContain(original.assignmentId);
-		connection.db.close();
+		connection.store.close();
 		connection = open(path);
 		const latest = connection.core.history({
 			ticketId: original.ticketId,
@@ -168,6 +239,8 @@ test("owner findings survive reopening, bind the previous evidence, and appear i
 		expect(previous.nextBeforeGeneration).toBeUndefined();
 		expect(previous.versions[0]).toMatchObject({
 			assignmentId: original.assignmentId,
+			state: "superseded",
+			supersededBy: next.assignmentId,
 			evidenceDigest: original.evidenceDigest,
 			reviewFeedback: feedback,
 		});
@@ -175,7 +248,7 @@ test("owner findings survive reopening, bind the previous evidence, and appear i
 			connection.core.history({ ticketId: "unrelated-ticket" }).versions,
 		).toEqual([]);
 	} finally {
-		connection.db.close();
+		connection.store.close();
 	}
 });
 
@@ -198,28 +271,30 @@ test("unknown runs, missing review findings, old evidence and exhausted task att
 			{ feedback },
 		],
 	] as const) {
-		const { db, core, seed } = open(join(root, `${suffix}.sqlite`));
+		const { store, engine, core, seed } = open(join(root, `${suffix}.sqlite`));
 		const original = work(patch);
 		seed(original);
-		const engine = { report: vi.fn(), retryTicket: vi.fn() };
+		const retry = vi.spyOn(engine, "retryTicket");
 		try {
 			expect(() =>
-				core.apply(engine, {
-					kind: "review",
-					ticketId: original.ticketId,
-					expectedRevision: original.revision,
-					evidenceDigest: required(original.evidenceDigest),
-					approved: true,
-					review: "rework",
-					...input,
-				}),
+				store.atomic(() =>
+					core.apply(engine, {
+						kind: "review",
+						ticketId: original.ticketId,
+						expectedRevision: original.revision,
+						evidenceDigest: required(original.evidenceDigest),
+						approved: true,
+						review: "rework",
+						...input,
+					}),
+				),
 			).toThrow();
-			expect(engine.retryTicket).not.toHaveBeenCalled();
+			expect(retry).not.toHaveBeenCalled();
 			expect(
 				core.history({ ticketId: original.ticketId }).versions,
 			).toHaveLength(1);
 		} finally {
-			db.close();
+			store.close();
 		}
 	}
 	expect(

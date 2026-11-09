@@ -1,7 +1,10 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { randomUUID } from "node:crypto";
 import { Serial } from "../common/operations.js";
-import type { BeginForget } from "../../shared/proactive/governance.js";
+import type {
+	BeginForget,
+	ForgetReceipt,
+} from "../../shared/proactive/governance.js";
 import type { ProactiveConfig } from "./config.js";
 import type { ProactiveService } from "./service.js";
 import { purgeManagedArtifacts } from "./governance-artifacts.js";
@@ -13,7 +16,7 @@ export class ProactiveGovernance {
 	constructor(
 		private readonly ctx: Context,
 		private readonly port: ProactiveService,
-		private readonly config: ProactiveConfig,
+		private readonly config: Pick<ProactiveConfig, "proactiveGovernanceIntervalMs">,
 		private readonly root: string,
 	) {}
 	private async receipt(operationId: string) {
@@ -21,6 +24,19 @@ export class ProactiveGovernance {
 		if (reply.kind !== "forget-receipt" || !reply.receipt)
 			throw new Error("Forget receipt unavailable");
 		return reply.receipt;
+	}
+	private async block(
+		operationId: string,
+		reason: NonNullable<ForgetReceipt["blockedReason"]>,
+	) {
+		const reply = await this.port.change(randomUUID(), {
+			kind: "forget-block",
+			operationId,
+			reason,
+		});
+		if (reply.kind !== "receipt")
+			throw new Error("Forget copy verification outcome unavailable");
+		return this.receipt(operationId);
 	}
 	private async purge() {
 		const reply = await this.port.read({ kind: "governance-pending" });
@@ -60,6 +76,15 @@ export class ProactiveGovernance {
 					});
 			}
 			await this.port.execution.idle();
+			const scope = await this.port.read({
+				kind: "source-cleanup-scope",
+				sourceId: input.sourceId,
+				generation: input.generation,
+			});
+			if (scope.kind !== "source-cleanup-scope")
+				throw new Error("Cleanup scope unavailable");
+			if (!(await this.port.reconcileForgetResults(scope.scope.assignmentIds)))
+				return this.block(input.operationId, "result-copy-unknown");
 			for (const assignmentId of previous.pendingAssignments) {
 				const reply = await this.port.read({
 					kind: "work-assignment",
@@ -68,7 +93,8 @@ export class ProactiveGovernance {
 				const work = reply.kind === "work" ? reply.work : null;
 				if (
 					work &&
-					["accepted", "failed", "denied", "cancelled"].includes(work.state)
+					(["accepted", "failed", "denied", "cancelled"].includes(work.state) ||
+						(work.state === "superseded" && work.supersededBy))
 				)
 					drained.push({
 						assignmentId,
@@ -90,33 +116,19 @@ export class ProactiveGovernance {
 				});
 				return this.receipt(input.operationId);
 			}
-			const scope = await this.port.read({
-				kind: "source-cleanup-scope",
-				sourceId: input.sourceId,
-				generation: input.generation,
-			});
-			if (scope.kind !== "source-cleanup-scope")
-				throw new Error("Cleanup scope unavailable");
+			if (scope.scope.assignmentIds.length) {
+				const groups = this.ctx.get("dshBotGroups");
+				if (!(await groups?.purgeProactiveCopies(scope.scope.assignmentIds).catch(() => false)))
+					return this.block(input.operationId, "group-copy-unknown");
+			}
 			const notices = this.ctx.get("dshBotNotifications");
 			if (notices) {
 				const status = notices.proactiveCopyStatus(scope.scope);
-				if (status.blockedOperationIds.length) {
-					await this.port.change(randomUUID(), {
-						kind: "forget-block",
-						operationId: input.operationId,
-						reason: "notification-copy-unknown",
-					});
-					return this.receipt(input.operationId);
-				}
+				if (status.blockedOperationIds.length)
+					return this.block(input.operationId, "notification-copy-unknown");
 				const cleaned = await notices.purgeProactiveCopies(scope.scope);
-				if (cleaned.blockedOperationIds.length) {
-					await this.port.change(randomUUID(), {
-						kind: "forget-block",
-						operationId: input.operationId,
-						reason: "notification-copy-unknown",
-					});
-					return this.receipt(input.operationId);
-				}
+				if (cleaned.blockedOperationIds.length)
+					return this.block(input.operationId, "notification-copy-unknown");
 			}
 			await this.port.change(randomUUID(), {
 				kind: "forget-finish",

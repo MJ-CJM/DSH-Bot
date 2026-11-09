@@ -123,11 +123,30 @@ export async function mountClient(
     if (contribution?.package === 'dsh-bot/proactive') return ctx.provide('remote.dshBot.proactive', {
       status: async () => ({ ok: true as const, value: { state: 'disabled' as const,
         capabilities: { ...capabilities, ingest: false, snapshot: false } } }),
+      responsibilities: async () => ({ ok: true as const, value: [] }),
+      activityPage: async (input: import('../../src/shared/proactive/activity.js').ActivityRequest) => {
+        const remote = ctx.get('remote.dshBot.proactive');
+        if (!remote) throw new Error('Fixture remote missing');
+        const result = input.collection === 'work' ? await remote.botWork(input.owner) : await remote.botSuggestions(input.owner);
+        if (!result.ok) throw new Error('Fixture read failed');
+        return { ok: true as const, value: { collection: input.collection, rows: result.value } } as never;
+      },
+      workDetail: async (input: import('../../src/shared/proactive/activity.js').WorkDetailRequest) => {
+        const remote = ctx.get('remote.dshBot.proactive');
+        if (!remote) throw new Error('Fixture remote missing');
+        const result = await remote.botWork(input.owner);
+        if (!result.ok) throw new Error('Fixture detail failed');
+        const row = result.value.find((row: import('../../src/shared/proactive/work.js').ProactiveWork) => row.ticketId === input.ticketId && row.revision === input.expectedRevision);
+        if (!row) throw new Error('Missing fixture detail');
+        return { ok: true as const, value: row };
+      },
       listSuggestions: async () => ({ ok: true as const, value: [] }),
+      botSuggestions: async () => ({ ok: true as const, value: [] }),
       groupReview: async () => { throw new Error('Unsupported fixture action'); },
       revokeSource: async () => { throw new Error('Unsupported fixture action'); },
       externalNotice: async () => { throw new Error('Unsupported fixture action'); },
       listWork: async () => ({ ok: true as const, value: [] }),
+      botWork: async () => ({ ok: true as const, value: [] }),
       feedback: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
       changeSuggestion: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),
       accept: async () => ({ ok: true as const, value: { kind: 'rejected' as const, code: 'unsupported' as const } }),

@@ -98,6 +98,15 @@ async function mountBadge(preset?: unknown, language: 'en' | 'zh' = 'en') {
 }
 
 describe('Session Bot badge with public session projection and the shared catalog', () => {
+  it('does not call an existing Bot deleted when its session identity is still unavailable', async () => {
+    const app = await mountBadge('standard');
+    app.remote.data.statuses = [{ id: 'alpha-bot', presetId: 'custom-alpha-bot', preset: { state: 'ok' } }];
+    await act(async () => app.catalog.refresh());
+    await app.setActivity([]);
+    await app.selectPreset('custom-alpha-bot');
+    expect(app.container.textContent).toBe('');
+    expect(app.container.querySelector('button')).toBeNull();
+  });
   const unread = (at = 100): ActivitySession => ({ sessionId: 'session-badge-test', botId: 'alpha-bot', botCreatedAt: 1,
     updatedAt: at, unread: true, lastMessage: { role: 'assistant', preview: 'A completed reply', at } });
 

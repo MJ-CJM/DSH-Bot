@@ -40,7 +40,47 @@ export async function runResponsibilityFixture(ctx,service,bot,adapter,config,si
   const revoked=await service.read({kind:'dispatch-permitted',assignmentId:completed[0].assignmentId,noticeRevision:completed[0].revision});assert.equal(revoked.permitted,false);
   const usage=(await service.responsibilities(owner(bot)))[0].usage;assert.equal(usage.requestsUsed,2);
   for(const work of completed){const session=await ctx.sessionController.inspect(work.sessionId);assert.ok(session.events.some(event=>event.type==='user/message'&&event.data.source.kind==='dsh-bot-proactive-ci'));}
-  await writeFile(join(config.outputDir,'responsibility-result.json'),JSON.stringify({offHidden:true,suggestVisible:preview.length,otherBotHidden:true,busyCount:running.length,processed:completed.map(row=>({ticketId:row.ticketId,assignmentId:row.assignmentId,sourceId:row.sourceId,sessionId:row.sessionId})),calls:adapter.count,pausePreservedGrant:permission.permitted,revokeDenied:!revoked.permitted,usage},null,2));
+  let control=(await service.status()).snapshot.executionControl;
+  admitted(await service.pause(randomUUID(),{paused:true,expectedRevision:control.revision}));
+  const pauseDraft=draft(bot);
+  const pausedRule=await mutate({kind:'create',id:'paused-observation-duty',owner:owner(bot),
+    draft:{...pauseDraft,target:{bot:owner(bot),botUpdatedAt:bot.updatedAt}}});
+  const suggested=await mutate({kind:'update',id:pausedRule.id,owner:owner(bot),expectedRevision:pausedRule.revision,
+    draft:{...pauseDraft,mode:'suggest',target:pausedRule.target}});
+  assert.equal(suggested.mode,'suggest');
+  const rejected=await service.changeResponsibility({commandId:randomUUID(),mutation:{
+    kind:'update',id:pausedRule.id,owner:owner(bot),expectedRevision:suggested.revision,draft:{...pauseDraft,mode:'auto'},
+  }});
+  assert.deepEqual(rejected,{kind:'rejected',code:'forbidden'});
+  control=(await service.status()).snapshot.executionControl;
+  admitted(await service.pause(randomUUID(),{paused:false,expectedRevision:control.revision}));
+  await writeFile(join(config.outputDir,'responsibility-result.json'),JSON.stringify({offHidden:true,suggestVisible:preview.length,otherBotHidden:true,busyCount:running.length,processed:completed.map(row=>({ticketId:row.ticketId,assignmentId:row.assignmentId,sourceId:row.sourceId,sessionId:row.sessionId})),calls:adapter.count,pausePreservedGrant:permission.permitted,revokeDenied:!revoked.permitted,usage,pausedObservation:{saved:['off',suggested.mode],automatic:rejected.code}},null,2));
+}
+
+export async function runObservationFixture(ctx,service,bot,adapter,config,signal) {
+  const status=await service.status();
+  assert.equal(status.capabilities.directExecution,false);
+  assert.equal(status.directRoute,undefined);
+  const {sessionId}=await ctx.dshBots.openConversation(bot.id);
+  await writeFile(join(config.outputDir,'observation-ready.json'),JSON.stringify({sessionId}));
+  console.log('B4_WEB_READY');
+  const triggered=marker=>until(()=>access(join(config.outputDir,marker)).then(()=>true,()=>false),signal,120000);
+  await triggered('observation-ingest');
+  const duties=(await service.responsibilities(owner(bot))).map(row=>row.responsibility);
+  assert.deepEqual(duties.map(row=>row.mode).sort(),['off','suggest']);
+  assert.ok(duties.every(row=>!('provider' in row.target)));
+  admitted(await service.observeCi(randomUUID(),scope,{complete:true,before:null,after:'observation-v1',rows:[fact('live-observation')]}));
+  const [row]=await service.suggestions(owner(bot));
+  assert.ok(row?.title.includes('live-observation'));
+  assert.ok(row.matchedResponsibilities.some(rule=>duties.some(duty=>duty.id===rule.id&&duty.mode==='suggest')));
+  await triggered('observation-revoke');
+  admitted(await service.revokeConfiguredSource({commandId:randomUUID(),sourceId,generation:scope.generation}));
+  assert.equal((await service.status()).localFeed,'revoked');
+  assert.deepEqual(await service.suggestions(owner(bot)),[]);
+  assert.equal(adapter.count,0);
+  await writeFile(join(config.outputDir,'observation-result.json'),JSON.stringify({
+    saved:duties.map(row=>row.mode).sort(), disabled:true, suggestion:row.id, revoked:true, calls:adapter.count,
+  },null,2));
 }
 
 export async function runGovernanceFixture(ctx,service,bot,adapter,config,signal) {

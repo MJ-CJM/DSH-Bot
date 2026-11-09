@@ -1,3 +1,4 @@
+import { methodPlan } from "../../shared/proactive/method-evaluation.js";
 import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
 import { useState } from "react";
@@ -7,7 +8,7 @@ import {
 } from "../../shared/proactive/feedback.js";
 
 export type { FeedbackContext } from "../../shared/proactive/feedback.js";
-type OwnerAction = Exclude<FeedbackWorkflowAction, { action: "settle-candidate" }>;
+type OwnerAction = Exclude<FeedbackWorkflowAction, { action: "settle-candidate" | "settle-method-evaluation" }>;
 interface Props extends PropsLocale<"dsh-bot"> {
 	view: FeedbackWorkflowView;
 	contexts: FeedbackContext[];
@@ -25,10 +26,16 @@ export function FeedbackPanel({ view, contexts, pending, onAction, onMore, onHis
 	const [selected, setSelected] = useState("");
 	const [kind, setKind] = useState<(typeof kinds)[number]>("false-positive");
 	const [reason, setReason] = useState("");
+  const [attributionOpen, setAttributionOpen] = useState(false);
+  const [category, setCategory] = useState<'preference' | 'method' | 'handoff' | 'environment' | 'unknown'>('unknown');
+  const [problem, setProblem] = useState(''), [reproducer, setReproducer] = useState('');
+  const [scope, setScope] = useState(''), [counterexample, setCounterexample] = useState('');
+  const [confounded, setConfounded] = useState(false);
 	const [content, setContent] = useState("");
 	const [skill, setSkill] = useState("");
 	const [setting, setSetting] = useState<"tools" | "workspace" | "model" | "notifications" | "proactive">("workspace");
 	const [datasetText, setDatasetText] = useState("");
+  const [methodPlanText, setMethodPlanText] = useState("");
 	const [datasetId, setDatasetId] = useState("");
 	const [error, setError] = useState(false);
 	const [busy, setBusy] = useState(false);
@@ -42,7 +49,10 @@ export function FeedbackPanel({ view, contexts, pending, onAction, onMore, onHis
 	}
 	async function propose() {
 		if (!context) throw new Error("Select feedback context");
-		const common = { origin: context.origin, reason };
+		const common = { origin: context.origin, reason, ...(attributionOpen ? { attribution: {
+      category: confounded && category === 'method' ? 'unknown' as const : category, basis: 'owner-hypothesis' as const,
+      problem, reproducer, scope, counterexample, confounds: confounded ? ['human-fix' as const] : [],
+    } } : {}) };
 		let proposal: FeedbackProposal;
 		if (kind === "preference") proposal = { ...common, kind, content };
 		else if (kind === "permission") proposal = { ...common, kind, setting };
@@ -76,7 +86,16 @@ export function FeedbackPanel({ view, contexts, pending, onAction, onMore, onHis
 				{kinds.map(value => <option key={value} value={value}>{t(`proactive.feedbackKind.${value}`)}</option>)}
 			</select></label>
 			<label>{t("proactive.feedbackReason")}<textarea value={reason} maxLength={kind === "rework" ? 512 : 2048} onChange={event => setReason(event.target.value)} /></label>
-			{kind === "skill" && <label>{t("proactive.feedbackSkillName")}<input value={skill} maxLength={64} onChange={event => setSkill(event.target.value)} /></label>}
+			<details onToggle={event => setAttributionOpen(event.currentTarget.open)}><summary>{t('proactive.attribution')}</summary>
+        <p>{t('proactive.attributionHint')}</p>
+        <label>{t('proactive.attributionCategory')}<select value={category} onChange={e => setCategory(e.target.value as typeof category)}>{(['unknown', 'preference', 'method', 'handoff', 'environment'] as const).map(value => <option key={value} value={value}>{t(`proactive.attributionCategory.${value}`)}</option>)}</select></label>
+        <label>{t('proactive.attributionProblem')}<textarea maxLength={2048} value={problem} onChange={e => setProblem(e.target.value)} /></label>
+        <label>{t('proactive.attributionReproducer')}<textarea maxLength={2048} value={reproducer} onChange={e => setReproducer(e.target.value)} /></label>
+        <label>{t('proactive.attributionScope')}<textarea maxLength={2048} value={scope} onChange={e => setScope(e.target.value)} /></label>
+        <label>{t('proactive.attributionCounterexample')}<textarea maxLength={2048} value={counterexample} onChange={e => setCounterexample(e.target.value)} /></label>
+        <label><input type="checkbox" checked={confounded} onChange={e => setConfounded(e.target.checked)} />{t('proactive.attributionConfounded')}</label>
+      </details>
+      {kind === "skill" && <label>{t("proactive.feedbackSkillName")}<input value={skill} maxLength={64} onChange={event => setSkill(event.target.value)} /></label>}
 			{(kind === "preference" || kind === "skill") && <label>{t("proactive.feedbackContent")}<textarea value={content} maxLength={kind === "skill" ? 16384 : 2048} onChange={event => setContent(event.target.value)} /></label>}
 			{kind === "permission" && <label>{t("proactive.feedbackSettingLabel")}<select value={setting} onChange={event => setSetting(event.target.value as typeof setting)}>
 				{(["tools", "workspace", "model", "notifications", "proactive"] as const).map(value => <option key={value} value={value}>{t(`proactive.feedbackSetting.${value}`)}</option>)}
@@ -103,11 +122,18 @@ export function FeedbackPanel({ view, contexts, pending, onAction, onMore, onHis
 				<p role="status">{t(`proactive.feedbackState.${row.state}`)}</p>
 				{row.bodyPurgedAt === undefined && row.proposal.kind === "preference" && <blockquote>{row.proposal.content}</blockquote>}
 				{row.bodyPurgedAt === undefined && row.proposal.kind === "skill" && <details><summary>{t("proactive.feedbackSkillDiff")}</summary>
-					<h4>{t("proactive.feedbackBefore")}</h4><pre>{row.proposal.before ?? t("proactive.feedbackNewSkill")}</pre>
+					{row.proposal.importedMethod && <><p>{row.proposal.importedMethod.contract.scope}</p><p>{row.proposal.importedMethod.contract.forbidden}</p><p>{t('proactive.methodTransferHint')}</p><code>{row.proposal.importedMethod.packageDigest}</code></>}
+          <h4>{t("proactive.feedbackBefore")}</h4><pre>{row.proposal.before ?? t("proactive.feedbackNewSkill")}</pre>
 					<h4>{t("proactive.feedbackAfter")}</h4><pre>{row.proposal.content}</pre>
 				</details>}
 				{"change" in row.proposal && <p>{row.proposal.change.sourceId} · {row.proposal.change.job} · {row.proposal.change.attempt}</p>}
-				{row.evaluation && <details><summary>{t("proactive.feedbackResult")}</summary>
+				{row.proposal.attribution && <details><summary>{t('proactive.attribution')}</summary>
+          <p>{t(`proactive.attributionCategory.${row.proposal.attribution.category}`)} · {t('proactive.attributionHint')}</p>
+          <p>{row.proposal.attribution.problem}</p><p>{row.proposal.attribution.reproducer}</p>
+          <p>{row.proposal.attribution.scope}</p><p>{row.proposal.attribution.counterexample}</p>
+          <code>{row.failureKey}</code>
+        </details>}
+        {row.evaluation && <details><summary>{t("proactive.feedbackResult")}</summary>
 					<p>{row.evaluation.datasetId} v{row.evaluation.datasetVersion} · {row.evaluation.passed ? "PASS" : "FAIL"}</p>
 					<code>{row.evaluation.digest}</code>
 					{row.evaluation.batches.map(batch => <p key={batch.id}>{t("proactive.feedbackComparison", batch)}</p>)}
@@ -115,7 +141,19 @@ export function FeedbackPanel({ view, contexts, pending, onAction, onMore, onHis
 				{rule && row.state === "candidate" && <Button variant="ghost" disabled={locked || !dataset || !row.datasetDigests.includes(dataset.digest)} onClick={() => { void run(async () => {
 					if (dataset) await onAction({ action: "evaluate-candidate", candidateId: row.id, expectedRevision: row.revision, datasetId: dataset.id, datasetVersion: dataset.version });
 				}); }}>{t("proactive.feedback.evaluate")}</Button>}
-				{canAdopt && <Button variant="ghost" disabled={locked} onClick={() => { void run(() => onAction({ action: "adopt-candidate", candidateId: row.id, expectedRevision: row.revision, reviewedDigest: row.proposalDigest })); }}>{t("proactive.feedbackAdoptExact")}</Button>}
+				{row.proposal.kind === 'skill' && row.bodyPurgedAt === undefined && <details>
+          <summary>{t('proactive.methodEvaluation')}</summary><p>{t('proactive.methodEvaluationHint')}</p>
+          {!row.methodEvaluation && row.state === 'candidate' && <>
+            <label>{t('proactive.methodPlan')}<textarea maxLength={32768} value={methodPlanText} onChange={e => setMethodPlanText(e.target.value)} /></label>
+            <Button variant="ghost" disabled={locked || !methodPlanText.trim()} onClick={() => { void run(() => onAction({ action: 'register-method-evaluation', candidateId: row.id, expectedRevision: row.revision, plan: methodPlan.parse(JSON.parse(methodPlanText)) })); }}>{t('proactive.methodRegister')}</Button>
+          </>}
+          {row.methodEvaluation && <><p>{t(`proactive.methodState.${row.methodEvaluation.state}`)} · {row.methodEvaluation.receipts.length}/{row.methodEvaluation.plan.cases.length * 4}</p>
+            <code>{row.methodEvaluation.digest}</code>
+            {row.methodEvaluation.outcome && <p>{t(`proactive.methodOutcome.${row.methodEvaluation.outcome}`)}</p>}
+            {row.methodEvaluation.state === 'registered' && row.state === 'candidate' && <Button variant="ghost" disabled={locked} onClick={() => { void run(() => onAction({ action: 'run-method-evaluation', candidateId: row.id, expectedRevision: row.revision })); }}>{t('proactive.methodRun', { calls: row.methodEvaluation.plan.cases.length * 4, tokens: row.methodEvaluation.plan.maxTokensPerCall })}</Button>}
+          </>}
+        </details>}
+        {canAdopt && <Button variant="ghost" disabled={locked} onClick={() => { void run(() => onAction({ action: "adopt-candidate", candidateId: row.id, expectedRevision: row.revision, reviewedDigest: row.proposalDigest })); }}>{t("proactive.feedbackAdoptExact")}</Button>}
 				{row.state === "adopted" && row.proposal.kind !== "rework" && <Button variant="ghost" disabled={locked} onClick={() => { void run(() => onAction({ action: "revoke-candidate", candidateId: row.id, expectedRevision: row.revision, reviewedDigest: row.proposalDigest })); }}>{t("proactive.feedback.revoke")}</Button>}
 				{row.bodyPurgedAt === undefined && row.proposal.kind === "permission" && onSettings && <Button variant="ghost" disabled={locked} onClick={() => { if (row.proposal.kind === "permission") onSettings(row.proposal.setting); }}>{t("proactive.feedbackOpenSettings")}</Button>}
 				{onHistory && <Button variant="ghost" disabled={locked} onClick={() => { void run(async () => {

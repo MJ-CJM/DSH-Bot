@@ -6,6 +6,7 @@ import {
 	responsibilityDraftSchema,
 	responsibilityGrantSchema,
 	responsibilityLimitsSchema,
+	responsibilityMatchSchema,
 	responsibilityMutationSchema,
 	responsibilityReservationInputSchema,
 	responsibilitySchema,
@@ -16,6 +17,7 @@ import {
 	type ResponsibilityBinding,
 	type ResponsibilityGrant,
 	type ResponsibilityLimits,
+	type ResponsibilityMatch,
 	type ResponsibilityMutation,
 	type ResponsibilityReservationInput,
 	type ResponsibilitySettlement,
@@ -160,6 +162,9 @@ export function openResponsibilities(
 	};
 	const normalizeBinding = (input: ResponsibilityBinding) => {
 		const binding = responsibilityBindingSchema.parse(input);
+		return normalizeMatch(binding);
+	};
+	const normalizeMatch = <T extends ResponsibilityMatch>(binding: T): T => {
 		binding.source = normalizeSource(binding.source);
 		if (!sameBot(binding.bot, binding.target.bot))
 			throw new Rejection("forbidden");
@@ -216,6 +221,8 @@ export function openResponsibilities(
 			}
 			if (!existing) throw new Rejection("stale");
 			if (mutation.kind === "mode") {
+				if (mutation.mode === "auto" && !("provider" in existing.target))
+					throw new Rejection("forbidden");
 				if (mutation.mode !== "off" && sourceRevoked(existing.source))
 					throw new Rejection("forbidden");
 				if (mutation.mode !== "off" && Date.parse(existing.expiresAt) <= at)
@@ -240,7 +247,7 @@ export function openResponsibilities(
 	}
 	const matches = (
 		row: Responsibility,
-		binding: ResponsibilityBinding,
+		binding: ResponsibilityMatch,
 		automatic: boolean,
 		at: number,
 	) => {
@@ -255,7 +262,11 @@ export function openResponsibilities(
 			digest(row.source) === digest(binding.source) &&
 			row.action === binding.action &&
 			row.actionScopeDigest === binding.actionScopeDigest &&
-			digest(row.target) === digest(binding.target) &&
+			sameBot(row.target.bot, binding.target.bot) &&
+			row.target.botUpdatedAt === binding.target.botUpdatedAt &&
+			("provider" in row.target
+				? digest(row.target) === digest(binding.target)
+				: !automatic) &&
 			(row.conditions.jobs.length === 0 ||
 				row.conditions.jobs.includes(binding.job)) &&
 			!row.conditions.excludedJobs.includes(binding.job) &&
@@ -707,8 +718,8 @@ export function openResponsibilities(
 					responsibilitySchema.parse(JSON.parse(String(row.payload))),
 				);
 		},
-		match(input: ResponsibilityBinding, automatic = false) {
-			const binding = normalizeBinding(input);
+		match(input: ResponsibilityMatch, automatic = false) {
+			const binding = normalizeMatch(responsibilityMatchSchema.parse(input));
 			const at = now();
 			if (at < highWater()) return [];
 			return db

@@ -8,7 +8,6 @@ import type {
 } from "../../shared/proactive/governance.js";
 
 export interface GovernanceActions {
-	status(): Promise<ProactiveStatus>;
 	forget(input: BeginForget & { commandId: string }): Promise<ForgetReceipt>;
 }
 const pendingCommands = new WeakMap<
@@ -17,26 +16,24 @@ const pendingCommands = new WeakMap<
 >();
 export function GovernancePanel({
 	actions,
+	source,
+	refresh,
 	t,
-}: PropsLocale<"dsh-bot"> & { actions: GovernanceActions }) {
-	const [source, setSource] = useState<ProactiveStatus["localFeedScope"]>();
-	const [preview, setPreview] = useState(false),
+}: PropsLocale<"dsh-bot"> & {
+	actions: GovernanceActions;
+	source?: ProactiveStatus["localFeedScope"];
+	refresh?: () => Promise<void>;
+}) {
+	const [previewKey, setPreviewKey] = useState<string>(),
 		[pending, setPending] = useState(false),
 		[unknown, setUnknown] = useState(pendingCommands.has(actions));
+	const sourceKey = source && `${source.id}:${source.generation}`;
+	const preview = !!sourceKey && sourceKey === previewKey;
 	const [receipt, setReceipt] = useState<ForgetReceipt>();
 	const generation = useRef(0);
 	useEffect(() => {
-		const request = ++generation.current;
-		void actions
-			.status()
-			.then((value) => {
-				if (request === generation.current) setSource(value.localFeedScope);
-			})
-			.catch(() => {});
-		return () => {
-			generation.current++;
-		};
-	}, [actions]);
+		return () => { generation.current++; };
+	}, []);
 	if (!source && !unknown) return null;
 	const run = async () => {
 		const request = generation.current;
@@ -57,8 +54,9 @@ export function GovernancePanel({
 			if (request !== generation.current) return;
 			setReceipt(result);
 			setUnknown(false);
-			setPreview(false);
+			setPreviewKey(undefined);
 			if (result.phase === "complete") pendingCommands.delete(actions);
+			void refresh?.();
 		} catch {
 			if (request === generation.current) setUnknown(true);
 		} finally {
@@ -82,7 +80,9 @@ export function GovernancePanel({
 							receipt.phase === "complete"
 								? "proactive.governanceComplete"
 								: receipt.phase === "blocked"
-									? "proactive.governanceBlocked"
+									? receipt.blockedReason === "group-copy-unknown"
+										? "proactive.governanceGroupCopyBlocked"
+										: "proactive.governanceBlocked"
 									: "proactive.governancePending",
 						)}
 					</p>
@@ -104,7 +104,7 @@ export function GovernancePanel({
 						disabled={pending}
 						onClick={() => {
 							if (preview) void run();
-							else setPreview(true);
+							else setPreviewKey(sourceKey);
 						}}
 					>
 						{t(

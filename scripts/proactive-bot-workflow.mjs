@@ -159,7 +159,17 @@ try {
   assert.equal(host.requests(), 0);
   const { panel, context, page, t } = await open(primary);
   const card = name => panel.locator('[data-proactive-decision]').filter({ hasText: name });
-  const click = (where, key) => where.getByRole('button', { name: t[key], exact: true }).click();
+  const click = async (where, key) => {
+    if (key === 'proactive.pause' || key === 'proactive.resume') {
+      const summary = where.getByText(t['followUp.advancedExecution'], { exact: true });
+      await summary.waitFor();
+      where = summary.locator('..');
+      if (await where.getAttribute('open') === null) await summary.click();
+    }
+    const details = where.getByRole('button', { name: t['proactive.openDetails'], exact: true });
+    if (key !== 'proactive.refresh' && key !== 'proactive.openDetails' && await details.count() === 1 && await details.isEnabled()) await details.click();
+    await where.getByRole('button', { name: t[key], exact: true }).click();
+  };
   const requestRework = async ticket => {
     await click(ticket, 'proactive.rework');
     await ticket.getByLabel(t['proactive.reworkCriterion'], {exact:true}).fill('Required CI outcome');
@@ -167,7 +177,14 @@ try {
     await ticket.getByLabel(t['proactive.reworkExpected'], {exact:true}).fill('Correct the failing check and retain unrelated fields.');
     await click(ticket, 'proactive.reworkSubmit');
   };
-  const refresh = () => click(panel, 'proactive.refresh');
+  const refresh = async (surface = {panel,page}) => {
+    const latest = await awaitEvidence(value => value.work && value);
+    await click(surface.panel, 'proactive.refresh');
+    for (const row of latest.work) await surface.page.waitForFunction(({id,revision}) => {
+      const element = document.querySelector(`[data-proactive-ticket="${id}"]`);
+      return element && Number(element.getAttribute('data-work-revision')) >= revision;
+    }, { id: row.ticketId, revision: row.revision });
+  };
   const ciFact = (attempt, conclusion, overrides = {}) => ({
     repository: scope.repository, branch: scope.branch, job: 'accept-case', runId: '1',
     commit: 'b'.repeat(40), observedAt: new Date().toISOString(), attempt, conclusion, ...overrides,
@@ -231,6 +248,7 @@ try {
     const failed = await awaitEvidence(value => value.work.some(row => row.repairEvidence?.verification.exitCode === 1));
     const first = failed.work[0];
     await refresh();
+    await click(ticket, 'proactive.openDetails');
     const approve = ticket.getByRole('button', { name: t['proactive.approve'], exact: true });
     await approve.and(panel.locator(':disabled')).waitFor();
     await requestRework(ticket);
@@ -350,8 +368,13 @@ try {
   assert.equal(host.requests(), 0);
   await click(panel, 'proactive.pause');
   await panel.getByRole('button', { name: t['proactive.resume'], exact: true }).waitFor();
+  const paused = await awaitEvidence(value => value.status.snapshot?.executionControl.paused === true);
+  assert.equal(paused.calls, 0);
   assert.equal(await card('accept-case').getByRole('button', { name: t['proactive.preview'], exact: true }).count(), 0);
   await click(panel, 'proactive.resume');
+  const resumed = await awaitEvidence(value => value.status.snapshot?.executionControl.paused === false &&
+    value.status.snapshot.executionControl.revision > paused.status.snapshot.executionControl.revision);
+  assert.equal(resumed.calls, 0);
   await click(card('accept-case'), 'proactive.preview');
   await click(card('accept-case'), group && !groupFailure ? 'proactive.repairNative' : 'proactive.accept');
   await card('accept-case').waitFor({ state: 'detached' });
@@ -367,6 +390,10 @@ try {
   assert.equal(second.checked[0].ticketId, first.checked[0].ticketId);
   assert.notEqual(second.checked[0].assignmentId, first.checked[0].assignmentId);
   assert.notEqual(second.checked[0].evidenceDigest, first.checked[0].evidenceDigest);
+  // Accepting before notification delivery legitimately suppresses that notice.
+  // This fixture checks both delivery attempts, so establish the second receipt first.
+  await awaitEvidence(value => value.notices?.length === 2 && value.work.some(row =>
+    row.assignmentId === second.checked[0].assignmentId && row.notice?.state === 'recorded'));
   if (group && !groupFailure) {
     assert.equal(first.checked[0].repairEvidence.verification.exitCode, 1);
     assert.equal(second.checked[0].repairEvidence.verification.exitCode, 0);
@@ -374,7 +401,7 @@ try {
   await refresh();
   if (groupArtifact) {
     const review = ticket.locator('[data-proactive-group-review]');
-    const select = () => review.getByRole('button', { name: 'Fixture reviewers', exact: true }).click();
+    const select = () => review.getByRole('button', { name: /^Fixture reviewers · fixture-ci \+ fixture-reviewer$/ }).click();
     const after = resolve(host.env.DSH_HOME, 'dsh-bot-proactive/repair-artifacts', second.checked[0].assignmentId, 'after.json');
     const intact = await readFile(after);
     await click(review, 'proactive.groupReview');
@@ -386,6 +413,20 @@ try {
     await click(review, 'proactive.groupReview');
     await select();
     await review.getByText(second.checked[0].repairEvidence.artifactDigest, { exact: false }).waitFor();
+    const changeModel = async model => {
+      await writeFile(resolve(dir, 'change-group-model'), model);
+      const deadline = Date.now() + 10000;
+      while (await readFile(resolve(dir, 'group-model-changed'), 'utf8').catch(() => '') !== model) {
+        assert.ok(Date.now() < deadline, 'Group model update receipt'); await delay(50);
+      }
+    };
+    await changeModel('fixture');
+    await click(review, 'proactive.groupConfirm');
+    await review.getByText(t['proactive.groupFailed'], { exact: true }).waitFor();
+    assert.equal(host.requests(), 2, 'Changing a role model invalidates the old approval without dispatch');
+    await changeModel('reviewer-fixture');
+    await click(review, 'proactive.groupReview'); await select();
+    evidence.modelChangeInvalidatesApproval = true;
     const target = review.getByRole('button', { name: t['proactive.groupFollowUpChoose'].replace('{bot}', 'fixture-reviewer'), exact: true });
     await target.click();
     await target.and(review.locator('[aria-pressed="true"]')).waitFor();
@@ -395,13 +436,22 @@ try {
     assert.equal(technical.checked[0].state, 'delivered');
     assert.equal(technical.checked[0].groupReview.evidenceDigest, second.checked[0].evidenceDigest);
     assert.equal(host.requests(), 4);
+    assert.equal(technical.groupResult.groupMemberCount, 4);
+    assert.deepEqual(technical.groupResult.modelRoutes.map(row => row.model), ['fixture', 'reviewer-fixture']);
     evidence.groupReview = technical.groupResult;
+    const cost = await awaitEvidence(value => value.taskCost?.attempts === 2 && value.taskCost.unknownMeasurements === 4);
+    assert.equal(cost.taskCost.knownNativeTokens, 0);
+    assert.equal(cost.taskCost.externalUnits, 0);
+    evidence.taskCost = cost.taskCost;
     const beforeAcceptance = await publishFacts('workflow-v1', 'workflow-new-fact', [ciFact(2, 'success')]);
     assert.equal(beforeAcceptance.calls, 4);
     assert.equal(beforeAcceptance.groupFollowUpResult, undefined);
     assert.equal(beforeAcceptance.work[0].groupReview.followUp.state, 'armed');
     await refresh();
   }
+  await refresh();
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-proactive-ticket]')].some(el =>
+    el.querySelector('[data-evidence-revision]')?.getAttribute('data-evidence-revision') === el.getAttribute('data-work-revision')));
   await click(ticket, 'proactive.approve');
   await ticket.getByText(t['proactive.state.accepted'], { exact: true }).waitFor();
   evidence.actions.push(first.checked[0], second.checked[0], (await awaitEvidence(value => value.checked[0]?.state === 'accepted')).checked[0]);
@@ -415,7 +465,7 @@ try {
   if (group && !groupArtifact) {
     const review = ticket.locator('[data-proactive-group-review]');
     await click(review, 'proactive.groupReview');
-    await review.getByRole('button', { name: 'Fixture reviewers', exact: true }).click();
+    await review.getByRole('button', { name: /^Fixture reviewers · fixture-ci \+ fixture-reviewer$/ }).click();
     await review.getByText(second.checked[0].title, { exact: false }).waitFor();
     assert.equal(host.requests(), 2);
     if (!groupFailure && !groupFollowUp) {
@@ -424,11 +474,11 @@ try {
       await review.getByText(t['proactive.groupFailed'], { exact: true }).waitFor();
       assert.equal(host.requests(), 2);
       await click(review, 'proactive.groupReview');
-      await review.getByRole('button', { name: 'Updated reviewers', exact: true }).click();
+      await review.getByRole('button', { name: /^Updated reviewers · fixture-ci \+ replacement-reviewer$/ }).click();
       await review.getByText('replacement-reviewer', { exact: false }).waitFor();
     }
     if (groupFollowUp) {
-      const target = review.getByRole('button', { name: t['proactive.groupFollowUpChoose'].replace('{bot}', 'fixture-reviewer'), exact: true });
+    const target = review.getByRole('button', { name: t['proactive.groupFollowUpChoose'].replace('{bot}', 'fixture-reviewer'), exact: true });
       await target.click();
       await target.and(review.locator('[aria-pressed="true"]')).waitFor();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -527,18 +577,20 @@ try {
     assert.equal(groupCold.groupResult.turn.id, evidence.groupReview.turn.id);
     assert.equal(host.requests(), 0);
     const coldPage = await open(primary);
+    await click(coldPage.panel.locator('[data-proactive-ticket]').first(), 'proactive.openDetails');
     const review = coldPage.panel.locator('[data-proactive-group-review]');
     if (groupFollowUpCold) {
       assert.equal(groupCold.work[0].groupReview.followUp.state, 'armed');
       await click(coldPage.panel, 'proactive.resume');
       await verifyFollowUp(1);
-      await click(coldPage.panel, 'proactive.refresh');
+      await refresh(coldPage);
+      await coldPage.page.waitForFunction(() => [...document.querySelectorAll('[data-proactive-ticket]')].some(el =>
+        el.querySelector('[data-evidence-revision]')?.getAttribute('data-evidence-revision') === el.getAttribute('data-work-revision')));
     }
     if (groupFollowUpLate) {
       assert.equal(groupCold.groupFollowUpResult?.turn.id, evidence.groupFollowUp.turn.id);
       assert.equal(groupCold.groupFollowUpResult.deliveries[0].outputMessageId, undefined);
     }
-    await click(review, 'proactive.groupReview');
     await review.getByRole('button', { name: t['proactive.groupOpen'], exact: true }).waitFor();
     if (evidence.groupFollowUp?.fact) {
       if (!groupFollowUpCold) {
@@ -562,6 +614,7 @@ try {
   }
   if (notice) {
     const coldPage = await open(all[0]);
+    await click(coldPage.panel.locator('[data-proactive-ticket]').first(), 'proactive.openDetails');
     const outbound = coldPage.panel.locator('[data-proactive-external-notice]');
     await click(outbound, 'proactive.noticePreview');
     await outbound.getByText(t[noticeStatus], { exact: true }).waitFor();

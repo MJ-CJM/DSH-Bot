@@ -12,6 +12,7 @@ import {
 	repairEvidence,
 } from "../../shared/proactive/repair.js";
 import type { ProactiveWork } from "../../shared/proactive/work.js";
+import type { ProcessGate } from "./workspace-process.js";
 
 const tool = "dsh-bot/verify-json-fixture@1";
 const maxBytes = 4096;
@@ -98,14 +99,21 @@ export async function prepareRepair(
 	work: ProactiveWork,
 	fixture: FixtureConfig,
 	signal: AbortSignal,
+	gate: ProcessGate,
 ) {
 	const runtime = ctx.get("subprocess");
 	if (!runtime || !work.repair) throw new Error("Repair verifier unavailable");
 	const executable = await runtime.resolveExecutable(node, undefined, signal);
+	await gate.beforeSpawn();
+	signal.throwIfAborted();
 	const dir = await directory(root, work.assignmentId, true);
+	signal.throwIfAborted();
 	const verify = async (path: string) => {
 		signal.throwIfAborted();
 		const inputDigest = await readDigest(path);
+		await gate.beforeSpawn();
+		signal.throwIfAborted();
+		gate.processActive(true);
 		const handle = runtime.spawn({
 			argv: [
 				executable,
@@ -146,6 +154,7 @@ export async function prepareRepair(
 			stopped = await handle
 				.waitForExit(AbortSignal.timeout(1500))
 				.catch(() => false);
+			if (stopped) gate.processActive(false);
 		}
 		if (!stopped) throw new Error("Verifier process did not terminate");
 		return result;

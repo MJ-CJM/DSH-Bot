@@ -9,6 +9,18 @@ import { Config, } from '../lib/host/registry.js';
 import { withFacility, } from './fixtures/registry.js';
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('keeps historical avatar identities while the inbox summary includes only the main conversation', async () => withFacility(async ({ start }) => {
+    const { registry } = await start();
+    const bot = await registry.create({ id: 'alpha', name: 'Alpha' });
+    for (const [sessionId, at] of [['main', 1], ['history', 2]] as const) {
+      await registry.recordActivity({ sessionId, botId: bot.id, expectedBotCreatedAt: bot.createdAt,
+        role: 'assistant', text: sessionId, at });
+    }
+    registry.mainSessions = { find: async () => ({ sessionId: 'main' }) } as unknown as NonNullable<typeof registry.mainSessions>;
+    const result = await registry.listActivity();
+    expect(result.sessions.map(row => row.sessionId)).toEqual(['history', 'main']);
+    expect(result.bots[0]).toMatchObject({ unreadCount: 1, latest: { sessionId: 'main' } });
+  }));
   it('creates a single 0700 shared workspace on startup and persists its id for concurrent ensures', async () => withFacility(async ({ ctx,
     start, root, workspaces }) => {
     const { registry: native } = await workspaces();

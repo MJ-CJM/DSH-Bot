@@ -1,4 +1,6 @@
+import { workSummarySchema } from '../src/shared/proactive/activity.js';
 import type { DatabaseSync } from "node:sqlite";
+import { sameBot, type BotKey } from "../src/shared/identity.js";
 import type {
 	AutoCiRule,
 	CommandBody,
@@ -6,7 +8,9 @@ import type {
 } from "../src/shared/proactive/protocol.js";
 import {
 	groupFollowUpFact,
+  supportsWorkContinuation,
 	type ProactiveWork,
+  type WorkContinuation,
 	reworkFeedbackSchema,
 	workHistoryRequestSchema,
 	workHistorySchema,
@@ -23,6 +27,18 @@ type WorkCommand = Exclude<
 	CommandBody,
 	{
 		kind:
+			| 'follow-up-policy'
+			| 'follow-up-watch-create'
+			| 'follow-up-group-watch-propose'
+			| 'follow-up-watch-update'
+			| 'follow-up-action'
+			| 'follow-up-ingest'
+			| 'follow-up-work-reconcile'
+			| 'follow-up-group-accept'
+			| 'follow-up-group-started'
+			| 'follow-up-group-abandon'
+			| 'follow-up-group-watch-propose'
+      | 'work-continuation'
 			| "ingest-batch"
 			| "suggestion-action"
 			| "adjust-suggestion"
@@ -44,6 +60,7 @@ type WorkCommand = Exclude<
 			| "notice-cancel";
 	}
 >;
+type WorkerReport = Parameters<Engine["report"]>[1];
 
 export function openWork(
 	db: DatabaseSync,
@@ -53,12 +70,18 @@ export function openWork(
 	externalBudget: number,
 	notices: boolean,
 	autoRule?: AutoCiRule,
+	onWorkChange?: (row: ProactiveWork) => void,
 ) {
 	db.exec(`CREATE TABLE IF NOT EXISTS pb_work (
     assignment TEXT PRIMARY KEY, ticket TEXT NOT NULL, decision TEXT NOT NULL,
     generation INTEGER NOT NULL, payload TEXT NOT NULL, UNIQUE(ticket,generation)
   );
   CREATE INDEX IF NOT EXISTS pb_work_decision ON pb_work(decision,generation);
+  CREATE INDEX IF NOT EXISTS pb_work_follow_up_bot ON pb_work(
+    json_extract(payload,'$.target.bot.botId'),json_extract(payload,'$.target.bot.botCreatedAt'))
+    WHERE json_extract(payload,'$.groupRepair') IS NULL;
+  CREATE INDEX IF NOT EXISTS pb_work_follow_up_group ON pb_work(
+    json_extract(payload,'$.groupRepair.group.groupId'),json_extract(payload,'$.groupRepair.group.groupCreatedAt'));
   CREATE TABLE IF NOT EXISTS pb_execution_clock (singleton INTEGER PRIMARY KEY, at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS pb_execution_control (
     singleton INTEGER PRIMARY KEY, paused INTEGER NOT NULL, revision INTEGER NOT NULL
@@ -123,9 +146,124 @@ export function openWork(
 			row.generation,
 			JSON.stringify(workSchema.parse(row)),
 		);
+		onWorkChange?.(row);
 	};
 	const mutate = (row: ProactiveWork, change: Partial<ProactiveWork>) =>
 		save({ ...row, ...change, revision: row.revision + 1 });
+  const beginAttempt = (current: ProactiveWork, assignmentId: string, patch: Partial<Pick<ProactiveWork, 'rework' | 'continuation' | 'admission'>>) => {
+    save({
+      ...current,
+      assignmentId,
+      revision: current.revision + 1,
+      generation: current.generation + 1,
+      state: 'pending',
+      wait: undefined,
+      continuation: undefined,
+      rework: undefined,
+      taskCost: undefined,
+      supersededBy: undefined,
+      evidence: undefined,
+      methodEvidence: undefined,
+      repairEvidence: undefined,
+      workspaceEvidence: undefined,
+      groupRepairEvidence: undefined,
+      commandEvidence: undefined,
+      usage: undefined,
+      recoveryRevision: undefined,
+      externalEvidence: undefined,
+      externalRunId: undefined,
+      evidenceDigest: undefined,
+      sessionId: undefined,
+      inputId: undefined,
+      reviewer: undefined,
+      reviewedAt: undefined,
+      reviewFeedback: undefined,
+      autoRuleId: undefined,
+      groupReview: undefined,
+      notice: undefined,
+      ...patch,
+    });
+  };
+	const activeAssignment = (row: ProactiveWork) => {
+		const ticket = store.tickets.get(row.ticketId);
+		const assignment = ticket?.assignments.at(-1);
+		const running = ticket?.assignments.find(
+			(item) => item.state === "running",
+		);
+		if (
+			!ticket ||
+			ticket.ended ||
+			assignment?.id !== row.assignmentId ||
+			assignment.state === "ended" ||
+			(running && running.id !== assignment.id)
+		)
+			throw new Rejection("stale");
+		return assignment;
+	};
+	const report = (engine: Engine, row: ProactiveWork, update: WorkerReport) => {
+		activeAssignment(row);
+		const ticket = engine.report(row.ticketId, update);
+		if (
+			update.state === "dropped" &&
+			(!ticket.ended || ticket.assignments.at(-1)?.state !== "ended")
+		)
+			throw new Rejection("conflict");
+		return ticket;
+	};
+	const stopByOwner = (engine: Engine, row: ProactiveWork, reason: string) => {
+		activeAssignment(row);
+		engine.stopTicket(row.ticketId, reason);
+		mutate(row, { state: row.state === "sent" ? "unknown" : "cancelled" });
+	};
+	function reconcile(engine: Engine) {
+		for (const item of db
+			.prepare(`SELECT payload FROM pb_work
+			WHERE json_extract(payload,'$.state') IN ('failed','denied','delivered','unknown')
+			AND json_extract(payload,'$.supersededBy') IS NULL`)
+			.all()) {
+			const row = decode(item);
+			if (!row) continue;
+			const ticket = store.tickets.get(row.ticketId);
+			if (!ticket) continue;
+			const index = ticket.assignments.findIndex(
+				(entry) => entry.id === row.assignmentId,
+			);
+			const assignment = ticket.assignments[index];
+			if (!assignment) continue;
+			const successor = ticket.assignments[index + 1];
+			if (
+				successor &&
+				assignment.state === "ended" &&
+				assignment.endedReason === "retried" &&
+				(row.state === "delivered" || row.state === "unknown")
+			) {
+				const next = decode(byAssignment.get(successor.id));
+				if (
+					next?.ticketId === row.ticketId &&
+					next.generation === row.generation + 1 &&
+					next.rework?.previousAssignmentId === row.assignmentId &&
+					next.rework.previousEvidenceDigest === row.evidenceDigest
+				)
+					mutate(row, {
+						state: row.state === "unknown" ? "unknown" : "superseded",
+						supersededBy: next.assignmentId,
+					});
+			} else if (
+				!ticket.ended &&
+				index === ticket.assignments.length - 1 &&
+				assignment.state !== "ended" &&
+				!ticket.assignments
+					.slice(0, index)
+					.some((entry) => entry.state === "running") &&
+				(row.state === "failed" || row.state === "denied") &&
+				assignment.report?.state === "failed" &&
+				assignment.report.summary === row.state &&
+				row.groupRepairEvidence?.state !== "unknown"
+			) {
+				report(engine, row, { state: "dropped", summary: row.state });
+			}
+		}
+	}
 	const fence = (row: ProactiveWork, advanceClock: boolean) => {
 		const now = Date.now();
 		if (control().paused) throw new Rejection("forbidden");
@@ -143,8 +281,15 @@ export function openWork(
       ON CONFLICT(singleton) DO UPDATE SET at=excluded.at`).run(now);
 		return now;
 	};
+  const documentCurrent = (row: ProactiveWork) => {
+    if (!row.document) return;
+    const source = db.prepare('SELECT generation,checkpoint FROM pb_source WHERE id=?').get(row.sourceId);
+    const revoked = db.prepare('SELECT generation FROM pb_source_revocation WHERE id=?').get(row.sourceId);
+    if (!source || source.generation !== row.document.sourceVersion || source.checkpoint !== row.sourceDigest || (revoked && Number(revoked.generation) >= row.document.sourceVersion)) throw new Rejection('stale');
+  };
 	const live = (row: ProactiveWork, advanceClock = true) => {
 		const now = fence(row, advanceClock);
+    if (row.document) { documentCurrent(row); return; }
 		const observation = suggestion(row.decisionId);
 		if (
 			observation?.state !== "open" ||
@@ -208,7 +353,86 @@ export function openWork(
 			text: `${trigger.text} (attempt ${attempt})`,
 		});
 	};
+  type Ticket = NonNullable<ReturnType<Store['tickets']['get']>>;
+  function continueWork(
+    engine: Engine, input: WorkContinuation, operationId: string,
+    attachOwnerInput: (ticket: Ticket, triggerId: string) => Ticket,
+  ) {
+    const current = decode(byTicket.get(input.ticketId));
+    if (!current || !sameBot(current.target.bot, input.owner) || current.revision !== input.expectedRevision ||
+      current.assignmentId !== input.assignmentId) throw new Rejection('stale');
+    if (!supportsWorkContinuation(current)) throw new Rejection('unsupported');
+    const requestedAt = new Date().toISOString();
+    if (input.action === 'mark-waiting') {
+      if (current.state !== 'delivered' || current.wait || activeAssignment(current).report?.state !== 'waiting')
+        throw new Rejection('conflict');
+      mutate(current, { wait: { reason: input.reason, request: input.request, operationId, recordedAt: requestedAt } });
+      return 1;
+    }
+    if (inFlight.get() || current.generation >= (current.taskLimits?.maxAttempts ?? 3)) throw new Rejection('forbidden');
+    live(current);
+    let next: Ticket['assignments'][number] | undefined;
+    const audit = { previousAssignmentId: current.assignmentId, operationId, requestedAt };
+    let continuation: NonNullable<ProactiveWork['continuation']>;
+    if (input.action === 'supplement') {
+      if (current.state !== 'delivered' || !current.wait || activeAssignment(current).report?.state !== 'waiting')
+        throw new Rejection('conflict');
+      continuation = { ...audit, kind: 'supplement', wait: current.wait, text: input.text };
+      report(engine, current, { state: 'failed', summary: 'Owner supplied requested information' });
+      next = engine.retryTicket(current.ticketId).assignments.at(-1);
+    } else {
+      const ticket = store.tickets.get(current.ticketId);
+      if (current.state !== 'failed' || !ticket || ticket.ended?.by !== 'executor' || ticket.ended.outcome !== 'dropped' ||
+        ticket.assignments.at(-1)?.id !== current.assignmentId || ticket.assignments.some(row => row.state !== 'ended'))
+        throw new Rejection('conflict');
+      const triggerId = digest(['work-continuation', ticket.id, current.assignmentId, operationId]);
+      const source = 'dsh-bot-owner-continuation';
+      if (engine.receive({
+        id: triggerId, source, human: true, actor: { source, id: 'owner' },
+        threads: [{ source, id: triggerId }], text: 'Owner approved retry of the same task',
+        at: requestedAt, meta: { ticketId: ticket.id, assignmentId: current.assignmentId, operationId },
+      }) !== 'stored') throw new Rejection('conflict');
+      const reopened = attachOwnerInput(ticket, triggerId);
+      if (reopened.ended || reopened.assignments.length !== ticket.assignments.length + 1)
+        throw new Rejection('conflict');
+      next = reopened.assignments.at(-1);
+      continuation = { ...audit, kind: 'retry' };
+    }
+    if (!next || next.state !== 'pending' || next.id === current.assignmentId) throw new Rejection('conflict');
+    mutate(current, { state: 'superseded', supersededBy: next.id });
+    beginAttempt(current, next.id, { continuation, admission: 'manual' });
+    return 1;
+  }
 	function apply(engine: Engine, body: WorkCommand): number {
+    if (body.kind === 'submit-document') {
+      if (body.methodTrial && (body.methodTrial.inputHash !== digest(body.document.content) || body.methodTrial.methodHash !== digest(body.methodTrial.content))) throw new Rejection('invalid');
+      if (inFlight.get()) throw new Rejection('conflict');
+      const sourceId = `doc:${digest([body.target.bot, body.document.name])}`;
+      const sourceDigest = digest(body.document);
+      const previous = db.prepare('SELECT generation FROM pb_source WHERE id=?').get(sourceId);
+      const revoked = db.prepare('SELECT generation FROM pb_source_revocation WHERE id=?').get(sourceId);
+      if ((previous && Number(previous.generation) >= body.document.sourceVersion) || revoked) throw new Rejection('stale');
+      const triggerId = digest([sourceId, body.document.sourceVersion, sourceDigest]);
+      const title = body.document.name;
+      const now = new Date().toISOString();
+      if (engine.receive({ id: triggerId, source: sourceId, human: false, actor: { source: sourceId, id: 'owner-submission' }, threads: [{ source: sourceId, id: sourceId }], text: title, at: now, meta: { generation: body.document.sourceVersion, taskKind: 'document-analysis', taskVersion: 1, sourceDigest } }) !== 'stored') throw new Rejection('conflict');
+      db.prepare('INSERT INTO pb_event VALUES (?,?)').run(triggerId, sourceDigest);
+      db.prepare('INSERT INTO pb_source VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET generation=excluded.generation,checkpoint=excluded.checkpoint').run(sourceId, body.document.sourceVersion, sourceDigest);
+      rule = { triggerId };
+      try {
+        const accepted = engine.decide(triggerId, { kind: 'accept', title, scope: 'analyze-document', reason: 'explicit owner approval of frozen document snapshot', rules: [ownerRule], audit: { target: body.target, sourceDigest } });
+        const ticketId = accepted.ticketId;
+        const assignmentId = ticketId && store.tickets.get(ticketId)?.assignments.at(-1)?.id;
+        if (!ticketId || !assignmentId) throw new Rejection('forbidden');
+        const next: ProactiveWork = { ticketId, assignmentId, decisionId: accepted.id, triggerId, sourceId, sourceDigest,
+          methodTrial: body.methodTrial, document: body.document, admission: 'manual', taskKind: 'document-analysis', title, expiresAt: body.taskLimits.deadlineAt,
+          policyVersion: 'pb01-observation', target: body.target, taskLimits: body.taskLimits,
+          acceptance: { goal: body.document.question, deliverables: ['Versioned impact report with snapshot citations'], checks: [{ id: 'owner-document-review', title: body.document.acceptance, kind: 'human' }] },
+          revision: 0, generation: 1, state: 'pending' };
+        live(next); save(next);
+      } finally { rule = undefined; }
+      return 1;
+    }
 		if (body.kind === "claim-notice" || body.kind === "settle-notice") {
 			const row = decode(byAssignment.get(body.assignmentId));
 			if (!row?.notice || row.notice.operationId !== body.operationId)
@@ -238,10 +462,7 @@ export function openWork(
 				for (const item of inFlight.all()) {
 					const row = decode(item);
 					if (!row) continue;
-					engine.stopTicket(row.ticketId, "owner paused execution");
-					mutate(row, {
-						state: row.state === "sent" ? "unknown" : "cancelled",
-					});
+					stopByOwner(engine, row, "owner paused execution");
 				}
 			}
 			return 1;
@@ -272,6 +493,8 @@ export function openWork(
 			if (byDecision.get(body.decisionId)) throw new Rejection("conflict");
 			const next = {
 				decisionId: current.id,
+        admission: body.kind === 'auto-accept' ? 'proactive' : 'manual',
+        taskKind: 'ci-analysis',
 				triggerId: current.triggerId,
 				sourceId: current.sourceId,
 				title: current.title,
@@ -452,6 +675,7 @@ export function openWork(
 			}
 			case "dispatch-claim": {
 				if (current.state !== "pending") throw new Rejection("conflict");
+				activeAssignment(current);
 				if (
 					(current.repair?.executor === "external" ||
 						current.workspaceRepair?.executor === "command" ||
@@ -476,6 +700,7 @@ export function openWork(
 			case "dispatch-send":
 				if (current.state !== "claimed") throw new Rejection("conflict");
 				live(current);
+				activeAssignment(current);
 				engine.assignmentStarted(current.ticketId, current.assignmentId);
 				mutate(current, { state: "sent", inputId: body.inputId });
 				break;
@@ -499,7 +724,8 @@ export function openWork(
 						commandEvidence,
 						groupRepairEvidence,
 					} = body.result;
-					const group = current.groupRepair;
+					if (current.methodTrial ? !body.result.methodEvidence || digest({ ...body.result.methodEvidence, loadedBodyHash: undefined, requestHash: undefined, contextHash: undefined, tools: undefined, permission: undefined }) !== digest({ ...current.methodTrial, content: undefined }) : !!body.result.methodEvidence) throw new Rejection('stale');
+          const group = current.groupRepair;
 					if (
 						group
 							? groupRepairEvidence?.state !== "completed" ||
@@ -552,12 +778,13 @@ export function openWork(
 							: !!repairEvidence)
 					)
 						throw new Rejection("stale");
-					engine.report(current.ticketId, {
+					report(engine, current, {
 						state: "waiting",
 						summary: "Execution evidence is available for owner review",
 					});
 					mutate(current, {
 						state: "delivered",
+            methodEvidence: body.result.methodEvidence,
 						evidence,
 						externalEvidence,
 						repairEvidence,
@@ -588,6 +815,11 @@ export function openWork(
 					});
 				} else {
 					if (
+						body.result.groupRepairEvidence?.state === "unknown" &&
+						body.result.state !== "unknown"
+					)
+						throw new Rejection("invalid");
+					if (
 						!["pending", "claimed", "sent"].includes(current.state) &&
 						!(
 							current.state === "unknown" &&
@@ -595,13 +827,15 @@ export function openWork(
 						)
 					)
 						throw new Rejection("conflict");
-					engine.report(current.ticketId, {
-						state: "failed",
-						summary: body.result.state,
-					});
+					if (body.result.state !== "unknown")
+						report(engine, current, {
+							state: "dropped",
+							summary: body.result.state,
+						});
 					mutate(current, {
 						state: body.result.state,
 						groupRepairEvidence: body.result.groupRepairEvidence,
+						recoveryRevision: undefined,
 					});
 				}
 				break;
@@ -610,17 +844,17 @@ export function openWork(
 					!["pending", "claimed", "sent", "delivered"].includes(current.state)
 				)
 					throw new Rejection("conflict");
-				engine.stopTicket(current.ticketId, "owner cancelled");
-				mutate(current, {
-					state: current.state === "sent" ? "unknown" : "cancelled",
-				});
+				stopByOwner(engine, current, "owner cancelled");
 				break;
 			case "review":
+        // Reviewing an existing result grants no execution budget. Rework still calls live below.
+        if (current.document) documentCurrent(current);
 				if (
 					current.state !== "delivered" ||
 					current.evidenceDigest !== body.evidenceDigest
 				)
 					throw new Rejection("stale");
+        if (current.wait) throw new Rejection('conflict');
 				if (body.review === "accept") {
 					if (body.feedback) throw new Rejection("invalid");
 					if (
@@ -643,7 +877,7 @@ export function openWork(
 							current.workspaceEvidence.verification.outputTruncated)
 					)
 						throw new Rejection("forbidden");
-					engine.report(current.ticketId, {
+					report(engine, current, {
 						state: "ready",
 						summary: "Owner accepted this evidence version",
 					});
@@ -655,6 +889,7 @@ export function openWork(
 				} else {
 					if (
 						current.generation >= (current.taskLimits?.maxAttempts ?? 3) ||
+						current.groupReview?.state === "claimed" ||
 						inFlight.get()
 					)
 						throw new Rejection("forbidden");
@@ -678,39 +913,23 @@ export function openWork(
 					const checkedFeedback = reworkFeedbackSchema.parse(feedback);
 					const requestedAt = new Date().toISOString();
 					live(current);
-					engine.report(current.ticketId, {
+					if (activeAssignment(current).report?.state !== "waiting")
+						throw new Rejection("stale");
+					report(engine, current, {
 						state: "failed",
 						summary: "Owner requested rework",
 					});
 					const next = engine.retryTicket(current.ticketId).assignments.at(-1);
 					if (!next) throw new Rejection("conflict");
 					mutate(current, {
+						state: "superseded",
+						supersededBy: next.id,
 						reviewer: "owner",
 						reviewedAt: requestedAt,
 						reviewFeedback: checkedFeedback,
 					});
-					save({
-						...current,
-						assignmentId: next.id,
-						revision: current.revision + 1,
-						generation: current.generation + 1,
-						state: "pending",
-						evidence: undefined,
-						repairEvidence: undefined,
-						workspaceEvidence: undefined,
-						groupRepairEvidence: undefined,
-						commandEvidence: undefined,
-						usage: undefined,
-						recoveryRevision: undefined,
-						externalEvidence: undefined,
-						externalRunId: undefined,
-						evidenceDigest: undefined,
-						sessionId: undefined,
-						inputId: undefined,
-						reviewer: undefined,
-						reviewedAt: undefined,
-						reviewFeedback: undefined,
-						rework: {
+          beginAttempt(current, next.id, {
+            rework: {
 							previousAssignmentId: current.assignmentId,
 							...(current.groupRepairEvidence
 								? { previousGroupRepairEvidence: current.groupRepairEvidence }
@@ -726,10 +945,7 @@ export function openWork(
 								? { previousRepairEvidence: current.repairEvidence }
 								: {}),
 						},
-						autoRuleId: undefined,
-						groupReview: undefined,
-						notice: undefined,
-					});
+          });
 				}
 				break;
 		}
@@ -739,12 +955,15 @@ export function openWork(
 	// exact launch and review receipts and never creates an independent ticket.
 	return {
 		apply,
+    continueWork,
 		control,
+		reconcile,
 		permitted(
 			assignmentId: string,
 			groupReviewDigest?: string,
 			noticeRevision?: number,
 			groupFactId?: string,
+			dispatchRevision?: number,
 		) {
 			const row = decode(byAssignment.get(assignmentId));
 			if (!row) return false;
@@ -765,6 +984,12 @@ export function openWork(
 				if (
 					!["accepted", "delivered"].includes(row.state) ||
 					row.revision !== noticeRevision
+				)
+					return false;
+			} else if (dispatchRevision !== undefined) {
+				if (
+					!["claimed", "sent"].includes(row.state) ||
+					row.revision !== dispatchRevision
 				)
 					return false;
 			} else if (row.state !== "sent") return false;
@@ -890,13 +1115,38 @@ export function openWork(
 		has(id: string) {
 			return byDecision.get(id) !== undefined;
 		},
-		list() {
+		page(owner: BotKey, offset: number, sourceId?: string) {
+      const rows = db.prepare(`SELECT json_object(
+        'admission',json_extract(w.payload,'$.admission'), 'taskKind',json_extract(w.payload,'$.taskKind'),
+        'ticketId',json_extract(w.payload,'$.ticketId'), 'assignmentId',w.assignment,
+        'decisionId',w.decision, 'triggerId',json_extract(w.payload,'$.triggerId'),
+        'sourceId',json_extract(w.payload,'$.sourceId'), 'title',json_extract(w.payload,'$.title'),
+        'target',json_extract(w.payload,'$.target'), 'expiresAt',json_extract(w.payload,'$.expiresAt'),
+        'policyVersion',json_extract(w.payload,'$.policyVersion'), 'revision',json_extract(w.payload,'$.revision'),
+        'generation',w.generation, 'state',json_extract(w.payload,'$.state'),
+        'evidenceDigest',json_extract(w.payload,'$.evidenceDigest'), 'sessionId',json_extract(w.payload,'$.sessionId'),
+        'notice',json_extract(w.payload,'$.notice'), 'usage',json_extract(w.payload,'$.usage'),
+        'groupReview',json_extract(w.payload,'$.groupReview'),
+        'reviewedAt',json_extract(w.payload,'$.reviewedAt')) AS summary
+        FROM pb_work w WHERE w.generation=(SELECT max(p.generation) FROM pb_work p WHERE p.ticket=w.ticket)
+        AND json_extract(w.payload,'$.methodTrial') IS NULL
+        AND json_extract(w.payload,'$.target.bot.botId')=? AND json_extract(w.payload,'$.target.bot.botCreatedAt')=?
+        ${sourceId ? "AND json_extract(w.payload,'$.sourceId')=?" : ''}
+        ORDER BY w.rowid DESC LIMIT 21 OFFSET ?`).all(owner.botId, owner.botCreatedAt, ...(sourceId ? [sourceId] : []), offset);
+      return { rows: rows.slice(0, 20).map(row => {
+        const value = JSON.parse(String(row.summary));
+        for (const key of Object.keys(value)) if (value[key] === null) delete value[key];
+        return workSummarySchema.parse(value);
+      }), more: rows.length > 20 };
+    },
+		list(owner?: BotKey) {
 			return workListSchema.parse(
 				db
 					.prepare(`SELECT w.payload FROM pb_work w
         WHERE w.generation=(SELECT max(p.generation) FROM pb_work p WHERE p.ticket=w.ticket)
+        ${owner ? "AND json_extract(w.payload,'$.target.bot.botId')=? AND json_extract(w.payload,'$.target.bot.botCreatedAt')=?" : ""}
         ORDER BY w.rowid DESC LIMIT 30`)
-					.all()
+					.all(...(owner ? [owner.botId, owner.botCreatedAt] : []))
 					.map(decode),
 			);
 		},
@@ -916,7 +1166,7 @@ export function openWork(
 			const row = decode(byAssignment.get(assignmentId));
 			if (row?.notice) save({ ...row, notice: { ...row.notice, state } });
 		},
-		recover(_engine: Engine) {
+		recover(engine: Engine) {
 			for (const item of db
 				.prepare(
 					`SELECT payload FROM pb_work WHERE json_extract(payload,'$.groupReview.state')='claimed'
@@ -957,9 +1207,10 @@ export function openWork(
 			}
 			for (const row of inFlight.all()) {
 				const work = decode(row);
-				if (!work || work.state === "pending") continue;
+				if (!work || (work.state === "pending" && !work.methodTrial)) continue;
 				mutate(work, { state: "unknown", recoveryRevision: work.revision });
 			}
+			reconcile(engine);
 		},
 	};
 }

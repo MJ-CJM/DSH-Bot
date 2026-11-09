@@ -12,6 +12,7 @@ import {
 	type RequestBody,
 } from "../../shared/proactive/protocol.js";
 import { frame, frames } from "./wire.js";
+import { readQuery } from "./read-query.js";
 
 const bundle = new URL("../../proactive-coordinator/", import.meta.url);
 const provenanceSchema = z.strictObject({
@@ -128,6 +129,10 @@ export class CoordinatorClient {
 	}
 
 	request(body: RequestBody): Promise<Reply> {
+		return readQuery(body, (request) => this.requestFrame(request));
+	}
+
+	private requestFrame(body: RequestBody): Promise<Reply> {
 		if (this.#closed || this.#pending.size >= 16)
 			return Promise.reject(new Error("Proactive channel unavailable"));
 		const correlationId = randomUUID();

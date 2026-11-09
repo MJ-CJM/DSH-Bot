@@ -1,3 +1,5 @@
+import { registerMethodSkill, loadMethodSkill } from "./method-skill.js";
+import type { MethodLoadEvidence } from "../../shared/proactive/method-evaluation.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
@@ -42,6 +44,7 @@ export const proactiveGroupInputs = new Map<string, string>();
 interface NativeRun {
 	sessionId: string;
 	assignmentId: string;
+	sourceId: string;
 	inputId?: string;
 	handle?: AgentHandle;
 	stop: AbortController;
@@ -51,6 +54,7 @@ interface NativeRun {
 	localDrained?: boolean;
 	external?: boolean;
 	grouped?: boolean;
+	processActive?: boolean;
 }
 
 export class DirectExecution {
@@ -126,6 +130,7 @@ export class DirectExecution {
 		const run: NativeRun = {
 			sessionId: randomUUID(),
 			assignmentId: work.assignmentId,
+			sourceId: work.sourceId,
 			stop: new AbortController(),
 		};
 		this.#active.set(work.ticketId, run);
@@ -178,6 +183,17 @@ export class DirectExecution {
 			assignmentId: work.assignmentId,
 			expectedRevision,
 		});
+		const checkDispatch = (groupAlreadyValidated = false) =>
+			this.service.verifyDispatch(work, {
+				dispatchRevision: expectedRevision,
+				groupAlreadyValidated,
+			});
+		const gate = {
+			beforeSpawn: () => checkDispatch(),
+			processActive: (active: boolean) => {
+				run.processActive = active;
+			},
+		};
 		const transition = async (body: CommandBody) => {
 			const reply = await this.service.submit(
 				randomUUID(),
@@ -196,6 +212,14 @@ export class DirectExecution {
 		};
 		try {
 			const bot = await this.service.validateTarget(work.target);
+			if (work.repair && work.workspaceRepair)
+				throw new Error("Conflicting repair authorization");
+			const workspaceConfiguration = work.workspaceRepair
+				? this.service.workspaceConfiguration(
+						work.workspaceRepair,
+						work.sourceId,
+					)
+				: undefined;
 			signal.throwIfAborted();
 			if (
 				!(await transition({
@@ -218,14 +242,7 @@ export class DirectExecution {
 			)
 				throw new Error("Claimed task budget version changed");
 			work = { ...work, taskLimits: claimed.work.taskLimits };
-			if (work.repair && work.workspaceRepair)
-				throw new Error("Conflicting repair authorization");
-			const workspaceConfiguration = work.workspaceRepair
-				? await this.service.workspaceConfiguration(
-						work.workspaceRepair,
-						work.sourceId,
-					)
-				: undefined;
+			signal.throwIfAborted();
 			const workspace =
 				workspaceConfiguration &&
 				(await prepareWorkspaceRepair(
@@ -234,6 +251,7 @@ export class DirectExecution {
 					work,
 					workspaceConfiguration.workspace,
 					signal,
+					gate,
 					workspaceConfiguration.command,
 				));
 			const configuration = work.repair
@@ -248,6 +266,7 @@ export class DirectExecution {
 					work,
 					configuration.fixture,
 					signal,
+					gate,
 				));
 			if (grouped) {
 				if (
@@ -266,6 +285,8 @@ export class DirectExecution {
 				)
 					return;
 				sent = true;
+				await checkDispatch();
+				signal.throwIfAborted();
 				run.createAttempted = true;
 				const result = await runGroupRepair(this.ctx, {
 					work,
@@ -276,7 +297,8 @@ export class DirectExecution {
 					check: async () => {
 						// GroupTurns calls this while holding its queue; its native
 						// membership/Bot revision checks remain the authoritative guard.
-						await this.service.verifyDispatch(work, { groupAlreadyValidated: true });
+						await checkDispatch(true);
+						signal.throwIfAborted();
 					},
 				});
 				if (
@@ -298,14 +320,15 @@ export class DirectExecution {
 				if (!(await transition({ ...fence(), kind: "dispatch-send", inputId })))
 					return;
 				sent = true;
-				await this.service.verifyDispatch(work);
 				const result = await runCommandRepair(this.ctx, {
 					configuration: workspaceConfiguration.command,
 					cwd: workspace.executorCwd,
 					task: workspace.promptData,
 					signal,
+					gate,
 					onStarted: async (runId) => {
-						await this.service.verifyDispatch(work);
+						await checkDispatch();
+						signal.throwIfAborted();
 						if (
 							!(await transition({
 								...fence(),
@@ -316,9 +339,10 @@ export class DirectExecution {
 							throw new Error("Command run receipt unknown");
 					},
 				});
-				await this.service.verifyDispatch(work);
+				await checkDispatch();
 				signal.throwIfAborted();
 				const workspaceEvidence = await workspace.finish(result.edits);
+				signal.throwIfAborted();
 				await transition({
 					...fence(),
 					kind: "report-result",
@@ -333,12 +357,15 @@ export class DirectExecution {
 			if (work.repair?.executor === "external") {
 				if (!configuration?.endpoint || !finishRepair)
 					throw new Error("External executor unavailable");
+				await checkDispatch();
+				signal.throwIfAborted();
 				await negotiateRepair(configuration.endpoint, signal);
 				const inputId = randomUUID();
 				if (!(await transition({ ...fence(), kind: "dispatch-send", inputId })))
 					return;
 				sent = true;
-				await this.service.verifyDispatch(work);
+				await checkDispatch();
+				signal.throwIfAborted();
 				const artifact = await runExternalRepair({
 					endpoint: configuration.endpoint,
 					inputId,
@@ -356,9 +383,10 @@ export class DirectExecution {
 							throw new Error("External run receipt unknown");
 					},
 				});
-				await this.service.verifyDispatch(work);
+				await checkDispatch();
 				signal.throwIfAborted();
 				const repairEvidence = await finishRepair(artifact.edit);
+				signal.throwIfAborted();
 				await transition({
 					...fence(),
 					kind: "report-result",
@@ -378,10 +406,11 @@ export class DirectExecution {
 			}
 			const root = await realpath(this.root);
 			const cwd = join(root, "execution");
+			await checkDispatch();
+			signal.throwIfAborted();
 			await mkdir(cwd, { recursive: true, mode: 0o700 });
 			if ((await realpath(cwd)) !== cwd)
 				throw new Error("Unsafe proactive execution directory");
-			signal.throwIfAborted();
 			const agentOptions = {
 				provider: work.target.provider,
 				model: work.target.model,
@@ -396,6 +425,10 @@ export class DirectExecution {
 					: this.service.modelOutputTokens,
 			};
 			let requested = false;
+      let methodContent: string | undefined;
+      let methodEvidence: MethodLoadEvidence | undefined;
+			await checkDispatch();
+			signal.throwIfAborted();
 			run.createAttempted = true;
 			const handle = await this.ctx.agents.create({
 				sessionId: SessionId(run.sessionId),
@@ -406,6 +439,8 @@ export class DirectExecution {
 				agentOptions,
 				signal,
 				setup: async (agentCtx) => {
+          const trial = work.methodTrial;
+          if (trial) await agentCtx.effect(() => registerMethodSkill(agentCtx, trial), 'dsh-bot: evaluation skill');
 					await agentCtx.effect(() => {
 						const restrict = agentCtx.tools.restrict({ allow: [] });
 						const guard = agentCtx.tools.guard(
@@ -417,7 +452,7 @@ export class DirectExecution {
 								signal.throwIfAborted();
 								if (requested)
 									throw new Error("Proactive model request budget exhausted");
-								await this.service.verifyDispatch(work);
+								await checkDispatch();
 								signal.throwIfAborted();
 								requested = true;
 								return agentOptions;
@@ -432,8 +467,18 @@ export class DirectExecution {
 						const stream = agentCtx.on(
 							"llm/stream",
 							(options, next) => {
-								if (options.sessionId === run.sessionId && work.taskLimits)
-									assertModelBudget(options, work.taskLimits.maxTokens);
+								if (options.sessionId === run.sessionId) {
+									signal.throwIfAborted();
+									if (work.taskLimits)
+                    assertModelBudget(options, work.taskLimits.maxTokens);
+                  if (work.methodTrial) {
+                    const loadedContent = methodContent;
+                    if (!loadedContent || !options.messages.some(message => message.content.some(block => block.type === 'text' && block.text.includes(loadedContent)))) throw new Error('Loaded method missing from actual model request');
+                    const { content: _content, ...identity } = work.methodTrial;
+                    methodEvidence = { ...identity, loadedBodyHash: digest(methodContent), requestHash: digest(options.messages),
+                      contextHash: digest({ system: options.system, tools: options.tools ?? [], provider: options.provider, model: options.model, maxTokens: options.maxTokens }), tools: 'none', permission: 'read-only-no-egress' };
+                  }
+								}
 								return next();
 							},
 							{ prepend: true },
@@ -450,7 +495,9 @@ export class DirectExecution {
 			});
 			run.handle = handle;
 			run.runtimeStarted = true;
+			signal.throwIfAborted();
 			const { agent } = handle;
+      if (work.methodTrial) methodContent = await loadMethodSkill(agent, work.methodTrial, cwd, signal);
 			setSandboxMode(agent.session, "read-only");
 			// This session only sees the CI observation and one model response.
 			// Bind its audience before followup so station notifications use the
@@ -469,7 +516,7 @@ export class DirectExecution {
 				form: "notice" as const,
 				ticketId: work.ticketId,
 				assignmentId: work.assignmentId,
-				summary: "Local CI observation",
+				summary: work.document ? "Owner-provided document snapshot" : "Local CI observation",
 			};
 			const message = createUserMessage({
 				source,
@@ -478,7 +525,11 @@ export class DirectExecution {
 						type: "text",
 						text: workspace
 							? JSON.stringify(workspace.promptData)
-							: executionPrompt(work, configuration?.fixture),
+							: work.methodTrial && methodContent ? `Apply this owner-approved method without tools.
+${methodContent}
+
+Return only JSON for this independent task:
+${work.document?.content}` : executionPrompt(work, configuration?.fixture),
 					},
 				],
 			});
@@ -493,6 +544,7 @@ export class DirectExecution {
 			)
 				return;
 			sent = true;
+			await checkDispatch();
 			signal.throwIfAborted();
 			run.inputId = message.id;
 			agent.followup(message);
@@ -541,7 +593,7 @@ export class DirectExecution {
 				| undefined;
 			let workspaceEvidence: WorkspaceRepairEvidence | undefined;
 			if (finishRepair) {
-				await this.service.verifyDispatch(work);
+				await checkDispatch();
 				signal.throwIfAborted();
 				const answer = assistant.data.message.content
 					.filter((block) => block.type === "text")
@@ -550,7 +602,7 @@ export class DirectExecution {
 				repairResult = await finishRepair(JSON.parse(answer));
 			}
 			if (workspace) {
-				await this.service.verifyDispatch(work);
+				await checkDispatch();
 				signal.throwIfAborted();
 				const answer = assistant.data.message.content
 					.filter((block) => block.type === "text")
@@ -561,6 +613,7 @@ export class DirectExecution {
 					.parse(JSON.parse(answer));
 				workspaceEvidence = await workspace.finish(parsed.edits);
 			}
+			signal.throwIfAborted();
 			const usage = observedModelUsage(assistant.data.usage);
 			const delivered = await transition({
 				...fence(),
@@ -570,6 +623,7 @@ export class DirectExecution {
 					...(repairResult ? { repairEvidence: repairResult } : {}),
 					...(workspaceEvidence ? { workspaceEvidence } : {}),
 					...(usage ? { usage } : {}),
+          ...(methodEvidence ? { methodEvidence } : {}),
 					evidence: {
 						inputId: message.id,
 						assistantId: assistant.data.message.id,
@@ -589,8 +643,9 @@ export class DirectExecution {
 				...fence(),
 				kind: "report-result",
 				result: {
-					state:
-						error instanceof GroupRepairFailure
+					state: run.processActive || (run.createAttempted && !run.runtimeStarted && !grouped)
+						? "unknown"
+						: error instanceof GroupRepairFailure
 							? error.evidence.state === "failed"
 								? "failed"
 								: "unknown"
@@ -615,14 +670,24 @@ export class DirectExecution {
 		}
 	}
 
-	cancel(ticketId: string) {
+	cancel(ticketId: string, assignmentId?: string) {
 		const run = this.#active.get(ticketId);
-		if (!run) return;
+		if (
+			!run ||
+			run.stop.signal.aborted ||
+			(assignmentId !== undefined && run.assignmentId !== assignmentId)
+		)
+			return;
 		run.stop.abort();
 		run.handle?.agent.cancel({
 			kind: "hook",
 			reason: "Proactive task cancelled",
 		});
+	}
+
+	cancelSource(sourceId: string) {
+		for (const [ticketId, run] of this.#active)
+			if (run.sourceId === sourceId) this.cancel(ticketId);
 	}
 
 	cancelAll() {
@@ -641,7 +706,12 @@ export class DirectExecution {
 	}
 
 	private provedDrained(run: NativeRun) {
-		return !run.external && (!run.createAttempted || (!!run.localDrained && (run.grouped || !!run.runtimeStarted)));
+		return (
+			!run.processActive &&
+			!run.external &&
+			(!run.createAttempted ||
+				(!!run.localDrained && (run.grouped || !!run.runtimeStarted)))
+		);
 	}
 
 	async idle() {

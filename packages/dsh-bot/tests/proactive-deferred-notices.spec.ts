@@ -302,7 +302,7 @@ test("Host records one merged notice through Notifications and carries both sess
 		),
 	).toEqual({ state: "recorded" });
 	expect(record).toHaveBeenCalledTimes(1);
-	expect(resolve).toHaveBeenCalledTimes(4);
+	expect(resolve).toHaveBeenCalledTimes(6);
 	expect(inherit).toHaveBeenCalledWith(
 		expect.stringMatching(/^proactive-notice-/),
 		expect.objectContaining({
@@ -320,6 +320,7 @@ test("Host records one merged notice through Notifications and carries both sess
 		}),
 		expect.objectContaining({ kind: "proactive", id: batch.id }),
 		expect.any(AbortSignal),
+		expect.any(Function),
 	);
 });
 
@@ -360,4 +361,13 @@ test("policy or authorization changes before recording produce zero records; a l
 		),
 	).toMatchObject({ state: "unknown" });
 	expect(lost.record).toHaveBeenCalledTimes(1);
+});
+
+test("a rule adopted during the final lineage await is checked before recording", async () => {
+	const value = hostFixture();
+	value.inherit.mockImplementationOnce(async () => {}).mockImplementationOnce(async () => {
+		value.resolve.mockRejectedValue(new Error("attention rule adopted"));
+	});
+	expect(await recordDeferredNoticeBatch(value.ctx, value.batch, value.resolve, new AbortController().signal, () => instant)).toMatchObject({ state: "suppressed" });
+	expect(value.record).not.toHaveBeenCalled();
 });

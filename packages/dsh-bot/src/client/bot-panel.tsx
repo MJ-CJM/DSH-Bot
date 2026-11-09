@@ -43,7 +43,9 @@ export function registerBotPanel(ctx: Context, actions: BotRightPanelInjected): 
         ...actions,
         hooks: { ...actions.hooks, preview: source },
         onClose: () => update(),
-        onOpenSettings: id => { update(); actions.onOpenSettings(id); },
+        onOpenMemory: owner => { update(); actions.onOpenMemory?.(owner); },
+        onOpenSettings: owner => { update(); actions.onOpenSettings(owner); },
+        onOpenWork: (owner, target) => { update(); actions.onOpenWork(owner, target); },
         onOpenSession: async id => {
           const current = preview;
           await actions.onOpenSession(id);
@@ -57,7 +59,7 @@ export function registerBotPanel(ctx: Context, actions: BotRightPanelInjected): 
         onOpenInSidebar: section => {
           const sidebar = ctx.get('sidebarRight');
           if (!preview || !ready || sidebar?.mounted.getSnapshot() !== preview.sessionId) return;
-          sidebar.openTab(BOT_PANEL_KIND, { params: { botId: preview.botId, section } });
+          sidebar.openTab(BOT_PANEL_KIND, { params: { botId: preview.botId, botCreatedAt: preview.botCreatedAt, section } });
           update();
         },
       }),
@@ -88,7 +90,9 @@ export function registerBotPanel(ctx: Context, actions: BotRightPanelInjected): 
       const sidebar = ctx.get('sidebarRight');
       const sessionId = sidebar?.mounted.getSnapshot();
       if (!ready || !previewReady || sessionId === undefined) return false;
-      update({ botId, sessionId, section, revision: ++revision });
+      const bot = actions.hooks.catalog.getSnapshot().entries.find(entry => entry.bot.id === botId)?.bot;
+      if (!bot) return false;
+      update({ botId, botCreatedAt: bot.createdAt, sessionId, section, revision: ++revision });
       return true;
     },
   };

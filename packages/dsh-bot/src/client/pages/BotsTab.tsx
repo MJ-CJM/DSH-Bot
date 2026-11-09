@@ -2,8 +2,11 @@ import {ResponsibilityWorkspace} from "../proactive/ResponsibilityWorkspace.js";
 import {GovernancePanel} from "../proactive/GovernancePanel.js";
 import {FeedbackWorkspace} from "../proactive/FeedbackWorkspace.js";
 import { SuggestionPanel } from '../proactive/SuggestionPanel.js';
+import { FollowUpPanel } from '../proactive/FollowUpPanel.js';
+import { followUpSessionTarget, useFollowUpPolicyRevision } from '../proactive/follow-up-state.js';
+import { ProactiveSetup } from '../proactive/ProactiveSetup.js';
 import { Button, SegmentedTabs, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CapabilitiesPanel } from '../components/CapabilitiesPanel.js';
 import { MessageOverviewPanel } from '../components/MessageOverview.js';
 import { BackgroundTasksPanel } from '../components/BackgroundTasksPanel.js';
@@ -22,6 +25,8 @@ import type { BotsPageProps } from './bots-page-types.js';
 import type { BotsPageModel } from './use-bots-page.js';
 import { BotSessionHistory } from './BotSessionHistory.js';
 import { MemoryTab } from './BotMemoryTab.js';
+import { useProactiveWork } from '../proactive/work-state.js';
+import workspaceStyles from '../proactive/workspace.module.css';
 
 type Section = 'overview' | 'work' | 'memory' | 'settings' | 'history';
 type SettingsSection = 'profile' | 'capabilities' | 'connectors' | 'notifications';
@@ -30,7 +35,22 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [saving, setSaving] = useState(false);
-  const [panel, setPanel] = useState<Section>('overview');
+  const destination = model.detailDestination;
+  const requestId = destination?.requestId;
+  const destinationSection = destination?.section;
+  const targetKind = destination?.target?.kind;
+  const onTargetReached = model.onDetailTargetReached;
+  const otherWork = useRef<HTMLElement>(null);
+  const [panel, setPanel] = useState<Section>(destinationSection ?? 'overview');
+  useLayoutEffect(() => {
+    if (requestId !== undefined) setPanel(destinationSection ?? 'overview');
+  }, [requestId, destinationSection]);
+  useEffect(() => {
+    if (panel !== 'work' || targetKind !== 'other-work' || requestId === undefined || !otherWork.current) return;
+    otherWork.current.focus({ preventScroll: true });
+    otherWork.current.scrollIntoView?.({ block: 'nearest' });
+    onTargetReached(requestId);
+  }, [panel, targetKind, requestId, onTargetReached]);
   const [settingsPanel, setSettingsPanel] = useState<SettingsSection>('profile');
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const uid = useId(), { t } = page, navigation = useSettingsNavigation(t);
@@ -61,6 +81,9 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
       <div className={detailStyles.tabs}><SegmentedTabs label={t('detail.navigation')} value={panel} onChange={setPanel}
         items={sections.map(value => ({ value, label: t(`detail.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel` })) as [import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<Section>, ...import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<Section>[]]} /></div>
       <RetainedPanel active={panel === 'overview'} id={`${uid}-overview-panel`} labelledBy={`${uid}-overview`}>
+        {page.followUp && <div className={detailStyles.section}><FollowUpPanel source={page.followUp}
+          subject={{ kind: 'bot', bot: { botId: bot.id, botCreatedAt: bot.createdAt } }} mode="summary" active={panel === 'overview'}
+          onShowAll={() => { setPanel('work'); document.getElementById(`${uid}-work`)?.focus(); }} t={t} /></div>}
         <section data-bot-persona={bot.id} className={detailStyles.section}>
           <Button variant="ghost" onClick={() => { setPanel('settings'); setSettingsPanel('profile'); setEditing(true); model.cancelNavigation(); }}>{t('card.edit')}</Button>
           <h2>{t('persona.title')}</h2><p className={detailStyles.persona}>{bot.persona.prefix || t('persona.empty')}</p>
@@ -72,17 +95,18 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
       </RetainedPanel>
       <RetainedPanel active={panel === 'work'} id={`${uid}-work-panel`} labelledBy={`${uid}-work`}>
         <div className={detailStyles.section}><Button variant="ghost" disabled={busy || model.navigating || !model.ready} onClick={start}>{t('detail.createTask')}</Button></div>
-        {panel === 'work' && page.proactive && <SuggestionPanel actions={page.proactive} bot={bot} onOpen={page.onOpenSession} t={t}>
- {page.proactiveResponsibilities&&<ResponsibilityWorkspace bot={bot} actions={page.proactiveResponsibilities} proactive={page.proactive} t={t}/>}
- {page.proactiveGovernance&&<GovernancePanel actions={page.proactiveGovernance} t={t}/>}
- {page.proactiveFeedback&&<FeedbackWorkspace owner={{botId:bot.id,botCreatedAt:bot.createdAt}} actions={page.proactiveFeedback} t={t} onSettings={setting=>{setPanel('settings');setSettingsPanel(setting==='notifications'?'notifications':setting==='workspace'?'profile':'capabilities');}}/>}
- </SuggestionPanel>}
-        {page.background && <BackgroundTasksPanel bot={bot} actions={page.background} t={t} />}
-        {page.routines && <RoutinePanel actions={page.routines} bots={bots} botId={bot.id} onOpenSession={page.onOpenSession} t={t} />}
-        {page.messages && <MessageOverviewPanel botId={bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}
+        <BotWorkSection page={page} model={model} bot={bot} active={panel === 'work'}
+          onSettings={setting => { setPanel('settings'); setSettingsPanel(setting); }}>
+          <section ref={otherWork} data-bot-other-work="" tabIndex={-1} aria-label={t('botPanel.otherWork')}>
+            {page.background && <BackgroundTasksPanel bot={bot} actions={page.background} t={t} />}
+            {page.routines && <RoutinePanel actions={page.routines} bots={bots} botId={bot.id} onOpenSession={page.onOpenSession} t={t} />}
+          </section>
+          {panel === 'work' && page.messages && <MessageOverviewPanel botId={bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}
+        </BotWorkSection>
       </RetainedPanel>
       <RetainedPanel active={panel === 'memory'} id={`${uid}-memory-panel`} labelledBy={`${uid}-memory`}>
-        {page.management ? <ManagementPanel bots={bots} actions={page.management} createMemoryPanel={page.createMemoryPanel} t={t} /> : <MemoryTab bot={bot} create={page.createMemoryPanel} t={t} />}
+        {page.management ? <ManagementPanel bots={bots} actions={page.management} createMemoryPanel={page.createMemoryPanel} active={panel === 'memory'} t={t} />
+          : <MemoryTab bot={bot} create={page.createMemoryPanel} active={panel === 'memory'} t={t} />}
       </RetainedPanel>
       <RetainedPanel active={panel === 'settings'} id={`${uid}-settings-panel`} labelledBy={`${uid}-settings`}>
         <div className={detailStyles.settingsNav}>{settingsSections.map(key => <Button key={key} variant="ghost" aria-pressed={settingsPanel === key} onClick={() => setSettingsPanel(key)}>{t(`detail.${key}`)}</Button>)}</div>
@@ -104,4 +128,43 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
     </article>
     </SettingsBotContext.Provider>
   </SettingsDrafts.Provider>;
+}
+
+function BotWorkSection({ page, model, bot, active, onSettings, children }: {
+  page: BotsPageProps;
+  model: BotsPageModel;
+  bot: NonNullable<BotsPageModel['selected']>['bot'];
+  active: boolean;
+  onSettings(section: SettingsSection): void;
+  children: ReactNode;
+}) {
+  const owner = { botId: bot.id, botCreatedAt: bot.createdAt };
+  const { proactive, proactiveResponsibilities, proactiveGovernance, proactiveFeedback, followUp, onOpenFollowUpWork, t } = page;
+  const continuationPolicy = useFollowUpPolicyRevision(followUp, { kind: 'bot', bot: owner }, active);
+  const { snapshot, refresh } = useProactiveWork(page.proactiveWork, owner, active && !!proactive);
+  const destination = model.detailDestination;
+  return <>
+    {followUp && <div className={detailStyles.section}><FollowUpPanel source={followUp} subject={{ kind: 'bot', bot: owner }}
+      mode="detail" active={active} navigation={{
+        canOpen: origin => origin.kind === 'work' ? !!onOpenFollowUpWork : !!followUpSessionTarget(origin),
+        open: (origin, signal) => origin.kind === 'work'
+          ? onOpenFollowUpWork?.(owner, origin.ticketId) : followUp.openSession(origin, signal),
+      }}
+      advanced={allowed => active && allowed && snapshot.status?.state === 'ready' && !snapshot.status.localFeedScope && proactive?.setup
+        ? <ProactiveSetup setup={proactive.setup} refresh={refresh} t={t} /> : null} t={t} /></div>}
+    {active && proactive && <SuggestionPanel actions={proactive} bot={bot} snapshot={snapshot} refresh={refresh} followUpControls={!!followUp}
+      continuationPolicy={continuationPolicy}
+      target={destination?.target?.kind === 'other-work' ? undefined : destination?.target} onTargetReached={() => {
+        if (destination) model.onDetailTargetReached(destination.requestId);
+      }} onOpen={page.onOpenSession} t={t} />}
+    {children}
+    {/* These independent reads can fill their panels after the work link is focused. */}
+    {active && proactive && snapshot.status?.state !== 'disabled' && <div className={`${detailStyles.section} ${workspaceStyles.content}`}>
+      {proactiveResponsibilities && <ResponsibilityWorkspace bot={bot} actions={proactiveResponsibilities}
+        status={snapshot.status} refresh={refresh} loading={snapshot.loading} failed={!!snapshot.error} t={t} />}
+      {proactiveGovernance && <GovernancePanel actions={proactiveGovernance} source={snapshot.status?.localFeedScope} refresh={refresh} t={t} />}
+      {proactiveFeedback && <FeedbackWorkspace owner={owner} actions={proactiveFeedback} t={t}
+        onSettings={setting => onSettings(setting === 'notifications' ? 'notifications' : setting === 'workspace' ? 'profile' : 'capabilities')} />}
+    </div>}
+  </>;
 }

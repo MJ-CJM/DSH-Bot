@@ -45,13 +45,14 @@ export async function verifyGroupRepairEvidence(
 		for (const [index, phase] of (["plan", "implement", "review"] as const).entries()) {
 			const stage = evidence.stages[index];
 			const role = phase === "implement" ? grant.implementer : grant.supervisor;
+    const model = role.modelSelection ?? { provider: work.target.provider, model: work.target.model };
 			if (!stage || stage.phase !== phase || stage.memberId !== role.memberId || !stage.sessionId) return false;
 			const turn = view.turns.find(item => item.id === stage.turnId);
 			const delivery = view.deliveries.find(item => item.id === stage.deliveryId);
 			if (!turn || !delivery || turn.state !== "completed" || delivery.state !== "completed" ||
 				turn.membershipRevision !== grant.membershipRevision || digest(turn.orderedMemberIds) !== digest([role.memberId]) ||
 				turn.proactive?.assignmentId !== work.assignmentId || turn.proactive.ticketId !== work.ticketId ||
-				turn.proactive.repair?.phase !== phase || turn.proactive.provider !== work.target.provider || turn.proactive.model !== work.target.model ||
+				turn.proactive.repair?.phase !== phase || turn.proactive.provider !== model.provider || turn.proactive.model !== model.model ||
 				delivery.turnId !== turn.id || delivery.memberId !== role.memberId || digest(delivery.bot) !== digest(role.bot) || delivery.botRevision !== role.botUpdatedAt ||
 				delivery.childSessionId !== stage.sessionId || delivery.childMessageId !== stage.inputId || delivery.outputMessageId !== stage.outputId) return false;
 			if (index > 0 && turn.proactive.repair.predecessorTurnId !== evidence.stages[index - 1]?.turnId) return false;
@@ -64,8 +65,8 @@ export async function verifyGroupRepairEvidence(
 			if (input?.type !== "user/message" || input.data.source.kind !== "dsh-bot-group-proactive" ||
 				input.data.source.assignmentId !== work.assignmentId || input.data.source.ticketId !== work.ticketId ||
 				input.data.source.turnId !== stage.turnId || input.data.source.repairPhase !== phase || digest(input.data.source.group) !== digest(grant.group) || digest(input.data.content) !== stage.inputDigest ||
-				answer?.type !== "assistant/message" || answer.data.interrupted || end?.type !== "turn/end" || end.data.reason.kind !== "completed" || answer.data.turn !== end.data.turn || answer.data.message.source.provider !== work.target.provider ||
-				answer.data.message.source.model !== work.target.model || digest(answer.data.message.content) !== stage.outputDigest ||
+				answer?.type !== "assistant/message" || answer.data.interrupted || end?.type !== "turn/end" || end.data.reason.kind !== "completed" || answer.data.turn !== end.data.turn || answer.data.message.source.provider !== model.provider ||
+				answer.data.message.source.model !== model.model || digest(answer.data.message.content) !== stage.outputDigest ||
 				published?.type !== "user/message" || published.data.source.kind !== "dsh-bot-group" ||
 				published.data.source.turnId !== stage.turnId || published.data.source.childSessionId !== stage.sessionId ||
 				published.data.source.memberId !== role.memberId || digest(published.data.source.group) !== digest(grant.group)) return false;
@@ -123,6 +124,7 @@ export async function runGroupRepair(
 		const outputTokens = Math.min(input.outputTokens, Math.floor(remainingAllowance / 2));
 		if (outputTokens < 1) throw new Error("Group repair token allowance exhausted");
 		const role = phase === "implement" ? grant.implementer : grant.supervisor;
+    const model = role.modelSelection ?? { provider: work.target.provider, model: work.target.model };
 		const predecessorTurnId = evidence.stages.at(-1)?.turnId;
 		const turn = await groups.startProactiveReview(
 			grant.group,
@@ -139,8 +141,10 @@ export async function runGroupRepair(
 			{
 				ticketId: work.ticketId,
 				assignmentId: work.assignmentId,
-				provider: work.target.provider,
-				model: work.target.model,
+				provider: model.provider,
+				model: model.model,
+        memberModels: [{ memberId: role.memberId, modelSelection: model }],
+        modelRevision: grant.modelRevision,
 				botRevisions: [role.botUpdatedAt],
 				repair: {
 					phase,
@@ -230,8 +234,8 @@ export async function runGroupRepair(
 		if (
 			answer?.type !== "assistant/message" ||
 			answer.data.interrupted ||
-			answer.data.message.source.provider !== work.target.provider ||
-			answer.data.message.source.model !== work.target.model
+			answer.data.message.source.provider !== model.provider ||
+			answer.data.message.source.model !== model.model
 		)
 			throw new Error("Group repair native result unavailable");
 		const text = answer.data.message.content

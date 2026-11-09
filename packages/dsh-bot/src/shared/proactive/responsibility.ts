@@ -12,12 +12,18 @@ export const responsibilityActionSchema = z.enum([
 	"repair-workspace",
 ]);
 // Keep this boundary independent from work.ts: work may reference a grant ID.
-export const responsibilityTargetSchema = z.strictObject({
+const responsibilityOwnerTargetSchema = z.strictObject({
 	bot: botKeySchema,
 	botUpdatedAt: revision,
+});
+export const responsibilityTargetSchema = responsibilityOwnerTargetSchema.extend({
 	provider: resourceId,
 	model: z.string().min(1).max(128),
 });
+const responsibilityPolicyTargetSchema = z.union([
+	responsibilityTargetSchema,
+	responsibilityOwnerTargetSchema,
+]);
 export const responsibilitySourceSchema = z.strictObject({
 	id: z.string().regex(/^ci:[a-f0-9]{64}$/),
 	generation: revision,
@@ -79,7 +85,7 @@ export const responsibilityDraftSchema = z
 			.string()
 			.regex(/^[a-f0-9]{64}$/)
 			.optional(),
-		target: responsibilityTargetSchema,
+		target: responsibilityPolicyTargetSchema,
 		acceptance: responsibilityAcceptanceSchema,
 		limits: responsibilityLimitsSchema,
 		expiresAt: z.iso.datetime(),
@@ -90,7 +96,10 @@ export const responsibilityDraftSchema = z
 		{
 			message: "Repair actions require an exact approved configuration digest",
 		},
-	);
+	)
+	.refine((value) => value.mode !== "auto" || "provider" in value.target, {
+		message: "Automatic duties require an approved execution route",
+	});
 export const responsibilitySchema = responsibilityDraftSchema.safeExtend({
 	id: resourceId,
 	owner: botKeySchema,
@@ -137,7 +146,7 @@ export const responsibilityMutationResultSchema = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("rejected"), code: z.string() }),
 	z.strictObject({ kind: z.literal("unknown") }),
 ]);
-export const responsibilityBindingSchema = z
+export const responsibilityMatchSchema = z
 	.strictObject({
 		bot: botKeySchema,
 		source: responsibilitySourceSchema,
@@ -146,7 +155,7 @@ export const responsibilityBindingSchema = z
 			.string()
 			.regex(/^[a-f0-9]{64}$/)
 			.optional(),
-		target: responsibilityTargetSchema,
+		target: responsibilityPolicyTargetSchema,
 		job,
 		attempt: z.number().int().positive(),
 		conclusion: z.enum(["failure", "success", "cancelled"]),
@@ -159,6 +168,10 @@ export const responsibilityBindingSchema = z
 			message: "Repair actions require an exact approved configuration digest",
 		},
 	);
+export const responsibilityBindingSchema = responsibilityMatchSchema.safeExtend({
+	target: responsibilityTargetSchema,
+});
+export type ResponsibilityMatch = z.output<typeof responsibilityMatchSchema>;
 export const responsibilityAdmissionSchema = z.strictObject({
 	grantId: resourceId,
 	ticketId: resourceId,
@@ -241,6 +254,9 @@ export type ResponsibilityLimits = z.output<typeof responsibilityLimitsSchema>;
 export type ResponsibilityAction = z.output<typeof responsibilityActionSchema>;
 export type ResponsibilitySource = z.output<typeof responsibilitySourceSchema>;
 export type ResponsibilityTarget = z.output<typeof responsibilityTargetSchema>;
+export function hasResponsibilityRoute(target: ResponsibilityDraft["target"]): target is ResponsibilityTarget {
+	return "provider" in target;
+}
 export type ResponsibilityUsage = z.output<typeof responsibilityUsageSchema>;
 export type ResponsibilityView = z.output<typeof responsibilityViewSchema>;
 export type ResponsibilityReservationInput = z.input<

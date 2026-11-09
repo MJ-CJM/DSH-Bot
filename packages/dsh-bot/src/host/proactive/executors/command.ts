@@ -8,7 +8,7 @@ import {
 	type CommandExecutorConfig,
 } from "../../../shared/proactive/workspace-repair.js";
 import { digest } from "../wire.js";
-import { runManagedCommand } from "../workspace-process.js";
+import { runManagedCommand, type ProcessGate } from "../workspace-process.js";
 
 /** Capabilities supplied by this managed-process adapter, not by a native Agent. */
 export const commandRunnerCapabilities = {
@@ -31,6 +31,7 @@ export function createCommandRepairRun(
 		cwd: string;
 		task: unknown;
 		signal: AbortSignal;
+		gate: ProcessGate;
 		onStarted(runId: string): Promise<void>;
 	},
 ) {
@@ -70,6 +71,7 @@ export function createCommandRepairRun(
 					stdin: JSON.stringify(request),
 					maxOutputBytes,
 					signal,
+					gate: input.gate,
 				});
 			const negotiation = await call(
 				{ version: 1, operation: "capabilities" },

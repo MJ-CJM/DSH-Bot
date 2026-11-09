@@ -10,6 +10,7 @@ import {
 	artifactPurgeResultSchema,
 	beginForgetSchema,
 	finishForgetSchema,
+	forgetBlockedReasonSchema,
 	forgetReceiptSchema,
 	governanceConfigSchema,
 	type ArtifactPurgePlan,
@@ -24,7 +25,9 @@ import {
 type Ticket = NonNullable<ReturnType<Store["tickets"]["get"]>>;
 const redacted = "[redacted]";
 const terminal = (work: ProactiveWork) =>
-	["accepted", "failed", "denied", "cancelled"].includes(work.state) &&
+	(["accepted", "failed", "denied", "cancelled"].includes(work.state) ||
+		(work.state === "superseded" && work.supersededBy !== undefined)) &&
+	work.groupRepairEvidence?.state !== "unknown" &&
 	work.notice?.state !== "claim" &&
 	work.notice?.state !== "unknown" &&
 	work.groupReview?.state !== "claimed" &&
@@ -176,12 +179,14 @@ export function openGovernance(
 			ticketId: work.ticketId,
 			decisionId: work.decisionId,
 			state: work.state,
+			supersededBy: work.supersededBy,
 			evidenceDigest: work.evidenceDigest,
 			reviewer: work.reviewer,
 			reviewedAt: work.reviewedAt,
 		});
 		const clean = workSchema.parse({
 			...work,
+      document: undefined, methodTrial: undefined, methodEvidence: undefined,
 			title: redacted,
 			revision: work.revision + 1,
 			repair: undefined,
@@ -194,6 +199,8 @@ export function openGovernance(
 			groupRepairEvidence: undefined,
 			reviewFeedback: undefined,
 			rework: undefined,
+      wait: undefined,
+      continuation: undefined,
 			groupReview: work.groupReview
 				? {
 						...work.groupReview,
@@ -420,9 +427,15 @@ export function openGovernance(
 				return saveForget({ ...prior, phase: "blocked", updatedAt: now() });
 			const scoped = scopeWorks(prior.sourceId, prior.generation);
 			const source = sourceTriggers(prior.sourceId, prior.generation);
-			const threadKeys = new Set(
+			const threadGenerations = new Map(
 				source.flatMap((item) =>
-					item.threads.map((ref) => `${ref.source}:${ref.id}`),
+					item.threads.map(
+						(ref) =>
+							[
+								`${ref.source}:${ref.id}`,
+								Number(item.meta.generation),
+							] as const,
+					),
 				),
 			);
 			const plans = scoped.flatMap((work) => {
@@ -430,13 +443,23 @@ export function openGovernance(
 				return value ? [value] : [];
 			});
 			let changed = 0;
-			for (const ticket of sourceTickets(prior.sourceId, prior.generation))
-				changed += redactTicket(ticket, prior.sourceId, prior.generation);
+			for (const ticket of sourceTickets(prior.sourceId, prior.generation)) {
+				const trigger = store.triggers.get(ticket.origin.triggerId);
+				const gen =
+					trigger?.source === prior.sourceId
+						? trigger.meta.generation
+						: undefined;
+				changed += redactTicket(
+					ticket,
+					prior.sourceId,
+					typeof gen === "number" ? gen : prior.generation,
+				);
+			}
 			for (const work of scoped) changed += redactWork(work);
 			for (const trigger of source) changed += redactTrigger(trigger);
-			for (const key of threadKeys) {
+			for (const [key, gen] of threadGenerations) {
 				const thread = store.threads.get(key);
-				if (thread) changed += redactThread(thread, prior.generation, true);
+				if (thread) changed += redactThread(thread, gen, true);
 			}
 			return saveForget({
 				...prior,
@@ -580,14 +603,58 @@ export function openGovernance(
 			return result;
 		});
 	}
+	function sourceContext(sourceId: string, gen: number) {
+		const scoped = scopeWorks(sourceId, gen);
+		const source = sourceTriggers(sourceId, gen);
+		const keys = new Set(
+			source.flatMap((item) =>
+				item.threads.map((ref) => `${ref.source}:${ref.id}`),
+			),
+		);
+		const notificationOperationIds = new Set(
+			scoped.flatMap((work) => [
+				`proactive:${work.assignmentId}`,
+				`proactive-external:${work.assignmentId}`,
+			]),
+		);
+		if (hasTable("pb_deferred_notice"))
+			for (const row of db
+				.prepare(
+					"SELECT payload FROM pb_deferred_notice WHERE json_extract(payload,'$.sourceId')=? AND json_extract(payload,'$.sourceGeneration')<=?",
+				)
+				.all(sourceId, gen)) {
+				const item = JSON.parse(String(row.payload)) as {
+					operationId: string;
+					batchId?: string;
+				};
+				notificationOperationIds.add(item.operationId);
+				if (item.batchId) notificationOperationIds.add(item.batchId);
+			}
+		return {
+			notificationOperationIds: [...notificationOperationIds],
+			ticketIds: sourceTickets(sourceId, gen).map((item) => item.id),
+			assignmentIds: scoped.map((item) => item.assignmentId),
+			decisionIds: [
+				...new Set([
+					...scoped.map((item) => item.decisionId),
+					...[...keys].flatMap((key) =>
+						store.decisions.byThread(key).map((item) => item.id),
+					),
+				]),
+			],
+		};
+	}
 	return {
 		beginForget,
 		finishForget,
-		blockForget(operationId: string, reason: "notification-copy-unknown") {
+		blockForget(
+			operationId: string,
+			reason: NonNullable<ForgetReceipt["blockedReason"]>,
+		) {
 			return store.atomic(() => {
 				const prior = forget(operationId);
 				if (!prior) throw new Rejection("stale");
-				if (reason !== "notification-copy-unknown")
+				if (!forgetBlockedReasonSchema.safeParse(reason).success)
 					throw new Rejection("invalid");
 				return saveForget({
 					...prior,
@@ -600,46 +667,39 @@ export function openGovernance(
 		sweep,
 		forget,
 		recordPurge,
-		sourceContext(sourceId: string, gen: number) {
-			const scoped = scopeWorks(sourceId, gen);
-			const source = sourceTriggers(sourceId, gen);
-			const keys = new Set(
-				source.flatMap((item) =>
-					item.threads.map((ref) => `${ref.source}:${ref.id}`),
-				),
+		sourceContext,
+		resumeFeedbackCleanup(
+			purge: (
+				sourceId: string,
+				generation: number,
+				workIds: string[],
+				decisionIds: string[],
+			) => unknown,
+		) {
+			const isFenced = db.prepare(
+				"SELECT 1 FROM pb_source_revocation WHERE id=? AND generation>=?",
 			);
-			const notificationOperationIds = new Set(
-				scoped.flatMap((work) => [
-					`proactive:${work.assignmentId}`,
-					`proactive-external:${work.assignmentId}`,
-				]),
-			);
-			if (hasTable("pb_deferred_notice"))
-				for (const row of db
-					.prepare(
-						"SELECT payload FROM pb_deferred_notice WHERE json_extract(payload,'$.sourceId')=? AND json_extract(payload,'$.sourceGeneration')<=?",
-					)
-					.all(sourceId, gen)) {
-					const item = JSON.parse(String(row.payload)) as {
-						operationId: string;
-						batchId?: string;
-					};
-					notificationOperationIds.add(item.operationId);
-					if (item.batchId) notificationOperationIds.add(item.batchId);
-				}
-			return {
-				notificationOperationIds: [...notificationOperationIds],
-				ticketIds: sourceTickets(sourceId, gen).map((item) => item.id),
-				assignmentIds: scoped.map((item) => item.assignmentId),
-				decisionIds: [
-					...new Set([
-						...scoped.map((item) => item.decisionId),
-						...[...keys].flatMap((key) =>
-							store.decisions.byThread(key).map((item) => item.id),
-						),
-					]),
-				],
-			};
+			for (const row of db
+				.prepare(`SELECT request_digest,payload FROM pb_governance_forget
+				WHERE json_extract(payload,'$.phase') IN ('purging','complete')`)
+				.all()) {
+				const { operationId, sourceId, generation } = forgetReceiptSchema.parse(
+					JSON.parse(String(row.payload)),
+				);
+				if (
+					row.request_digest !==
+						digest({ operationId, sourceId, generation }) ||
+					!isFenced.get(sourceId, generation)
+				)
+					continue;
+				const scope = sourceContext(sourceId, generation);
+				purge(
+					sourceId,
+					generation,
+					[...scope.ticketIds, ...scope.assignmentIds],
+					scope.decisionIds,
+				);
+			}
 		},
 		pendingPurges: () =>
 			db

@@ -1,3 +1,5 @@
+import { groupMemberModel, proactiveMemberModel } from './model-selection.js';
+import { verifyOwnerFollowUpChoice } from './owner-follow-up.js';
 import { ConcurrentGroups } from './concurrent.js';
 import { workerReservations } from './worker-tool.js';
 import { randomUUID } from 'node:crypto';
@@ -32,6 +34,7 @@ export class GroupTurnRunner {
   ) { this.concurrent = new ConcurrentGroups(state, roots, messages, this); }
   /** Called inside the service queue. A delivery receipt is the durable acceptance point. */
   async enqueue(t: GroupTurn, memberId: string, triggerMessageId: string, id: string, returnMemberId?: string, requestDigest?: string) {
+    if (t.ownerFollowUp) throw new OperationError('approval-denied');
     const old = this.state.table('deliveries').get(id);
     if (old) {
       if (requestDigest && old.requestDigest !== requestDigest) throw new OperationError('conflict');
@@ -106,7 +109,7 @@ export class GroupTurnRunner {
         this.state.stopped ||
         this.state.cancelledTurns.has(t.id) ||
         d.state !== 'pending' ||
-        (t.proactive && g.membershipRevision !== t.membershipRevision) ||
+        ((t.proactive || t.ownerFollowUp) && g.membershipRevision !== t.membershipRevision) ||
         signal.aborted ||
         !member?.enabled ||
         member.removedAt !== undefined ||
@@ -123,7 +126,7 @@ export class GroupTurnRunner {
       const root = need(this.state.roots.get(g.id));
       const messages = this.messages.messages(g);
       const question = need(messages.find((m) => m.id === (d.triggerMessageId ?? t.inputMessageId)));
-      const previous = t.proactive ? [] : this.state
+      const previous = t.proactive || t.ownerFollowUp ? [] : this.state
         .turns(g).filter(prior => prior.id === t.id || t.predecessorTurnIds?.includes(prior.id))
         .flatMap(prior => this.state.deliveries(prior.id))
         .filter((row) => t.protocol === 2 ? row.turnId !== t.id : row.ordinal < d.ordinal || row.turnId !== t.id)
@@ -163,7 +166,8 @@ export class GroupTurnRunner {
       const attachmentBlocks = [...new Map([question, ...messages.filter(m => m.id === question.replyTo || context.outputIds.includes(m.id))]
         .flatMap(m => m.attachments ?? []).map(block => [`${block.type}:${block.attachment.attachmentId}`, block])).values()] as import('@deepseek-ai/dsh-llm').ContentBlock[];
       const modelSelection = t.memberModelSelections?.find(row => row.memberId === d.memberId)?.modelSelection ?? t.modelSelection;
-      const selected = t.proactive ? { provider: t.proactive.provider, model: t.proactive.model, reasoningEffort: undefined } : modelSelection ?? bot.model;
+      const selected = t.ownerFollowUp?.modelSelection ??
+        (t.proactive ? proactiveMemberModel(t.proactive, d.memberId) : groupMemberModel(t, d.memberId, bot, () => this.state.route()));
       const route = selected ? { ...selected,
         // Explicit undefined clears a same-route effort inherited from the root's creation options.
         reasoningEffort: selected.reasoningEffort === undefined ? undefined : ReasoningEffortId(selected.reasoningEffort) } : this.state.route();
@@ -182,7 +186,7 @@ export class GroupTurnRunner {
     await this.state.queue.run(async () => {
       const g = this.state.record(t.group),
         d = need(this.state.table('deliveries').get(deliveryId));
-      if (t.proactive && g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
+      if ((t.proactive || t.ownerFollowUp) && g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
       const text = textOf(result.output);
       const hasContent = !d.skipped && !signal.aborted && (Boolean(text.trim()) || result.output.some((b) => b.type !== 'text'));
       const state = signal.aborted
@@ -252,7 +256,7 @@ export class GroupTurnRunner {
         this.state.deliveries(t.id).length < t.orderedMemberIds.length + this.state.registry.config.groupMaxContinuations &&
         (this.state.registry.config.groupRoundTimeoutMs === 0 || Date.now() < t.createdAt + this.state.registry.config.groupRoundTimeoutMs) && g.membershipRevision === t.membershipRevision)
         await this.enqueue(t, d.returnMemberId, output.outputMessageId, `group-return:${digest(d.id)}`);
-      if (state === 'completed' && output && !t.proactive) {
+      if (state === 'completed' && output && !t.proactive && !t.ownerFollowUp) {
         await this.state.putGroup({
           ...g,
           nextMemberId: nextRoundRobinMember(this.state.members(g), d.memberId),
@@ -263,8 +267,10 @@ export class GroupTurnRunner {
     });
   }
   private async deliverProactive(t: GroupTurn, d: GroupDelivery, deadline: number) {
-    const review = need(t.proactive);
-    const requestBudget = review.requestBudget ?? review.repair;
+    const review = t.proactive, owner = t.ownerFollowUp;
+    const approvedModel = owner?.modelSelection ?? proactiveMemberModel(need(review), d.memberId);
+    const requestBudget = review?.requestBudget ?? review?.repair;
+    if (owner && (t.orderedMemberIds.length !== 1 || d.memberId !== owner.memberId)) throw new OperationError('conflict');
     if (requestBudget) deadline = Math.min(deadline, Date.parse(requestBudget.deadlineAt));
     const check = need(this.state.proactiveChecks.get(t.id));
     const controller = new AbortController();
@@ -276,6 +282,7 @@ export class GroupTurnRunner {
     let child: AgentHandle | undefined;
     let inputSent = false;
     let createAttempted = false;
+    let restrictedChild: string | undefined;
     try {
       const prepared = await this.prepareDelivery(t, d.id, signal);
       if (!prepared) return;
@@ -283,9 +290,11 @@ export class GroupTurnRunner {
         signal.throwIfAborted();
         const group = this.state.record(t.group);
         if (group.archived || group.membershipRevision !== t.membershipRevision ||
+            (review?.modelRevision !== undefined && (group.modelRevision ?? 0) !== review.modelRevision) ||
             (await this.state.bot(d.bot)).updatedAt !== d.botRevision)
           throw new OperationError('conflict');
-        if (review.followUp) {
+        if (owner) await verifyOwnerFollowUpChoice(this.state, t.group, owner);
+        if (review?.followUp) {
           await this.state.validateMembers(this.state.members(group)
             .filter(member => member.enabled && member.removedAt === undefined).map(member => member.bot));
         }
@@ -296,15 +305,31 @@ export class GroupTurnRunner {
       const group = this.state.record(t.group);
       const input = await groupChild(this.state, group, prepared.root.agent, d.bot, prepared.context.text, d.id, signal);
       const childId = input?.childId ?? SessionId(randomUUID());
+      const source = owner ? { kind: 'dsh-bot-group-owner-followup' as const, group: t.group, turnId: t.id,
+        cardId: owner.cardId, predecessorTurnId: owner.predecessorTurnId,
+      } : { kind: 'dsh-bot-group-proactive' as const, group: t.group, turnId: t.id,
+        ticketId: need(review).ticketId, assignmentId: need(review).assignmentId,
+        ...(review?.repair ? { repairPhase: review.repair.phase } : {}),
+        ...(review?.followUp ? { factId: review.followUp.factId, predecessorTurnId: review.followUp.predecessorTurnId } : {}),
+      };
       const message = createUserMessage({
-        source: { kind: 'dsh-bot-group-proactive', group: t.group, turnId: t.id,
-          ticketId: review.ticketId, assignmentId: review.assignmentId,
-          ...(review.repair ? { repairPhase: review.repair.phase } : {}),
-          ...(review.followUp ? { factId: review.followUp.factId, predecessorTurnId: review.followUp.predecessorTurnId } : {}) },
+        source,
         content: blocks(prepared.context.text),
       });
-      const options = { provider: review.provider, model: review.model, maxTokens: requestBudget?.outputTokens ?? 1024 };
-      let requested = false;
+      if (owner) {
+        const reservation = { turnId: t.id, deliveryId: d.id, childId, rootId: prepared.root.agent.session.id,
+          presetId: d.presetId, modelSelection: owner.modelSelection, restrictedInputId: message.id,
+          audience: this.state.members(group).filter(member => member.enabled && member.removedAt === undefined).map(member => member.bot),
+          isActive: () => !signal.aborted && !this.state.stopped && !this.state.cancelledTurns.has(t.id),
+        };
+        if (workerReservations.has(childId)) throw new OperationError('conflict');
+        this.state.workers.set(childId, reservation);
+        workerReservations.set(childId, reservation);
+        restrictedChild = childId;
+      }
+      const outputTokens = owner ? this.state.registry.config.proactiveModelOutputTokens ?? 1024 : requestBudget?.outputTokens ?? 1024;
+      const options = { provider: approvedModel.provider, model: approvedModel.model, ...(approvedModel.reasoningEffort ? { reasoningEffort: ReasoningEffortId(approvedModel.reasoningEffort) } : {}), maxTokens: outputTokens };
+      let requested = false, dispatched = false;
       const create = (dispatchSignal: AbortSignal) => {
         createAttempted = true;
         return this.state.ctx.agents.create({
@@ -319,7 +344,7 @@ export class GroupTurnRunner {
           agentCtx.effect(() => agentCtx.tools.guard(() => 'Proactive group review is read-only'));
           agentCtx.effect(() => agentCtx.on('agent/pre-step', async ({ messages }, next) => {
             const input = messages[0];
-            if (messages.length !== 1 || input?.id !== message.id || input.source.kind !== 'dsh-bot-group-proactive')
+            if (messages.length !== 1 || input?.id !== message.id || input.source.kind !== source.kind)
               return { kind: 'reject' };
             return next();
           }, { prepend: true }));
@@ -330,6 +355,17 @@ export class GroupTurnRunner {
             return options;
           }, { prepend: true }));
           agentCtx.effect(() => agentCtx.on('agent/request-error', async () => undefined, { prepend: true }));
+          if (owner) agentCtx.effect(() => agentCtx.on('llm/stream', async function* (request, next) {
+            if (request.sessionId === childId) {
+              if (dispatched || request.provider !== approvedModel.provider || request.model !== approvedModel.model ||
+                (approvedModel.reasoningEffort !== undefined && request.reasoningEffort !== approvedModel.reasoningEffort) ||
+                !request.maxTokens || request.maxTokens > outputTokens || (request.tools?.length ?? 0) > 0)
+                throw new OperationError('approval-denied');
+              dispatched = true;
+              await verify();
+            }
+            yield* next();
+          }, { prepend: true }));
           if (requestBudget) agentCtx.effect(() => agentCtx.on('llm/stream', (options, next) => {
             if (options.sessionId === childId) {
               const allowance = assertModelBudget(options, requestBudget.maxTokens);
@@ -351,13 +387,13 @@ export class GroupTurnRunner {
       });
       await verify();
       inputSent = true;
-      proactiveGroupInputs.set(child.agent.id, message.id);
+      if (!owner) proactiveGroupInputs.set(child.agent.id, message.id);
       child.agent.followup(message);
       await waitIdle(child.agent, signal);
       await verify();
       const events = child.agent.session.snapshotEvents();
       const accepted = events.find(event => event.type === 'user/message' && event.data.id === message.id &&
-        event.data.source.kind === 'dsh-bot-group-proactive');
+        event.data.source.kind === source.kind);
       const end = events.findLast(event => event.type === 'turn/end');
       if (!accepted || end?.type !== 'turn/end' || !(await this.state.ctx.sessions.flush(child.agent.session)))
         throw new OperationError('unavailable');
@@ -368,7 +404,7 @@ export class GroupTurnRunner {
       const answer = events.findLast(event => event.type === 'assistant/message');
       if (end.data.reason.kind !== 'completed' || answer?.type !== 'assistant/message' ||
           answer.data.turn !== end.data.turn || answer.data.interrupted ||
-          answer.data.message.source.provider !== review.provider || answer.data.message.source.model !== review.model)
+          answer.data.message.source.provider !== approvedModel.provider || answer.data.message.source.model !== approvedModel.model)
         throw new OperationError('unavailable');
       await this.recordDeliveryResult(t, d.id, prepared, childId, {
         output: answer.data.message.content.filter(block => block.type === 'text'),
@@ -389,11 +425,15 @@ export class GroupTurnRunner {
       } finally {
         this.state.recordProactiveDrain(d.id, !createAttempted || drained);
         if (child) proactiveGroupInputs.delete(child.agent.id);
+        if (restrictedChild) {
+          this.state.workers.delete(restrictedChild);
+          workerReservations.delete(restrictedChild);
+        }
       }
     }
   }
   async deliver(t: GroupTurn, d0: GroupDelivery, deadline: number) {
-    if (t.proactive) return this.deliverProactive(t, d0, deadline);
+    if (t.proactive || t.ownerFollowUp) return this.deliverProactive(t, d0, deadline);
     const controller = new AbortController();
     const inputAdmission = new AbortController();
     this.state.inputAdmissions.set(d0.id, inputAdmission);

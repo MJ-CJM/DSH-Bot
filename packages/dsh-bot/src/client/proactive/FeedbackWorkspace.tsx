@@ -1,3 +1,4 @@
+import { MethodTransfer } from "./MethodTransfer.js";
 import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -73,7 +74,8 @@ export function FeedbackWorkspace({ owner, actions, onSettings, t }: Props) {
 		{error && <p role="alert">{t("proactive.feedbackFailed")}</p>}
 		{unknown && <div><p role="alert">{t("proactive.feedbackUnknown")}</p>
 			<Button variant="ghost" disabled={pending} onClick={() => { void submit(unknown); }}>{t("proactive.feedbackReconcile")}</Button></div>}
-		<FeedbackPanel key={ownerKey} view={view} contexts={contexts} pending={pending || !!unknown} t={t} onSettings={onSettings}
+		<MethodTransfer key={`transfer:${ownerKey}`} owner={owner} candidates={view.candidates} actions={actions} refresh={refresh} t={t} />
+    <FeedbackPanel key={ownerKey} view={view} contexts={contexts} pending={pending || !!unknown} t={t} onSettings={onSettings}
 			onMore={cursor => refresh(cursor)} onReadSkill={actions.readSkill}
 			onHistory={async id => {
 				const request = generation.current, rows: FeedbackCandidate[] = [];

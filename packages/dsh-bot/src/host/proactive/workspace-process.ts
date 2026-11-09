@@ -1,7 +1,17 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-sandbox-policy";
 
-/** Fixed owner-approved argv, confined by the native Host provider. */
+// The rc.2 policy limits file writes. It cannot require an exact read scope or
+// forbid networking, so even a fixed verifier must not load workspace code.
+export const workspaceExecutionAvailable = false;
+export const workspaceExecutionUnavailable =
+	"Workspace execution requires native file-read and network isolation";
+
+export interface ProcessGate {
+	beforeSpawn(): Promise<void>;
+	processActive(active: boolean): void;
+}
+
 export async function runManagedCommand(
 	ctx: Context,
 	input: {
@@ -12,9 +22,11 @@ export async function runManagedCommand(
 		signal: AbortSignal;
 		stdin?: string;
 		maxOutputBytes: number;
-		started?(): Promise<void>;
+		gate: ProcessGate;
 	},
 ) {
+	if (!workspaceExecutionAvailable)
+		throw new Error(workspaceExecutionUnavailable);
 	const runtime = ctx.get("subprocess"),
 		sandbox = ctx.get("sandbox");
 	if (!runtime || !sandbox)
@@ -38,8 +50,9 @@ export async function runManagedCommand(
 	if (confined.enforcement !== "full")
 		throw new Error("Complete native file confinement required");
 	signal.throwIfAborted();
-	await input.started?.();
+	await input.gate.beforeSpawn();
 	signal.throwIfAborted();
+	input.gate.processActive(true);
 	const handle = runtime.spawn({
 		argv: confined.argv,
 		cwd: input.cwd,
@@ -93,6 +106,7 @@ export async function runManagedCommand(
 		stopped = await handle
 			.waitForExit(AbortSignal.timeout(2000))
 			.catch(() => false);
+		if (stopped) input.gate.processActive(false);
 	}
 	if (!stopped) throw new Error("Native process range is still active");
 	if (failed) throw failure;

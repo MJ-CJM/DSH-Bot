@@ -11,6 +11,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { MainSessions, mainSessionDomain } from '../src/host/main-session.js';
 import { botCreateSchema, botSchema } from '../src/shared/schema.js';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import type { Agent } from '@deepseek-ai/dsh-agent';
+import { bindings } from '../src/host/data-flow/agent-binding.js';
 
 function required<T>(value: T | undefined | null): T { if (value == null) throw new Error('Missing fixture value'); return value; }
 async function setup() {
@@ -44,6 +46,27 @@ async function setup() {
 }
 async function fixture(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<void>) { const f = await setup(); try { await test(f); } finally { await f.close(); } }
 describe('single main mapping with real JSON store and native title service', () => {
+  it('preserves an exact saved main through a missing live context without creating a replacement', async () => fixture(async f => {
+    const main = await f.mains.open('alpha');
+    const live = { session: required(f.ctx.sessions.get(main.sessionId as SessionId)) } as Agent;
+    vi.spyOn(f.ctx.agents, 'get').mockReturnValue(live);
+    await f.reopen();
+    expect(await f.mains.find('alpha')).toEqual(main);
+    expect(await f.mains.open('alpha')).toEqual(main);
+    expect(bindings.has(live)).toBe(false);
+    expect(f.create).toHaveBeenCalledTimes(1);
+    bindings.set(live, { botId: 'alpha', botCreatedAt: 9 });
+    expect(await f.mains.find('alpha')).toBeUndefined();
+    bindings.delete(live);
+    vi.spyOn(f.ctx.sessionProjections, 'snapshot').mockReturnValue({ values: { agentPreset: 'standard' } } as ReturnType<Context['sessionProjections']['snapshot']>);
+    expect(await f.mains.find('alpha')).toBeUndefined();
+  }));
+  it('does not infer ownership of an unmapped live Agent from its preset name', async () => fixture(async f => {
+    const session = f.add('unmapped-live', 1);
+    vi.spyOn(f.ctx.agents, 'get').mockReturnValue({ session } as Agent);
+    expect(await f.mains.find('alpha')).toBeUndefined();
+    expect(f.create).not.toHaveBeenCalled();
+  }));
   it('migrates the most active eligible session, excludes children/forks/old incarnations, and preserves all others', async () => fixture(async f => {
     const old = f.add('old', 1); const recent = f.add('recent', 5);
     f.add('child', 100, { origin: 'subagent', parentSession: 'recent' });

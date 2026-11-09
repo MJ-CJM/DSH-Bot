@@ -1,3 +1,6 @@
+import { methodTrial, methodLoadEvidence } from "./method-evaluation.js";
+import { documentSnapshotSchema } from "./document.js";
+import { groupModelSelectionSchema } from '../groups.js';
 import { groupRepairGrant, groupRepairEvidence } from "./group-repair.js";
 import { z } from "zod";
 import {
@@ -56,6 +59,8 @@ export const sessionEvidenceSchema = z.strictObject({
 	]),
 });
 export const groupFollowUpTarget = z.strictObject({
+  modelSelection: groupModelSelectionSchema.optional(),
+  modelRevision: z.number().int().nonnegative().optional(),
 	memberId: workId,
 	bot: botKeySchema,
 	botRevision: revision,
@@ -121,7 +126,43 @@ export const reworkContextSchema = z.strictObject({
 	previousWorkspaceEvidence: workspaceRepairEvidence.optional(),
 	previousGroupRepairEvidence: groupRepairEvidence.optional(),
 });
+const waitText = z.string().trim().min(1).max(500);
+const supplementalText = z.string().trim().min(1).max(2048);
+const workWait = z.strictObject({
+  reason: waitText, request: waitText, operationId: z.uuid(), recordedAt: z.iso.datetime(),
+});
+const continuationBase = z.strictObject({
+  owner: botKeySchema, ticketId: workId, assignmentId: workId,
+  expectedRevision: revision, expectedPolicyRevision: revision,
+});
+const continuationOptions = [
+  continuationBase.extend({ action: z.literal('mark-waiting'), reason: waitText, request: waitText }),
+  continuationBase.extend({ action: z.literal('retry'), approved: z.literal(true) }),
+  continuationBase.extend({ action: z.literal('supplement'), approved: z.literal(true), text: supplementalText }),
+] as const;
+export const workContinuationSchema = z.discriminatedUnion('action', continuationOptions);
+export const workContinuationRequestSchema = z.discriminatedUnion('action', [
+  continuationOptions[0].extend({ commandId: z.uuid() }),
+  continuationOptions[1].extend({ commandId: z.uuid() }),
+  continuationOptions[2].extend({ commandId: z.uuid() }),
+]);
+export type WorkContinuation = z.output<typeof workContinuationSchema>;
+export type WorkContinuationRequest = z.output<typeof workContinuationRequestSchema>;
+const continuationAudit = z.strictObject({ previousAssignmentId: workId, operationId: z.uuid(), requestedAt: z.iso.datetime() });
+const workContinuationContext = z.discriminatedUnion('kind', [
+  continuationAudit.extend({ kind: z.literal('retry') }),
+  continuationAudit.extend({ kind: z.literal('supplement'), wait: workWait, text: supplementalText }),
+]);
 export const workSchema = z.strictObject({
+  wait: workWait.optional(),
+  continuation: workContinuationContext.optional(),
+  methodTrial: methodTrial.optional(),
+  methodEvidence: methodLoadEvidence.optional(),
+  admission: z.enum(['manual', 'proactive']).optional(),
+  taskKind: z.enum(['ci-analysis', 'document-analysis']).optional(),
+  document: documentSnapshotSchema.optional(),
+  sourceDigest: hash.optional(),
+  taskCost: z.strictObject({ truncated: z.boolean().optional(), attempts: z.number().int().min(1).max(20), knownNativeTokens: z.number().int().nonnegative(), unknownMeasurements: z.number().int().nonnegative(), externalUnits: z.number().int().nonnegative() }).optional(),
 	ticketId: workId,
 	assignmentId: workId,
 	decisionId: workId,
@@ -171,7 +212,9 @@ export const workSchema = z.strictObject({
 		"unknown",
 		"cancelled",
 		"accepted",
+		"superseded",
 	]),
+	supersededBy: workId.optional(),
 	sessionId: z.uuid().optional(),
 	inputId: workId.optional(),
 	evidence: sessionEvidenceSchema.optional(),
@@ -221,4 +264,7 @@ export type WorkHistoryRequest = z.input<typeof workHistoryRequestSchema>;
 export type WorkHistory = z.output<typeof workHistorySchema>;
 export type AcceptWork = z.input<typeof acceptSchema>;
 export type ProactiveWork = z.output<typeof workSchema>;
+export function supportsWorkContinuation(row: ProactiveWork) {
+  return !row.repair && !row.workspaceRepair && !row.groupRepair && !row.groupReview && !row.methodTrial && !row.externalRunId;
+}
 export type ReviewWork = z.input<typeof reviewSchema>;

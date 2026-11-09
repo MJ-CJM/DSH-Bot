@@ -1,7 +1,6 @@
 import type { Capabilities } from "../capabilities/service.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type { ProactiveConfig } from "./config.js";
-import { PROACTIVE_HOST, ProactiveRemote } from "./remote.js";
 import { ProactiveService } from "./service.js";
 
 declare module "@deepseek-ai/cordis" {
@@ -13,13 +12,15 @@ declare module "@deepseek-ai/cordis" {
 export async function mountProactive(
 	ctx: Context,
 	config: ProactiveConfig,
-	capabilities?: Pick<Capabilities, "request">,
+	capabilities: Pick<Capabilities, "request">,
+	mounted: (service: ProactiveService) => void,
 ) {
 	const service = new ProactiveService(ctx, config, capabilities);
 	await ctx.effect(async () => {
 		const release = ctx.provide("dshBotProactive", service);
 		const releaseGuard = service.execution.install();
 		try {
+			mounted(service);
 			await service.start();
 		} catch {
 			ctx.logger.warn("[dsh-bot] proactive coordinator cleanup failed");
@@ -33,9 +34,4 @@ export async function mountProactive(
 			}
 		};
 	}, "dsh-bot: proactive coordinator");
-	new ProactiveRemote(ctx, service);
-	await ctx.effect(
-		() => ctx.typert.register(PROACTIVE_HOST),
-		"dsh-bot: proactive status contract",
-	);
 }

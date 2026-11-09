@@ -3,7 +3,7 @@ import { outlets } from '../data-flow/tool-guard.js';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { groupSendSchema, type GroupKey, type GroupTurn } from '../../shared/groups.js';
+import { groupSendSchema, ownerFollowUpBindingSchema, type GroupKey, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
 import { OperationError, digest, need, parse } from '../common/operations.js';
 import { groupContext, routeMembers } from './routing.js';
 
@@ -12,6 +12,7 @@ import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
 import type { GroupMessages } from './messages.js';
 import type { GroupTurnRunner } from './turn-runner.js';
+import { ownerFollowUpChoice, verifyOwnerFollowUpChoice } from './owner-follow-up.js';
 export class GroupTurns {
   constructor(
     private state: GroupState,
@@ -28,19 +29,48 @@ export class GroupTurns {
   ) {
     return this.accept(key, parse(groupSendSchema, value), { review, check });
   }
-  private accept(key: GroupKey, input: ReturnType<typeof groupSendSchema.parse>,
-    proactive?: { review: NonNullable<GroupTurn['proactive']>; check: () => Promise<void> }) {
+  ownerFollowUpChoice(key: GroupKey, predecessorTurnId: string, memberId: string) {
+    return this.state.queue.run(() => ownerFollowUpChoice(this.state, key, predecessorTurnId, memberId));
+  }
+  ownerFollowUpUnstarted(key: GroupKey, operationId: string) {
     return this.state.queue.run(async () => {
+      this.state.record(key);
+      return !this.state.table('turns').get(`turn:${digest([key, operationId])}`);
+    });
+  }
+  abandonOwnerFollowUp<T>(key: GroupKey, operationId: string, abandon: () => Promise<T>) {
+    return this.state.queue.run(async () => {
+      this.state.record(key);
+      if (this.state.table('turns').get(`turn:${digest([key, operationId])}`)) throw new OperationError('conflict');
+      return abandon();
+    });
+  }
+  startOwnerFollowUp(
+    key: GroupKey, value: { operationId: string; text: string }, choice: OwnerFollowUpBinding,
+    admit: () => Promise<void>, check: () => Promise<void>,
+  ) {
+    const binding = parse(ownerFollowUpBindingSchema, choice);
+    const input = parse(groupSendSchema, { ...value, expectedMembershipRevision: binding.membershipRevision, memberIds: [binding.memberId] });
+    if (!input.text || input.followup || input.fileReceiptIds.length || input.replyTo || input.round)
+      throw new OperationError('invalid');
+    return this.accept(key, input, { binding, admit, check });
+  }
+  private accept(key: GroupKey, input: ReturnType<typeof groupSendSchema.parse>,
+    restricted?: { review: NonNullable<GroupTurn['proactive']>; check: () => Promise<void> }
+      | { binding: OwnerFollowUpBinding; admit: () => Promise<void>; check: () => Promise<void> }) {
+    return this.state.queue.run(async () => {
+      const proactive = restricted && 'review' in restricted ? restricted : undefined;
+      const owner = restricted && 'binding' in restricted ? restricted : undefined;
       const g = this.state.record(key),
         id = `turn:${digest([key, input.operationId])}`,
         hash = digest({ ...input, ...(input.fileReceiptIds.length ? {} : { fileReceiptIds: undefined }),
-          ...(proactive ? { proactive: proactive.review } : {}) });
+          ...(proactive ? { proactive: proactive.review } : {}), ...(owner ? { ownerFollowUp: owner.binding } : {}) });
       const used = this.state.turns(g).flatMap(t => [
         ...(t.operationId === input.operationId ? [{ requestDigest: t.requestDigest }] : []),
         ...(t.followups ?? []).filter(row => row.operationId === input.operationId),
       ]);
       if (used.some(row => row.requestDigest !== hash)) throw new OperationError('conflict');
-      if (input.followup && !proactive) return this.followup(key, input, hash);
+      if (input.followup && !restricted) return this.followup(key, input, hash);
       const followUp = proactive?.review.followUp;
       const repair = proactive?.review.repair;
       if (proactive && (input.followup || input.fileReceiptIds.length || input.replyTo || input.round ||
@@ -54,6 +84,9 @@ export class GroupTurns {
       if (g.archived || g.state !== 'ready' || this.state.reasons.has(g.id))
         throw new OperationError('recovery-needed');
       if (g.membershipRevision !== input.expectedMembershipRevision) throw new OperationError('conflict');
+      if (owner) await verifyOwnerFollowUpChoice(this.state, key, owner.binding);
+      if (proactive?.review.modelRevision !== undefined && (g.modelRevision ?? 0) !== proactive.review.modelRevision) throw new OperationError('conflict');
+      if (proactive?.review.memberModels && (proactive.review.memberModels.length !== input.memberIds.length || proactive.review.memberModels.some(row => !input.memberIds.includes(row.memberId)))) throw new OperationError('invalid');
       if (followUp && proactive) {
         const parent = this.state.turns(g).find(t => t.id === followUp.predecessorTurnId);
         if (!parent || !['completed', 'partial'].includes(parent.state) ||
@@ -86,13 +119,13 @@ export class GroupTurns {
       await this.state.validateMembers(selected.map((m) => m.bot));
       const provider = this.state.ctx.subagents.getProvider('spawn');
       if (proactive) await proactive.check();
-      else if (
+      else if (!owner && (
         !provider ||
         provider.inheritsParentContext ||
         !provider.capabilities.agentPreset ||
         !provider.capabilities.agentOptions ||
         !provider.capabilities.depthLimit
-      )
+      ))
         throw new OperationError('unsupported');
       const receiptIds = [...new Set(input.fileReceiptIds)];
       const uploads = receiptIds.length ? need(this.state.ctx.get('fileUploads')) : undefined;
@@ -108,6 +141,8 @@ export class GroupTurns {
         ticketId: proactive.review.ticketId, assignmentId: proactive.review.assignmentId,
         ...(repair ? { repairPhase: repair.phase } : {}),
         ...(followUp ? { factId: followUp.factId, predecessorTurnId: followUp.predecessorTurnId } : {}),
+      } : owner ? { kind: 'dsh-bot-group-owner-followup' as const, group: key, turnId: id,
+        cardId: owner.binding.cardId, predecessorTurnId: owner.binding.predecessorTurnId,
       } : { kind: 'user' as const, group: key, turnId: id,
         ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(files.length ? { rpcId: id } : {}) };
       const message = createUserMessage({ source, content: [...blocks(input.text), ...files] });
@@ -120,16 +155,17 @@ export class GroupTurns {
         inputMessageId: message.id,
         membershipRevision: g.membershipRevision,
         orderedMemberIds: selected.map((m) => m.id),
-        mode: proactive ? 'round-robin' : g.mode,
+        mode: restricted ? 'round-robin' : g.mode,
         ...(proactive ? { proactive: proactive.review } : {}),
-        ...(!proactive && g.mode !== 'round-robin' ? { protocol: 2 as const, automaticExecutions: 0, continuationAllowance: this.state.registry.config.groupMaxContinuations } : {}),
+        ...(owner ? { ownerFollowUp: owner.binding } : {}),
+        ...(!restricted && g.mode !== 'round-robin' ? { protocol: 2 as const, automaticExecutions: 0, continuationAllowance: this.state.registry.config.groupMaxContinuations } : {}),
         ...(g.modelSelection ? { modelSelection: { ...g.modelSelection } } : {}),
         ...(g.memberModelSelections ? { memberModelSelections: g.memberModelSelections.map(row => ({
           memberId: row.memberId, modelSelection: { ...row.modelSelection },
         })) } : {}),
-        contextThroughSeq: proactive ? -1 : (this.messages.messages(g).at(-1)?.seq ?? -1),
+        contextThroughSeq: restricted ? -1 : (this.messages.messages(g).at(-1)?.seq ?? -1),
         predecessorTurnIds: repair?.predecessorTurnId ? [repair.predecessorTurnId] : followUp ? [followUp.predecessorTurnId] :
-          proactive || g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
+          owner ? [owner.binding.predecessorTurnId] : restricted || g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
         state: 'accepted',
         revision: 1,
@@ -147,6 +183,10 @@ export class GroupTurns {
         [],
         this.state.registry.config.groupContextMaxBytes,
       );
+      if (owner) {
+        await verifyOwnerFollowUpChoice(this.state, key, owner.binding);
+        await owner.admit();
+      }
       const flowId = await groupInput(this.state, g, root.agent, JSON.stringify(message), id);
       const flow = outlets(this.state.registry);
       if (flowId) await need(flow).persist(flowId, () => this.state.putTurn(turn));
@@ -155,7 +195,8 @@ export class GroupTurns {
         const statuses = await this.state.registry.status();
         for (const [ordinal, m] of selected.entries()) {
           const bot = await this.state.bot(m.bot);
-          if (proactive && bot.updatedAt !== proactive.review.botRevisions[ordinal])
+          if ((proactive && bot.updatedAt !== proactive.review.botRevisions[ordinal]) ||
+            (owner && bot.updatedAt !== owner.binding.botRevision))
             throw new OperationError('conflict');
           const status = need(statuses.find((s) => s.id === bot.id));
           await this.state.putDelivery({
@@ -173,13 +214,17 @@ export class GroupTurns {
         }
         using receiptBinding = uploads?.bindPrompt(root.agent, receiptIds as Parameters<NonNullable<typeof uploads>['bindPrompt']>[1], id);
         const append = () => root.agent.session.append('user/message', message, { surfaceOp: 'append' });
-        const send = proactive ? async () => { await proactive.check(); return append(); } : append;
-        const event = flowId ? await need(flow).dispatch(flowId, send) : proactive ? await send() : append();
+        const send = restricted ? async () => {
+          if (owner) await verifyOwnerFollowUpChoice(this.state, key, owner.binding);
+          await restricted.check();
+          return append();
+        } : append;
+        const event = flowId ? await need(flow).dispatch(flowId, send) : restricted ? await send() : append();
         receiptBinding?.commit();
         await this.roots.flush(root);
         const accepted = await this.state.putTurn({ ...turn, inputSeq: Number(event.seq) });
         const limit = accepted.protocol === 2 ? Number.MAX_SAFE_INTEGER : 1;
-        if (proactive) this.state.proactiveChecks.set(id, proactive.check);
+        if (restricted) this.state.proactiveChecks.set(id, restricted.check);
         const running = this.state.schedule(g.id, limit, async () => {
           try { await this.runner.execute(id); }
           catch {
@@ -206,7 +251,7 @@ export class GroupTurns {
     const g = this.state.record(key), target = need(input.followup);
     const t = this.state.turns(g).find(row => row.id === target.turnId);
     if (!t) throw new OperationError('not-found');
-    if (t.proactive) throw new OperationError('unsupported');
+    if (t.proactive || t.ownerFollowUp) throw new OperationError('unsupported');
     const old = t.followups?.find(row => row.operationId === input.operationId);
     if (old) {
       if (old.requestDigest !== hash) throw new OperationError('conflict');

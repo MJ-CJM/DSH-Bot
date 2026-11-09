@@ -2,8 +2,10 @@ import { protectOnboarding } from './onboarding/guard.js';
 import { protectDelegateContinuation } from './delegate/continuation.js';
 import { protectDataFlow } from './data-flow/tool-guard.js';
 import { getGroupWorkerBinding } from './groups/worker-tool.js';
+import { BOT_GROUP_RECALL_TOOL_NAME, installLiveGroupRecall, protectGroupRecall } from './groups/recall-tool.js';
 import { registerMessageTool } from './messaging/tool.js';
 import { registerNotifyTool } from './notifications/tool.js';
+import { BOT_FOLLOW_UP_TOOL_NAME, registerFollowUpTool } from './proactive/follow-up-tool.js';
 import type {} from './connectors/service.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { dirname } from 'node:path';
@@ -68,6 +70,8 @@ export function apply(ctx: Context, config: Config): void {
       !deniedMemory.has(name) &&
       name !== BOT_MANAGE_TOOL_NAME &&
       name !== BOT_DELEGATE_TOOL_NAME &&
+      name !== BOT_FOLLOW_UP_TOOL_NAME &&
+      name !== BOT_GROUP_RECALL_TOOL_NAME &&
       name !== 'bot_notify' &&
       name !== 'bot_message' &&
       name !== 'group_message' &&
@@ -115,6 +119,7 @@ export function apply(ctx: Context, config: Config): void {
     let stopped = false;
     const offCreated = ctx.on('agent/created', async ({ agent, source }) => {
       if (bindings.has(agent)) throw new Error(`Agent ${agent.id} already has a Bot binding`);
+      const readOnlyGroupFollowUp = Boolean(getGroupWorkerBinding(agent)?.restrictedInputId);
       if (model && shouldUseBotModel(agent)) await validateModel();
       if (stopped) throw new DshBotError('bot/unavailable', `Bot '${botId}' context is unloading`);
       const admission = ctx.dshBots.memoryAdmission;
@@ -157,6 +162,8 @@ export function apply(ctx: Context, config: Config): void {
           releases.push(installLivePersona(agent,
             () => ctx.dshBots.personaSnapshot(botId, bot.createdAt),
             listener => ctx.dshBots.subscribePersonaChanges(listener)));
+          releases.push(protectGroupRecall(agent, binding, ctx.dshBots));
+          releases.push(installLiveGroupRecall(agent, binding, ctx.dshBots, memorySectionOrder));
           releases.push(agent.ctx.systemPrompt.context({ name: 'dsh-bot:root-instructions', order: memorySectionOrder,
             required: true, interpolate: false, text: rootInstructionNotice }));
           // Do not silently ignore unknown, same-layer or reserved tool names.
@@ -181,7 +188,7 @@ export function apply(ctx: Context, config: Config): void {
                 if (!version) throw new Error('Memory changed during read'); return version.versionId;
               }));
             })) {
-              if (!deniedMemory.has(tool.name)) releases.push(agent.ctx.tools.register(tool));
+              if (!readOnlyGroupFollowUp && !deniedMemory.has(tool.name)) releases.push(agent.ctx.tools.register(tool));
             }
             const kernel = ctx.dshBots.memoryKernel;
             if (!kernel || !admission) throw new Error('Memory kernel is not ready');
@@ -189,6 +196,11 @@ export function apply(ctx: Context, config: Config): void {
               () => getGroupWorkerBinding(agent)?.audience));
           }
           bindings.set(agent, binding);
+          if (!readOnlyGroupFollowUp && !bot.tools.deny.includes(BOT_FOLLOW_UP_TOOL_NAME)) {
+            releases.push(registerFollowUpTool(agent));
+            releases.push(agent.ctx.systemPrompt.section({ name: 'dsh-bot:follow-up', order: memorySectionOrder,
+              interpolate: false, text: en.tools['bot_follow_up.guidance'] }));
+          }
           protectDelegateContinuation(agent, binding, source);
           protectOnboarding(agent, binding, ctx.dshBots);
           protectDataFlow(agent, binding, ctx.dshBots);
@@ -222,7 +234,7 @@ export function apply(ctx: Context, config: Config): void {
               interpolate: false,
             }),
           );
-          if (!bot.tools.deny.includes(BOT_DELEGATE_TOOL_NAME)) {
+          if (!readOnlyGroupFollowUp && !bot.tools.deny.includes(BOT_DELEGATE_TOOL_NAME)) {
             releases.push(registerDelegateTool(agent));
             if (!agent.session.header.parentSession) releases.push(agent.ctx.systemPrompt.section({
               name: 'dsh-bot:background-work', order: memorySectionOrder, interpolate: false,

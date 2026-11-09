@@ -1,3 +1,4 @@
+import { proactiveMemberModel } from '../groups/model-selection.js';
 import type { Context } from "@deepseek-ai/cordis";
 import { SessionId } from "@deepseek-ai/dsh-session";
 import type { ProactiveWork } from "../../shared/proactive/work.js";
@@ -50,6 +51,7 @@ export async function measureGroupBudget(
 		throw new Error("Group result does not match its reservation");
 	let tokens = 0;
 	for (const delivery of deliveries) {
+    const model = proactiveMemberModel(turn.proactive, delivery.memberId);
 		if (!memberIds.includes(delivery.memberId) || delivery.state !== "completed" ||
 			!delivery.childSessionId || !delivery.childMessageId || !delivery.outputMessageId)
 			throw new Error("Group delivery is incomplete");
@@ -68,7 +70,7 @@ export async function measureGroupBudget(
 		const end = events.findLast(event => event.type === "turn/end");
 		if (answers.length !== 1 || answer?.type !== "assistant/message" || answer.data.interrupted ||
 			end?.type !== "turn/end" || end.data.reason.kind !== "completed" || answer.data.turn !== end.data.turn ||
-			answer.data.message.source.provider !== work.target.provider || answer.data.message.source.model !== work.target.model)
+			answer.data.message.source.provider !== model.provider || answer.data.message.source.model !== model.model)
 			throw new Error("Group native result changed");
 		const usage = observedModelUsage(answer.data.usage);
 		if (!usage || usage.inputTokens + usage.outputTokens > budget.perCallTokens)

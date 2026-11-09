@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { auditArtifact, auditInstalled, sha256 } from '../p34-artifact.mjs';
 
 /** Real DSH Web profile and shipped Client; all data and credentials paths are isolated under .dsh-dev. */
-export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig = [], { offline = true, mockRoute, artifactAudit } = {}) {
+export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig = [], { offline = true, mockRoute, mockModel = true, artifactAudit, preserveProfile = false } = {}) {
   const root = process.cwd(), commands = [], children = new Set(), profile = 'b4-browser';
   const env = { PATH: process.env.PATH, USER: 'synthetic', SHELL: process.env.SHELL,
     ...(process.env.DSH_BOT_DSH_BIN ? { DSH_BOT_DSH_BIN: process.env.DSH_BOT_DSH_BIN } : {}),
@@ -64,8 +64,10 @@ export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig =
     await writeFile(resolve(dir, 'commands.json'), JSON.stringify(commands, null, 2));
   };
   try {
-    await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
-    await command(['plugin', '--profile', profile, 'add', artifact ?? resolve(root, 'packages/dsh-bot')], 'install');
+    if (!preserveProfile) {
+      await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
+      await command(['plugin', '--profile', profile, 'add', artifact ?? resolve(root, 'packages/dsh-bot')], 'install');
+    }
     if (artifact) {
       if (artifactAudit) assert.equal(sha256(await readFile(artifact)), artifactAudit.sha256, 'The frozen package changed');
       await auditInstalled(env.DSH_HOME, profile, artifactAudit ?? await auditArtifact(root, artifact, dir));
@@ -75,7 +77,7 @@ export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig =
       '- id: session-persistence-jsonl', '  config:', `    root: ${JSON.stringify(resolve(dir, 'sessions'))}`,
       '- id: credentials-local', '  config:', `    path: ${JSON.stringify(resolve(dir, 'synthetic-credentials.yml'))}`, '    watch: false',
       '- id: dsh-bot', '  config:', '    seedExamples: false', `    dataDir: ${JSON.stringify(resolve(dir, 'bots'))}`,
-      '- id: agent-default-model', '  config:', '    provider: dp-loopback', '    model: fixture',
+      ...(mockModel ? ['- id: agent-default-model', '  config:', '    provider: dp-loopback', '    model: fixture'] : []),
       ...['llm-deepseek', 'llm-deepseek-account', 'llm-pi-ai', 'session-title-llm', 'llm-retry',
         'session-log-deepseek', 'session-telemetry-otel', 'desktop-product-telemetry'].flatMap(id => [`- id: ${id}`, '  disabled: true']),
       ...(typeof fixtureConfig === "function" ? fixtureConfig(new URL(endpoint).origin) : fixtureConfig),
@@ -83,7 +85,7 @@ export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig =
       `      name: ${JSON.stringify(fixturePath ?? resolve(root, 'packages/dsh-bot/tests/deepening/b4-web-profile.mjs'))}`,
       '      config:', `        outputDir: ${JSON.stringify(dir)}`, `        endpoint: ${JSON.stringify(endpoint)}`, `        suite: ${suite}`,
     ].join('\n');
-    await writeFile(resolve(env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);
+    if (!preserveProfile) await writeFile(resolve(env.DSH_HOME, 'profiles', profile, 'cordis.patch.yml'), `${patch}\n`);
     const url = await command(['--profile', profile, '--no-open', '--host', '127.0.0.1', '--port', '0'], 'host', true);
     return { url, env, stop, startupMs, requests: () => count, async crash() {
       liveHost.child.kill('SIGKILL');

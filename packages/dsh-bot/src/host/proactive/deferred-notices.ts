@@ -86,6 +86,7 @@ export async function recordDeferredNoticeBatch(
 	now: () => number = Date.now,
 ): Promise<Result> {
 	let recordAttempted = false;
+	const deniedBeforeRecord = new Error("Notification authorization changed");
 	try {
 		if (batch.state !== "claimed")
 			return { state: "suppressed", reason: "not-claimed" };
@@ -152,7 +153,12 @@ export async function recordDeferredNoticeBatch(
 					),
 				),
 			);
-		checkPolicy();
+		const beforeRecord = async () => {
+			if (deferredNoticeText(await resolve()) !== text)
+				throw new Error("Notification content or permission changed");
+			checkPolicy();
+		};
+		await beforeRecord();
 		recordAttempted = true;
 		const receipt = await notifications.record(
 			batch.bot,
@@ -164,16 +170,22 @@ export async function recordDeferredNoticeBatch(
 			},
 			{ kind: "proactive", id: batch.id, sessionId },
 			signal,
+			async () => {
+				try {
+					await beforeRecord();
+				} catch {
+					throw deniedBeforeRecord;
+				}
+			},
 		);
 		return receipt.state === "recorded"
 			? { state: "recorded" }
 			: { state: "unknown", reason: "receipt-unconfirmed" };
-	} catch {
+	} catch (error) {
 		// A record failure may be after the dedup tombstone committed. Preserve
 		// unknown rather than issuing another operation or deleting the tombstone.
-		return {
-			state: recordAttempted ? "unknown" : "suppressed",
-			reason: recordAttempted ? "record-unconfirmed" : "authorization-changed",
-		};
+		return recordAttempted && error !== deniedBeforeRecord
+			? { state: "unknown", reason: "record-unconfirmed" }
+			: { state: "suppressed", reason: "authorization-changed" };
 	}
 }

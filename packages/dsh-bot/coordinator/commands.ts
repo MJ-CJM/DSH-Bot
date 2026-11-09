@@ -1,3 +1,12 @@
+import { ActivityCursor } from './query-pages.js';
+import type { ActivityRequest, WorkDetailRequest } from '../src/shared/proactive/activity.js';
+import type { FollowUpBootstrap, FollowUpPageRequest, FollowUpSourceRequest, Subject } from '../src/shared/proactive/follow-up.js';
+import { sameBot } from '../src/shared/identity.js';
+import { DatabaseSync } from 'node:sqlite';
+import { openFollowUp } from './follow-up.js';
+import { openFollowUpForget } from './follow-up-forget.js';
+import { openGroupFollowUp } from './group-follow-up.js';
+import type { FollowUpGroupPlanRequest } from '../src/shared/proactive/group-follow-up.js';
 import { openGovernance } from "./governance.js";
 import type { GovernanceConfig } from "../src/shared/proactive/governance.js";
 import { openDeferredNotices } from "./notices.js";
@@ -12,6 +21,7 @@ import {
 	sourceCheckpointSchema,
 	suggestionsSchema,
 	suggestionSchema,
+	ciSignalSchema,
 } from "../src/shared/proactive/protocol.js";
 import { digest } from "../src/host/proactive/wire.js";
 import { ownState } from "./ownership.js";
@@ -20,11 +30,28 @@ import { openFeedback } from "./feedback.js";
 import { openWork } from "./work.js";
 import { openResponsibilities } from "./responsibilities.js";
 import type { BotKey } from "../src/shared/identity.js";
-import type { ResponsibilityBinding } from "../src/shared/proactive/responsibility.js";
-import type { WorkHistoryRequest } from "../src/shared/proactive/work.js";
+import type { ResponsibilityBinding, ResponsibilityMatch } from "../src/shared/proactive/responsibility.js";
+import { hasResponsibilityRoute } from "../src/shared/proactive/responsibility.js";
+import type { ProactiveWork, WorkHistoryRequest } from "../src/shared/proactive/work.js";
 
 const suggestionLifetimeMs = 24 * 60 * 60 * 1000;
 const observeMs = 60 * 60 * 1000;
+const schemaVersion = 9;
+const scopedLegacyEffects = new Set([
+	'accept-decision', 'auto-accept', 'submit-document', 'dispatch-claim', 'dispatch-send', 'external-started',
+	'claim-group-review', 'claim-group-follow-up', 'notice-schedule', 'notice-claim', 'claim-notice',
+]);
+const isAutomatic = (work: ProactiveWork) => work.admission === 'proactive' || !!work.autoRuleId;
+
+function checkStoreMeta(row: Record<string, unknown> | undefined, installationId: string, expectedStoreId: string | null) {
+	if (!row) {
+		if (expectedStoreId !== null) throw new Rejection('forbidden');
+		return;
+	}
+	if (!Number.isInteger(row.schema_version) || Number(row.schema_version) < 1 || Number(row.schema_version) > schemaVersion ||
+		row.installation !== installationId || (expectedStoreId !== null && row.store !== expectedStoreId))
+		throw new Rejection('forbidden');
+}
 
 export function openCoordinator(
 	path: string,
@@ -37,16 +64,25 @@ export function openCoordinator(
 	feedbackSource?: string,
 	noticeConfig?: NoticeConfig,
 	governanceConfig?: GovernanceConfig,
+	followUpBootstrap?: FollowUpBootstrap,
 ) {
 	const ownership = ownState(path);
 	let store: Store | undefined;
 	try {
 		if (expectedStoreId !== null && !ownership.storeExists)
 			throw new Rejection("forbidden");
+		if (ownership.storeExists) {
+			const readOnly = new DatabaseSync(ownership.storePath, { readOnly: true });
+			try {
+				const exists = readOnly.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pb_meta'").get();
+				checkStoreMeta(exists ? readOnly.prepare('SELECT * FROM pb_meta WHERE singleton=1').get() : undefined, installationId, expectedStoreId);
+			} finally { readOnly.close(); }
+		}
 		store = new Store(ownership.storePath);
 		const assertOwner = ownership.bindStore();
 		const repository = store;
 		const db = repository.db;
+		let publishWork: (row: ProactiveWork) => void;
 		const {
 			storeId,
 			work,
@@ -54,6 +90,7 @@ export function openCoordinator(
 			responsibilities,
 			deferredNotices,
 			governance,
+			followUp,
 		} = repository.atomic(() => {
 			db.exec(`CREATE TABLE IF NOT EXISTS pb_meta (singleton INTEGER PRIMARY KEY CHECK (singleton=1),
         schema_version INTEGER NOT NULL, installation TEXT NOT NULL, store TEXT NOT NULL, seq INTEGER NOT NULL);
@@ -82,16 +119,13 @@ export function openCoordinator(
 				externalBudget,
 				notices,
 				autoRule,
+				(row) => publishWork(row),
 			);
 			const governance = openGovernance(repository, governanceConfig);
+			const followUp = openFollowUp(db);
 			const saved = db.prepare("SELECT * FROM pb_meta WHERE singleton=1").get();
+			checkStoreMeta(saved, installationId, expectedStoreId);
 			if (saved) {
-				if (
-					![1, 2, 3, 4, 5, 6, 7].includes(Number(saved.schema_version)) ||
-					saved.installation !== installationId ||
-					(expectedStoreId !== null && saved.store !== expectedStoreId)
-				)
-					throw new Rejection("forbidden");
 				if (Number(saved.schema_version) < 6) {
 					// Preserve the old conservative model charge and copy each external
 					// reservation into its new ledger so an upgrade never creates credit.
@@ -99,13 +133,9 @@ export function openCoordinator(
 						SELECT b.assignment,b.utc_day FROM pb_execution_budget b
 						JOIN pb_work w ON w.assignment=b.assignment
 						WHERE json_extract(w.payload,'$.repair.executor')='external'`);
-					db.prepare(
-						"UPDATE pb_meta SET schema_version=6 WHERE singleton=1",
-					).run();
 				}
-				db.prepare(
-					"UPDATE pb_meta SET schema_version=7 WHERE singleton=1",
-				).run();
+				if (saved.schema_version !== schemaVersion)
+					db.prepare('UPDATE pb_meta SET schema_version=? WHERE singleton=1').run(schemaVersion);
 				return {
 					storeId: String(saved.store),
 					work,
@@ -113,11 +143,12 @@ export function openCoordinator(
 					responsibilities,
 					deferredNotices,
 					governance,
+					followUp,
 				};
 			}
-			if (expectedStoreId !== null) throw new Rejection("forbidden");
 			const id = randomUUID();
-			db.prepare("INSERT INTO pb_meta VALUES (1,7,?,?,0)").run(
+			db.prepare("INSERT INTO pb_meta VALUES (1,?,?,?,0)").run(
+				schemaVersion,
 				installationId,
 				id,
 			);
@@ -128,20 +159,25 @@ export function openCoordinator(
 				responsibilities,
 				deferredNotices,
 				governance,
+				followUp,
 			};
 		});
 		const unavailable = () => {
 			throw new Rejection("unsupported");
 		};
+    // Only the synchronous owner continuation may let the pinned Engine wake
+    // an ended ticket. Ordinary intake and recovery keep the global fence.
+    let ownerResumeMandate: string | undefined;
 		const engine = new Engine({
 			repo: repository,
 			scope: { scope: () => ({ listened: true, observed: true }) },
 			policy: () => ({
 				version: "pb01-observation",
-				paused: true,
+				paused: ownerResumeMandate === undefined,
 				evalTimeoutMs: 0,
 				gate: (trigger) =>
-					trigger.source.startsWith("ci:") && trigger.meta.ci
+					(trigger.source.startsWith("ci:") && trigger.meta.ci) || (trigger.source.startsWith("doc:") && trigger.meta.taskKind === "document-analysis" && work.admits(trigger.id)) ||
+					(trigger.source.startsWith('local:') && trigger.meta.followUp === true)
 						? {
 								admissible: true,
 								strength: "inferred",
@@ -153,7 +189,7 @@ export function openCoordinator(
 								},
 							}
 						: { admissible: false, reason: "observation-only" },
-				revalidate: () => false,
+				revalidate: mandate => ownerResumeMandate !== undefined && digest(mandate) === ownerResumeMandate,
 				admitsInferred: work.admitsRules,
 			}),
 			assessor: { request: unavailable },
@@ -167,6 +203,32 @@ export function openCoordinator(
 			},
 		});
 		const lookup = db.prepare("SELECT digest,receipt FROM pb_inbox WHERE id=?");
+		const groupFollowUp = openGroupFollowUp(db, followUp.policy);
+		const forgetFollowUp = openFollowUpForget(repository);
+		publishWork = (row) => followUp.observeWork(engine, row);
+		const legacyWorkAllowed = (row: ProactiveWork) => {
+			const group = row.groupRepair?.group ?? row.groupReview?.group;
+			return followUp.allowsLegacy({ kind: 'bot', bot: row.target.bot }) &&
+				(!group || followUp.allowsLegacy({ kind: 'group', group }));
+		};
+		function commitReceipt(commandId: string, payloadDigest: string, stored: number) {
+			const committedSeq = Number(db.prepare('UPDATE pb_meta SET seq=seq+1 RETURNING seq').get()?.seq);
+			const result = receiptSchema.parse({ scope: 'core', status: 'committed', commandId, receiptId: randomUUID(), committedSeq, stored });
+			db.prepare('INSERT INTO pb_inbox VALUES (?,?,?)').run(commandId, payloadDigest, JSON.stringify(result));
+			return result;
+		}
+		if (followUpBootstrap) repository.atomic(() => {
+			const id = followUpBootstrap.operationId;
+			const payloadDigest = digest(['follow-up-bootstrap', followUpBootstrap]);
+			const existing = lookup.get(id);
+			if (existing) {
+				if (existing.digest !== payloadDigest || !followUp.scopedRecovery()) throw new Rejection('conflict');
+				return;
+			}
+			const stored = followUp.bootstrap(followUpBootstrap);
+			followUp.reconcileWork(engine, followUpBootstrap.subject, followUp.policy(followUpBootstrap.subject).revision);
+			commitReceipt(id, payloadDigest, stored);
+		});
 		function receipt(id: string): Receipt | null {
 			assertOwner();
 			const row = lookup.get(id);
@@ -187,6 +249,8 @@ export function openCoordinator(
 			const { body, commandId } = request;
 			if (digest(body) !== request.payloadDigest)
 				throw new Rejection("invalid");
+			if (body.kind === 'follow-up-group-accept' && groupFollowUp.revoked(body.operationId))
+				throw new Rejection('forbidden');
 			const existing = lookup.get(commandId);
 			if (existing) {
 				if (existing.digest !== request.payloadDigest)
@@ -198,8 +262,67 @@ export function openCoordinator(
 			}
 			return repository.atomic(() => {
 				let stored: number;
+				if (followUp.scopedRecovery() && (scopedLegacyEffects.has(body.kind) || (body.kind === 'review' && body.review === 'rework')))
+					throw new Rejection('forbidden');
 				switch (body.kind) {
+					case 'follow-up-policy':
+						stored = followUp.changePolicy(body.input);
+						if (stored && body.input.action === 'enable-local') followUp.reconcileWork(engine, body.input.subject, body.input.expectedRevision + 1);
+						break;
+					case 'follow-up-work-reconcile':
+						stored = followUp.reconcileWork(engine, body.input.subject, body.input.expectedPolicyRevision);
+						break;
+					case 'follow-up-watch-create':
+						stored = followUp.createWatch(engine, body.input);
+						break;
+					case 'follow-up-group-watch-propose':
+						if (commandId !== body.input.id) throw new Rejection('invalid');
+						stored = followUp.createWatch(engine, body.input);
+						break;
+					case 'follow-up-watch-update':
+						stored = followUp.updateWatch(engine, body.input);
+						break;
+					case 'follow-up-group-accept':
+						if (commandId !== body.operationId) throw new Rejection('invalid');
+						stored = groupFollowUp.accept(body.operationId, body.input);
+						break;
+					case 'follow-up-group-started':
+						stored = groupFollowUp.started(body.operationId, body.inputDigest, body.turnId);
+						break;
+					case 'follow-up-group-abandon':
+						if (commandId === body.input.operationId) throw new Rejection('invalid');
+						stored = groupFollowUp.abandon(body.input);
+						break;
+					case 'follow-up-action':
+						stored = body.input.action === 'forget'
+							? forgetFollowUp.card(body.input, followUp.policy(body.input.subject))
+								: followUp.act(body.input, commandId);
+						break;
+					case 'follow-up-ingest':
+						stored = followUp.ingest(engine, body.input);
+						break;
+          case 'work-continuation': {
+            const { input, operationId } = body;
+            if (operationId !== commandId) throw new Rejection('invalid');
+            const policy = followUp.policy({ kind: 'bot', bot: input.owner });
+            if (policy.revision !== input.expectedPolicyRevision) throw new Rejection('stale');
+            if (!policy.localEnabled) throw new Rejection('forbidden');
+            if (input.action !== 'mark-waiting') {
+              if (followUp.scopedRecovery()) throw new Rejection('forbidden');
+              const prior = work.getTicket(input.ticketId);
+              if (!prior || !sameBot(prior.target.bot, input.owner)) throw new Rejection('stale');
+              if (prior.responsibility) responsibilities.assertGrant(prior.responsibility.grantId, prior.responsibility.binding);
+            }
+            stored = work.continueWork(engine, input, operationId, (ticket, triggerId) => {
+              if (ownerResumeMandate !== undefined) throw new Rejection('conflict');
+              ownerResumeMandate = digest(ticket.mandate);
+              try { return engine.attach(ticket.id, triggerId); }
+              finally { ownerResumeMandate = undefined; }
+            });
+            break;
+          }
 					case "ingest-batch":
+						if (followUp.scopedRecovery()) throw new Rejection('forbidden');
 						stored = ingest(body);
 						break;
 					case "revoke-source": {
@@ -330,6 +453,7 @@ export function openCoordinator(
 						break;
 					}
 					case "governance-sweep":
+						if (!followUp.scopedRecovery()) work.reconcile(engine);
 						governance.sweep();
 						stored = 1;
 						break;
@@ -358,10 +482,11 @@ export function openCoordinator(
 						);
 						const result = governance.finishForget(body.input);
 						if (result.phase === "complete" || result.phase === "purging") {
+							forgetFollowUp.work(scope.ticketIds);
 							feedback.purgeSourceBody(
 								previous.sourceId,
 								previous.generation,
-								scope.ticketIds,
+								[...scope.ticketIds, ...scope.assignmentIds],
 								scope.decisionIds,
 							);
 							for (const id of scope.decisionIds)
@@ -396,6 +521,11 @@ export function openCoordinator(
 							head?.generation !== body.input.sourceGeneration
 						)
 							throw new Rejection("stale");
+						if (noticeMuted(row)) {
+							work.settleNotice(row.assignmentId, "suppressed");
+							stored = 1;
+							break;
+						}
 						deferredNotices.schedule(body.input);
 						stored = 1;
 						break;
@@ -414,6 +544,12 @@ export function openCoordinator(
 						break;
 					}
 					case "notice-claim": {
+						for (const item of body.input.items) {
+							const notice = deferredNotices.get(item.operationId);
+							const row = notice && work.getAssignment(notice.assignmentId);
+							if (!row || noticeMuted(row) || !work.permitted(row.assignmentId, undefined, row.revision))
+								throw new Rejection("forbidden");
+						}
 						const result = deferredNotices.claim(body.input);
 						if (!result.fresh) throw new Rejection("conflict");
 						stored = 1;
@@ -426,7 +562,16 @@ export function openCoordinator(
 						stored = 1;
 						break;
 					}
+					case "claim-notice": {
+						const row = work.getAssignment(body.assignmentId);
+						if (!row || noticeMuted(row)) throw new Rejection("forbidden");
+						stored = work.apply(engine, body);
+						break;
+					}
 					case "responsibility-mutation":
+						if ((work.control().paused || !followUp.allowsLegacy({ kind: 'bot', bot: body.input.owner })) &&
+							("draft" in body.input ? body.input.draft.mode === "auto" : body.input.kind === "mode" && body.input.mode === "auto"))
+							throw new Rejection("forbidden");
 						responsibilities.apply(body.input);
 						stored = 1;
 						break;
@@ -439,6 +584,9 @@ export function openCoordinator(
 						break;
 					case "accept-decision":
 					case "auto-accept": {
+						if (!followUp.allowsLegacy({ kind: 'bot', bot: body.target.bot }) ||
+							(body.groupRepair && !followUp.allowsLegacy({ kind: 'group', group: body.groupRepair.group })))
+							throw new Rejection('forbidden');
 						if (
 							body.kind === "auto-accept" &&
 							work.hasGroupFollowUp(body.decisionId)
@@ -529,6 +677,10 @@ export function openCoordinator(
 					default: {
 						const prior =
 							"ticketId" in body ? work.getTicket(body.ticketId) : null;
+						if (prior && !legacyWorkAllowed(prior) &&
+							(body.kind === 'claim-group-follow-up' ||
+								(['dispatch-claim', 'dispatch-send', 'external-started'].includes(body.kind) && isAutomatic(prior))))
+							throw new Rejection('forbidden');
 						if (body.kind === "dispatch-claim" && prior?.responsibility) {
 							responsibilities.assertGrant(
 								prior.responsibility.grantId,
@@ -620,23 +772,7 @@ export function openCoordinator(
 						}
 					}
 				}
-				const committedSeq = Number(
-					db.prepare("UPDATE pb_meta SET seq=seq+1 RETURNING seq").get()?.seq,
-				);
-				const result = receiptSchema.parse({
-					scope: "core",
-					status: "committed",
-					commandId,
-					receiptId: randomUUID(),
-					committedSeq,
-					stored,
-				});
-				db.prepare("INSERT INTO pb_inbox VALUES (?,?,?)").run(
-					commandId,
-					request.payloadDigest,
-					JSON.stringify(result),
-				);
-				return result;
+				return commitReceipt(commandId, request.payloadDigest, stored);
 			});
 		}
 		function ingest(
@@ -899,14 +1035,15 @@ export function openCoordinator(
 				.get(oldestSuggestion(now), id);
 			return row && project(row, now);
 		}
-		function suggestions(owner?: BotKey, includeFiltered = false) {
+		function suggestions(owner?: BotKey, includeFiltered = false, page?: { offset: number; sourceId?: string }) {
 			assertOwner();
+			if (!followUp.allowsLegacy(owner ? { kind: 'bot', bot: owner } : undefined)) return [];
 			const now = Date.now();
 			const rows = db
 				.prepare(`SELECT ${suggestionColumns} ${openSuggestions}
         AND NOT EXISTS (SELECT 1 FROM pb_work w WHERE w.decision=h.decision) ${owner || includeFiltered ? "" : feedback.exclusion}
-        ORDER BY h.observed_at DESC,h.decision ASC LIMIT 100`)
-				.all(
+        ORDER BY h.observed_at DESC,h.decision ASC`)
+				.iterate(
 					...(owner || includeFiltered
 						? [oldestSuggestion(now)]
 						: [oldestSuggestion(now), feedback.sourceId ?? null]),
@@ -915,16 +1052,19 @@ export function openCoordinator(
 				owner && !includeFiltered
 					? responsibilities.list(owner).map((row) => row.responsibility)
 					: [];
-			return suggestionsSchema.parse(
-				rows
-					.map((row) => project(row, now))
+			const results = [];
+      let skipped = 0;
+      for (const item of rows) {
+        const projected = project(item, now);
+        if (page?.sourceId && projected.sourceId !== page.sourceId) continue;
+        const matches = [projected]
 					.filter((row) => includeFiltered || !feedback.suppressed(row, owner))
 					.flatMap((row) => {
 						if (!owner || includeFiltered || !policies.length) return [row];
 						const matched = policies
 							.filter((policy) => {
 								if (!row.context) return false;
-								const binding: ResponsibilityBinding = {
+								const binding: ResponsibilityMatch = {
 									bot: owner,
 									source: {
 										id: row.sourceId,
@@ -963,16 +1103,86 @@ export function openCoordinator(
 									},
 								]
 							: [];
-					}),
-			);
+					});
+        for (const match of matches) {
+          if (skipped++ < (page?.offset ?? 0)) continue;
+          results.push(match);
+        }
+        if (results.length >= (page ? 21 : 100)) break;
+      }
+      return suggestionsSchema.parse(results);
 		}
-		repository.atomic(() => {
+		function noticeMuted(row: ProactiveWork) {
+			if (!legacyWorkAllowed(row)) return true;
+			const trigger = repository.triggers.get(row.triggerId);
+			const ci = ciSignalSchema.safeParse(trigger?.meta.ci);
+			const generation = trigger?.meta.generation;
+			// No fallback to the source's newest head: the work may be older.
+			if (trigger?.source !== row.sourceId || !ci.success || typeof generation !== "number" || !Number.isSafeInteger(generation)) return true;
+			return feedback.muted({ sourceId: row.sourceId, sourceGeneration: generation, ...ci.data }, row.target.bot);
+		}
+		const scopedRecovery = followUp.scopedRecovery();
+		if (!scopedRecovery) repository.atomic(() => {
 			work.recover(engine);
+			governance.resumeFeedbackCleanup(feedback.purgeSourceBody);
 			responsibilities.recover();
 			deferredNotices.recover();
 		});
+    const activityCursor = new ActivityCursor();
 		return {
+			scopedRecovery,
+			followUpSummary(subject: Subject) {
+				assertOwner();
+				const now = Date.now();
+				const active = (id: string, generation: number) => {
+					const source = checkpoint(id);
+					return !source || (!source.revoked && source.generation === generation);
+				};
+				const legacyCiActive = subject.kind === 'bot' && followUp.allowsLegacy(subject) && (
+					responsibilities.list(subject.bot).some(({ responsibility: row }) => row.mode !== 'off' &&
+						Date.parse(row.expiresAt) > now && active(row.source.id, row.source.generation)) ||
+					!!(autoRule && sameBot(autoRule.target.bot, subject.bot) && Date.parse(autoRule.expiresAt) > now &&
+						active(autoRule.sourceId, autoRule.sourceGeneration))
+				);
+				return followUp.summary(subject, legacyCiActive);
+			},
+			followUpPage(input: FollowUpPageRequest) {
+				assertOwner();
+				const sequence = Number(db.prepare('SELECT seq FROM pb_meta WHERE singleton=1').get()?.seq);
+				return followUp.page(input, storeId, sequence);
+			},
+			followUpGroupPlan(input: FollowUpGroupPlanRequest) { assertOwner(); return groupFollowUp.context(input); },
+			followUpSubjects(cursor?: string) {
+				assertOwner();
+				return followUp.subjects(cursor, storeId);
+			},
+			followUpSource(input: FollowUpSourceRequest) {
+				assertOwner();
+				return followUp.sourceCursor(input);
+			},
+      activityPage(input: ActivityRequest) {
+        assertOwner();
+        const sequence = Number(db.prepare('SELECT seq FROM pb_meta WHERE singleton=1').get()?.seq);
+        const binding = JSON.stringify([storeId, sequence, input.owner.botId, input.owner.botCreatedAt, input.collection, input.sourceId ?? null]);
+        const offset = activityCursor.decode(input.cursor, binding);
+        if (input.collection === 'work') {
+          const page = work.page(input.owner, offset, input.sourceId);
+          return { collection: 'work' as const, rows: page.rows, ...(page.more ? { next: activityCursor.encode(binding, offset + 20) } : {}) };
+        }
+        const rows = suggestions(input.owner, false, { offset, sourceId: input.sourceId });
+        return { collection: 'suggestions' as const, rows: rows.slice(0, 20), ...(rows.length > 20 ? { next: activityCursor.encode(binding, offset + 20) } : {}) };
+      },
+      workDetail(input: WorkDetailRequest) {
+        assertOwner();
+        const row = work.getTicket(input.ticketId);
+        if (!row || !sameBot(row.target.bot, input.owner) || row.revision !== input.expectedRevision) throw new Rejection('stale');
+        return row;
+      },
 			storeId,
+			readVersion: () => {
+				assertOwner();
+				return Number(db.prepare("SELECT seq FROM pb_meta WHERE singleton=1").get()?.seq);
+			},
 			sourceCleanupScope: (sourceId: string, generation: number) => {
 				assertOwner();
 				const { assignmentIds, notificationOperationIds } =
@@ -993,11 +1203,11 @@ export function openCoordinator(
 			},
 			noticeCandidates: () => {
 				assertOwner();
-				return work.noticeCandidates();
+				return scopedRecovery ? [] : work.noticeCandidates().filter(legacyWorkAllowed);
 			},
 			noticeDue: () => {
 				assertOwner();
-				return deferredNotices.due(
+				return scopedRecovery ? [] : deferredNotices.due(
 					Math.min(1000, noticeConfig?.maxPending ?? 1000),
 				);
 			},
@@ -1028,10 +1238,11 @@ export function openCoordinator(
 			},
 			autoCandidates: () => {
 				assertOwner();
+				if (scopedRecovery) return [];
 
 				const result = [];
 				for (const policy of responsibilities.all()) {
-					if (policy.mode !== "auto") continue;
+					if (policy.mode !== "auto" || !hasResponsibilityRoute(policy.target)) continue;
 					for (const row of suggestions(policy.owner)) {
 						if (
 							row.adjusted ||
@@ -1090,9 +1301,14 @@ export function openCoordinator(
 				groupReviewDigest?: string,
 				noticeRevision?: number,
 				groupFactId?: string,
+				dispatchRevision?: number,
 			) => {
 				assertOwner();
+				if (scopedRecovery) return false;
 				const row = work.getAssignment(assignmentId);
+				if (row && !legacyWorkAllowed(row) &&
+					(groupFactId !== undefined || isAutomatic(row))) return false;
+				if (noticeRevision !== undefined && row && noticeMuted(row)) return false;
 				if (row?.responsibility) {
 					try {
 						responsibilities.assertGrant(
@@ -1108,15 +1324,16 @@ export function openCoordinator(
 					groupReviewDigest,
 					noticeRevision,
 					groupFactId,
+					dispatchRevision,
 				);
 			},
 			groupFollowUps: () => {
 				assertOwner();
-				return work.followUps();
+				return scopedRecovery ? [] : work.followUps().filter(({ work: row }) => legacyWorkAllowed(row));
 			},
-			workList: () => {
+			workList: (owner?: BotKey) => {
 				assertOwner();
-				return work.list();
+				return work.list(owner);
 			},
 			close() {
 				try {

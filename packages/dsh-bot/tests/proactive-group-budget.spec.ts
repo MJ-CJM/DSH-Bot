@@ -92,3 +92,20 @@ test("group settlement retries the same transport operation after unknown, rejec
 	await accounting.flush();expect(sent).toHaveLength(4);
 	await accounting.close();
 });
+
+test('native accounting verifies each selected role model instead of the former uniform route', async () => {
+  const f = fixture();
+  Object.assign(need(f.view.turns[0]).proactive, { memberModels: [
+    { memberId: 'a', modelSelection: { provider: 'fixture', model: 'synthetic' } },
+    { memberId: 'b', modelSelection: { provider: 'other-provider', model: 'reviewer' } },
+  ] });
+  const inspect = f.raw.sessionController.inspect;
+  f.raw.sessionController.inspect = async id => {
+    const session = await inspect(id);
+    if (id === 'b') Object.assign(need(need(session.events[1]).data.message).source, { provider: 'other-provider', model: 'reviewer' });
+    return session;
+  };
+  expect(await measureGroupBudget(f.ctx, f.work, 'turn', ['a', 'b'], 'review')).toBe(120);
+  f.raw.sessionController.inspect = inspect;
+  await expect(measureGroupBudget(f.ctx, f.work, 'turn', ['a', 'b'], 'review')).rejects.toThrow('native result');
+});

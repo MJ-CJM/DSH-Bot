@@ -13,7 +13,8 @@ export function audience(state: GroupState, g: GroupRecord) {
 export async function groupInput(state: GroupState, g: GroupRecord, root: Agent, content: string, call: string) {
   const flow = outlets(state.registry); if (!flow) return;
   if (!flow.kernel.domain.table('flow_sessions').get(root.session.id) && root.session.snapshotEvents().some(e =>
-    e.type === 'user/message' && ['user', 'dsh-bot-group', 'dsh-bot-group-user', 'dsh-bot-group-followup', 'dsh-bot-group-proactive'].includes(e.data.source.kind)))
+    e.type === 'user/message' && ['user', 'dsh-bot-group', 'dsh-bot-group-user', 'dsh-bot-group-followup',
+      'dsh-bot-group-proactive', 'dsh-bot-group-owner-followup'].includes(e.data.source.kind)))
     throw new Error('Legacy group history held: unknown lineage');
   const target = audience(state, g), bot = target.members[0];
   if (!bot) throw new Error('Group has no audience');

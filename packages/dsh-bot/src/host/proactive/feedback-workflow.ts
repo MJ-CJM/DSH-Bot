@@ -1,3 +1,6 @@
+import type { MethodRunReceipt } from "../../shared/proactive/method-evaluation.js";
+import { exportMethod, readMethod } from "./method-package.js";
+import type { ExportMethodRequest, ImportMethodRequest } from "../../shared/proactive/method-package.js";
 import type { DshBotRegistry } from "../registry.js";
 import type { Capabilities } from "../capabilities/service.js";
 import { sameBot, type BotKey } from "../../shared/identity.js";
@@ -24,6 +27,7 @@ export interface FeedbackWorkflowPort {
 	workList(): Promise<ProactiveWork[]>;
 	suggestions(owner?: BotKey, includeFiltered?: boolean): Promise<Suggestion[]>;
 	status(): Promise<ProactiveStatus>;
+  runMethodEvaluation?(candidate: FeedbackCandidate): Promise<MethodRunReceipt[]>;
 }
 function settlementCommand(operationId: string) {
 	// A rework application already uses operationId for its core review command.
@@ -39,10 +43,31 @@ export class FeedbackWorkflow {
 	readonly #applications: FeedbackApplications;
 	constructor(
 		private readonly registry: DshBotRegistry,
-		capabilities: Pick<Capabilities, "request">,
+		private readonly capabilities: Pick<Capabilities, "request">,
 		private readonly port: FeedbackWorkflowPort,
 		rework: ConstructorParameters<typeof FeedbackApplications>[2],
 	) { this.#applications = new FeedbackApplications(registry, capabilities, rework); }
+  async exportMethod(input: ExportMethodRequest) {
+    const row = await this.candidate(input.candidateId);
+    if (!row) throw new Error('Candidate unavailable');
+    await this.validate(row.proposal);
+    return exportMethod(row, input);
+  }
+  async importMethod(input: ImportMethodRequest) {
+    const manifest = readMethod(input.package);
+    const context = (await this.contexts(input.owner))[0];
+    if (!context) throw new Error('Local Bot unavailable');
+    const current = await this.capabilities.request({ action: 'skillRead', bot: input.owner, name: manifest.name });
+    if (current.kind !== 'skill' || current.hash !== manifest.parentHash) throw new Error('Local parent method is incompatible');
+    return this.change(input.commandId, { action: 'propose-candidate', proposal: {
+      kind: 'skill', origin: context.origin, name: manifest.name,
+      importedMethod: { format: manifest.format, contract: manifest.contract, examples: manifest.examples, dependencies: manifest.dependencies,
+        evaluation: 'unverified', publicContentConfirmed: true, packageDigest: input.package.digest,
+        ...(manifest.reportedEvidence ? { reportedEvidence: manifest.reportedEvidence } : {}), },
+      before: current.content ?? null, beforeHash: current.hash, content: manifest.content,
+      reason: `Imported public method ${input.package.digest}; local review required. Input: ${manifest.contract.input}; Output: ${manifest.contract.output}`.slice(0, 2048),
+    } });
+  }
 	async overview(cursor?: string) {
 		const reply = await this.port.feedbackRead({ kind: "feedback-overview", ...(cursor ? { cursor } : {}) });
 		if (reply.kind !== "feedback-overview") throw new Error("Feedback overview unavailable");
@@ -72,10 +97,17 @@ export class FeedbackWorkflow {
 				evidenceDigest: digest({ bot: owner, revision: bot.updatedAt }) } }];
 		for (const row of work) {
 			const generation = sources.get(row.sourceId);
-			if (!sameBot(row.target.bot, owner) || !row.evidenceDigest || generation === undefined) continue;
+			if (!sameBot(row.target.bot, owner) || !row.evidenceDigest || generation === undefined || (row.document && row.document.sourceVersion !== generation)) continue;
 			result.push({ label: row.title,
 				origin: { bot: owner, taskId: row.ticketId, evidenceDigest: row.evidenceDigest,
-					source: { id: row.sourceId, generation } },
+					source: { id: row.sourceId, generation },
+          trace: { assignmentId: row.assignmentId, generation: row.generation, provider: row.target.provider, model: row.target.model,
+            ...(row.sessionId ? { sessionId: row.sessionId } : {}),
+            ...(row.groupRepair ? { groupDigest: digest(row.groupRepair), membershipRevision: row.groupRepair.membershipRevision, modelRevision: row.groupRepair.modelRevision ?? 0 } : {}),
+            turnIds: [...new Set([row.groupReview?.turnId, row.groupReview?.followUp?.turnId].filter((id): id is string => !!id))],
+            deliveryIds: row.groupRepairEvidence?.stages.flatMap(stage => stage.deliveryId ? [stage.deliveryId] : []) ?? [],
+            ...(row.workspaceEvidence ? { artifactDigest: row.workspaceEvidence.artifactDigest } : {}),
+          } },
 				...(["delivered", "accepted"].includes(row.state) ? { ticket: { id: row.ticketId, revision: row.revision } } : {}) });
 		}
 		for (const row of suggestions) {
@@ -90,7 +122,7 @@ export class FeedbackWorkflow {
 		return feedbackContextsSchema.parse(result.slice(0, 201));
 	}
 	private async validate(proposal: FeedbackProposal) {
-		const current = (await this.contexts(proposal.origin.bot)).find(row => digest(row.origin) === digest(proposal.origin));
+		const current = (await this.contexts(proposal.origin.bot)).find(row => digest(proposal.origin.trace ? row.origin : { ...row.origin, trace: undefined }) === digest(proposal.origin));
 		if (!current) throw new Error("Feedback evidence changed or is not owned by this Bot");
 		if ("change" in proposal) {
 			const { mode: _mode, ...scope } = proposal.change;
@@ -102,10 +134,14 @@ export class FeedbackWorkflow {
 	change(commandId: string, raw: FeedbackWorkflowAction): Promise<SuggestionActionReply> {
 		return this.#queue.run(async () => {
 			const input = feedbackWorkflowAction.parse(raw);
-			if (input.action === "settle-candidate") throw new Error("Only the Host can settle feedback applications");
+			if (input.action === "settle-candidate" || input.action === "settle-method-evaluation") throw new Error("Only the Host can settle feedback applications");
 			const prior = await this.port.feedbackRead({ kind: "receipt", commandId });
 			if (prior.kind === "receipt" && prior.receipt) {
 				const duplicate = await this.port.change(commandId, { kind: "feedback-workflow", input });
+        if (duplicate.kind === 'receipt' && input.action === 'run-method-evaluation') {
+          const candidate = await this.candidate(input.candidateId);
+          if (candidate?.methodEvaluation?.state === 'running') return { kind: 'unknown', commandId };
+        }
 				if (duplicate.kind === "receipt" && (input.action === "adopt-candidate" || input.action === "revoke-candidate")) {
 					const row = await this.candidate(input.candidateId);
 					if (row && ["applying", "revoking", "unknown"].includes(row.state)) return { kind: "unknown", commandId };
@@ -126,6 +162,15 @@ export class FeedbackWorkflow {
 					throw new Error("Feedback Bot generation changed");
 			}
 			const reply = await this.port.change(commandId, { kind: "feedback-workflow", input });
+      if (reply.kind === 'receipt' && reply.receipt.status === 'committed' && input.action === 'run-method-evaluation') {
+        const candidate = await this.candidate(input.candidateId);
+        const operationId = candidate?.methodEvaluation?.operationId;
+        if (!candidate || !operationId || !this.port.runMethodEvaluation) return { kind: 'unknown', commandId };
+        let receipts: MethodRunReceipt[] = [];
+        try { receipts = await this.port.runMethodEvaluation(candidate); } catch { /* no new attempts after uncertain execution */ }
+        const settled = await this.port.change(settlementCommand(operationId), { kind: 'feedback-workflow', input: { action: 'settle-method-evaluation', candidateId: candidate.id, expectedRevision: candidate.revision, operationId, receipts } });
+        return settled.kind === 'receipt' ? reply : { kind: 'unknown', commandId };
+      }
 			if (reply.kind !== "receipt" || reply.receipt.status !== "committed" ||
 				(input.action !== "adopt-candidate" && input.action !== "revoke-candidate")) return reply;
 			const row = await this.candidate(input.candidateId);

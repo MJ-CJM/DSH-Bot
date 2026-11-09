@@ -1,3 +1,5 @@
+import { workProgress } from "../../shared/proactive/work-progress.js";
+import type { WorkDetailRequest } from "../../shared/proactive/activity.js";
 import { GroupRepairEvidencePanel } from "./GroupRepairEvidencePanel.js";
 import { Button, Input } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
@@ -7,6 +9,7 @@ import type {
 	WorkspaceReviewRequest,
 } from "../../shared/proactive/workspace-repair.js";
 import { WorkspaceEvidence } from "./WorkspaceEvidence.js";
+import { WorkContinuationControls, type ContinuationControls } from './WorkContinuationControls.js';
 import workspaceStyles from "./workspace.module.css";
 import {
 	reworkFeedbackSchema,
@@ -24,7 +27,10 @@ import type {
 	ReviewRequest,
 } from "../../shared/proactive/remote-contract.js";
 
-interface Props extends PropsLocale<"dsh-bot"> {
+export interface ReviewPanelProps extends PropsLocale<"dsh-bot"> {
+  embedded?: boolean;
+  onReconcile?(input: WorkDetailRequest): Promise<void>;
+  continuationControls?: ContinuationControls;
 	row: ProactiveWork;
 	pending: boolean;
 	canRework: boolean;
@@ -39,6 +45,7 @@ interface Props extends PropsLocale<"dsh-bot"> {
 	onWorkspaceReview?(input: WorkspaceReviewRequest): Promise<WorkspaceReview>;
 }
 export function ReviewPanel({
+  embedded, onReconcile, continuationControls,
 	row,
 	pending,
 	canRework,
@@ -50,19 +57,50 @@ export function ReviewPanel({
 	onHistory,
 	onWorkspaceReview,
 	t,
-}: Props) {
-	const fence = { ticketId: row.ticketId, expectedRevision: row.revision };
+}: ReviewPanelProps) {
+	const progress = workProgress(row);
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileFailed, setReconcileFailed] = useState(false);
+  const fence = { ticketId: row.ticketId, expectedRevision: row.revision };
+  const acceptedPending = row.state === 'pending' && !!row.continuation;
+  const showProgress = progress.reason === 'fact' || progress.reason === 'unknown' || progress.reason === 'expired';
 	const evidence = row.evidenceDigest;
 	return (
 		<article
 			className={workspaceStyles.content}
-			data-proactive-ticket={row.ticketId}
+			data-proactive-ticket={embedded ? undefined : row.ticketId}
+      data-evidence-revision={row.revision}
+			tabIndex={-1}
 		>
 			<h3>{row.title}</h3>
-			<p role="status">{t(`proactive.state.${row.state}`)}</p>
-			{row.groupRepair && (
+			<p role="status">{t(row.state === 'delivered' && row.wait ? 'proactive.workWaiting' : `proactive.state.${row.state}`)}</p>
+      <WorkContinuationControls key={row.assignmentId} row={row} pending={pending} controls={continuationControls} t={t} />
+			{(acceptedPending || showProgress) && <section data-work-progress>
+        {showProgress && <>
+          <p>{t(`proactive.progress.${progress.reason}`)}</p>
+          <p>{t('proactive.progressOwner')}: {progress.owner.botId}</p>
+          <p>{t('proactive.progressExpires')}: {progress.expiresAt}</p>
+          {progress.tokenCeiling !== undefined && <p>{t('proactive.progressBudget', { tokens: progress.tokenCeiling })}</p>}
+          {progress.remainingCalls !== undefined && <p>{t('proactive.progressCalls', { calls: progress.remainingCalls })}</p>}
+          <p>{t(`proactive.progressProof.${progress.proof}`)}</p>
+        </>}
+        {(acceptedPending || progress.reason === 'unknown') && onReconcile && <Button variant="ghost" disabled={pending || reconciling} onClick={() => {
+          setReconciling(true); setReconcileFailed(false);
+          void onReconcile({ ...fence, owner: row.target.bot }).catch(() => setReconcileFailed(true)).finally(() => setReconciling(false));
+        }}>{t(acceptedPending ? 'proactive.reconcileAccepted' : 'proactive.reconcile')}</Button>}
+        {reconcileFailed && <p role="alert">{t('proactive.reconcileFailed')}</p>}
+      </section>}
+      {row.document && <details><summary>{t('proactive.documentSnapshot')}</summary>
+        <p>{row.document.name} · v{row.document.sourceVersion}</p><code>{row.sourceDigest}</code>
+        <p>{row.document.question}</p><pre>{row.document.content}</pre>
+        <p>{t('proactive.documentAcceptance')}: {row.document.acceptance}</p>
+      </details>}
+      {row.groupRepair && (
 				<GroupRepairEvidencePanel row={row} onOpen={onOpen} t={t} />
 			)}
+      {row.taskCost && <p>{t('proactive.taskCost', { attempts: row.taskCost.attempts, tokens: row.taskCost.knownNativeTokens, unknown: row.taskCost.unknownMeasurements })}</p>}
+      {row.taskCost?.truncated && <p>{t('proactive.taskCostPartial')}</p>}
+      {row.taskCost && row.taskCost.externalUnits > 0 && <p>{t('proactive.taskExternalCost', { units: row.taskCost.externalUnits })}</p>}
 			{row.usage && (
 				<p>
 					{t("proactive.actualTokens", {
@@ -86,6 +124,9 @@ export function ReviewPanel({
 				<details>
 					<summary>{t("proactive.evidence")}</summary>
 					<code>{evidence}</code>
+          <p>{t('proactive.taskReference')}: {row.ticketId} / {row.assignmentId}</p>
+          <p>{t('proactive.scopeReference')}: {row.sourceId}</p>
+          <p>{t('proactive.resumeHint')}</p>
 					{row.repairEvidence && (
 						<>
 							<p>
@@ -126,13 +167,13 @@ export function ReviewPanel({
 						key={row.revision}
 						fence={fence}
 						request={onGroupReview}
-						savedFollowUp={row.groupReview?.followUp}
+						savedReview={row.groupReview}
 						onOpen={onOpen}
 						t={t}
 					/>
 				)}
 			{onExternalNotice &&
-				row.state === "accepted" &&
+				row.state === "accepted" && !row.document &&
 				(row.sessionId ?? row.groupRepair?.rootSessionId) && (
 					<ExternalNoticePanel
 						key={row.revision}
@@ -141,7 +182,7 @@ export function ReviewPanel({
 						t={t}
 					/>
 				)}
-			{evidence && row.state === "delivered" && (
+			{evidence && row.state === "delivered" && !row.wait && (
 				<>
 					<Button
 						variant="ghost"
@@ -172,7 +213,7 @@ export function ReviewPanel({
 						<ReworkForm
 							key={row.assignmentId}
 							row={row}
-							disabled={pending || !canRework}
+							disabled={pending || !canRework || Date.parse(row.expiresAt) <= Date.now() || (row.taskLimits !== undefined && Date.parse(row.taskLimits.deadlineAt) <= Date.now())}
 							onSubmit={(feedback) =>
 								onReview({
 									...fence,
@@ -580,18 +621,20 @@ function ExternalNoticePanel({
 function GroupReviewPanel({
 	fence,
 	request,
-	savedFollowUp,
+	savedReview,
 	onOpen,
 	t,
 }: PropsLocale<"dsh-bot"> & {
 	fence: GroupReviewRequest;
 	request(input: GroupReviewRequest): Promise<GroupReviewResult>;
-	savedFollowUp?: NonNullable<ProactiveWork["groupReview"]>["followUp"];
+	savedReview?: ProactiveWork["groupReview"];
 	onOpen(id: string): Promise<void>;
 }) {
 	const [result, setResult] = useState<GroupReviewResult>();
 	const [pending, setPending] = useState(false);
 	const [failed, setFailed] = useState(false);
+	const savedLinked = savedReview?.state === "linked";
+	const savedFollowUp = savedReview?.followUp;
 	async function update(
 		fields: Omit<GroupReviewRequest, "ticketId" | "expectedRevision"> = {},
 	) {
@@ -606,12 +649,25 @@ function GroupReviewPanel({
 			setPending(false);
 		}
 	}
+	async function openReview() {
+		setPending(true);
+		setFailed(false);
+		try {
+			const linked = savedLinked ? await request(fence) : result;
+			if (linked?.kind === "linked") await onOpen(linked.rootSessionId);
+			else setFailed(true);
+		} catch {
+			setFailed(true);
+		} finally {
+			setPending(false);
+		}
+	}
 	const followUpState =
 		(result?.kind === "linked" ? result.followUpState : undefined) ??
 		savedFollowUp?.state;
 	return (
 		<div className={workspaceStyles.content} data-proactive-group-review="">
-			{!result && (
+			{!result && !savedLinked && (
 				<Button
 					variant="ghost"
 					disabled={pending}
@@ -624,12 +680,12 @@ function GroupReviewPanel({
 				(result.groups.length ? (
 					result.groups.map((choice) => (
 						<Button
-							key={choice.group.groupId}
+							key={`${choice.group.groupId}:${choice.memberIds.join(':')}`}
 							variant="ghost"
 							disabled={pending}
-							onClick={() => void update({ group: choice.group })}
+							onClick={() => void update({ group: choice.group, memberIds: choice.memberIds })}
 						>
-							{choice.title}
+							{choice.title} · {choice.memberBotIds.join(' + ')}
 						</Button>
 					))
 				) : (
@@ -643,7 +699,10 @@ function GroupReviewPanel({
 							bots: result.choice.memberBotIds.join(", "),
 						})}
 					</p>
-					<pre>{result.text}</pre>
+					<p>{t('proactive.groupCostHint')}</p>
+          <p>{t('proactive.groupAudience')}: {result.choice.audienceBotIds?.join(', ') ?? result.choice.memberBotIds.join(', ')}</p>
+          {result.choice.memberModels?.map(item => <p key={item.memberId}>{item.memberId}: {item.modelSelection.provider} / {item.modelSelection.model}</p>)}
+          <pre>{result.text}</pre>
 					{result.followUpAvailable && (
 						<div>
 							<p>{t("proactive.groupFollowUpScope")}</p>
@@ -656,6 +715,7 @@ function GroupReviewPanel({
 									onClick={() =>
 										void update({
 											group: result.choice.group,
+                    memberIds: result.choice.memberIds,
 											...(result.followUpMemberId === member
 												? {}
 												: { followUpMemberId: member }),
@@ -675,6 +735,7 @@ function GroupReviewPanel({
 						onClick={() =>
 							void update({
 								group: result.choice.group,
+                    memberIds: result.choice.memberIds,
 								reviewedDigest: result.digest,
 								...(result.followUpMemberId
 									? { followUpMemberId: result.followUpMemberId }
@@ -698,10 +759,11 @@ function GroupReviewPanel({
 					{t("proactive.groupFollowUpCancel")}
 				</Button>
 			)}
-			{result?.kind === "linked" && (
+			{(result?.kind === "linked" || savedLinked) && (
 				<Button
 					variant="ghost"
-					onClick={() => void onOpen(result.rootSessionId).catch(() => {})}
+					disabled={pending}
+					onClick={() => void openReview()}
 				>
 					{t("proactive.groupOpen")}
 				</Button>

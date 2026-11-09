@@ -8,12 +8,13 @@ import { LoopbackAdapter } from './deepening/loopback-adapter.mjs';
 import { WorkspaceFixtureAdapter, runWorkspaceFixture } from './proactive-workspace-profile.mjs';
 import { GroupRepairFixtureAdapter, runGroupRepairFixture } from './proactive-group-repair-profile.mjs';
 import { runDeferredNoticesFixture } from './proactive-deferred-notices-profile.mjs';
-import { runGovernanceFixture, runResponsibilityFixture } from './proactive-policy-profile.mjs';
+import { runGovernanceFixture, runObservationFixture, runResponsibilityFixture } from './proactive-policy-profile.mjs';
 
 export const name = 'proactive-workflow-fixture';
 export const inject = ['loader', 'dshBots', 'llm', 'sessionController'];
 
 class RepairFixtureAdapter extends LoopbackAdapter {
+  async listModels(provider) { return [{ provider, id: 'fixture', name: 'Fixture' }, { provider, id: 'reviewer-fixture', name: 'Reviewer fixture' }]; }
   async *stream(options) {
     for await (const chunk of super.stream(options)) {
       const text = JSON.stringify({ field: 'enabled', value: this.count > 1 });
@@ -95,6 +96,10 @@ export function apply(ctx, config) {
       const service = ctx.get('dshBotProactive');
       const bot = (await ctx.dshBots.list()).find(row => row.id === 'fixture-ci') ??
         await ctx.dshBots.create({ id: 'fixture-ci', name: 'Fixture CI', template: 'minimal' });
+      if (config.suite === 'proactive-observation') {
+        await runObservationFixture(ctx, service, bot, adapter, config, signal.signal);
+        return;
+      }
       while (!ctx.get('dshBotNotifications')) {
         assert.ok(Date.now() < deadline, 'notifications readiness');
         await delay(50, undefined, { signal: signal.signal });
@@ -140,12 +145,20 @@ export function apply(ctx, config) {
         }
         const reviewer = (await ctx.dshBots.list()).find(row => row.id === 'fixture-reviewer') ??
           await ctx.dshBots.create({ id: 'fixture-reviewer', name: 'Fixture Reviewer', template: 'minimal' });
+        const extras = [];
+        for (const id of ['fixture-idle-c', 'fixture-idle-d']) extras.push((await ctx.dshBots.list()).find(row => row.id === id) ?? await ctx.dshBots.create({ id, name: id, template: 'minimal' }));
         const existing = (await groups.list()).find(row => ['Fixture reviewers', 'Updated reviewers'].includes(row.group.name))?.group;
         const group = existing ?? await groups.create({
           operationId: 'proactive-workflow-reviewers', name: 'Fixture reviewers', mode: 'natural', historyConfirmed: true,
-          members: [{ botId: bot.id, botCreatedAt: bot.createdAt }, { botId: reviewer.id, botCreatedAt: reviewer.createdAt }],
+          members: [{ botId: bot.id, botCreatedAt: bot.createdAt }, { botId: reviewer.id, botCreatedAt: reviewer.createdAt }, ...extras.map(row => ({ botId: row.id, botCreatedAt: row.createdAt }))],
         });
         groupKey = { groupId: group.id, groupCreatedAt: group.createdAt };
+        if (config.suite === 'proactive-group-artifact' && !existing) {
+          const view = await groups.view(groupKey);
+          const member = view.members.find(row => row.bot.botId === reviewer.id);
+          await groups.setModel(groupKey, { expectedModelRevision: view.group.modelRevision ?? 0, memberId: member.id, modelSelection: { provider: 'dp-loopback', model: 'reviewer-fixture' } });
+        }
+
       }
       const scope = { repository: 'fixture/demo', branch: 'main', generation: 1 };
       if (config.suite !== "proactive-repair" && !(await service.ciCheckpoint(scope))) {
@@ -192,6 +205,15 @@ export function apply(ctx, config) {
         }
         let groupResult, groupFollowUpResult;
         if (groups && groupKey) {
+          const requestedModel = await readFile(join(config.outputDir, 'change-group-model'), 'utf8').catch(() => '');
+          if (requestedModel) {
+            assert.ok(['fixture','reviewer-fixture'].includes(requestedModel));
+            const view = await groups.view(groupKey);
+            const member = view.members.find(row => row.bot.botId === 'fixture-reviewer');
+            await groups.setModel(groupKey, { expectedModelRevision: view.group.modelRevision ?? 0, memberId: member.id, modelSelection: { provider: 'dp-loopback', model: requestedModel } });
+            await unlink(join(config.outputDir, 'change-group-model'));
+            await writeFile(join(config.outputDir, 'group-model-changed'), requestedModel);
+          }
           const change = join(config.outputDir, 'replace-reviewer');
           const replace = await readFile(change, 'utf8').catch(() => '');
           if (replace) {
@@ -211,6 +233,7 @@ export function apply(ctx, config) {
             if (!turn) return;
             const deliveries = view.deliveries.filter(row => row.turnId === turn.id);
             const childSources = [];
+            const modelRoutes = [];
             for (const delivery of deliveries) {
               if (delivery.state !== 'completed' || !delivery.childSessionId) continue;
               const child = await ctx.sessionController.inspect(delivery.childSessionId);
@@ -225,16 +248,25 @@ export function apply(ctx, config) {
                 assert.deepEqual(child.events.filter(event => event.type === 'user/message' &&
                   event.data.source.kind !== 'runtime-context').map(event => event.data.id), [delivery.childMessageId]);
               }
+              const answer = child.events.findLast(event => event.type === 'assistant/message');
+              const approved = turn.proactive.memberModels?.find(row => row.memberId === delivery.memberId)?.modelSelection ?? turn.proactive;
+              assert.equal(answer?.data.message.source.provider, approved.provider);
+              assert.equal(answer?.data.message.source.model, approved.model);
+              modelRoutes.push({ botId: delivery.bot.botId, provider: approved.provider, model: approved.model });
               childSources.push(input.data.source.kind);
             }
-            return { turn, deliveries, childSources, rootSessionId: view.group.rootSessionId };
+            assert.ok(!view.deliveries.some(row => ['fixture-idle-c','fixture-idle-d'].includes(row.bot.botId)), 'Unselected group members received no deliveries');
+            return { turn, deliveries, childSources, modelRoutes, groupMemberCount: view.members.length, rootSessionId: view.group.rootSessionId };
           };
           groupResult = await readTurn(view.turns.find(row => row.proactive && !row.proactive.followUp));
           groupFollowUpResult = await readTurn(view.turns.find(row => row.proactive?.followUp));
         }
         const ciCheckpoint = ['proactive-repair', 'proactive-group-artifact'].includes(config.suite) || config.suite.startsWith('proactive-group-follow-up')
           ? await service.ciCheckpoint(scope) : undefined;
-        await writeFile(join(config.outputDir, 'workflow-evidence.json'), JSON.stringify({ calls: adapter.count, checked, work, status: await service.status(), groupResult, groupFollowUpResult, ciCheckpoint, notices: notices?.list().map(row => ({ operationId: row.operationId, kind: row.source.kind })) }));
+        const costWork = work.find(row => row.groupReview?.state === 'linked');
+        const taskCost = config.suite === 'proactive-group-artifact' && costWork
+          ? (await service.workDetail({ owner: costWork.target.bot, ticketId: costWork.ticketId, expectedRevision: costWork.revision }).catch(() => undefined))?.taskCost : undefined;
+        await writeFile(join(config.outputDir, 'workflow-evidence.json'), JSON.stringify({ calls: adapter.count, checked, work, status: await service.status(), taskCost, groupResult, groupFollowUpResult, ciCheckpoint, notices: notices?.list().map(row => ({ operationId: row.operationId, kind: row.source.kind })) }));
         await delay(150, undefined, { signal: signal.signal });
       }
     })().catch(async error => {

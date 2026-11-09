@@ -49,9 +49,7 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
 	for (const close of cleanups.splice(0)) await close();
 });
-async function mount(
-	response: () => Promise<ProactiveStatus> = async () => status,
-) {
+async function mount(response: ProactiveStatus = status) {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	const container = document.createElement("div");
 	document.body.append(container);
@@ -68,7 +66,10 @@ async function mount(
 	const props: Props = {
 		bot: currentBot,
 		actions: { list, mutate },
-		proactive: { status: vi.fn(response) },
+		status: response,
+		loading: false,
+		failed: false,
+		refresh: vi.fn(async () => {}),
 		t: ((key: string) => key) as Props["t"],
 	};
 	await act(async () => {
@@ -120,10 +121,10 @@ test("workspace binds the selected Bot generation and only Host supplied source,
 });
 
 test("unavailable or revoked Host context keeps management visible and blocks new responsibility creation", async () => {
-	const { container, list } = await mount(async () => ({
+	const { container, list } = await mount({
 		...status,
 		localFeed: "revoked",
-	}));
+	});
 	expect(list).toHaveBeenCalled();
 	expect(
 		getByRole<HTMLButtonElement>(container, "button", {
@@ -133,26 +134,16 @@ test("unavailable or revoked Host context keeps management visible and blocks ne
 	expect(container.textContent).toContain("responsibility.contextUnavailable");
 });
 
-test("a late previous Bot refresh cannot replace the current unavailable source context", async () => {
-	let complete: (value: ProactiveStatus) => void = () => {};
-	let count = 0;
-	const { container, root, props } = await mount(async () =>
-		++count === 1
-			? new Promise<ProactiveStatus>((resolve) => {
-					complete = resolve;
-				})
-			: { ...status, localFeed: "revoked" },
-	);
+test("changing Bot keeps source and creation controls bound to the new owner", async () => {
+	const { container, root, props } = await mount();
 	await act(async () => {
 		root.render(
 			<ResponsibilityWorkspace
 				{...props}
 				bot={{ ...currentBot, id: "replacement-bot", createdAt: 9 }}
+				status={{ ...status, localFeed: "revoked" }}
 			/>,
 		);
-	});
-	await act(async () => {
-		complete(status);
 	});
 	expect(
 		getByRole<HTMLButtonElement>(container, "button", {
@@ -163,4 +154,28 @@ test("a late previous Bot refresh cannot replace the current unavailable source 
 		botId: "replacement-bot",
 		botCreatedAt: 9,
 	});
+});
+
+test.each(["off", "suggest"] as const)("saves %s without a model route while auto stays disabled", async mode => {
+	const { container, mutate } = await mount({
+		...status,
+		capabilities: { ...status.capabilities, directExecution: false },
+		directRoute: undefined,
+		actionScopes: undefined,
+	});
+	await click(container, "responsibility.create");
+	const modePicker = getByLabelText<HTMLSelectElement>(container, "responsibility.mode");
+	expect([...modePicker.options].find(option => option.value === "auto")?.disabled).toBe(true);
+	await change(container, "responsibility.mode", mode);
+	await click(container, "responsibility.save");
+	expect(mutate).toHaveBeenCalledTimes(1);
+	expect(mutate.mock.calls[0]?.[0].mutation).toMatchObject({
+		kind: "create",
+		draft: {
+			mode, action: "inspect-ci-result",
+			target: { bot: { botId: currentBot.id, botCreatedAt: 1 }, botUpdatedAt: 8 },
+		},
+	});
+	const mutation = mutate.mock.calls[0]?.[0].mutation;
+	expect(mutation && "draft" in mutation && "provider" in mutation.draft.target).toBe(false);
 });

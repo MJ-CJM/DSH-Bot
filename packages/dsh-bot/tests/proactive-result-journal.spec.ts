@@ -6,8 +6,10 @@ import Storage from "@deepseek-ai/dsh-storage";
 import * as storageJson from "@deepseek-ai/dsh-storage-json";
 import * as storageDomain from "@deepseek-ai/dsh-storage-domain";
 import { expect, test } from "vitest";
+import { ProactiveGovernance } from "../src/host/proactive/governance-service.js";
 import { openResultJournal, type PendingResult } from "../src/host/proactive/result-journal.js";
-import type { Reply } from "../src/shared/proactive/protocol.js";
+import type { BeginForget, ForgetReceipt } from "../src/shared/proactive/governance.js";
+import type { CommandBody, Reply } from "../src/shared/proactive/protocol.js";
 
 const body: PendingResult = {
 	kind: "report-result", ticketId: "ticket", assignmentId: "assignment", expectedRevision: 2,
@@ -78,6 +80,85 @@ test("source retention cleanup never removes an unacknowledged report", async ()
 		expect(await journal.pending(storeId)).toHaveLength(1);
 		expect(await f.snapshot()).toContain('"body"');
 	} finally { await journal.close(); await f.dispose(); await f.clean(); }
+});
+
+test("Host forgetting blocks on a lost result acknowledgement, then clears the exact copy after a duplicate receipt", async () => {
+	const f = await fixture(), storeId = randomUUID(), commandId = randomUUID();
+	const journal = await f.open();
+	const request: BeginForget = { operationId: randomUUID(), sourceId: "source", generation: 1 };
+	let receipt: ForgetReceipt = {
+		...request, phase: "fenced", fencedAt: 1, updatedAt: 1, pendingAssignments: [],
+		drainDigests: [], redacted: 0, purgePlans: [], boundaries: [],
+	};
+	let recover = false;
+	const changes: CommandBody["kind"][] = [];
+	const port = {
+		execution: { idle: async () => {} },
+		async reconcileForgetResults(assignments: string[]) {
+			const result = await journal.flush(storeId, async (id, saved) => {
+				expect(id).toBe(commandId);
+				expect(saved).toEqual(body);
+				return recover ? acknowledgement(id, "duplicate") : {
+					kind: "unknown", commandId: id, protocolVersion: 1, correlationId: randomUUID(),
+				};
+			}, assignments);
+			return result.pending === 0;
+		},
+		async change(id: string, change: CommandBody) {
+			changes.push(change.kind);
+			if (change.kind === "forget-block") {
+				receipt = { ...receipt, phase: "blocked", blockedReason: change.reason };
+			} else if (change.kind === "forget-finish") {
+				receipt = { ...receipt, phase: "complete", blockedReason: undefined };
+			}
+			return acknowledgement(id);
+		},
+		async read({ kind }: { kind: string }) {
+			if (kind === "forget-receipt") return { kind, receipt };
+			if (kind === "source-cleanup-scope") return {
+				kind, scope: { assignmentIds: [body.assignmentId], notificationOperationIds: [] },
+			};
+			if (kind === "governance-pending") return { kind, plans: [] };
+			throw new Error("Unexpected Host governance read");
+		},
+	};
+	const context = new Context();
+	let groupVerified = false;
+	context.provide("dshBotGroups", {
+		async purgeProactiveCopies(assignments: string[]) {
+			expect(assignments).toEqual([body.assignmentId]);
+			return groupVerified;
+		},
+	} as unknown as typeof context.dshBotGroups);
+	const governance = new ProactiveGovernance(
+		context, port as unknown as ConstructorParameters<typeof ProactiveGovernance>[1], {}, "",
+	);
+	try {
+		const unrelated = { ...body, assignmentId: "another-assignment", result: { state: "denied" } } satisfies PendingResult;
+		await journal.stage(storeId, commandId, body);
+		await journal.stage(storeId, randomUUID(), unrelated);
+		const forgetCommandId = randomUUID();
+		expect(await governance.forget(forgetCommandId, request)).toMatchObject({
+			phase: "blocked", blockedReason: "result-copy-unknown",
+		});
+		expect(changes).toEqual(["forget-begin", "forget-block"]);
+		expect(await journal.pending(storeId)).toHaveLength(2);
+
+		recover = true;
+		expect(await governance.forget(forgetCommandId, request)).toMatchObject({
+			phase: "blocked", blockedReason: "group-copy-unknown",
+		});
+		expect(changes).toEqual(["forget-begin", "forget-block", "forget-begin", "forget-block"]);
+		groupVerified = true;
+		expect(await governance.forget(forgetCommandId, request)).toMatchObject({ phase: "complete" });
+		expect(changes.slice(-2)).toEqual(["forget-begin", "forget-finish"]);
+		expect(await journal.pending(storeId)).toMatchObject([{ body: unrelated }]);
+		const saved = await f.snapshot();
+		const persisted = JSON.parse(saved).tables.reports[`${storeId}:${commandId}`];
+		expect(persisted).toMatchObject({ state: "acknowledged", assignmentId: body.assignmentId });
+		expect(persisted).not.toHaveProperty("body");
+		expect(saved).not.toContain("a".repeat(64));
+	} finally { await governance.close(); await context.fiber.dispose(); await journal.close(); await f.dispose(); await f.clean(); }
 });
 
 test("definitive rejection leaves a body-free failure tombstone and is never retried as pending", async () => {

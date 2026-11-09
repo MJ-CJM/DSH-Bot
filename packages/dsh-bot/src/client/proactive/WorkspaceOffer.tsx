@@ -53,10 +53,10 @@ export function WorkspaceOffer({
 									<option value="">{t("proactive.groupRepairSolo")}</option>
 									{groups.map((item) => (
 										<option
-											key={item.grant.group.groupId}
+											key={`${item.grant.group.groupId}:${item.grant.supervisor.memberId}:${item.grant.implementer.memberId}`}
 											value={JSON.stringify(item.grant)}
 										>
-											{item.title}
+											{item.title} · {item.grant.supervisor.bot.botId} / {item.grant.implementer.bot.botId}
 										</option>
 									))}
 								</select>
@@ -64,6 +64,8 @@ export function WorkspaceOffer({
 							{group && (
 								<>
 									<p>{t("proactive.groupRepairScope")}</p>
+                  <p>{t('proactive.groupRepairCost')}</p>
+                  {[group.grant.supervisor, group.grant.implementer].map(role => role.modelSelection && <p key={role.memberId}>{role.bot.botId}: {role.modelSelection.provider} / {role.modelSelection.model}</p>)}
 									<p>
 										{t("proactive.groupRepairRoles", {
 											supervisor: group.grant.supervisor.bot.botId,

@@ -1,3 +1,5 @@
+import { methodManifest } from "./method-package.js";
+import { methodPlan, methodEvaluation, methodRunReceipt } from "./method-evaluation.js";
 import { z } from "zod";
 import { botKeySchema } from "../identity.js";
 
@@ -56,20 +58,35 @@ export const feedbackRuleChange = z.strictObject({
 	attempt: z.number().int().positive(),
 	mode: z.enum(["suppress", "include", "mute"]),
 });
+export const feedbackAttribution = z.strictObject({
+  category: z.enum(['preference', 'method', 'handoff', 'environment', 'unknown']),
+  basis: z.literal('owner-hypothesis'),
+  problem: text, reproducer: text, scope: text, counterexample: text,
+  confounds: z.array(z.enum(['human-fix', 'model-change', 'environment-change', 'tool-change'])).max(4),
+}).refine(value => value.category !== 'method' || value.confounds.length === 0, 'Confounded outcomes cannot be attributed to a method');
 const origin = z.strictObject({
+  trace: z.strictObject({
+    assignmentId: identifier, generation: revision,
+    provider: identifier, model: identifier,
+    sessionId: z.uuid().optional(),
+    groupDigest: digest.optional(), membershipRevision: revision.optional(),
+    modelRevision: revision.optional(),
+    turnIds: z.array(identifier).max(4), deliveryIds: z.array(identifier).max(8),
+    artifactDigest: digest.optional(),
+  }).optional(),
 	bot: botKeySchema,
 	taskId: identifier,
 	evidenceDigest: digest,
-	source: z.strictObject({ id: feedbackSource, generation: revision }).optional(),
+	source: z.strictObject({ id: z.string().regex(/^(ci|doc):[a-f0-9]{64}$/), generation: revision }).optional(),
 });
-const common = { origin, reason: text };
+const common = { origin, reason: text, attribution: feedbackAttribution.optional() };
 export const feedbackProposal = z.discriminatedUnion("kind", [
 	z.strictObject({ ...common, kind: z.literal("rework"), reason: text.max(512), ticketId: identifier, expectedWorkRevision: revision }),
 	z.strictObject({ ...common, kind: z.literal("false-positive"), change: feedbackRuleChange.extend({ mode: z.literal("suppress") }) }),
 	z.strictObject({ ...common, kind: z.literal("false-negative"), change: feedbackRuleChange.extend({ mode: z.literal("include") }) }),
 	z.strictObject({ ...common, kind: z.literal("attention"), change: feedbackRuleChange.extend({ mode: z.literal("mute") }) }),
 	z.strictObject({ ...common, kind: z.literal("preference"), content: text }),
-	z.strictObject({ ...common, kind: z.literal("skill"), name: skillName, before: z.string().max(65536).nullable(), beforeHash: digest.nullable(), content: z.string().min(1).max(65536) }),
+	z.strictObject({ ...common, kind: z.literal("skill"), importedMethod: methodManifest.omit({ content: true, name: true, parentHash: true }).extend({ packageDigest: digest }).optional(), name: skillName, before: z.string().max(65536).nullable(), beforeHash: digest.nullable(), content: z.string().min(1).max(65536) }),
 	z.strictObject({ ...common, kind: z.literal("permission"), setting: z.enum(["tools", "workspace", "model", "notifications", "proactive"]) }),
 ]).refine(value => new TextEncoder().encode(JSON.stringify(value)).length <= 40 * 1024, "Feedback proposal exceeds transport budget");
 export const feedbackDataset = z.strictObject({
@@ -124,6 +141,8 @@ export const feedbackApplicationReceipt = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("rework"), ticketId: identifier, assignmentId: identifier }),
 ]);
 export const feedbackCandidate = z.strictObject({
+  methodEvaluation: methodEvaluation.optional(),
+	failureKey: digest.optional(),
 	id: z.uuid(), revision, createdAt: z.number().int().nonnegative(),
 	datasetDigests: z.array(digest).max(30),
 	proposal: feedbackProposal, proposalDigest: digest,
@@ -136,6 +155,9 @@ export const feedbackCandidate = z.strictObject({
 });
 const candidateFence = { candidateId: z.uuid(), expectedRevision: revision };
 export const feedbackWorkflowAction = z.discriminatedUnion("action", [
+  z.strictObject({ action: z.literal('register-method-evaluation'), ...candidateFence, plan: methodPlan }),
+  z.strictObject({ action: z.literal('run-method-evaluation'), ...candidateFence }),
+  z.strictObject({ action: z.literal('settle-method-evaluation'), ...candidateFence, operationId: z.uuid(), receipts: z.array(methodRunReceipt).max(36) }),
 	z.strictObject({ action: z.literal("import-dataset"), dataset: feedbackDataset }),
 	z.strictObject({ action: z.literal("propose-candidate"), proposal: feedbackProposal }),
 	z.strictObject({ action: z.literal("evaluate-candidate"), ...candidateFence, datasetId: identifier, datasetVersion: z.number().int().positive() }),

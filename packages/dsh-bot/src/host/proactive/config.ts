@@ -23,6 +23,16 @@ import {
 	autoCiRuleSchema,
 	type AutoCiRule,
 } from "../../shared/proactive/protocol.js";
+import { followUpBootstrapSchema } from '../../shared/proactive/follow-up.js';
+import { z } from 'zod';
+
+export const proactiveBootstrapToken = z.strictObject({
+  operation: followUpBootstrapSchema,
+  previousConfigEpoch: z.uuid().nullable(),
+  installationId: z.uuid(),
+  storeId: z.uuid().nullable(),
+});
+export type ProactiveBootstrapToken = z.output<typeof proactiveBootstrapToken>;
 
 export interface ProactiveConfig {
 	proactiveGroupRepairEnabled?: boolean;
@@ -36,6 +46,7 @@ export interface ProactiveConfig {
 	proactiveRecoveryIntervalMs?: number;
 	proactiveMaintenanceIntervalMs?: number;
 	proactiveEnabled: boolean;
+	proactiveFollowUpBootstrap?: ProactiveBootstrapToken | null;
 	proactiveGroupReviewEnabled: boolean;
 	proactiveGroupFollowUpEnabled: boolean;
 	proactiveCiFeed?: CiFeed | null;
@@ -45,6 +56,8 @@ export interface ProactiveConfig {
 	proactiveTimeoutMs: number;
 	proactiveExecutionEnabled: boolean;
 	proactiveModelDailyBudget: number;
+  proactiveTaskTokenLimit?: number;
+  proactiveDocumentLifetimeMs?: number;
 	proactiveExternalDailyBudget: number;
 	proactiveNotificationPolicy?: string;
 	proactiveExternalNotificationPolicy?: string;
@@ -91,6 +104,9 @@ export const proactiveConfigFields = {
 		.step(1)
 		.default(1000),
 	proactiveEnabled: Schema.boolean().default(false),
+	proactiveFollowUpBootstrap: Schema.transform(Schema.any(), value =>
+		proactiveBootstrapToken.nullish().parse(value) ?? null,
+	).default(null).hidden(),
 	proactiveGroupReviewEnabled: Schema.boolean().default(false),
 	proactiveGroupFollowUpEnabled: Schema.boolean().default(false),
 	proactiveCiFeed: Schema.transform(
@@ -112,6 +128,8 @@ export const proactiveConfigFields = {
 	proactiveNotificationPolicy: Schema.string().pattern(
 		/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/,
 	),
+	proactiveDocumentLifetimeMs: Schema.number().min(60000).max(604800000).step(1).default(86400000),
+  proactiveTaskTokenLimit: Schema.number().min(4096).max(32768).step(1).default(32768),
 	proactiveModelDailyBudget: Schema.number().min(1).max(100).step(1).default(8),
 	proactiveExternalDailyBudget: Schema.number()
 		.min(0)

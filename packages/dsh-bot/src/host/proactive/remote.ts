@@ -1,6 +1,12 @@
+import type { FollowUpPolicyRequest, ProactiveSetupRequest } from "../../shared/proactive/setup.js";
+import type { FollowUpPageRequest, Subject } from '../../shared/proactive/follow-up.js';
+import type { FollowUpGroupAbandonRequest, FollowUpGroupChoiceRequest, FollowUpGroupAcceptRequest } from '../../shared/proactive/group-follow-up.js';
+import type { ExportMethodRequest, ImportMethodRequest } from "../../shared/proactive/method-package.js";
+import type { DocumentRequest } from "../../shared/proactive/document.js";
+import type { ActivityRequest, WorkDetailRequest } from '../../shared/proactive/activity.js';
 import type { BeginForget } from "../../shared/proactive/governance.js";
 import type { ResponsibilityMutationRequest } from "../../shared/proactive/responsibility.js";
-import type { WorkHistoryRequest } from "../../shared/proactive/work.js";
+import type { WorkContinuationRequest, WorkHistoryRequest } from "../../shared/proactive/work.js";
 import type { WorkspaceReviewRequest } from "../../shared/proactive/workspace-repair.js";
 import type { Context } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
@@ -17,8 +23,11 @@ import {
 	type RevokeSourceRequest,
 	type ExternalNoticeRequest,
 	type GroupReviewRequest,
+	type FollowUpActionRequest,
+	type FollowUpWatchRequest,
+	type SuggestionActionReply,
 } from "../../shared/proactive/remote-contract.js";
-import type { ProactiveService } from "./service.js";
+import type { ProactiveLifecycle } from "./lifecycle.js";
 import type { BotKey } from "../../shared/identity.js";
 
 export const PROACTIVE_HOST = {
@@ -34,10 +43,45 @@ export const PROACTIVE_HOST = {
 export class ProactiveRemote extends TypertRemoteService {
 	constructor(
 		ctx: Context,
-		private readonly service: ProactiveService,
+		private readonly lifecycle: ProactiveLifecycle,
 	) {
 		super(ctx, "dshBotProactiveRemote", { namespace: "dshBot.proactive" });
 	}
+	private get service() { return this.lifecycle.service; }
+	@Remote async setup(input: ProactiveSetupRequest) {
+    this.requireOwner();
+    return this.lifecycle.setup(input);
+  }
+  @Remote async followUpSummary(input: Subject) {
+    this.requireOwner();
+    return this.lifecycle.followUpSummary(input);
+  }
+  @Remote async followUpPage(input: FollowUpPageRequest) {
+    this.requireOwner();
+    return this.service.followUpPage(input);
+  }
+  @Remote async followUpPolicy(input: FollowUpPolicyRequest) {
+    this.requireOwner();
+    return this.lifecycle.followUpPolicy(input);
+  }
+  @Remote async followUpWatchCreate({ commandId, ...input }: FollowUpWatchRequest): Promise<SuggestionActionReply> {
+    this.requireOwner();
+    if (input.watch.source.kind !== 'manual') return { kind: 'rejected', code: 'forbidden' };
+    return this.service.createFollowUpWatch(commandId, input);
+  }
+  @Remote async followUpAction({ commandId, ...input }: FollowUpActionRequest) {
+    this.requireOwner();
+    return this.service.followUpAction(commandId, input);
+  }
+  @Remote async followUpGroupChoice(input: FollowUpGroupChoiceRequest) {
+    this.requireOwner(); return this.service.followUpGroupChoice(input);
+  }
+  @Remote async followUpGroupAccept(input: FollowUpGroupAcceptRequest) {
+    this.requireOwner(); return this.service.followUpGroupAccept(input);
+  }
+  @Remote async followUpGroupAbandon(input: FollowUpGroupAbandonRequest) {
+    this.requireOwner(); return this.service.followUpGroupAbandon(input);
+  }
 	private requireOwner() {
 		if (this.ctx.invocation?.peer.principal.kind !== "owner")
 			throw new Error("Proactive owner access required");
@@ -49,6 +93,18 @@ export class ProactiveRemote extends TypertRemoteService {
 		this.requireOwner();
 		return this.service.governance.forget(commandId, input);
 	}
+  @Remote async activityPage(input: ActivityRequest) {
+    this.requireOwner(); return this.service.activityPage(input);
+  }
+  @Remote async submitDocument(input: DocumentRequest) {
+    this.requireOwner(); return this.service.submitDocument(input);
+  }
+  @Remote async reconcileWork(input: WorkDetailRequest) {
+    this.requireOwner(); return this.service.reconcileWork(input);
+  }
+  @Remote async workDetail(input: WorkDetailRequest) {
+    this.requireOwner(); return this.service.workDetail(input);
+  }
 	@Remote async responsibilities(owner: BotKey) {
 		this.requireOwner();
 		return this.service.responsibilities(owner);
@@ -101,6 +157,8 @@ export class ProactiveRemote extends TypertRemoteService {
 		this.requireOwner();
 		return this.service.change(commandId, { kind: "feedback-rule", input });
 	}
+  @Remote async exportMethod(input: ExportMethodRequest) { this.requireOwner(); return this.service.feedbackWorkflow.exportMethod(input); }
+  @Remote async importMethod(input: ImportMethodRequest) { this.requireOwner(); return this.service.feedbackWorkflow.importMethod(input); }
 	@Remote async feedbackOverview(input: { cursor?: string }) {
 		this.requireOwner();
 		return this.service.feedbackWorkflow.overview(input.cursor);
@@ -136,9 +194,17 @@ export class ProactiveRemote extends TypertRemoteService {
 		this.requireOwner();
 		return this.service.review(commandId, input);
 	}
+  @Remote async workContinuation({ commandId, ...input }: WorkContinuationRequest) {
+    this.requireOwner();
+    return this.service.continueWork(commandId, input);
+  }
 	@Remote async listWork() {
 		this.requireOwner();
 		return this.service.workList();
+	}
+	@Remote async botWork(owner: BotKey) {
+		this.requireOwner();
+		return this.service.workList(owner);
 	}
 	@Remote async status() {
 		this.requireOwner();

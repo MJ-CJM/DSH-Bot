@@ -6,6 +6,8 @@ import { resolve } from 'node:path';
 import { webHost } from './deepening/b4-web-host.mjs';
 import { verifyWorkspaceBrowser } from './proactive-workspace-ui.mjs';
 
+// Historical positive fixture for the pre-N01 package. Current candidates use
+// proactive-bot-execution-boundaries.mjs and require workspace execution closed.
 const root=process.cwd();
 assert.equal(process.env.DSH_HOME,resolve(root,'.dsh-dev'));
 assert.equal(execFileSync(resolve(root,'scripts/dsh'),['--version'],{encoding:'utf8'}).trim(),'0.2.1-rc.2');

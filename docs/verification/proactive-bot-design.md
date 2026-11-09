@@ -6,7 +6,7 @@
 
 - 执行 `git fetch origin main`，取得 main `4a0aab42a2e4e005542528ada4c985d0786e1fc9`。
 - 执行 `git worktree add -b codex/proactive-bot-design .dsh-dev/worktrees/proactive-bot origin/main`，在主仓库内部创建独立工作树。随后解除自动设置的 upstream，避免将 origin/main 误当本分支推送目标。
-- 新工作树实际路径：`/Users/chenjiamin/ai-workspace/DSH-Bot/.dsh-dev/worktrees/proactive-bot`。HEAD 与上述 main 相同；包版本为 `0.6.4`。
+- 新工作树实际路径：`.dsh-dev/worktrees/proactive-bot`（相对仓库根目录）。HEAD 与上述 main 相同；包版本为 `0.6.4`。
 - 主工作区保持 `release/v0.6.5`。其 CHANGELOG、package/index/version 与 release 文档等既有改动保留；前轮调研稿仍在原位置，新工作树复制一份并增加导航。
 - 本轮未 commit、push、修改桌面版或 `~/.dsh`，未启动需要真实模型凭据的会话。
 
