@@ -1,8 +1,8 @@
 # 社区发布准备与验收
 
-**[v0.6.5 已在 GitHub 公开发布](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5)**，为当前 latest。社区目录使用固定 `latest/download/dsh-bot.tgz` 地址，随 latest 更新。npm 尚未发布。MIT，Copyright © 2026 MJ-CJM。以下步骤供后续发版复用。 [v0.6.5 发布记录](releases/v0.6.5.md) · [v0.6.4 验证矩阵](releases/v0.6.4.md) · [v0.6.3 首发记录](releases/v0.6.3.md)
+**[v0.6.6 已在 GitHub 公开发布](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)**，为当前 latest。社区目录使用固定 `latest/download/dsh-bot.tgz` 地址，随 latest 更新。npm 尚未发布。MIT，Copyright © 2026 MJ-CJM。以下步骤供后续发版复用。 [v0.6.6 发布记录](releases/v0.6.6.md) · [v0.6.5 发布记录](releases/v0.6.5.md) · [v0.6.4 验证矩阵](releases/v0.6.4.md) · [v0.6.3 首发记录](releases/v0.6.3.md)
 
-[v0.6.5](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5) is the latest GitHub Release. The community catalog lists the plugin through the fixed `latest/download/dsh-bot.tgz` URL, which follows each stable Release; npm is not published. The following candidate instructions remain the process for future releases.
+[v0.6.6](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6) is the latest GitHub Release. The community catalog lists the plugin through the fixed `latest/download/dsh-bot.tgz` URL, which follows each stable Release; npm is not published. The following candidate instructions remain the process for future releases.
 
 ## 1. 检出与基础检查
 

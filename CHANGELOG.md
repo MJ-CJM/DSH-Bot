@@ -2,6 +2,8 @@
 
 ## 0.6.6 — 2026-11-09
 
+已公开发布并设为 latest：[GitHub Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)。发布提交的 macOS / Linux CI 通过，公开下载与本地验收包字节一致。
+
 - 补齐个人 Bot 对本人群工作的按需召回：记忆页可查看和搜索参与记录、定位原群、准备保存结论；群成员单聊携带准确工作引用，沿用原记忆开关和聊天入口。该增量与此前部署包分开验收，见[群经历召回](docs/verification/group-work-recall.md)。
 
 - 个人 Bot 和群均可在现有详情页一键开启主动跟进，无需 GitHub 或外部凭据；跟进本地任务的待验收、失败和明确等待，原结果与会话直接可达。
