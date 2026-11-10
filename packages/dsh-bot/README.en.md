@@ -2,21 +2,53 @@
 
 English · [中文](README.md)
 
-**Your personal agent workspace.** Create Bots with their own roles and memory in DeepSeek Harness. Keep working with them in ongoing conversations, or bring them together to collaborate in a group chat.
+**Your personal agent workspace.** Create Bots with their own roles and memory in DeepSeek Harness. Keep working with them in ongoing conversations, follow up on work, or bring them together to collaborate in a group chat.
+
+**[0.6.6 is available](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)** with unscheduled follow-up for personal Bots and groups, plus source-backed group-work recall. [See what changed](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md).
 
 ![Your Bots: research, review and writing assistants](assets/showcase/en-bots.png)
 
-Screenshots show the real DSH interface in an isolated demo environment, with fictional data and a local scripted model. They demonstrate features and interactions, not real-model task quality.
+The screenshots below show basic workflows from an earlier version in a real, isolated DSH environment, with fictional data and scripted replies. New 0.6.6 entry points are described below; screenshots do not establish real-model task quality.
 
 ## What you can do
 
 | Capability | How it helps |
 | --- | --- |
 | Personal Bots | Give research, review and writing assistants their own roles, models, tools, skills and persistent main conversations. |
-| Persistent memory | Search, edit and forget each Bot's private memories. Shared content requires explicit user publication. |
+| Memory and group-work recall | Manage private memories and find group work the Bot participated in and can still access. Open the source or draft a saved conclusion. Sharing requires explicit user publication. |
 | Multi-Bot groups | Mention a member or let members discuss concurrently. Inspect their execution, add input, or stop one member. |
-| Background work | Delegate native subtasks and inspect them from the Bot's task page. Scheduled delivery uses DSH's native facilities. |
-| Proactive follow-up (0.6.6) | Enable it in a personal Bot or group to track pending reviews, failures and explicit input requests. No GitHub account or external credentials are required. |
+| Background work and result review | Delegate native subtasks, inspect evidence and usage, and review, supplement or rework supported tasks. Ordinary schedules use DSH's native facilities. |
+| Proactive follow-up | Enable it separately for a Bot or group to track pending reviews, failures, explicit input requests and registered commitments. No GitHub account or external credentials are required. |
+| Documents and working methods | Analyze document text and acceptance criteria you provide. Evaluate method candidates in Feedback and improvements and explicitly adopt them after review. |
+
+### Follow local work and explicit commitments
+
+Personal Bots and groups have separate switches. You do not need to connect GitHub or configure an additional global switch first.
+
+| Scope | Where to enable it |
+| --- | --- |
+| Personal Bot | Tasks in the Bot profile, or Tasks & messages in full settings → Turn on follow-up |
+| One group | Open the group chat → Manage group → Activity → Turn on follow-up |
+
+Enabling applies only to that Bot or group. Viewing and refreshing makes no model requests. Use Open original task to review a result, supply missing information or continue processing. For an eligible failed group item, continue with one selected member using that member's effective group model and the group budget.
+
+To track a commitment, choose Add a watch item and specify what to track and what counts as completion. You can also say, “Track this proposal until I confirm that it meets the acceptance criteria.” Personal registration uses native tool approval. Group chat creates a proposal that takes effect only after Confirm watch item in Activity. Registration itself does not start work or send a message. You can stop an item or pause its scope.
+
+**Proactive follow-up in 0.6.6 does not include timed reminders.** Ordinary DSH schedules remain available; local follow-up requires a running DSH Host.
+
+### Continue group work in a direct chat
+
+Enable the Bot's memory, then open Memory → Group work this Bot joined to search, inspect Source excerpts or Open original group turn. You can also ask in the Bot's main conversation: “What did you work on in the project group last time? Please cite the original records.”
+
+The Bot retrieves work it actually participated in and can still access. **Finding a group record does not mean it has been saved as long-term memory.** To keep a conclusion, choose Draft a request to remember this conclusion, review and send the draft, and use the existing memory and approval flow.
+
+For a Bot with memory enabled and an available participation record, open Manage group → Members and use Ask in direct chat in its menu. This prepares a draft referencing that member's most recent available group work. To find an earlier item, search Group work this Bot joined. Drafts are not sent automatically. Searches have a read limit: missing or empty results do not prove the Bot never participated, and unverifiable sources are not returned as reliable recollections.
+
+### Analyze documents and evaluate working methods when needed
+
+Analyze a document snapshot appears in Tasks & messages when advanced task execution is enabled, its model is configured and execution is unpaused. Provide authorized text, your question and acceptance criteria, then inspect the result in the task list. It does not fetch external links or treat instructions in the document as authorization.
+
+Feedback and improvements supports evaluating, reviewing and explicitly adopting method candidates. Standalone evaluation currently accepts structured text without tool calls; it does not automatically change working methods or establish real-model improvement.
 
 ### Divide the work and inspect each member's progress
 
@@ -36,19 +68,15 @@ A research assistant can keep responsibility for comparing sources, while a writ
 
 ### Inspect work outside the conversation
 
-Open a Bot's Tasks & messages page for native background subtasks, scheduled tasks and teammate messages. Messages between Bots also appear in both conversations as expandable markers, and a Bot's details can open beside the conversation. The pictured task ran through the native subagent service with scripted demo output.
+Open a Bot's Tasks & messages page for native background subtasks, ordinary schedules and teammate messages. For tasks with review support, inspect results, evidence and usage, supply missing information or request rework. Messages between Bots also appear in both conversations as expandable markers.
+
+The screenshot below shows native subtasks and ordinary schedules with scripted demo output; it does not show proactive follow-up.
 
 ![Native background task record](assets/showcase/en-tasks.png)
 
-### Follow local work and explicit commitments
-
-Enable Proactive follow-up from a Bot's task page or a group's activity page. Viewing and refreshing suggestions makes no model requests. Open the original task to review its result, supply requested information or continue processing. A group can continue with just one selected member, using its current group model settings.
-
-Explicit commitments in personal chats use native tool approval. A group chat produces a proposal that takes effect after you confirm it. You can also add an item manually, stop an item or pause the scope. Proactive follow-up in 0.6.6 does not include scheduled reminders; existing DSH schedules remain available.
-
 ## Install
 
-This branch prepares a **0.6.6 local acceptance candidate**, not a published release. Licensed under **MIT**. Check the latest stable Release for the publicly available version. Enabling and inspecting local follow-up needs no model route; chat and explicitly accepted model tasks require a working DSH model configuration.
+Current version: **0.6.6**, licensed under **MIT**. Download and verify the package from the [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6). Enabling and inspecting local follow-up needs no model configuration; chat and explicitly accepted model tasks require a working DSH model configuration.
 
 ### Option 1: Search the community market
 
@@ -93,7 +121,7 @@ Follow your Host's restart instructions. Use the prebuilt release package; the s
 4. **Create a group:** add a “Review assistant”, select both members for a new group, and ask “How should we compare two technical approaches? Please discuss together.”
 5. **Inspect and direct the work:** expand execution below the question. Use a member's menu to inspect details, add input or stop that member.
 
-These examples illustrate the workflow. Actual responses depend on your model, tools, permissions and supplied evidence.
+When you need ongoing follow-up, enable it for that Bot or group using the paths above. You can continue discussing past group work in a member's personal main conversation. Actual responses depend on your model, tools, permissions and supplied evidence.
 
 ## FAQ
 
@@ -101,9 +129,13 @@ These examples illustrate the workflow. Actual responses depend on your model, t
 
 No. The plugin uses DSH's model configuration and supports per-Bot and per-member model selection. Chat and model execution require an available model in the Host. Enabling, viewing and refreshing local follow-up makes no model requests; model services may charge for actual execution.
 
-**Is memory automatically shared between every Bot?**
+**Are group memories automatically copied to every Bot?**
 
-No. Bots have private memory; shared content requires explicit user publication. You can inspect, edit and forget records in the management UI.
+No. 0.6.6 can recall work the Bot actually participated in and can still access, with source references, without copying the whole group conversation into each Bot's long-term memory. Saving a conclusion uses the existing memory and approval flow. Private memories are not automatically shared between Bots either.
+
+**Is proactive follow-up limited to GitHub CI?**
+
+No. Both personal Bots and groups can follow local work and explicit commitments without a GitHub account or token. Environments with an existing GitHub CI configuration can continue using that source; personal and group local follow-up does not depend on it.
 
 **Will a group discuss forever?**
 
@@ -119,7 +151,9 @@ No such guarantee is provided. Tasks depend on the local DSH Host running; cloud
 
 ## Compatibility and limits
 
-Development dependencies are pinned to DSH `0.2.1-rc.2`. The v0.6.4 archive passed installation, reinstallation and cold recovery on macOS rc.2, plus group UI checks on rc.2 / rc.5. The declared range `>=0.2.1-rc.2 <0.3.0` does not mean every version or platform has been tested. See [release verification](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.4.md).
+Development dependencies are pinned to DSH `0.2.1-rc.2`. The final 0.6.6 archive passed installation, cold-start and group-work recall boundary checks on isolated macOS hosts `0.2.1-rc.2` and `0.2.2-rc.1`, plus eight Web layouts and local desktop installation checks. The declared range `>=0.2.1-rc.2 <0.3.0` does not mean every version or platform has been tested. Managed Bot forks remain restricted on rc.2; real-model quality has not been verified. See [release verification](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.6.md).
+
+The published 0.6.6 archive retains the bytes accepted locally, including the bundled README's candidate wording. This page and the Release notes provide current publication and usage information.
 
 Bot working directories are not filesystem isolation; Host permissions, approvals and sandboxing still apply. Local event follow-up requires a running DSH Host. Zero-model scheduled follow-up, external IM ingress/egress, OS/mobile push and cloud hosting are outside this release. Automatic sharing is unavailable. Synthetic checks do not establish real-model quality, and uncertain background results after forced crashes are not automatically replayed.
 
