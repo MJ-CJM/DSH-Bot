@@ -33,8 +33,9 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md",
-    "README.en.md",
+    "assets/logo-1024.png",
+    "/README.md",
+    "/README.en.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.txt"
   ],

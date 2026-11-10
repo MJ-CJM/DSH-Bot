@@ -99,7 +99,8 @@ test('Tarball verification accepts complete bytes and rejects corrupt payloads o
     'lib/shared/version.js': hostSource,
     'lib/module-manifest.json': JSON.stringify({ version: '1.2.3', files: { 'shared/version.js': createHash('sha256').update(hostSource).digest('hex') } }),
     'cordis.patch.yml': 'fixture: true\n', 'locale/en.json': '{}', 'locale/zh.json': '{}',
-    'icon.svg': '<svg/>', 'README.md': 'Fixture', 'README.en.md': 'English fixture', LICENSE: 'Fixture license', 'THIRD_PARTY_NOTICES.txt': 'Fixture notices',
+    'icon.svg': '<svg/>', 'assets/logo-1024.png': 'Fixture image',
+    'README.md': 'Fixture', 'README.en.md': 'English fixture', LICENSE: 'Fixture license', 'THIRD_PARTY_NOTICES.txt': 'Fixture notices',
   };
   for (const [file, bytes] of Object.entries(files)) {
     await mkdir(`${source}/${file.slice(0, file.lastIndexOf('/') + 1)}`, { recursive: true });
@@ -114,6 +115,12 @@ test('Tarball verification accepts complete bytes and rejects corrupt payloads o
   pack();
   const complete = verify();
   assert.equal(complete.status, 0, complete.stderr);
+  await rm(`${directory}/stage/package/assets/logo-1024.png`);
+  pack();
+  const missingLogo = verify();
+  assert.equal(missingLogo.status, 1);
+  assert.match(missingLogo.stderr, /ENOENT.*assets\/logo-1024\.png/);
+  await writeFile(`${directory}/stage/package/assets/logo-1024.png`, files['assets/logo-1024.png']);
   await writeFile(`${directory}/stage/package/README.en.md`, 'Stale English documentation');
   pack();
   const staleReadme = verify();

@@ -55,7 +55,7 @@ import { registerOnboardingNotice } from './onboarding-notice.js';
 import type { StartOnboardingInput } from '../shared/onboarding.js';
 import { FirstChatHint } from './components/FirstChatHint.js';
 import { SessionBotBadge } from './components/SessionBotBadge.js';
-import { WhaleGlyph } from './components/WhaleGlyph.js';
+import { BotBrandGlyph } from './components/BotBrandGlyph.js';
 import { SessionBotLeading, SessionBotHover, type SessionBotRowInjected } from './components/SessionBotLeading.js';
 import { BotSessionsSidebar, type BotSessionsSidebarInjected } from './components/BotSessionsSidebar.js';
 import type { MemoryCatalog } from './memory-state.js';
@@ -85,7 +85,7 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
 export const inject = ['slots', 'locale', 'remote', 'uiWorkspace', 'workspaces', 'sessions', 'layout'];
 
 function BotsIcon({ size }: PropsRuntime<'sidebar.panellist'>) {
-  return <WhaleGlyph size={size} />;
+  return <BotBrandGlyph size={size} />;
 }
 
 function unwrap<T>(result: RemoteResult<T>): T {

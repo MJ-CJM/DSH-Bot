@@ -1,7 +1,7 @@
 import type { GroupMember } from '../../shared/groups.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from './BotAvatar.js';
-import { WHALE_PATH } from './WhaleGlyph.js';
+import { BotBrandGlyph } from './BotBrandGlyph.js';
 
 export function GroupAvatar({ size = 24, label, members, bots = [] }: {
   size?: number;
@@ -22,10 +22,9 @@ export function GroupAvatar({ size = 24, label, members, bots = [] }: {
       {faces.map(({ key, bot }, index) => <BotAvatar key={key} bot={bot} size={cell} className={faces.length === 1 && index === 0 ? 'group-avatar-single' : undefined} />)}
     </figure>;
   }
-  return <svg width={size} height={size} viewBox="0 0 32 32" fill="currentColor"
-    data-group-avatar="whales" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}
-    style={{ flexShrink: 0, verticalAlign: 'middle', color: 'var(--dsw-alias-label-primary)' }}>
-    <path d={WHALE_PATH} transform="translate(8 1) scale(.96)" />
-    <path d={WHALE_PATH} transform="translate(0 17) scale(.78)" />
-  </svg>;
+  return <span
+    data-group-avatar="whales" role="img" aria-label={label} aria-hidden={label ? undefined : true}
+    style={{ display: 'inline-flex', width: size, height: size, flexShrink: 0, verticalAlign: 'middle', color: 'var(--dsw-alias-label-primary)' }}>
+    <BotBrandGlyph size={size} />
+  </span>;
 }

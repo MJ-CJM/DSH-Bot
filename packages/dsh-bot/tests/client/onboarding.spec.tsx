@@ -85,12 +85,16 @@ it('identifies an empty native main Session from Host status and shows each cust
   expect(container.querySelector('[data-bot-avatar="emoji"]')?.textContent).toBe('🐙');
   expect(container.querySelector('[data-bot-session-leading]')?.getAttribute('data-session-id')).toBe(sessionId);
 });
-it('uses two distinct whale silhouettes at the native 16px size', async () => {
+it('uses the three-whale group mark at the native 16px size with an accessible name', async () => {
   const { root, container } = await surface();
   await act(async () => root.render(<GroupAvatar size={16} label="Group chat" />));
-  expect(container.querySelector('[data-group-avatar="whales"]')?.getAttribute('width')).toBe('16');
-  expect(container.querySelectorAll('svg path')).toHaveLength(2);
-  expect(container.querySelectorAll('svg path')[0]?.getAttribute('transform')).not.toBe(container.querySelectorAll('svg path')[1]?.getAttribute('transform'));
+  const avatar = container.querySelector('[data-group-avatar="whales"]');
+  expect(avatar?.getAttribute('role')).toBe('img');
+  expect(avatar?.getAttribute('aria-label')).toBe('Group chat');
+  expect(avatar?.querySelector('svg')?.getAttribute('width')).toBe('16');
+  expect(avatar?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  expect([...container.querySelectorAll('svg path')].map(path => path.getAttribute('data-bot-brand-part')))
+    .toEqual(['glasses', 'sleeping', 'classic']);
 });
 it('claims only the strict onboarding source with its exact input id, never human or other plugin messages', () => {
   const source = { kind: 'dsh-bot-onboarding', botId: record.id, botCreatedAt: record.createdAt, operationId, sessionId,
