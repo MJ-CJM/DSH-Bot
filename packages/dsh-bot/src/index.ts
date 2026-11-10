@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { Config as HostConfig } from './host/registry-config.js';
 
 // Deliberately no static local runtime imports: link failures must reach this boundary.
-export const VERSION = '0.6.5';
+export const VERSION = '0.6.6';
 export const name = 'dsh-bot';
 const restart = 'DSH-Bot 模块版本不一致或加载失败。请完全退出并重新打开 DSH。 '
   + 'DSH-Bot modules are stale or could not load. Fully quit and reopen DSH.';
@@ -43,10 +43,10 @@ try {
 export const inject = runtime?.inject ?? [];
 export type Config = HostConfig;
 export const Config: typeof import('./host/index.js').Config = runtime?.Config
-  ?? Schema.transform(Schema.any(), () => { throw new Error(restart); });
+  ?? Schema.transform(Schema.any(), () => { throw new Error(restart); }).default({}).volatile();
 export type DshBotRegistry = import('./host/index.js').DshBotRegistry;
 export const DshBotRegistry = runtime?.DshBotRegistry;
-export function apply(ctx: Context, config: HostConfig): void {
+export function apply(ctx: Context, config: ReturnType<typeof Config>): void {
   // Even an already cached bootstrap must refuse a subsequently replaced installation.
   try { verifyInstallation(); } catch { throw new Error(restart); }
   if (!runtime) throw new Error(restart);

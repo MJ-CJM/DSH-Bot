@@ -17,11 +17,13 @@ export function ManagementPanel({
   bots,
   actions,
   createMemoryPanel,
+  active = true,
   t,
 }: {
   bots: BotRecord[];
   actions: WorkspaceActions;
   createMemoryPanel: BotsPageInjected['createMemoryPanel'];
+  active?: boolean;
 } & Locale) {
   const uid = useId();
   const embedded = Boolean(useContext(SettingsBotContext));
@@ -30,6 +32,8 @@ export function ManagementPanel({
   return (
     <section className={styles.panel} aria-label={t('manage.memoryTools')}>
       <style>{css}</style>
+      <p>{t('shared.personalContextHint')}</p>
+      <p>{t('shared.contextTiming')}</p>
       {!embedded && <ManagementHeader title={t('manage.memoryTools')} selector={{ bots, value: bot?.id ?? '', onChange: setId }} t={t} />}
       <SegmentedTabs label={t('manage.memoryTools')} value={tab} onChange={setTab} items={[{ value: 'records', id: `${uid}-records`, panelId: `${uid}-records-panel`, label: t('manage.records') }, { value: 'graph', id: `${uid}-graph`, panelId: `${uid}-graph-panel`, label: t('manage.graph') }, { value: 'transfer', id: `${uid}-transfer`, panelId: `${uid}-transfer-panel`, label: t('manage.transfer') }]} />
       <RetainedPanel id={`${uid}-transfer-panel`} labelledBy={`${uid}-transfer`} active={tab === 'transfer'}>
@@ -41,19 +45,19 @@ export function ManagementPanel({
             <GraphPanel key={`${bot.id}:${bot.createdAt}`} active={tab === 'graph'} bot={bot} actions={actions} t={t} />
           </RetainedPanel>
           <RetainedPanel id={`${uid}-records-panel`} labelledBy={`${uid}-records`} active={tab === 'records'}>
-            <RecordsPanel key={`${bot.id}:${bot.createdAt}`} bot={bot} create={createMemoryPanel} t={t} />
+            <RecordsPanel key={`${bot.id}:${bot.createdAt}`} bot={bot} create={createMemoryPanel} active={active && tab === 'records'} t={t} />
           </RetainedPanel>
         </>
       )}
     </section>
   );
 }
-function RecordsPanel({ bot, create, t }: { bot: BotRecord; create: BotsPageInjected['createMemoryPanel'] } & Locale) {
+function RecordsPanel({ bot, create, active, t }: { bot: BotRecord; create: BotsPageInjected['createMemoryPanel']; active: boolean } & Locale) {
   const [panel, setPanel] = useState<ReturnType<typeof create>>();
   useEffect(() => {
     const value = create(bot.id);
     setPanel(value);
     return value.dispose;
   }, [bot.id, create]);
-  return panel ? <MemoryPanel {...panel} bot={bot} t={t} /> : <p role="status">{t('memory.loading')}</p>;
+  return panel ? <MemoryPanel {...panel} bot={bot} t={t} active={active} /> : <p role="status">{t('memory.loading')}</p>;
 }

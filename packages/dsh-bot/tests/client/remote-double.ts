@@ -255,6 +255,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
     openAttachment: vi.fn<GroupMethods["openAttachment"]>(),
 		markRead: vi.fn<GroupMethods["markRead"]>(async () => ({ ok: true, value: true })),
 		list: vi.fn<GroupMethods["list"]>(async () => ({ ok: true, value: data.groups })),
+		recallForBot: vi.fn<GroupMethods["recallForBot"]>(async () => ({ ok: true, value: { items: [], incomplete: false } })),
 		view: vi.fn<GroupMethods["view"]>(async () => {
 			if (!data.groupView) throw new Error("No group fixture");
 			return { ok: true, value: data.groupView };

@@ -8,13 +8,15 @@ import { homedir } from 'node:os';
 import { webHost } from './deepening/b4-web-host.mjs';
 import { openSidebarSession } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
-assert.deepEqual(process.argv.slice(2), ['--mock-only']);
+const [mode, artifact] = process.argv.slice(2);
+assert.equal(mode, '--mock-only');
+assert.ok(process.argv.length <= 4);
 const root = process.cwd(); assert.equal(process.env.DSH_HOME, resolve(root, '.dsh-dev'));
 const require = createRequire(resolve(root, 'packages/dsh-bot/package.json')), { chromium } = require('playwright-core');
 const version = process.env.DSH_BOT_DSH_BIN?.includes('native-api-rc2') ? 'rc2' : 'local-runtime';
 const dir = resolve(root, `.dsh-dev/bot-presence/${version}-${Date.now()}`);
 const out = resolve(root, `output/playwright/bot-presence/${version}-${Date.now()}`); await mkdir(out, { recursive: true });
-const host = await webHost(dir, 'presence', undefined, resolve(root, 'packages/dsh-bot/tests/bot-message-presence-profile.mjs'));
+const host = await webHost(dir, 'presence', artifact ? resolve(artifact) : undefined, resolve(root, 'packages/dsh-bot/tests/bot-message-presence-profile.mjs'));
 let browser, page, stopped = false;
 const checks = [], errors = [], warnings = [], limitations = [], check = (name, condition) => { assert.ok(condition, name); checks.push(name); };
 try {
@@ -90,7 +92,10 @@ try {
     check(`${language}/${theme}/${width}: compact content has no horizontal overflow`, await noOverflow()
       && await reviewerPanel.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
     await page.screenshot({ animations: 'disabled', path: join(out, `${language}-${theme}-${width}-preview-peer.png`) });
-    await page.setViewportSize({ width, height: 360 });
+    const role = reviewerPanel.getByText(t['botPanel.role'], { exact: true });
+    check(`${language}/${theme}/${width}: the role description starts collapsed`, await role.evaluate(el => !el.parentElement.open));
+    await role.click();
+    await page.setViewportSize({ width, height: 240 });
     const scroll = await dialog.evaluate(el => {
       const region = [...el.querySelectorAll('div')].find(node => getComputedStyle(node).overflowY === 'auto' && node.scrollHeight > node.clientHeight);
       if (!region) return null;
@@ -99,7 +104,7 @@ try {
       return { top: r.top, bottom: r.bottom, scrollTop: region.scrollTop, overflow: region.scrollWidth > region.clientWidth + 1 };
     });
     check(`${language}/${theme}/${width}: short windows scroll inside the preview within native viewport margins`, scroll
-      && scroll.scrollTop > 0 && scroll.top >= 23 && scroll.bottom <= 337 && !scroll.overflow);
+      && scroll.scrollTop > 0 && scroll.top >= 23 && scroll.bottom <= 217 && !scroll.overflow);
     await page.screenshot({ animations: 'disabled', path: join(out, `${language}-${theme}-${width}-preview-short.png`) });
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden' });
@@ -112,27 +117,40 @@ try {
     await plannerPanel.waitFor();
     check(`${language}/${theme}/${width}: header badge opens the current Bot`, await plannerPanel.locator('[data-bot-panel-current]').isVisible());
     await plannerPanel.getByRole('tab', { name: t['botPanel.tasks'], exact: true }).click();
-    check(`${language}/${theme}/${width}: task content remains available`, await plannerPanel.locator('[data-routine-panel="planner"]').isVisible());
+    const workLink = plannerPanel.getByRole('button', { name: t['botPanel.otherWork'], exact: true });
+    check(`${language}/${theme}/${width}: task preview links to the existing work page`, await workLink.isVisible()
+      && !await plannerPanel.locator('[data-routine-panel="planner"]').isVisible());
+    await workLink.click();
+    const workDetail = page.locator('[data-bot-detail="planner"]');
+    await workDetail.getByRole('tab', { name: t['detail.work'], exact: true, selected: true }).waitFor();
+    await page.waitForFunction(() => document.activeElement?.hasAttribute('data-bot-other-work'));
+    const routinePanel = workDetail.locator('[data-routine-panel="planner"]');
+    await routinePanel.waitFor();
     if (receipt.nativeScheduleApi === 'session-first') {
-      const editTask = plannerPanel.locator('[data-routine-id]').getByRole('button', { name: t['card.edit'], exact: true });
+      const editTask = routinePanel.locator('[data-routine-id]').getByRole('button', { name: t['card.edit'], exact: true });
       await editTask.click();
       const taskDialog = page.getByRole('dialog', { name: t['routine.edit'], exact: true });
       await taskDialog.waitFor();
-      check(`${language}/${theme}/${width}: task editor opens above the preview`, await taskDialog.evaluate(el => el.contains(document.activeElement)));
-      check(`${language}/${theme}/${width}: nested editor loads its own chrome styles`, await taskDialog.locator('header').evaluate(el =>
+      check(`${language}/${theme}/${width}: the work page task editor owns focus`, await taskDialog.evaluate(el => el.contains(document.activeElement)));
+      check(`${language}/${theme}/${width}: the work page editor loads its own chrome styles`, await taskDialog.locator('header').evaluate(el =>
         getComputedStyle(el).display === 'flex' && parseFloat(getComputedStyle(el).paddingLeft) >= 16));
       await page.screenshot({ animations: 'disabled', path: join(out, `${language}-${theme}-${width}-nested-task-editor.png`) });
       await page.keyboard.press('Escape');
       await taskDialog.waitFor({ state: 'hidden' });
-      check(`${language}/${theme}/${width}: nested Escape keeps the preview and restores editor-trigger focus`, await dialog.isVisible()
+      check(`${language}/${theme}/${width}: Escape keeps the work page and restores editor-trigger focus`, await workDetail.isVisible()
         && await editTask.evaluate(el => el === document.activeElement));
     } else {
       // The existing task aggregation expects catalog.sessionId. Newer Hosts moved it to target.sessionId.
       // Do not rewrite fixture records or pretend this unrelated compatibility check passed.
-      limitations.push({ case: `${language}/${theme}/${width}`, status: 'FAIL', check: 'native routine catalog and nested editor',
+      limitations.push({ case: `${language}/${theme}/${width}`, status: 'FAIL', check: 'native routine catalog and work-page editor',
         reason: 'New request-target Schedule API is not mapped by the existing Bot routine aggregation.',
-        visibleRoutineCount: await plannerPanel.locator('[data-routine-id]').count() });
+        visibleRoutineCount: await routinePanel.locator('[data-routine-id]').count() });
     }
+    await page.setViewportSize({ width: 1440, height: 860 });
+    await openSidebarSession(page, receipt.mains.planner);
+    await page.setViewportSize({ width, height: 860 });
+    await badge.click();
+    await plannerPanel.waitFor();
     await plannerPanel.getByRole('tab', { name: t['botPanel.messages'], exact: true }).click();
     check(`${language}/${theme}/${width}: message section is selectable`, await plannerPanel.getByRole('tab', { name: t['botPanel.messages'], exact: true }).getAttribute('aria-selected') === 'true');
     await page.screenshot({ animations: 'disabled', path: join(out, `${language}-${theme}-${width}-preview-messages.png`) });
@@ -152,7 +170,7 @@ try {
     const sidebarPanel = page.locator('[data-bot-panel="planner"]');
     await sidebarPanel.waitFor();
     check(`${language}/${theme}/${width}: explicit sidebar action preserves the selected Bot and section`, await sidebarPanel.getByRole('tab', { name: t['botPanel.tasks'], exact: true }).getAttribute('aria-selected') === 'true'
-      && await sidebarPanel.locator('[data-routine-panel="planner"]').isVisible() && await noOverflow());
+      && await sidebarPanel.getByRole('button', { name: t['botPanel.openWork'], exact: true }).isVisible() && await noOverflow());
     await page.screenshot({ animations: 'disabled', path: join(out, `${language}-${theme}-${width}-sidebar-opt-in.png`) });
     await context.close();
   }

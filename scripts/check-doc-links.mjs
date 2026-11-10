@@ -11,7 +11,9 @@ const list = (args) => execFileSync('git', ['ls-files', '-z', ...args], { cwd: r
   .split('\0').filter(Boolean).filter(publicPath);
 // Include new, non-ignored public files so the check works before staging a PR.
 const files = new Set([...list([]), ...list(['--others', '--exclude-standard'])]);
-const markdown = [...files].filter((name) => /\.md$/i.test(name)).sort();
+// Vendored prompt templates carry placeholder links, not repository navigation.
+const markdown = [...files].filter((name) => /\.md$/i.test(name) &&
+  !name.startsWith('packages/dsh-bot/coordinator/vendor/')).sort();
 const failures = [];
 let checked = 0;
 

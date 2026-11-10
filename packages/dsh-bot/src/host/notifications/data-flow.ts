@@ -15,8 +15,10 @@ export async function notificationAdmission(registry: DshBotRegistry, owner: Bot
   return flow.admit(envelope);
 }
 export async function notificationSend<T>(ctx: Context, registry: DshBotRegistry, row: NotificationRecord, policy: NotificationPolicy,
-  currentPolicy: () => NotificationPolicy, send: () => Promise<T>, signal: AbortSignal): Promise<T> {
-  const flow = outlets(registry); if (!flow) return send();
+  currentPolicy: () => NotificationPolicy, send: () => Promise<T>, signal: AbortSignal, ownerReviewed = false): Promise<T> {
+  const flow = outlets(registry);
+  if (!flow && ownerReviewed) throw new Error("Reviewed notification requires managed data flow");
+  if (!flow) return send();
   const checkedSend = () => {
     const current = currentPolicy();
     if (!current.enabled || current.revision !== row.policyRevision || current.scopeDigest !== row.scopeDigest ||
@@ -37,6 +39,13 @@ export async function notificationSend<T>(ctx: Context, registry: DshBotRegistry
   // Generic policy approval never authorizes data egress. The exact destination/text needs native approval.
   const envelope = flow.draft('notify-send', row.owner, sessionId, `${row.id}:send`,
     { kind: 'external', destination: JSON.stringify([policy.channel, policy.targetRef, policy.targetDigest]) }, notificationContent(row));
+  if (ownerReviewed) {
+    if (row.source.kind !== 'proactive-review' || !row.reviewedDigest)
+      throw new Error('Missing exact owner review');
+    const grant = flow.checker.grants.issue(envelope.binding, envelope.content);
+    const id = await flow.admit(envelope, grant, signal);
+    return flow.dispatch(id, checkedSend, signal);
+  }
   const agent = ctx.get('agents')?.get(sessionId as import('@deepseek-ai/dsh-session').SessionId);
   if (!agent) throw new Error('Notification export needs a live native approval context');
   const grant = await flow.request(agent, envelope, signal), id = await flow.admit(envelope, grant, signal);

@@ -27,7 +27,8 @@ import { openBotStores } from '../lib/host/store.js';
 
 const isolatedHome = fileURLToPath(new URL('../../../.dsh-dev/', import.meta.url));
 const memoryToolNames = ['bot_memory_forget', 'bot_memory_list', 'bot_memory_save', 'bot_memory_search'];
-const botToolNames = ['bot_delegate', 'bot_manage', ...memoryToolNames].sort();
+const conversationToolNames = ['bot_delegate', 'bot_follow_up', 'bot_manage'];
+const botToolNames = [...conversationToolNames, ...memoryToolNames, 'bot_group_recall'].sort();
 const botIds = ['alpha', 'beta', 'disabled', 'readonly'];
 
 /** Real JSON storage, production AgentLoop/Tools/SystemPrompt and public scope APIs. */
@@ -202,7 +203,7 @@ describe('Bot memory through the production Agent loop and local Messages mock',
         tool.parameters)).not.toContain('botId');
     }
     expect(ctx.tools.schemas()).toEqual([]);
-    expect(ctx.tools.schemas(disabled.agent).map((tool) => tool.name).sort()).toEqual(['bot_delegate', 'bot_manage'].sort());
+    expect(ctx.tools.schemas(disabled.agent).map((tool) => tool.name).sort()).toEqual(conversationToolNames);
     expect(ctx.tools.schemas(plain)).toEqual([]);
     for (const agent of [disabled.agent, plain]) expect(await memoryText(agent)).toBeUndefined();
     expect(memoryFor.mock.calls.map(([id]) => id)).not.toContain('disabled');
@@ -222,20 +223,50 @@ describe('Bot memory through the production Agent loop and local Messages mock',
     expect(forget.isError).toBe(true);
     expect(stores.memories.listByBot('alpha', { limit: 20 })).toHaveLength(1);
 
-    expect(personaRegistry.personaListenerCount()).toBe(5);
+    expect(personaRegistry.personaListenerCount()).toBe(10);
     await first.dispose();
-    expect(personaRegistry.personaListenerCount()).toBe(4);
+    expect(personaRegistry.personaListenerCount()).toBe(8);
     expect(botContext.getBotBinding(first.agent)).toBeUndefined();
     expect(ctx.tools.schemas(first.agent)).toEqual([]);
     expect(await memoryText(first.agent)).toBeUndefined();
     expect(ctx.tools.schemas(second.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
     await presets.get('alpha')?.plugin.dispose();
-    expect(personaRegistry.personaListenerCount()).toBe(3);
+    expect(personaRegistry.personaListenerCount()).toBe(6);
     expect(botContext.getBotBinding(second.agent)).toBeUndefined();
     expect(ctx.tools.schemas(second.agent)).toEqual([]);
     expect(await memoryText(second.agent)).toBeUndefined();
     expect(ctx.tools.schemas(beta.agent).map((tool) => tool.name).sort()).toEqual(botToolNames);
     expect(await memoryText(beta.agent)).toContain('Beta private');
+  }));
+
+  it('removes and restores live group recall with the existing memory switch and deny list', async () => withRuntime(async ({
+    ctx, stores, create, assemble, personaRegistry,
+  }) => {
+    const first = await create('alpha'), beta = await create('beta'), disabled = await create('disabled');
+    const hasRecall = (agent: Agent) => ctx.tools.schemas(agent).some(tool => tool.name === 'bot_group_recall');
+    expect(hasRecall(first.agent)).toBe(true);
+    expect(hasRecall(disabled.agent)).toBe(false);
+    await stores.bots.update('alpha', { memory: { enabled: false, injectLimit: 20 } });
+    personaRegistry.notifyPersonaChanges();
+    expect(hasRecall(first.agent)).toBe(false);
+    expect(hasRecall(beta.agent)).toBe(true);
+    expect((await assemble(first.agent)).contexts.some(context => context.name === 'dsh-bot:group-recall')).toBe(false);
+    await stores.bots.update('alpha', { memory: { enabled: true, injectLimit: 20 } });
+    await stores.bots.update('disabled', { memory: { enabled: true, injectLimit: 20 } });
+    personaRegistry.notifyPersonaChanges();
+    expect(hasRecall(first.agent)).toBe(true);
+    expect(hasRecall(disabled.agent)).toBe(true);
+    for (const name of ['bot_group_recall', 'bot_memory_search']) {
+      await stores.bots.update('alpha', { tools: { deny: [name] } });
+      personaRegistry.notifyPersonaChanges();
+      expect(hasRecall(first.agent)).toBe(false);
+      await stores.bots.update('alpha', { tools: { deny: [] } });
+      personaRegistry.notifyPersonaChanges();
+      expect(hasRecall(first.agent)).toBe(true);
+    }
+    await first.dispose();
+    personaRegistry.notifyPersonaChanges();
+    expect(ctx.tools.schemas(first.agent)).toEqual([]);
   }));
 
   it('preserves literal runtime memory alongside an unchanged complete persona section', async () => withRuntime(async ({

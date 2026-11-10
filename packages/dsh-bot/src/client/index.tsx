@@ -1,3 +1,4 @@
+import {createFeedbackActions} from "./proactive/feedback-api.js";
 import { matchesCreation, restoreRecentPreferences } from './pages/recent-conversations.js';
 import { CAPABILITIES_REMOTE } from '../shared/capabilities-contract.js';
 import { createModelCatalog } from './model-catalog-state.js';
@@ -9,12 +10,15 @@ import { MESSAGING_REMOTE, messageOverviewSchema } from '../shared/messaging-con
 import { registerMessaging } from './messaging.js';
 import { registerBotPanel } from './bot-panel.js';
 import type { BotPanelSection } from './components/BotRightPanel.js';
+import { createProactiveWorkSource } from './proactive/work-state.js';
+import { createFollowUpSource } from './proactive/follow-up-state.js';
 import type { BotRecord } from '../shared/schema.js';
 import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
 import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
 import { createWorkspaceActions } from './workspace-state.js';
 import { GROUPS_REMOTE } from '../shared/groups-contract.js';
 import { createGroupActions } from './groups-state.js';
+import { createGroupRecallBinding } from './group-recall.js';
 import { GroupSessionBadge } from './components/GroupSessionBadge.js';
 import { registerWorkspaceGroups } from './workspace-group.js';
 import { COLLABORATION_REMOTE } from '../shared/collaboration-contract.js';
@@ -22,6 +26,7 @@ import { createCollaborationActions } from './collaboration-state.js';
 import { INTEGRATIONS_REMOTE } from '../shared/integrations-contract.js';
 import { createIntegrationActions } from './integrations-state.js';
 import NATIVE_SCHEDULE_REMOTE from '@deepseek-ai/dsh-schedule/remote';
+import { PROACTIVE_REMOTE } from '../shared/proactive/remote-contract.js';
 import { AUTOMATION_REMOTE } from '../shared/automation-contract.js';
 import { createRoutineActions } from './automation-state.js';
 import type { Context } from '@deepseek-ai/cordis';
@@ -55,7 +60,7 @@ import { SessionBotLeading, SessionBotHover, type SessionBotRowInjected } from '
 import { BotSessionsSidebar, type BotSessionsSidebarInjected } from './components/BotSessionsSidebar.js';
 import type { MemoryCatalog } from './memory-state.js';
 import { memoryPanelFactory } from './memory-panel.js';
-import { createBotDetailSource } from './detail-state.js';
+import { createBotDetailSource, type BotDetailDestination } from './detail-state.js';
 import { createPageNavigation } from './pages/page-navigation.js';
 import { createBotCatalog } from './state.js';
 import { createActivityCatalog } from './activity-state.js';
@@ -103,6 +108,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     await ctx.effect(async () => await ctx.remote.$mount(NATIVE_SUBAGENTS_REMOTE), 'dsh-bot: native subagent Remote');
   if (!ctx.get('remote.permissionPresets'))
     await ctx.effect(async () => await ctx.remote.$mount(NATIVE_PERMISSION_REMOTE), 'dsh-bot: native permission Remote');
+  await ctx.effect(() => ctx.remote.$mount(PROACTIVE_REMOTE), 'dsh-bot: proactive Remote');
   await ctx.effect(async () => await ctx.remote.$mount(AUTOMATION_REMOTE), 'dsh-bot: automation Remote');
   await ctx.effect(async () => await ctx.remote.$mount(INTEGRATIONS_REMOTE), 'dsh-bot: integration Remote');
   await ctx.effect(async () => await ctx.remote.$mount(COLLABORATION_REMOTE), 'dsh-bot: collaboration Remote');
@@ -125,7 +131,9 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const routines = createRoutineActions(ctx, config);
   const integrations = createIntegrationActions(ctx, config);
   const collaboration = createCollaborationActions(ctx, config);
-  const groups = createGroupActions(ctx, config);
+  const followUp = createFollowUpSource(ctx, config);
+  const groups = { ...createGroupActions(ctx, config), followUp };
+  const groupRecall = createGroupRecallBinding(groups, t, (bot, prompt, signal) => askBot(bot, prompt, signal));
   const management = createWorkspaceActions(ctx, config);
   // Host and Client ambient Context declarations share a TS program here;
   // this entry runs only on the Client and uses its public service contract.
@@ -210,7 +218,47 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     signal?: AbortSignal,
     beforeOpen?: (id: SessionId) => void,
   ) => startBot(id, signal, beforeOpen);
+  const proactiveRemote = () => {
+    const remote = ctx.get('remote.dshBot.proactive');
+    if (!active || !remote) throw new Error('Proactive coordinator unavailable');
+    return remote;
+  };
+  const proactiveWork = createProactiveWorkSource(ctx, {
+    page: async (owner, collection) => unwrap(await proactiveRemote().activityPage({ owner, collection })),
+    status: async () => unwrap(await proactiveRemote().status()),
+    responsibilities: async owner => unwrap(await proactiveRemote().responsibilities(owner)),
+    suggestions: async owner => unwrap(await proactiveRemote().botSuggestions(owner)),
+    work: async owner => unwrap(await proactiveRemote().botWork(owner)),
+  }, config);
   const page: BotsPageInjected = {
+    proactiveWork,
+    followUp,
+    onOpenFollowUpWork: (owner, id) => detail.open(owner.botId, {
+      botCreatedAt: owner.botCreatedAt, section: 'work', target: { kind: 'work', id },
+    }),
+    proactiveGovernance: { forget: async input => unwrap(await proactiveRemote().forgetSource(input)) },
+ proactiveFeedback:createFeedbackActions(ctx,()=>active),
+ proactiveResponsibilities:{list:async owner=>unwrap(await proactiveRemote().responsibilities(owner)),mutate:async input=>unwrap(await proactiveRemote().changeResponsibility(input))},
+    proactive: {
+      activityPage: async input => unwrap(await proactiveRemote().activityPage(input)),
+      setup: async input => unwrap(await proactiveRemote().setup(input)),
+      submitDocument: async input => unwrap(await proactiveRemote().submitDocument(input)),
+      reconcileWork: async input => unwrap(await proactiveRemote().reconcileWork(input)),
+      workDetail: async input => unwrap(await proactiveRemote().workDetail(input)),
+      workContinuation: async input => unwrap(await proactiveRemote().workContinuation(input)),
+      adjust:async input=>unwrap(await proactiveRemote().adjustSuggestion(input)),
+      change: async input => unwrap(await proactiveRemote().changeSuggestion(input)),
+      feedback: async input => unwrap(await proactiveRemote().feedback(input)),
+ workHistory:async input=>unwrap(await proactiveRemote().workHistory(input)),
+ workspaceReview:async input=>unwrap(await proactiveRemote().workspaceReview(input)),
+      groupReview: async input => unwrap(await proactiveRemote().groupReview(input)),
+      externalNotice: async input => unwrap(await proactiveRemote().externalNotice(input)),
+      accept: async input => unwrap(await proactiveRemote().accept(input)),
+      cancel: async input => unwrap(await proactiveRemote().cancel(input)),
+      pause: async input => unwrap(await proactiveRemote().pause(input)),
+      revokeSource: async input => unwrap(await proactiveRemote().revokeSource(input)),
+      review: async input => unwrap(await proactiveRemote().review(input)),
+    },
     models,
     background: createBackgroundActions(ctx, config),
     messages: { subscribe(refresh) { return ctx.effect(() => sharedPollingScheduler(ctx, config).register({
@@ -238,7 +286,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onCountMemories: async (id) => unwrap(await memoryRemote().count(id)),
     createMemoryPanel: memoryPanelFactory(ctx, memories, () => ({
       pollIntervalMs: catalog.getSnapshot().pollIntervalMs, pageSize: config.memoryPageSize,
-    }), memoryRemote, openSession),
+    }), memoryRemote, openSession, groupRecall),
     onRefresh: refresh,
     getPreferredWorkspace: () => preferredWorkspace,
     onPollInterval: (value) => {
@@ -310,25 +358,27 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     },
     { open: openSession, start: startBot, startInWorkspace: startBotInWorkspace },
   );
-  const showBotPage = (id: string) => {
+  const showBotPage = (id: string, destination?: BotDetailDestination) => {
     if (!active) return;
-    detail.open(id);
+    detail.open(id, destination);
     ctx.layout.selectPanel('dsh-bot' as MainPanelId);
   };
   // Compact details preserve the chat width; native sidebar and full settings remain explicit actions.
   const botPanel = registerBotPanel(ctx, {
     hooks: { catalog },
-    routines,
-    background: page.background,
+    proactiveWork,
+    followUp,
     messages: page.messages,
     onOpenSession: (id) => openSession(id),
     onStart: (id) => startBot(id),
-    onOpenSettings: showBotPage,
+    onOpenMemory: owner => showBotPage(owner.botId, { botCreatedAt: owner.botCreatedAt, section: 'memory' }),
+    onOpenSettings: owner => showBotPage(owner.botId, { botCreatedAt: owner.botCreatedAt }),
+    onOpenWork: (owner, target) => showBotPage(owner.botId, { botCreatedAt: owner.botCreatedAt, section: 'work', target }),
   });
   const openBot = (id: string, section?: BotPanelSection) => {
     if (active && !botPanel.open(id, section)) showBotPage(id);
   };
-  const askBot = async (bot: BotRecord, prompt: string, signal?: AbortSignal) => {
+  const askBot = async (bot: Pick<BotRecord, 'id' | 'createdAt'>, prompt: string, signal?: AbortSignal) => {
     if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
     const current = unwrap(await remote().get(bot.id));

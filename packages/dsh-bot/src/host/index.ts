@@ -1,3 +1,5 @@
+import { onlyProactiveChanged, ProactiveLifecycle } from './proactive/lifecycle.js';
+import { mountFollowUpEvents } from './proactive/follow-up-events.js';
 import { Onboarding } from './onboarding/coordinator.js';
 import { Capabilities } from './capabilities/service.js';
 import { CapabilitiesRemote, CAPABILITIES_HOST } from './capabilities/remote.js';
@@ -20,7 +22,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/cordis-plugin-loader';
 import type {} from '@deepseek-ai/dsh-typert-registry';
 import { TYPERT } from '../typert.host.js';
-import { Config, DshBotRegistry } from './registry.js';
+import { Config as RegistryConfig, DshBotRegistry } from './registry.js';
 import { registerStandardBotManage } from './tools/bot-manage.js';
 import { DshBotMemoryRemote } from './memory/remote.js';
 import { MemoryForgetting } from './memory/forget-service.js';
@@ -30,7 +32,8 @@ import type { AutomationStatus } from '../shared/automation-contract.js';
 import { MainSessions } from './main-session.js';
 import { startAutomation } from './automation/coordinator.js';
 import { startShadow } from './shadow/service.js';
-export { Config, DshBotRegistry };
+export const Config = RegistryConfig.volatile();
+export { DshBotRegistry };
 export const name = 'dsh-bot';
 export const inject = [
   'storageDomain',
@@ -45,13 +48,32 @@ export const inject = [
   'workspaceRegistry',
   'subagents',
 ];
-export function apply(ctx: Context, config: Config): void {
+export function apply(ctx: Context, config: ReturnType<typeof Config>): void {
   let automation: Awaited<ReturnType<typeof startAutomation>> | undefined;
   let status: AutomationStatus = { state: 'starting' };
+  const snapshot = (): RegistryConfig => {
+    const validated = config.get();
+    if (!validated) throw new Error('DSH-Bot settings are missing');
+    return structuredClone(validated) as RegistryConfig;
+  };
+  let applied = snapshot();
+  const proactive = new ProactiveLifecycle(ctx, () => applied);
+  proactive.install();
+  ctx.effect(() => ctx.on('loader/volatile-update', () => {
+    const next = snapshot();
+    const hot = onlyProactiveChanged(applied, next);
+    applied = next;
+    if (hot) {
+      void proactive.replace().catch(error => ctx.logger.error('[dsh-bot] proactive settings update failed', error));
+    } else {
+      proactive.stopAdmission();
+      void ctx.fiber.restart().catch(error => ctx.logger.error('[dsh-bot] settings restart failed', error));
+    }
+  }), 'dsh-bot: native volatile settings');
   ctx.effect(() => ctx.typert.register(AUTOMATION_HOST), 'dsh-bot: native schedule contract');
   new AutomationStatusRemote(ctx, () => structuredClone(status));
   ctx.effect(() => ctx.typert.register(TYPERT), 'dsh-bot: Host Remote contract');
-  const registry = new DshBotRegistry(ctx, config, () => ctx.loader.await());
+  const registry = new DshBotRegistry(ctx, structuredClone(applied), () => ctx.loader.await());
   new DshBotMemoryRemote(ctx);
   new DshBotActivityRemote(ctx);
   if (registry.config.enableBotManageInStandard) registerStandardBotManage(ctx);
@@ -70,6 +92,9 @@ export function apply(ctx: Context, config: Config): void {
     .then(async () => {
       if (stopping) return;
       registry.shadow = await startShadow(ctx, registry.config);
+      const capabilities = new Capabilities(ctx, registry);
+      ctx.effect(() => () => capabilities.close(), 'dsh-bot: capabilities');
+      await proactive.start(capabilities);
       const sidecars = await openIntegrationStores(ctx);
       const connectors = new Connectors(ctx, sidecars, registry, registry.config.connectorApplyTimeoutMs, () =>
         registry.invalidate(),
@@ -198,13 +223,13 @@ export function apply(ctx: Context, config: Config): void {
       if (!groups) throw new Error('Groups startup failed');
       await groups.start();
       ctx.effect(() => ctx.provide('dshBotGroups', groups as Groups), 'dsh-bot: groups service');
+      ctx.get('dshBotProactive')?.scheduleGroupFollowUps();
       new GroupsRemote(ctx, groups);
       await ctx.effect(() => ctx.typert.register(GROUPS_HOST), 'dsh-bot: groups Remote');
-      const capabilities = new Capabilities(ctx, registry);
-      ctx.effect(() => () => capabilities.close(), 'dsh-bot: capabilities');
       new CapabilitiesRemote(ctx, capabilities);
       await ctx.effect(() => ctx.typert.register(CAPABILITIES_HOST), 'dsh-bot: capabilities Remote');
       automation = await startAutomation(ctx, registry);
+      await mountFollowUpEvents(ctx, registry);
       await ctx.effect(async () => {
         const forget = new MemoryForgetting(ctx, registry);
         registry.memoryForget = forget;

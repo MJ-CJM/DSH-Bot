@@ -87,7 +87,7 @@ export class MainSessions {
     if (!persistence) throw new DshBotError('bot/unavailable', 'Session metadata is unavailable');
     return (await persistence.stat(id as SessionId))?.header;
   }
-  private async eligible(id: string, bot: BotRecord): Promise<boolean> {
+  private async eligible(id: string, bot: BotRecord, persisted = false): Promise<boolean> {
     const meta = await this.header(id);
     if (
       !meta ||
@@ -101,7 +101,14 @@ export class MainSessions {
     const live = this.ctx.agents.get(id as SessionId);
     if (live) {
       const binding = getBotBinding(live);
-      return binding?.botId === bot.id && binding.botCreatedAt === bot.createdAt;
+      if (binding) return binding.botId === bot.id && binding.botCreatedAt === bot.createdAt;
+      // ConfigEditor remounts the Host while native Agents may stay retained.
+      // Missing process-local context is not evidence that their durable Bot
+      // identity disappeared. Only an exact saved incarnation may use this
+      // fallback; it never binds an Agent or grants execution permissions.
+      if (!persisted) return false;
+      const selected = this.ctx.get('sessionProjections')?.snapshot(live.session).values.agentPreset;
+      return (selected ?? meta.agentPreset) === `${this.bots.config.presetIdPrefix}${bot.id}`;
     }
     return meta.agentPreset === `${this.bots.config.presetIdPrefix}${bot.id}`;
   }
@@ -131,7 +138,7 @@ export class MainSessions {
     const table = this.domain.table('bindings');
     const saved = table.get(key);
     let binding = saved;
-    if (binding && !(await this.eligible(binding.sessionId, bot))) {
+    if (binding && !(await this.eligible(binding.sessionId, bot, true))) {
       // Tombstone an invalid mapping without deleting any session.
       this.pinned.delete(binding.sessionId);
       binding = undefined;

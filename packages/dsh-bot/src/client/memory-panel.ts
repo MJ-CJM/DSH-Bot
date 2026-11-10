@@ -6,7 +6,7 @@ import type { MemoryPanelProps } from './components/MemoryPanel.js';
 import { createMemoryCatalog, type MemoryCatalog, type MemoryCatalogOptions } from './memory-state.js';
 
 export function memoryPanelFactory(ctx: Context, memories: Set<MemoryCatalog>, options: () => MemoryCatalogOptions,
-  remote: () => DshBotRemoteMethods['memory'], onOpenSession: MemoryPanelProps['onOpenSession']) {
+  remote: () => DshBotRemoteMethods['memory'], onOpenSession: MemoryPanelProps['onOpenSession'], groupRecall: MemoryPanelProps['groupRecall']) {
   const unwrap = <T,>(result: RemoteResult<T>): T => { if (!result.ok) throw result.error; return result.value; };
   return (id: string): Omit<MemoryPanelProps, 'bot' | 't'> & { dispose(): void } => {
     const memory = createMemoryCatalog(ctx, id, options());
@@ -17,6 +17,7 @@ export function memoryPanelFactory(ctx: Context, memories: Set<MemoryCatalog>, o
     };
     return {
       catalog: memory,
+      groupRecall,
       shared: { catalog: shared, remote, refresh: async () => { await Promise.all([shared.refresh(), memory.refresh()]); } },
       dispose: () => { memories.delete(memory); memory.dispose(); shared.dispose(); },
       onSave: input => write(() => remote().save(id, input)),

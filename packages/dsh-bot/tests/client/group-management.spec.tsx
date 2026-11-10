@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Context } from '@deepseek-ai/cordis';
+import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { ISessions, SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client';
@@ -11,6 +12,7 @@ import type { ExecutionBridge } from '../../src/client/group-execution.js';
 import { GroupStatsSource } from '../../src/client/group-statistics.js';
 import type { BotRecord } from '../../src/shared/schema.js';
 import { createGroupActions } from '../../src/client/groups-state.js';
+import { createFollowUpSource } from '../../src/client/proactive/follow-up-state.js';
 import { filterGroupDirectory, groupMemberModel } from '../../src/client/group-management.js';
 import { GroupDirectory } from '../../src/client/components/GroupDirectory.js';
 import { GroupActivityView, GroupMembersView, GroupOverview } from '../../src/client/components/GroupOverview.js';
@@ -53,6 +55,38 @@ describe('group directory', () => {
 });
 
 describe('group overview', () => {
+  it('opens scoped follow-up details inside the existing activity tab', async () => {
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    const data = view(), group = { groupId: data.group.id, groupCreatedAt: data.group.createdAt };
+    const subject = { kind: 'group', group };
+    data.turns = [{ id: 'turn:one', group, operationId: 'op:one', requestDigest: 'digest', inputMessageId: 'question:one',
+      createdAt: 1, updatedAt: 1, revision: 1, schemaVersion: 1, membershipRevision: 1, orderedMemberIds: [],
+      mode: 'natural', contextThroughSeq: 1, state: 'completed' }];
+    const row = { id: 'follow-up-one', decisionId: 'decision-one', revision: 1, title: 'Check release output',
+      subject, origin: { kind: 'group-turn', turnId: 'turn:one' }, state: 'open',
+      observedAt: '2026-11-09T00:00:00.000Z', condition: { kind: 'needs-review' } };
+    const followUpPage = vi.fn(async () => ({ ok: true, value: { rows: [row] } }));
+    const followUpSummary = vi.fn(async () => ({ ok: true, value: { state: 'ready', configEpoch: null, scopeOnly: true,
+      summary: { legacyCiActive: false, rows: [row], policy: { subject, revision: 1,
+        localEnabled: true, legacyCi: 'denied', pauseEpoch: 1, observationStart: 1 } } } }));
+    const ctx = new Context();
+    ctx.provide('remote.dshBot.groups', { view: async () => ({ ok: true, value: data }) } as unknown as GroupMethods);
+    ctx.provide('remote.dshBot.proactive', { followUpPage, followUpSummary } as unknown as TypertRemoteNamespaceMap['dshBot.proactive']);
+    const actions = { ...createGroupActions(ctx, {}), followUp: createFollowUpSource(ctx, {}) };
+    const onOpenRun = vi.fn();
+    const element = document.createElement('div'), root = createRoot(element);
+    try {
+      await act(async () => root.render(<GroupOverview summary={summary()} actions={actions} bots={bots} onOpenRun={onOpenRun} t={t} />));
+      expect(followUpSummary).toHaveBeenCalledExactlyOnceWith(subject);
+      expect(followUpPage).not.toHaveBeenCalled();
+      await click(button(element, en.ui['followUp.viewAll']));
+      expect(followUpPage).toHaveBeenCalledExactlyOnceWith({ subject });
+      expect(element.querySelector('[data-follow-up="detail"]')).toBeTruthy();
+      await click(button(element, en.ui['followUp.open']));
+      expect(onOpenRun).toHaveBeenCalledExactlyOnceWith(data, 'turn:one');
+    } finally { await act(async () => root.unmount()); await ctx.fiber.dispose(); }
+  });
+
   it('resolves member, group, Bot and DSH model precedence', () => {
     const data = view();
     const [alpha, beta] = data.members;
@@ -201,15 +235,20 @@ it('offers editing in headerless settings and prevents editing archived groups',
   } finally { await act(async () => root.unmount()); await ctx.fiber.dispose(); }
 });
 
-it('labels missing or attachment-only questions without IDs and resolves a paged question only when asked', async () => {
+it('labels missing or attachment-only questions without IDs and drafts a paged question with its exact source', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const data = managementData(), historical = data.messages[0] as GroupMessage;
+  const turn = data.turns[0] as GroupTurn;
+  const delivery = data.deliveries[0] as GroupDelivery;
+  turn.inputMessageId = 'original-turn-question';
+  delivery.triggerMessageId = historical.id;
   historical.text = 'Full original question\nIncluding the second line';
   data.messages = [{ ...historical, id: 'newer', seq: 2, text: 'Newer reply' }]; data.hasEarlier = true;
   const remoteView = vi.fn(async (_key: unknown, page: { beforeSeq?: number }) => ({ ok: true, value:
     page.beforeSeq ? { ...data, hasEarlier: false, messages: [historical] } : data }));
   const ctx = new Context(); ctx.provide('remote.dshBot.groups', { view: remoteView } as unknown as GroupMethods);
-  const actions = createGroupActions(ctx, {}), onAskBot = vi.fn(), element = document.createElement('div'), root = createRoot(element);
+  const actions = createGroupActions(ctx, {}), onAskBot = vi.fn<(bot: BotRecord, prompt: string, signal?: AbortSignal) => void>();
+  const element = document.createElement('div'), root = createRoot(element);
   try {
     await act(async () => root.render(<GroupActivityView view={data} bots={bots} actions={actions} t={t} />));
     expect(element.textContent).toContain(en.ui['statistics.historical']);
@@ -220,7 +259,13 @@ it('labels missing or attachment-only questions without IDs and resolves a paged
     await click(element.querySelector('[data-group-member] button') as HTMLButtonElement);
     await click(button(element, en.ui['groups.askInChat']));
     expect(remoteView.mock.calls.map(call => call[1])).toEqual([{}, { beforeSeq: 2 }]);
-    expect(onAskBot).toHaveBeenCalledWith(bots[0], historical.text, expect.any(AbortSignal));
+    expect(onAskBot).toHaveBeenCalledWith(bots[0], t('groupRecall.askDraft', {
+      groupName: data.group.name,
+      reference: JSON.stringify({ group: turn.group, turnId: turn.id, deliveryId: delivery.id,
+        sessionId: data.group.rootSessionId, messageId: historical.id, seq: historical.seq }),
+    }), expect.any(AbortSignal));
+    expect(onAskBot.mock.calls[0]?.[1]).not.toContain(historical.text);
+    turn.inputMessageId = historical.id;
     data.messages = [{ ...historical, text: '', attachments: [{ type: 'image', attachment: { attachmentId: 'image:one', mediaType: 'image/png', bytes: 3, width: 1, height: 1, name: 'diagram.png' } }] }];
     await act(async () => root.render(<GroupActivityView view={data} bots={bots} actions={actions} t={t} />));
     expect(element.textContent).toContain(en.ui['groups.attachments']);

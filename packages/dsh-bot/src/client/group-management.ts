@@ -31,9 +31,9 @@ export function groupMemberModel(group: GroupView['group'], member: GroupMember,
   };
 }
 
-export function latestMemberDelivery(view: GroupView, memberId: string): GroupDelivery | undefined {
+export function latestMemberDelivery(view: GroupView, memberId: string, include?: (row: GroupDelivery) => boolean): GroupDelivery | undefined {
   const turns = new Map(view.turns.map(turn => [turn.id, turn]));
-  return view.deliveries.filter(row => row.memberId === memberId)
+  return view.deliveries.filter(row => row.memberId === memberId && (!include || include(row)))
     .sort((a, b) => (turns.get(b.turnId)?.createdAt ?? b.startedAt ?? 0) - (turns.get(a.turnId)?.createdAt ?? a.startedAt ?? 0)
       || (b.startedAt ?? 0) - (a.startedAt ?? 0) || b.ordinal - a.ordinal)[0];
 }

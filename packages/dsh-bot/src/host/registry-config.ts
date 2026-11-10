@@ -1,10 +1,11 @@
+import { proactiveConfigFields, type ProactiveConfig } from './proactive/config.js';
 import { Config as RetrievalConfig } from './memory/retrieval-config.js';
 import { messagingConfigFields, validateMessagingConfig, type MessagingConfig } from './messaging/config.js';
 import Schema from '@deepseek-ai/schemastery';
 import { shadowConfigFields, type ShadowConfig } from './shadow/config.js';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
 
-export interface Config extends MessagingConfig, ShadowConfig {
+export interface Config extends MessagingConfig, ShadowConfig, ProactiveConfig {
   onboardingEnabled: boolean;
   onboardingMaxOutputTokens: number;
   onboardingTimeoutMs: number;
@@ -19,6 +20,16 @@ export interface Config extends MessagingConfig, ShadowConfig {
   autoShareBotDaily: number;
   autoShareDomainDaily: number;
   memoryRetrieval: import('./memory/retrieval-config.js').Config;
+  groupRecall: {
+    maxCandidates: number;
+    maxResults: number;
+    maxSourceChars: number;
+    maxOutputChars: number;
+    timeoutMs: number;
+    maxSessionBytes: number;
+    maxSessionEvents: number;
+    maxTrackedReads: number;
+  };
   referenceMemoryTimeoutMs: number;
   referenceMemoryMaxFileBytes: number;
   groupMaxMembers: number;
@@ -81,11 +92,22 @@ const baseConfig = Schema.object({
   }).default(32),
   ...messagingConfigFields,
   ...shadowConfigFields,
+  ...proactiveConfigFields,
   memoryGrantTtlMs: Schema.number().min(1000).max(3600000).step(1).default(300000),
   autoShareEnabled: Schema.boolean().default(true),
   autoShareBotDaily: Schema.number().min(0).max(10000).step(1).default(5),
   autoShareDomainDaily: Schema.number().min(0).max(100000).step(1).default(20),
   memoryRetrieval: RetrievalConfig,
+  groupRecall: Schema.object({
+    maxCandidates: Schema.number().min(1).max(64).step(1).default(16),
+    maxResults: Schema.number().min(1).max(20).step(1).default(5),
+    maxSourceChars: Schema.number().min(128).max(8000).step(1).default(1800),
+    maxOutputChars: Schema.number().min(256).max(32000).step(1).default(8000),
+    timeoutMs: Schema.number().min(100).max(30000).step(1).default(5000),
+    maxSessionBytes: Schema.number().min(65536).max(67108864).step(1).default(4194304),
+    maxSessionEvents: Schema.number().min(100).max(100000).step(1).default(20000),
+    maxTrackedReads: Schema.number().min(1).max(256).step(1).default(64),
+  }),
   referenceMemoryTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
   referenceMemoryMaxFileBytes: Schema.number().min(1024).max(67108864).step(1).default(8388608),
   groupMaxMembers: Schema.number().min(2).max(16).step(1).default(8),

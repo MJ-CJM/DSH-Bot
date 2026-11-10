@@ -26,13 +26,13 @@ export function GroupMessageCard({ message: m, quoted, quotedLoading = false, la
       <div className={styles.bar}>
         {m.speaker && <BotAvatar bot={{ id: m.speaker.bot.botId, avatar: m.speaker.avatar,
           avatarColor: m.speaker.avatarColor, avatarVariant: m.speaker.avatarVariant }} size={28} label={m.speaker.name} />}
-        <strong>{m.speaker?.name ?? t('groups.you')}</strong>
+        <strong>{m.speaker?.name ?? t(m.authorKind === 'proactive' ? 'proactive.groupSource' : 'groups.you')}</strong>
         <time dateTime={new Date(m.at).toISOString()}>{new Date(m.at).toLocaleTimeString()}</time>
         <button type="button" className={styles.replyAction} onClick={() => onReply(m)}>{t('groups.reply')}</button>
       </div>
       <div className={styles.messageContent}>
       {quoted && <blockquote className={styles.quote}><button type="button" onClick={() => onJump?.(quoted.id)}>
-        <strong>{quoted.speaker?.name ?? t('groups.you')}</strong> {groupMessagePreview(quoted.text)}</button>
+        <strong>{quoted.speaker?.name ?? t(quoted.authorKind === 'proactive' ? 'proactive.groupSource' : 'groups.you')}</strong> {groupMessagePreview(quoted.text)}</button>
       </blockquote>}
       {m.replyTo && !quoted && <p className={styles.quote}>{t(quotedLoading ? 'groups.quoteLoading' : 'groups.quoteUnavailable')}</p>}
       <MarkdownText text={m.text} labels={labels} />

@@ -1,0 +1,55 @@
+.content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.content pre {
+  max-width: 100%;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.content fieldset {
+  min-width: 0;
+}
+
+.content button,
+.content input,
+.content textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.content button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.content fieldset {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.content label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.content label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.content select,
+.content textarea,
+.content input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}

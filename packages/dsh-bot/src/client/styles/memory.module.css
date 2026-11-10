@@ -107,6 +107,24 @@
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.recall {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border-top: 1px solid var(--dsw-alias-border-l3);
+  padding-top: 16px;
+}
+.recallPreview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.recallExcerpt {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
 .tags {
   list-style: none;
   display: flex;

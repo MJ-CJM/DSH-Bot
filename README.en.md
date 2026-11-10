@@ -13,9 +13,10 @@ Screenshots show the real DSH interface in an isolated demo environment, with fi
 | Capability | How it helps |
 | --- | --- |
 | Personal Bots | Give research, review and writing assistants their own roles, models, tools, skills and persistent main conversations. |
-| Persistent memory | Search, edit and forget each Bot's private memories. Shared content requires explicit user publication. |
+| Memory and group-work recall | Manage private memories and find group work the Bot participated in and can still access. Open the source or draft a saved conclusion. Sharing requires explicit user publication. |
 | Multi-Bot groups | Mention a member or let members discuss concurrently. Inspect their execution, add input, or stop one member. |
 | Background work | Delegate native subtasks and inspect them from the Bot's task page. Scheduled delivery uses DSH's native facilities. |
+| Proactive follow-up (0.6.6) | Enable it in a personal Bot or group to track pending reviews, failures and explicit input requests. No GitHub account or external credentials are required. |
 
 ### Divide the work and inspect each member's progress
 
@@ -39,9 +40,15 @@ Open a Bot's Tasks & messages page for native background subtasks, scheduled tas
 
 ![Native background task record](packages/dsh-bot/assets/showcase/en-tasks.png)
 
+### Follow local work and explicit commitments
+
+Enable Proactive follow-up from a Bot's task page or a group's activity page. Viewing and refreshing suggestions makes no model requests. Open the original task to review its result, supply requested information or continue processing. A group can continue with just one selected member, using its current group model settings.
+
+Explicit commitments in personal chats use native tool approval. A group chat produces a proposal that takes effect after you confirm it. You can also add an item manually, stop an item or pause the scope. Proactive follow-up in 0.6.6 does not include scheduled reminders; existing DSH schedules remain available.
+
 ## Install
 
-Requires DeepSeek Harness with a working model configuration. The current public version is **[0.6.5](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5)**, licensed under **MIT**.
+Current version: **0.6.6**, licensed under **MIT**. Download and verify the package from the [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6). Enabling and inspecting local follow-up needs no model route; chat and explicitly accepted model tasks require a working DSH model configuration.
 
 ### Option 1: Search the community market
 
@@ -92,7 +99,7 @@ These examples illustrate the workflow. Actual responses depend on your model, t
 
 **Do I need a separate DSH-Bot model account?**
 
-No. The plugin uses DSH's model configuration and supports per-Bot and per-member model selection. Normal use requires an available model in the Host; model services may charge for requests.
+No. The plugin uses DSH's model configuration and supports per-Bot and per-member model selection. Chat and model execution require an available model in the Host. Enabling, viewing and refreshing local follow-up makes no model requests; model services may charge for actual execution.
 
 **Is memory automatically shared between every Bot?**
 
@@ -112,9 +119,9 @@ No such guarantee is provided. Tasks depend on the local DSH Host running; cloud
 
 ## Compatibility and limits
 
-Development dependencies are pinned to DSH `0.2.1-rc.2`. The declared Host range is `>=0.2.1-rc.2 <0.3.0`. The user confirmed that the v0.6.5 archive passed their local checks. The exact Host version and individual check results were not recorded. The installation, reinstallation and cold recovery checks on macOS rc.2 and the group UI checks on rc.2 / rc.5 apply to v0.6.4. [v0.6.5 release notes](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5) · [v0.6.4 verification matrix](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.6.4.md)
+Development dependencies are pinned to DSH `0.2.1-rc.2`. The final 0.6.6 archive passed installation, cold-start and group-work recall boundary checks on isolated macOS hosts `0.2.1-rc.2` and `0.2.2-rc.1`, plus eight Web layouts and local desktop installation checks. The declared range `>=0.2.1-rc.2 <0.3.0` does not mean every version or platform has been tested. Managed Bot forks remain restricted on rc.2; real-model quality has not been verified. See [release verification](docs/releases/v0.6.6.md).
 
-Bot working directories are not filesystem isolation; Host permissions, approvals and sandboxing still apply. Ongoing proactive operation, external IM ingress/egress, OS/mobile push and cloud hosting have not shipped. Automatic sharing is unavailable. Synthetic checks do not establish real-model quality, and uncertain background results after forced crashes are not automatically replayed.
+Bot working directories are not filesystem isolation; Host permissions, approvals and sandboxing still apply. Local event follow-up requires a running DSH Host. Zero-model scheduled follow-up, external IM ingress/egress, OS/mobile push and cloud hosting are outside this release. Automatic sharing is unavailable. Synthetic checks do not establish real-model quality, and uncertain background results after forced crashes are not automatically replayed.
 
 ## Updates and feedback
 

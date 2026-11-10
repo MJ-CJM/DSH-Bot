@@ -65,6 +65,7 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0],
   const calls: { preset: string; prompt: string; signal: AbortSignal; route?: AgentOptions }[] = [];
   let onStart: ((input: { childId: SessionId; request: { parent: Agent; agentPreset: string; agentOptions?: AgentOptions; prompt: { text: string }[] } }, index: number) => Promise<SubagentResult>) | undefined;
   const priorInputs = new Map<string, { childId: SessionId; signal: AbortSignal; request: { parent: Agent; agentPreset: string; agentOptions?: AgentOptions; prompt: { text: string }[] } }>();
+  const activeChildren = new Map<string, { dispose(): Promise<void> }>();
   const start = vi.fn(async (input: { childId: SessionId; signal: AbortSignal; request: { parent: Agent; agentPreset: string; agentOptions?: AgentOptions; prompt: { text: string }[] } }) => {
     priorInputs.set(input.childId, input);
     if (behavior === 'throw') throw new Error('sensitive-native-error');
@@ -73,9 +74,15 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0],
     const result = new Promise<SubagentResult>(r => { finish = r; });
     if (onStart) void onStart(input, calls.length).then(finish, error => { errors.push(error instanceof Error ? error.stack : error); finish(answer('fixture-error')); });
     else if (behavior !== 'hold') finish({ output: [{ type: 'text', text: `reply-${calls.length}` }], stopReason: behavior === 'partial' ? 'max-tokens' : 'completed' });
-    return { childId: input.childId, result, dispose: vi.fn(async () => { sequence.push('child-dispose'); finish({ output: [], stopReason: 'aborted' }); }) };
+    const handle = { childId: input.childId, result, dispose: vi.fn(async () => { sequence.push('child-dispose'); finish({ output: [], stopReason: 'aborted' }); }) };
+    activeChildren.set(input.childId, handle);
+    void result.then(() => {
+      if (activeChildren.get(input.childId) === handle) activeChildren.delete(input.childId);
+    });
+    return handle;
   });
   f.ctx.provide('subagents', { listChildren: async () => [], drainChildren: async () => {}, getProvider: () => ({ inheritsParentContext: false, capabilities: { agentPreset: true, agentOptions: true, depthLimit: true } }), startActivation: start,
+    interrupt: (id: SessionId) => { void activeChildren.get(id)?.dispose(); },
     sendMessage: async (_parent: Agent, childId: SessionId, content: { text: string }[]) => {
       const prior = need(priorInputs.get(childId));
       const runId = `fixture-${calls.length}` as import('@deepseek-ai/dsh-subagent').SubagentRunId;

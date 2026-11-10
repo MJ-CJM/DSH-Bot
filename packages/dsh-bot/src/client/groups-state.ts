@@ -27,12 +27,14 @@ export interface GroupDraft {
   operation?: { signature: string; request: GroupSend };
   sending: boolean; error: boolean;
 }
-export interface GroupRunRequest { sessionId: string; turnId: string; requestId: number }
+type GroupRunSource = { messageId: string; seq: number };
+export interface GroupRunRequest { sessionId: string; turnId: string; requestId: number; source?: GroupRunSource }
 export interface GroupActions {
+  followUp?: import('./proactive/follow-up-state.js').FollowUpSource;
   reply(sessionId: string, message: GroupView['messages'][number]): void;
   replies: { subscribe(listener: () => void): () => void; getSnapshot(): { sessionId: string; message: GroupView['messages'][number] } | undefined };
   open(group: GroupKey, signal?: AbortSignal): Promise<void>;
-  openRun(group: GroupKey, turnId: string, signal?: AbortSignal): Promise<void>;
+  openRun(group: GroupKey, turnId: string, signal?: AbortSignal, source?: GroupRunSource): Promise<void>;
   runRequests: { subscribe(listener: () => void): () => void; getSnapshot(): GroupRunRequest | undefined };
   consumeRunRequest(requestId: number): void;
   drafts: Map<string, GroupDraft>;
@@ -80,13 +82,13 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
   let requested: { selectedId?: string; createdAt?: number; requestId?: number } = {};
   let requestSequence = 0;
   const selection = createPollingCatalog(ctx, requested, async () => requested, options);
-  const open = async (group: GroupKey, signal?: AbortSignal, turnId?: string) => {
+  const open = async (group: GroupKey, signal?: AbortSignal, turnId?: string, source?: GroupRunSource) => {
     if (!live || signal?.aborted) return;
     const epoch = ++openEpoch;
     const navigation = ctx.get('layout')?.beginNavigation();
     const receipt = unwrapGroup(await remote().open(group));
     if (!live || epoch !== openEpoch || navigation?.aborted || signal?.aborted) return;
-    publishRunRequest(turnId ? { sessionId: receipt.sessionId, turnId, requestId: ++runRequestSequence } : undefined);
+    publishRunRequest(turnId ? { sessionId: receipt.sessionId, turnId, requestId: ++runRequestSequence, ...(source && { source }) } : undefined);
     ctx.uiWorkspace.openSession(receipt.sessionId as SessionId);
   };
   return {
@@ -99,7 +101,7 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
       reply = { sessionId, message }; for (const listener of replyListeners) listener();
     },
     open(group, signal) { return open(group, signal); },
-    openRun(group, turnId, signal) { return open(group, signal, turnId); },
+    openRun(group, turnId, signal, source) { return open(group, signal, turnId, source); },
     runRequests: { subscribe(listener) { runRequestListeners.add(listener); return () => { runRequestListeners.delete(listener); }; }, getSnapshot: () => runRequest },
     consumeRunRequest(requestId) { if (runRequest?.requestId === requestId) publishRunRequest(); },
     async upload(sessionId, file, signal) {

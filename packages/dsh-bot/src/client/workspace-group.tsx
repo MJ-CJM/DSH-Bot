@@ -24,7 +24,7 @@ const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: grou
   // A malformed failure drops only the detail, never the claimed message.
   failure: groupFailureSchema.optional().catch(undefined),
   replyTo: z.string().optional(), causeId: z.string().optional() });
-const userSourceSchema = z.object({ kind: z.enum(['user', 'dsh-bot-group-user', 'dsh-bot-group-followup']), group: groupKeySchema, turnId: z.string().min(1), replyTo: z.string().optional() });
+const userSourceSchema = z.object({ kind: z.enum(['user', 'dsh-bot-group-user', 'dsh-bot-group-followup', 'dsh-bot-group-proactive']), group: groupKeySchema, turnId: z.string().min(1), replyTo: z.string().optional() });
 const sourceSchema = z.union([botSourceSchema, userSourceSchema]);
 export interface WorkspaceGroupMessage { group: z.output<typeof groupKeySchema>; message: GroupMessage }
 declare module '@deepseek-ai/dsh-client-ui-chat/client' { interface ChatNodeDataMap { 'dsh-bot-group': WorkspaceGroupMessage } }
@@ -39,7 +39,7 @@ export const groupMessageDefinition: ConversationNodeDefinition<WorkspaceGroupMe
     const source = sourceSchema.parse(event.data.source);
     return { group: source.group, message: { id: event.data.id, seq: Number(event.seq), at: event.time,
       text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
-      turnId: source.turnId, authorKind: source.kind === 'dsh-bot-group' ? 'bot' : 'user', replyTo: source.replyTo,
+      turnId: source.turnId, authorKind: source.kind === 'dsh-bot-group' ? 'bot' : source.kind === 'dsh-bot-group-proactive' ? 'proactive' : 'user', replyTo: source.replyTo,
       ...(source.kind === 'dsh-bot-group' ? { speaker: source.speaker, causeId: source.causeId, childSessionId: source.childSessionId, stopReason: source.stopReason,
         ...(source.failure ? { failure: source.failure } : {}) } : {}),
       attachments: event.data.content.flatMap(block => { const result = groupAttachmentSchema.safeParse(block); return result.success ? [result.data] : []; }) } };
@@ -115,7 +115,7 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
       if (!row) throw new Error('Group session unavailable');
       return actions.imageUrl(row.group.rootSessionId, attachment);
     }} />{jumpUnavailable && <p role="status">{t('groups.quoteUnavailable')}</p>}
-    {node.data.message.authorKind === 'user' && turn && snapshot.view && bots && executionBridge && <GroupTurnExecution
+    {node.data.message.authorKind !== 'bot' && turn && snapshot.view && bots && executionBridge && <GroupTurnExecution
       key={JSON.stringify([node.data.group.groupId, node.data.group.groupCreatedAt, turn.id])} view={snapshot.view} turn={turn} actions={actions} bots={bots}
       onOpenExecution={executionBridge.open} executionBridge={executionBridge} renderFactorySlot={renderFactorySlot} t={t} />}
   </div>;

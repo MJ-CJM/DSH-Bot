@@ -12,8 +12,10 @@ export function MemoryProvenance({ row, t }: { row: ManagedMemoryRow; t: MemoryP
     <span>{t('shared.recorded')}: <time dateTime={new Date(v.recordedAt).toISOString()}>{new Date(v.recordedAt).toLocaleString()}</time></span>
     <p>{t('shared.valid')}: {p.valid.from === null ? t('shared.unknown') : new Date(p.valid.from).toLocaleString()}
       {' → '}{p.valid.to === null ? t('shared.unbounded') : new Date(p.valid.to).toLocaleString()} ({p.valid.basis})</p>
+    <p>{t('shared.contextScope')}: {v.labels.readers === 'shared' ? t('shared.readersAll') : v.labels.readers.map(reader => reader.botId).join(', ')}</p>
     {row.supersededBy && <p>{t('shared.replacedBy')}: {row.supersededBy}</p>}
     <details><summary>{t('shared.evidence')}</summary>
+      <p>{t('shared.version')}: <code>{v.versionId}</code></p>
       {p.sourceExcerpt && <blockquote>{p.sourceExcerpt}</blockquote>}
       <ul>{v.sourceRefs.map((ref) => <li key={JSON.stringify(ref)}>
         {ref.sessionId ?? ref.parentVersionId ?? ref.entryReceiptId ?? ref.managementOpId}

@@ -1,5 +1,21 @@
 # DSH-Bot 开发计划（v1）
 
+> 2026-11-09 群经历召回：用户已批准 P0–P2，在现有个人记忆页及群成员单聊入口补齐本人群工作召回；保留原记忆开关，不增加后台模型或群正文副本。实现范围见[任务单](../tasks/proactive-bot/GROUP-RECALL.md)，本轮验证见[验收记录](verification/group-work-recall.md)。候选 `46bd1d63c66e` 已按后续用户授权完成[本地桌面部署](verification/group-recall-desktop-deploy.md)，未公开发布。
+
+> 2026-11-09：**0.6.6 非定时主动跟进**已实现并冻结本地候选。用户在 P0 取证后确认定时能力留到后续版本；个人与群复用原任务、会话、审批和模型入口。完整源码检查及同包双宿主/UI/升级证据见[验收报告](verification/v066-local-follow-up.md)，进度见[实施记录](../tasks/proactive-bot/V066-implementation.md)，本地包见[交付记录](releases/v0.6.6.md)。本轮不部署日常桌面或发布。
+
+> 首次开启修复（2026-11-09）：任务页增加“开启主动建议”及可选 GitHub CI 来源连接，保存复用 DSH 原生 ConfigEditor。默认仅建议、执行单独授权；当前验证与本地部署见[修复记录](verification/proactive-setup.md)。
+
+> C/D 更新：用户已授权继续完成剩余开发；等待/核对、文档任务、归因、方法评估与交换、结果观察已实现，按同包隔离验证交付。具体能力边界与验收证据见 [C/D 验收记录](verification/proactive-optimization-cd.md)。普通入口保持现有侧栏与任务/反馈页，未升级桌面版。
+
+> A+B 更新：A 剩余查询/维护项与 B 批 CI 个人质量 Bot 已实现，最终验证、边界与交付文件见 [A+B 验收记录](verification/proactive-optimization-ab.md)。复用原 Bot 侧栏与工作页；工程产物执行仍关闭，本轮未更新桌面版。下文旧状态保留用于追溯。
+
+> 2026-11-08 review 后优化：D1–D6 与 A 批已获用户批准；按后续反馈复用现有 Bot 侧栏、收敛界面复杂度，修复 R01–R08。当前代码与隔离验收见[新一轮 A 批记录](verification/proactive-optimization-a.md)。本轮未更新桌面版；以下 0.6.5 发布记录为此前交付，不能证明本轮修复已安装。
+
+> 2026-11-08 最新实施：主动协作 A01–A08 及 PB03/PB05/PB10 补充范围已实现，最终 0.6.5 包通过 24 项隔离验收。同一安装包已更新到日常 DSH 桌面版，并通过数据保留及实际界面检查；[当前交付与证据](verification/proactive-gap-completion.md)。下文 11-06 的“等待通知”是历史准备状态。
+
+> 2026-11-06 主动协作准备：设计与任务单已从 worktree 同步至当前项目，并基于重新拉取的最新 main 创建 `codex/proactive-bot-implementation` 分支。完整方案见[主动协作设计](design/proactive-bot/README.md)。当前等待用户通知，尚未开始实现；通知后从 [PB00 兼容性验证](../tasks/proactive-bot/PB00-compatibility-spike.md)开始。优先复用 DSH 原生能力和已有 Bot 服务。下文旧 Routine/自建调度描述保留为历史，不作为新实现依据。
+
 > 2026-11-01 后续实施：用户已批准 U0/U1，先验证原生 UI API，再统一配置入口、Bot 上下文和记忆页布局。见[任务单](../tasks/U0-U1-native-settings.md)及 [Issue #12](https://github.com/MJ-CJM/DSH-Bot/issues/12)。U2–U4 已完成实现和隔离验证，见 [验收报告](verification/ui-completion/README.md)、[任务单](../tasks/U2-U4-ui-completion.md)和 [Issue #14](https://github.com/MJ-CJM/DSH-Bot/issues/14)。
 
 > 2026-11-01 实施更新：获批的[整体优化方案](design/group-concurrent-discussion-proposal.md)由 [Issue #8](https://github.com/MJ-CJM/DSH-Bot/issues/8) 跟踪。Bot 展示与设置返回已随 [PR #9](https://github.com/MJ-CJM/DSH-Bot/pull/9) 合入，并发、多轮与原生执行过程 A–D 已随 [PR #10](https://github.com/MJ-CJM/DSH-Bot/pull/10) 合入。执行状态已移至各问题下方，见[任务单](../tasks/U-inline-execution.md)；本轮继续修复[原生思考展示和消息左右布局](../tasks/U-native-member-process.md)。下文旧环境快照保留历史日期，开发依赖仍锁 rc.2。

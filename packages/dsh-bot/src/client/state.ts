@@ -97,7 +97,7 @@ export interface PollingCatalog<Payload> {
 export function createPollingCatalog<Payload>(
   ctx: Context,
   initial: Payload,
-  load: () => Promise<Payload>,
+  load: (signal: AbortSignal) => Promise<Payload>,
   options: BotCatalogOptions = {},
 ): PollingCatalog<Payload> {
   let pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -133,7 +133,7 @@ export function createPollingCatalog<Payload>(
     if (!snapshot.loaded && !snapshot.error) publish({ ...snapshot, loading: true });
     try {
       if (request.signal.aborted || disposed) return;
-      const result = await untilAborted(load(), request.signal);
+      const result = await untilAborted(load(request.signal), request.signal);
       if (!result || disposed || request.signal.aborted || current !== epoch) return;
       return publish({ ...result, loading: false, loaded: true, pollIntervalMs });
     } catch (error: unknown) {

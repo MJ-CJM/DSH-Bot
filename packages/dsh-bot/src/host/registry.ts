@@ -152,7 +152,10 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
         mains.some(({ bot, main }) => bot.id === row.botId && main?.sessionId === row.sessionId),
       );
       return {
-        sessions,
+        // Sidebar/header identity also needs historical conversations. Keep
+        // their bounded, generation-checked rows; only the Bot inbox summary
+        // is restricted to its current main conversation.
+        sessions: data.sessions,
         bots: bots.map((bot) => {
           const latest = sessions.find((row) => row.botId === bot.id);
           return {

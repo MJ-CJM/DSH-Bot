@@ -73,6 +73,7 @@ export function BotsPage(page: BotsPageProps) {
             <GroupsPanel
               key={creatingGroup ? 'create' : 'manage'}
               initialCreate={creatingGroup}
+              visible={tab !== 'management' && !model.showDetail}
               selectedGroup={model.selectedGroup}
               onSelectGroup={model.setSelectedGroup}
               onOpenBot={model.showBot}

@@ -252,7 +252,9 @@ try {
       check('follow-up opens the Bot conversation rather than the group root', await privateContent.getAttribute('data-conversation-session') !== fixture.rootId);
       const privateDraft = page.locator('[contenteditable="true"]:visible').first();
       await privateDraft.waitFor();
-      await page.waitForFunction(() => [...document.querySelectorAll('[contenteditable="true"]')].some(element => element.checkVisibility() && element.textContent?.includes('UI_TRACE')));
+      await page.waitForFunction(rootId => [...document.querySelectorAll('[contenteditable="true"]')].some(element =>
+        element.checkVisibility() && element.textContent?.includes('bot_group_recall') && element.textContent.includes(rootId)), fixture.rootId);
+      check('follow-up draft keeps the group source reference outside the copied transcript', !(await privateDraft.innerText()).includes('UI_TRACE'));
       check('follow-up initializes a native draft without executing models', host.requests() === viewRequestCount);
       await page.screenshot({ path: resolve(dir, 'group-ask-draft.png'), fullPage: true });
       await privateDraft.press('ControlOrMeta+A'); await privateDraft.press('Backspace');

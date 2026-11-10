@@ -3,6 +3,7 @@ import { matchesCreation } from './recent-conversations.js';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { BotCreateInput, BotPatch } from '../../shared/schema.js';
 import { botSessionRows, sortBotEntries } from '../activity-view.js';
+import type { BotDetailRequest } from '../detail-state.js';
 
 import type { Dialog, BotsPageProps } from './bots-page-types.js';
 import type { GroupActions } from '../groups-state.js';
@@ -64,6 +65,9 @@ export function useBotsPage({
   const [selectedId, setSelectedId] = useState<string>();
   const [selectedCreatedAt, setSelectedCreatedAt] = useState<number>();
   const [showDetail, setShowDetail] = useState(false);
+  const [detailDestination, setDetailDestination] = useState<BotDetailRequest>();
+  const onDetailTargetReached = useCallback((requestId: number) => setDetailDestination(current =>
+    current?.requestId === requestId ? { ...current, target: undefined } : current), []);
   const [more, setMore] = useState(false);
   const listElement = useRef<HTMLDivElement>(null);
   const backElement = useRef<HTMLButtonElement>(null);
@@ -72,7 +76,8 @@ export function useBotsPage({
   const locale = t('activity.locale');
   const entries = sortBotEntries(snapshot.entries, activity.bots, locale);
   const selected = entries.find(({ bot }) => bot.id === (requestedDetail?.botId ?? selectedId) &&
-    (requestedDetail || selectedCreatedAt === undefined || bot.createdAt === selectedCreatedAt)) ??
+    (requestedDetail ? requestedDetail.botCreatedAt === undefined || bot.createdAt === requestedDetail.botCreatedAt
+      : selectedCreatedAt === undefined || bot.createdAt === selectedCreatedAt)) ??
     (selectedId === undefined && requestedDetail === undefined ? entries[0] : undefined);
   const rows = selected
     ? botSessionRows(
@@ -106,6 +111,7 @@ export function useBotsPage({
   const lifetime = useRef<AbortController>();
   const detailOrigin = useRef<HTMLElement>();
   const detailScroll = useRef(0);
+  const openedWithTarget = useRef(false);
   const returnFromDetail = () => { setShowDetail(false); };
   useLayoutEffect(() => {
     if (showDetail) { if (scrollElement.current) scrollElement.current.scrollTop = 0; backElement.current?.focus({ preventScroll: true }); }
@@ -117,6 +123,8 @@ export function useBotsPage({
   const showBot = (bot: { id: string; createdAt: number }) => {
     detailOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     detailScroll.current = scrollElement.current?.scrollTop ?? 0;
+    openedWithTarget.current = false;
+    setDetailDestination(undefined);
     setSelectedId(bot.id); setSelectedCreatedAt(bot.createdAt); setShowDetail(true);
   };
   useEffect(() => {
@@ -153,8 +161,10 @@ export function useBotsPage({
   }, [snapshot.loaded, activity.loaded, activity.error, entries, requestedDetail, showDetail]);
   useEffect(() => {
     if (!compact || dialog) return;
-    if (showDetail) backElement.current?.focus();
-    else if (focusListOnReturn.current) {
+    if (showDetail) {
+      // The selected work row or section manages focus for a deep link.
+      if (!openedWithTarget.current) backElement.current?.focus();
+    } else if (focusListOnReturn.current) {
       listElement.current?.focus();
       focusListOnReturn.current = false;
     }
@@ -187,11 +197,14 @@ export function useBotsPage({
   }, []);
   useEffect(() => {
     if (!requestedDetail || !snapshot.loaded || snapshot.loading || snapshot.error) return;
-    const found = snapshot.entries.find(({ bot }) => bot.id === requestedDetail.botId);
+    const found = snapshot.entries.find(({ bot }) => bot.id === requestedDetail.botId &&
+      (requestedDetail.botCreatedAt === undefined || bot.createdAt === requestedDetail.botCreatedAt));
     if (found) {
+      openedWithTarget.current = !!requestedDetail.target;
       setTab('bots');
       setSelectedId(found.bot.id);
       setSelectedCreatedAt(found.bot.createdAt);
+      setDetailDestination(requestedDetail);
       setShowDetail(true);
       cancelNavigation();
       setDialog(undefined);
@@ -337,6 +350,8 @@ export function useBotsPage({
     activity,
     sessions,
     requestedDetail,
+    detailDestination,
+    onDetailTargetReached,
     workspaces,
     pageElement,
     pageState,

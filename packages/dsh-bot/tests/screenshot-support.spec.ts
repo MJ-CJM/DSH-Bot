@@ -33,8 +33,10 @@ describe('initial Bot history screenshot barrier', () => {
     expect(readBotsLayout().sessionIds).toEqual([]);
     const article = document.querySelector('article');
     if (!article) throw new Error('Missing detail fixture');
-    article.innerHTML = '<button data-session-id="old"></button><button data-session-id="new"></button>';
-    expect(readBotsLayout().sessionIds).toEqual(['old', 'new']);
+    article.innerHTML = `<div role="tabpanel" hidden><p role="status">Retained overview status</p></div>
+      <div role="tabpanel"><p role="status">Visible history status</p>
+      <button data-session-id="old"></button><button data-session-id="new"></button></div>`;
+    expect(readBotsLayout()).toMatchObject({ sessionIds: ['old', 'new'], detailStatuses: ['Visible history status'] });
     expect(waitForStatus).toHaveBeenCalledTimes(1);
   });
 

@@ -77,6 +77,7 @@ export function SessionBotBadge({
       !snapshot.loading &&
       !snapshot.error &&
       snapshot.entries.every((item) => item.status !== undefined) &&
+      !snapshot.entries.some((item) => item.status?.presetId === presetId) &&
       prefix &&
       presetId?.startsWith(prefix) &&
       presetId.length > prefix.length;

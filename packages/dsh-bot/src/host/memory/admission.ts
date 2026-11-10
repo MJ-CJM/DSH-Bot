@@ -31,6 +31,7 @@ export class MemoryAdmission {
     this.assertAllowed();
     // Raw events are intentionally retained. After forgetting, unreviewed readers and side-effect tools stay closed.
     if (this.kernel?.snapshot.forgotten.size && !['bot_memory_save', 'bot_memory_search', 'bot_memory_list', 'bot_memory_forget',
+      'bot_group_recall',
       'mcp__bot_memory_graph__read_graph', 'mcp__bot_memory_graph__search_nodes',
       'mcp__bot_memory_graph__open_nodes'].includes(exec.name)) throw new Error('Raw history access is restricted after memory cleanup');
   }

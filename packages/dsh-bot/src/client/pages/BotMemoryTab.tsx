@@ -9,10 +9,12 @@ export function MemoryTab({
   bot,
   create,
   t,
+  active,
 }: {
   bot: BotRecord;
   create: BotsPageInjected['createMemoryPanel'];
   t: PropsLocale<'dsh-bot'>['t'];
+  active?: boolean;
 }) {
   const [panel, setPanel] = useState<ReturnType<BotsPageInjected['createMemoryPanel']>>();
   useEffect(() => {
@@ -20,5 +22,5 @@ export function MemoryTab({
     setPanel(value);
     return value.dispose;
   }, [bot.id, create]);
-  return panel ? <MemoryPanel {...panel} bot={bot} t={t} /> : <p role="status">{t('memory.loading')}</p>;
+  return panel ? <MemoryPanel {...panel} bot={bot} t={t} active={active} /> : <p role="status">{t('memory.loading')}</p>;
 }

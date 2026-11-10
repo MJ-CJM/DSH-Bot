@@ -7,7 +7,7 @@ import { OperationError, digest } from '../common/operations.js';
 import type { GroupModelSelection } from '../../shared/groups.js';
 import type { GroupState } from './state.js';
 import type { GroupTurnRunner } from './turn-runner.js';
-export interface WorkerBinding { turnId: string; deliveryId: string; childId: string; rootId: string; presetId: string; resumeAllowed?: boolean; approvedInputs?: Set<string>; modelSelection?: GroupModelSelection; audience: BotKey[]; isActive?: () => boolean; agent?: Agent }
+export interface WorkerBinding { turnId: string; deliveryId: string; childId: string; rootId: string; presetId: string; resumeAllowed?: boolean; approvedInputs?: Set<string>; restrictedInputId?: string; modelSelection?: GroupModelSelection; audience: BotKey[]; isActive?: () => boolean; agent?: Agent }
 const bindings = new WeakMap<Agent, WorkerBinding>();
 export const workerReservations = new Map<string, WorkerBinding>();
 export function getGroupWorkerBinding(agent: Agent) {
@@ -21,8 +21,12 @@ export function isLiveGroupWorker(agent: Agent): boolean {
 /** Only exact inputs admitted by the group bridge retain the shared label. */
 export function isAdmittedGroupInput(agent: Agent, message: import('@deepseek-ai/dsh-llm').UserMessage): boolean {
   const binding = getGroupWorkerBinding(agent);
-  return Boolean(binding && isLiveGroupWorker(agent) && message.source.kind === 'agent-message' &&
-    message.source.senderSessionId === binding.rootId && binding.approvedInputs?.has(digest(message.content)));
+  if (!binding || !isLiveGroupWorker(agent)) return false;
+  if (binding.restrictedInputId)
+    return message.id === binding.restrictedInputId && message.source.kind === 'dsh-bot-group-owner-followup' &&
+      message.source.turnId === binding.turnId;
+  return Boolean(message.source.kind === 'agent-message' && message.source.senderSessionId === binding.rootId &&
+    binding.approvedInputs?.has(digest(message.content)));
 }
 export function admitGroupInput(binding: WorkerBinding, content: readonly import('@deepseek-ai/dsh-llm').ContentBlock[]) {
   // rc.2/rc.5 public relay events prepend this native sender block (A fixture verifies it).
@@ -47,6 +51,7 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
       const binding = state.workers.get(agent.session.id);
       if (!binding || (source !== 'startup' && !binding.resumeAllowed) || binding.agent || agent.session.header.parentSession !== binding.rootId || agent.session.header.agentPreset !== binding.presetId) return;
       binding.agent = agent;
+      if (binding.restrictedInputId) return;
       const delivery = state.table('deliveries').get(binding.deliveryId);
       if (!delivery || (await state.bot(delivery.bot)).tools.deny.includes('group_message')) return;
       bindings.set(agent, binding);

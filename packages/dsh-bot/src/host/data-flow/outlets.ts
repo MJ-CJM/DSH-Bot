@@ -1,6 +1,6 @@
 import en from '../../../locale/en.json' with { type: 'json' };
 import zh from '../../../locale/zh.json' with { type: 'json' };
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { DataLabel, EgressTarget } from '../../shared/data-flow.js';
@@ -10,6 +10,11 @@ import type { EgressChecker } from './egress.js';
 import type { OnceGrant } from './grants.js';
 import { MemoryLineage } from './lineage.js';
 import { mergeLabels } from './labels.js';
+export interface NotificationCopyRef {operationId:string;sessionId?:string;flowId?:string;}
+export interface ProactiveGroupCopyRef {
+  sessionId?: string;
+  outlet: 'group-input' | 'group-result';
+}
 
 /** Durable outlet state in the existing memory domain. No replay of uncertain native side effects. */
 export class ManagedOutlets {
@@ -123,12 +128,14 @@ export class ManagedOutlets {
       this.check(row.envelope, this.permissions.get(id), row.grantUse ? id : undefined, signal);
     });
   }
-  dispatch<T>(id: string, send: (envelope: FlowEnvelope, signal: AbortSignal) => T | Promise<T>, signal?: AbortSignal): Promise<T> {
-    const task = this.dispatchInternal(id, send, this.signal(signal));
+  dispatch<T>(id: string, send: (envelope: FlowEnvelope, signal: AbortSignal) => T | Promise<T>, signal?: AbortSignal,
+    beforeAttempt?: () => Promise<void>): Promise<T> {
+    const task = this.dispatchInternal(id, send, this.signal(signal), beforeAttempt);
     this.pending.add(task); void task.finally(() => this.pending.delete(task)).catch(() => {}); return task;
   }
-  private async dispatchInternal<T>(id: string, send: (envelope: FlowEnvelope, signal: AbortSignal) => T | Promise<T>, signal?: AbortSignal): Promise<T> {
-    let attempted = false;
+  private async dispatchInternal<T>(id: string, send: (envelope: FlowEnvelope, signal: AbortSignal) => T | Promise<T>, signal?: AbortSignal,
+    beforeAttempt?: () => Promise<void>): Promise<T> {
+    let attempted = false, refused = false;
     try {
       const result = await this.kernel.serial(async () => {
         const row = this.get(id);
@@ -136,7 +143,12 @@ export class ManagedOutlets {
         const envelope = row.envelope, grant = this.permissions.get(id);
         this.check(envelope, grant, row.grantUse ? id : undefined, signal);
         await this.put({ ...row, state: 'dispatching' });
-        // The await above can observe cancellation or identity changes. Invoke transport before yielding again.
+        // This check runs under the ledger queue and must not reacquire it.
+        if (beforeAttempt) {
+          try { await beforeAttempt(); }
+          catch (error) { refused = true; throw error; }
+        }
+        // Awaiting can observe cancellation or identity changes. Invoke transport before yielding again.
         this.check(envelope, grant, row.grantUse ? id : undefined, signal); attempted = true;
         return { pending: Promise.resolve(send(structuredClone(envelope), this.signal(signal))) };
       });
@@ -148,10 +160,96 @@ export class ManagedOutlets {
     } catch (error) {
       await this.kernel.serial(async () => {
         const row = this.get(id);
-        if (row.state === 'admitted' || row.state === 'dispatching') await this.put({ ...row, state: attempted ? 'unknown' : 'cancelled' });
+        if (row.state === 'admitted' || row.state === 'dispatching') {
+          const envelope = row.envelope;
+          // A rejected final check can follow a completed source forget.
+          // Drop the staged body before propagating that known refusal.
+          await this.put({ ...row, state: attempted ? 'unknown' : 'cancelled', ...(refused && envelope ? {
+            envelope: undefined,
+            envelopeDigest: createHash('sha256').update(JSON.stringify(envelope)).digest('hex'),
+            redactedAt: Date.now(),
+          } : {}) });
+        }
       });
       this.permissions.delete(id); throw error;
     }
+  }
+  private notificationCopies(refs:readonly NotificationCopyRef[]) {
+    return [...this.kernel.domain.table('flows').entries()].flatMap(([,row])=>{
+      const ref=refs.find(ref=>row.id===ref.flowId || (row.envelope && ['notify-record','notify-send'].includes(row.envelope.outlet) && ref.sessionId &&
+        [ref.operationId,`${ref.operationId}:display`,`${ref.operationId}:send`].some(call=>row.envelope?.binding.invocation===`${ref.sessionId}/${call}`)));
+      return ref ? [{row,ref}] : [];
+    });
+  }
+  /** Core operation IDs also locate retained envelopes whose visible notice has
+   * already expired. Match both the serialized proactive source and invocation. */
+  proactiveNotificationCopyRefs(operationIds:readonly string[]):NotificationCopyRef[] {
+    const operations=new Set(operationIds),refs:NotificationCopyRef[]=[];
+    for(const [,row] of this.kernel.domain.table('flows').entries()){
+      const envelope=row.envelope;
+      if(!envelope||!['notify-record','notify-send'].includes(envelope.outlet))continue;
+      let source:{kind?:unknown;sessionId?:unknown}|undefined;
+      try{source=(JSON.parse(envelope.content) as {source?:typeof source}).source;}catch{continue;}
+      if(!source||!['proactive','proactive-review'].includes(String(source.kind))||typeof source.sessionId!=='string')continue;
+      const prefix=`${source.sessionId}/`;
+      if(!envelope.binding.invocation.startsWith(prefix))continue;
+      const invocation=envelope.binding.invocation.slice(prefix.length);
+      const candidates=[invocation,...(envelope.outlet==='notify-send'&&/:(display|send)$/.test(invocation)?[invocation.replace(/:(display|send)$/,'')]:[])];
+      const operationId=candidates.find(candidate=>operations.has(candidate));
+      if(operationId)refs.push({operationId,sessionId:source.sessionId,flowId:row.id});
+    }
+    return refs;
+  }
+  notificationCopyStatus(refs:readonly NotificationCopyRef[]) {
+    return [...new Set(this.notificationCopies(refs).filter(({row})=>row.state==='dispatching'||row.state==='unknown').map(({ref})=>ref.operationId))];
+  }
+  async purgeNotificationCopies(refs:readonly NotificationCopyRef[]) {
+    return this.kernel.serial(async()=>{
+      this.kernel.assertReadable();this.kernel.assertOwnership();
+      const rows=this.notificationCopies(refs),blockedOperationIds=[...new Set(rows.filter(({row})=>row.state==='dispatching'||row.state==='unknown').map(({ref})=>ref.operationId))];
+      if(blockedOperationIds.length)return {purged:0,blockedOperationIds};
+      const purged = await this.redactBodies(rows.map(({ row }) => row));
+      return {purged,blockedOperationIds:[]};
+    });
+  }
+  /** Group records own the turn/delivery IDs. Only their exact managed copies
+   * are redacted here, without rewriting a native root or child session. */
+  purgeProactiveGroupCopies(assignmentIds: ReadonlySet<string>, refs: ReadonlyMap<string, ProactiveGroupCopyRef>) {
+    return this.kernel.serial(async () => {
+      this.kernel.assertReadable(); this.kernel.assertOwnership();
+      const copies: FlowRecord[] = [];
+      for (const [, row] of this.kernel.domain.table('flows').entries()) {
+        const envelope = row.envelope;
+        if (!envelope || (envelope.outlet !== 'group-input' && envelope.outlet !== 'group-result')) continue;
+        const callId = envelope.binding.invocation.split('/').at(-1);
+        const ref = callId && refs.get(callId);
+        if (ref) {
+          if (ref.outlet !== envelope.outlet || !ref.sessionId ||
+              `${ref.sessionId}/${callId}` !== envelope.binding.invocation ||
+              row.state === 'dispatching' || row.state === 'unknown') return false;
+          copies.push(row);
+        } else if (envelope.outlet === 'group-input') {
+          // A root envelope can be committed before the associated turn.
+          // An unmatched proactive root is evidence of an incomplete scope.
+          let source: { kind?: unknown; assignmentId?: unknown } | undefined;
+          try { source = (JSON.parse(envelope.content) as { source?: typeof source } | null)?.source; } catch { continue; }
+          if (source?.kind === 'dsh-bot-group-proactive' &&
+              typeof source.assignmentId === 'string' && assignmentIds.has(source.assignmentId)) return false;
+        }
+      }
+      await this.redactBodies(copies);
+      return true;
+    });
+  }
+  private async redactBodies(rows: readonly FlowRecord[]) {
+    let purged = 0;
+    for (const row of rows) {
+      if (!row.envelope) continue;
+      const envelopeDigest = createHash('sha256').update(JSON.stringify(row.envelope)).digest('hex');
+      await this.put({ ...row, state: row.state === 'admitted' ? 'cancelled' : row.state, envelope: undefined, envelopeDigest, redactedAt: Date.now() });
+      this.permissions.delete(row.id); purged++;
+    }
+    return purged;
   }
   private put(row: FlowRecord) { return this.kernel.domain.table('flows').put(row.id, flowRecordSchema.parse(row)); }
   async close() { this.stop(); await Promise.allSettled([...this.pending]); this.permissions.clear(); }

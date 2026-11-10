@@ -5,6 +5,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { type FormEvent, useEffect, useContext, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { type BotRecord, type MemoryPatch, type MemoryRecord, memoryAddSchema } from '../../shared/schema.js';
 import type { MemoryCatalog } from '../memory-state.js';
+import type { GroupRecallBinding } from '../group-recall.js';
 import styles from '../styles/bots.module.css';
 import panel from '../styles/memory.module.css';
 import css from '../styles/memory.module.css?inline';
@@ -15,6 +16,7 @@ import { MemoryEditor, type Draft } from './MemoryEditor.js';
 import { ForgetPreview, type ForgetActions } from './ForgetPreview.js';
 import { MemoryCleanupStatus } from './MemoryCleanupStatus.js';
 import { RootInstructionsWarning } from './RootInstructionsWarning.js';
+import { GroupRecallPanel } from './GroupRecallPanel.js';
 
 export type MemoryPanelInput = Pick<MemoryRecord, 'content' | 'kind' | 'tags' | 'pinned'>;
 export interface MemoryPanelProps {
@@ -25,6 +27,7 @@ export interface MemoryPanelProps {
   onRemove(id: string): unknown | Promise<unknown>;
   forgetting?: ForgetActions;
   shared?: SharedMemoryBinding;
+  groupRecall?: GroupRecallBinding;
   onOpenSession(id: string): unknown | Promise<unknown>;
   t: PropsLocale<'dsh-bot'>['t'];
 }
@@ -32,7 +35,8 @@ export interface MemoryPanelProps {
 /** The owning page binds each action to this Bot and refreshes the catalog after
  * mutations. No Context, Host service, portal or additional modal is needed here.
  */
-export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, forgetting, shared, t }: MemoryPanelProps) {
+export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, forgetting, shared, groupRecall, t, active = true }:
+  MemoryPanelProps & { active?: boolean }) {
   const embedded = Boolean(useContext(SettingsBotContext));
   const [managedOpened, setManagedOpened] = useState(false);
   const [scope, setScope] = useState<'legacy' | 'private' | 'shared' | 'quarantine'>('legacy');
@@ -246,6 +250,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
         </div>
       )}
       </div>
+      {groupRecall && active && <GroupRecallPanel bot={bot} binding={groupRecall} t={t} />}
       <details><summary>{t('memory.behavior')}</summary><p className={styles.hint}>{t('memory.sessionNotice')}</p></details>
     </section>
   );

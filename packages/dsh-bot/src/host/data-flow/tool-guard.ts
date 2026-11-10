@@ -31,7 +31,7 @@ export async function inheritOwnSchedule(agent: Agent, bot: BotKey, registry: Ds
   } catch { return false; }
 }
 const local = new Set(['bot_memory_save', 'bot_memory_search', 'bot_memory_list', 'bot_memory_forget',
-  'bot_message', 'bot_delegate', 'bot_notify']);
+  'bot_message', 'bot_delegate', 'bot_notify', 'bot_follow_up', 'bot_group_recall']);
 /** Own lifetime is the Agent. Unload does not remove protection from surviving Agents. */
 export function protectDataFlow(agent: Agent, bot: BotKey, registry: DshBotRegistry) {
   const flow = outlets(registry); if (!flow) return;

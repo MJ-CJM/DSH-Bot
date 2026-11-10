@@ -1,13 +1,23 @@
 import type { Context } from '@deepseek-ai/cordis';
 
-export interface BotDetailRequest {
+export interface ProactiveDetailTarget {
+  kind: 'suggestion' | 'work';
+  id: string;
+}
+export type BotDetailTarget = ProactiveDetailTarget | { kind: 'other-work' };
+export interface BotDetailDestination {
+  botCreatedAt?: number;
+  section?: 'work' | 'memory';
+  target?: BotDetailTarget;
+}
+export interface BotDetailRequest extends BotDetailDestination {
   botId: string;
   requestId: number;
 }
 export interface BotDetailSource {
   getSnapshot(): BotDetailRequest | undefined;
   subscribe(listener: () => void): () => void;
-  open(botId: string): void;
+  open(botId: string, destination?: BotDetailDestination): void;
   consume(requestId: number): void;
 }
 
@@ -34,9 +44,9 @@ export function createBotDetailSource(ctx: Context): BotDetailSource {
         listeners.delete(listener);
       };
     },
-    open(botId) {
+    open(botId, destination) {
       if (disposed) return;
-      snapshot = { botId, requestId: ++sequence };
+      snapshot = { botId, ...destination, requestId: ++sequence };
       for (const listener of listeners) listener();
     },
     consume(requestId) {

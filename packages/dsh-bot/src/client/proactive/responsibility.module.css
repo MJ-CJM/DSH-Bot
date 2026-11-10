@@ -1,0 +1,80 @@
+.panel {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+}
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.actions h2 {
+	flex: 1;
+	margin: 0;
+}
+@media (max-width: 759px) {
+	.actions h2 {
+		flex-basis: 100%;
+	}
+}
+.record {
+	padding-block: 12px;
+	border-bottom: 1px solid var(--dsw-alias-border-l2);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.record h3 {
+	margin: 0 0 8px;
+}
+.record p {
+	margin: 6px 0;
+}
+.editor,
+.editor fieldset {
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+}
+.editor fieldset {
+	padding: 12px;
+	border: 1px solid var(--dsw-alias-border-l2);
+	border-radius: 8px;
+}
+.editor label {
+	display: grid;
+	gap: 6px;
+	min-width: 0;
+}
+.editor select,
+.editor textarea {
+	box-sizing: border-box;
+	max-width: 100%;
+	min-height: 36px;
+	padding: 6px 8px;
+	color: var(--dsw-alias-label-primary);
+	background: var(--dsw-alias-bg-layer-1);
+	border: 1px solid var(--dsw-alias-border-l2);
+	border-radius: 6px;
+}
+.editor textarea {
+	width: 100%;
+	min-height: 88px;
+	resize: vertical;
+}
+.editor p {
+	margin: 0;
+	color: var(--dsw-alias-label-secondary);
+	overflow-wrap: anywhere;
+}
+.check {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+@media (min-width: 760px) {
+	.check {
+		grid-template-columns: minmax(0, 1fr) auto auto;
+		align-items: end;
+	}
+}

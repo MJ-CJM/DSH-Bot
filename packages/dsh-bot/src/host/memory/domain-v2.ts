@@ -4,6 +4,7 @@ import { flowRecordSchema, flowSessionSchema } from '../../shared/managed-flow.j
 import { barrierSchema, metaSchema, migrationSchema, opSchema, migrationItemSchema } from '../../shared/memory-ops.js';
 import { payloadSchema } from '../../shared/memory-v2.js';
 import { forgetJobSchema } from '../../shared/memory-forget.js';
+import { groupRecallReadsSchema } from '../../shared/group-recall-reads.js';
 
 export const memoryDomain = defineDomain({ name: 'dsh_bot_memory', version: 2, layout: 'per-record', tables: {
   layout: domainTable(z.strictObject({ phase: z.enum(['copied', 'ready']) })),
@@ -15,5 +16,6 @@ export const memoryDomain = defineDomain({ name: 'dsh_bot_memory', version: 2, l
   migration: domainTable(migrationSchema), migration_items: domainTable(migrationItemSchema),
   forget_jobs: domainTable(forgetJobSchema),
   flows: domainTable(flowRecordSchema), flow_sessions: domainTable(flowSessionSchema),
+  recall_reads: domainTable(groupRecallReadsSchema),
 } });
 export type MemoryDomain = Domain<Omit<typeof memoryDomain, 'layout'>>;

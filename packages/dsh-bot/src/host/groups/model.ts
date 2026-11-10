@@ -16,6 +16,14 @@ declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'dsh-bot-group-setup': { kind: 'dsh-bot-group-setup'; group: GroupKey; operation: 'create' | 'restore' | 'open'; operationId: string };
     'dsh-bot-group-user': { kind: 'dsh-bot-group-user'; group: GroupKey; turnId: string; replyTo?: string; rpcId?: string };
+    'dsh-bot-group-proactive': {
+      kind: 'dsh-bot-group-proactive'; group: GroupKey; turnId: string; ticketId: string; assignmentId: string;
+      repairPhase?: 'plan' | 'implement' | 'review';
+      factId?: string; predecessorTurnId?: string;
+    };
+    'dsh-bot-group-owner-followup': {
+      kind: 'dsh-bot-group-owner-followup'; group: GroupKey; turnId: string; cardId: string; predecessorTurnId: string;
+    };
     'dsh-bot-group-followup': { kind: 'dsh-bot-group-followup'; group: GroupKey; turnId: string; deliveryId: string; replyTo: string };
     'dsh-bot-group': {
       kind: 'dsh-bot-group';
