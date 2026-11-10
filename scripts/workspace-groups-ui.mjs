@@ -9,7 +9,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { webHost } from './deepening/b4-web-host.mjs';
 import { openSidebarSession, openBotsPanel } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
-assert.deepEqual(process.argv.slice(2), ['--mock-only']);
+const brandOnly = process.argv.includes('--brand-only');
+assert.deepEqual(process.argv.slice(2), brandOnly ? ['--mock-only', '--brand-only'] : ['--mock-only']);
 const root = process.cwd(); assert.equal(process.env.DSH_HOME, resolve(root, '.dsh-dev'));
 const artifactPath = process.env.DSH_BOT_ARTIFACT ? resolve(root, process.env.DSH_BOT_ARTIFACT) : undefined;
 const dir = resolve(root, '.dsh-dev/workspace-groups-ui', `${Date.now()}-${process.pid}`); await mkdir(dir, { recursive: true });
@@ -20,7 +21,7 @@ const filter = process.env.FILTER?.trim();
 const selectedIds = filter ? [...new Set(filter.split(',').map(value => value.trim()).filter(Boolean))] : undefined;
 if (selectedIds) assert.ok(selectedIds.length && selectedIds.every(id => allMatrix.some(item => `${item.language}-${item.theme}-${item.width}` === id)), 'FILTER must be a comma-separated list of exact matrix IDs');
 const matrix = selectedIds ? allMatrix.filter(item => selectedIds.includes(`${item.language}-${item.theme}-${item.width}`)) : allMatrix;
-const coverage = { mode: selectedIds ? 'filtered-debug' : 'full', totalCases: allMatrix.length, selectedCases: matrix.length, selectedIds, hostBudgetMs: 300000 };
+const coverage = { mode: selectedIds ? 'filtered-debug' : 'full', scope: brandOnly ? 'group-brand' : 'workspace-flow', totalCases: allMatrix.length, selectedCases: matrix.length, selectedIds, hostBudgetMs: 300000 };
 
 const results = [], pageErrors = []; let host, browser, phase = 'host';
 let artifact;
@@ -81,7 +82,9 @@ try {
     };
     const openManagement = async () => {
       await page.setViewportSize({ width: 1360, height: 1000 }); await openBotsPanel(page, t['bots.title']);
-      const bots = page.locator('[data-bots-page]:visible'); await bots.getByRole('tab', { name: t['groups.title'], exact: true }).click(); return bots;
+      const bots = page.locator('[data-bots-page]:visible');
+      await bots.getByRole('navigation', { name: t['navigation.sections'], exact: true }).getByRole('button', { name: t['groups.title'], exact: true }).click();
+      return bots;
     };
     try {
       await installOverlayHandler(page, () => {}); await page.goto(host.url, { waitUntil: 'domcontentloaded' });
@@ -116,6 +119,11 @@ try {
       await page.setViewportSize({ width: 1360, height: 1000 });
       await page.locator(`[data-row-key="session:${groupRoot}"]`).filter({ hasText: groupName }).waitFor({ state: 'attached' });
       check('native sidebar session row retains group name after sending');
+      const groupMark = page.locator(`[data-row-key="session:${groupRoot}"] [data-group-session-leading] [data-bot-brand="companions"]`);
+      await groupMark.waitFor();
+      check('group sidebar uses the shared three-whale mark', await groupMark.locator('[data-bot-brand-part]').count() === 3);
+      const headerMark = page.getByRole('button', { name: `${t['groups.manage']} · ${groupName}`, exact: true }).locator('[data-bot-brand="companions"]');
+      check('group header uses the same three-whale mark', await headerMark.locator('[data-bot-brand-part]').count() === 3);
       await page.setViewportSize({ width, height: 1000 });
       const identities = await botCards.evaluateAll(cards => cards.map(card => card.getAttribute('data-group-message')));
       check('every Bot message has one exclusive native card', identities.length > 0 && new Set(identities).size === identities.length);
@@ -130,6 +138,19 @@ try {
       check('native fallback does not render an extra copy of Bot response text');
       check('group composer has no second timeline', await groupComposer.locator('[role="log"]').count() === 0);
       await composer.scrollIntoViewIfNeeded(); await shot('native-group');
+
+      if (brandOnly) {
+        await page.setViewportSize({ width: 1360, height: 1000 });
+        await page.getByRole('button', { name: `${t['groups.manage']} · ${groupName}`, exact: true }).click();
+        const overview = page.locator('[data-bots-page]:visible').getByRole('article', { name: groupName, exact: true });
+        await overview.waitFor();
+        check('group management retains actual member avatars', await overview.locator('[data-group-avatar="members"]').count() > 0);
+        await page.setViewportSize({ width, height: 1000 });
+        await shot('group-brand-members');
+        results.push({ ...item, status: 'PASS', durationMs: Date.now() - caseStartedAt, checks, screenshots });
+        await writeFile(resolve(dir, 'progress.json'), JSON.stringify(results, null, 2));
+        continue;
+      }
 
       await botCards.first().getByRole('button', { name: t['groups.reply'], exact: true }).click();
       await groupComposer.getByRole('button', { name: t['groups.clearReply'], exact: true }).waitFor();
@@ -178,7 +199,8 @@ try {
 
       // Create an unshared synthetic Bot just for deletion; never remove the shared matrix participants.
       await page.setViewportSize({ width: 1360, height: 1000 }); await openBotsPanel(page, t['bots.title']);
-      const panel = page.locator('[data-bots-page]:visible'); await panel.getByRole('tab', { name: t['bots.title'], exact: true }).click();
+      const panel = page.locator('[data-bots-page]:visible');
+      await panel.getByRole('navigation', { name: t['navigation.sections'], exact: true }).getByRole('button', { name: t['navigation.myBots'], exact: true }).click();
       await panel.getByRole('button', { name: t['bots.create'], exact: true }).click();
       let dialog = panel.locator('dialog:visible'); const deleteId = `delete-${id}`;
       await dialog.getByRole('textbox', { name: `${t['editor.id']} ${t['editor.idHint']}`, exact: true }).fill(deleteId);

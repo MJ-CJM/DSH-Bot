@@ -26,7 +26,7 @@ flowchart LR
 | Client | [`src/client/index.tsx`](../packages/dsh-bot/src/client/index.tsx) | 挂载 Remote、locale 和公开 slot，维护页面状态、调用原生工作区/会话导航 |
 | Shared | [`shared/schema.ts`](../packages/dsh-bot/src/shared/schema.ts)、[`shared/remote-contract.ts`](../packages/dsh-bot/src/shared/remote-contract.ts) | 持久记录与输入 schema、错误码、Host/Client 方法类型和 wire descriptor |
 
-Client 使用宿主平台模块表中的 React、Zod 和公开 UI 包，不内联另一套 React，也不导入 DSH 内部组件。主题样式使用 `--dsw-alias-*`；中英文词典具有相同键集。导航、默认头像及会话行角标共用 `WhaleGlyph`，采用 `currentColor`。
+Client 使用宿主平台模块表中的 React、Zod 和公开 UI 包，不内联另一套 React，也不导入 DSH 内部组件。主题样式使用 `--dsw-alias-*`；中英文词典具有相同键集。Bots 导航、群聊侧栏与会话头的默认图标使用 `BotBrandGlyph` 渲染三鲸标志，个人 Bot 默认头像使用 `WhaleGlyph`；两种图形都继承 `currentColor`。群列表和管理页在有可用成员时继续展示成员头像拼图，无可用成员时回退为三鲸标志。
 
 公开 slot 包括 `sidebar.panellist`、`main`、会话头部、空白会话 Hero、会话行 leading/hover，以及原生右侧 pane tab。右侧 Bots tab 由 `sidebarRightTabs.register` 注册，缺少右侧服务的精简 Client 仍可使用其他 Bots 页面。它复用原生会话导航与 tab 状态，不替换 DSH 会话树。
 
@@ -72,7 +72,7 @@ home 固定从公开 `resolveDshHome()` 推导，不跟随自定义技能 `dataD
 
 ## R06：头像造型与配色
 
-`WhaleGlyph` 是导航、Bot 头像和选择器的共享入口。导航不传 variant，继续使用经典图标；头像可选择经典、戴眼镜、喷水、小鲸鱼、戴帽子、睡觉六种。五种原创派生造型组合一份身体路径及负空间眼睛/鳍，喷水、帽子和 Zz 由单色几何路径绘制；SVG 仅 currentColor/none，避免主题固定色或重复身体 path。
+`WhaleGlyph` 是 Bot 头像和选择器的共享入口。头像可选择经典、戴眼镜、喷水、小鲸鱼、戴帽子、睡觉六种。五种原创派生造型组合一份身体路径及负空间眼睛和鳍，喷水、帽子和 Zz 由单色几何路径绘制。SVG 使用 `currentColor` 和 `none`。
 
 决策：存储可选 `avatarVariant`，显式 `auto` 表示自动造型；保留 `avatarColor` 并扩为 12 个受限 ID。理由：旧字段不存在的记录必须保持 classic，不能仅用字段缺失同时代表自动造型。新建 UI 默认 auto，编辑旧 Bot 默认 classic，自动按钮同时设置 auto 并清空指定颜色；按 Bot ID 的两个 FNV-1a 哈希域独立选择造型/颜色，重载、主题、语言和名称变化不影响结果。API 创建省略 variant 仍按兼容规则显示 classic。图片优先于 emoji，再使用鲸鱼；选造型或颜色切回鲸鱼并保留另一个维度。`null` 清空 variant 后恢复 classic，无批量改写、无 schemaVersion 升级。
 

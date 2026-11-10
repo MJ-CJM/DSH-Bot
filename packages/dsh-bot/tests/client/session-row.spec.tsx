@@ -111,6 +111,8 @@ it.each(['en', 'zh'] as const)('%s decorates exact group roots with a whale, wit
  cleanups.push(app.dispose);
  const { container } = await mountRows(app, ['group-root-row', 'native-worker'], language, true);
  await vi.waitFor(() => expect(container.querySelector('[data-group-session-leading="group:row"] svg')).toBeTruthy());
+ expect([...container.querySelectorAll('[data-group-session-leading="group:row"] [data-bot-brand-part]')]
+   .map(path => path.getAttribute('data-bot-brand-part'))).toEqual(['glasses', 'sleeping', 'classic']);
  expect(container.querySelector('[data-group-session-leading]')?.getAttribute('aria-label')).toContain('Research group');
  expect(container.querySelector('[data-test-row="native-worker"]')?.textContent).toBe('');
  expect(container.querySelector('[data-bot-session-leading]')).toBeNull();

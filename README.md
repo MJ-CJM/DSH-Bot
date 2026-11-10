@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packages/dsh-bot/assets/logo-1024.png" alt="DSH-Bot" width="160" height="160">
+</p>
+
 # DSH-Bot
 
 [English](README.en.md) · 中文

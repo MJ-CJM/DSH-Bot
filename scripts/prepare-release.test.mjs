@@ -30,7 +30,8 @@ test('Candidate preparation rejects stale/unlicensed packages and never overwrit
       'lib/module-manifest.json': JSON.stringify({ version: '0.6.3', files: { 'shared/version.js': createHash('sha256').update(hostSource).digest('hex') } }),
       'cordis.patch.yml': '[]\n', 'locale/en.json': '{"ui":{},"meta":{"title":"Bot","description":"Bot"}}',
       'locale/zh.json': '{"ui":{},"meta":{"title":"Bot","description":"Bot"}}',
-      'icon.svg': '<svg/>', 'README.md': 'Fixture', 'README.en.md': 'English fixture', 'THIRD_PARTY_NOTICES.txt': 'Fixture notices',
+      'icon.svg': '<svg/>', 'assets/logo-1024.png': 'Fixture image',
+      'README.md': 'Fixture', 'README.en.md': 'English fixture', 'THIRD_PARTY_NOTICES.txt': 'Fixture notices',
     };
     for (const [file, bytes] of Object.entries(files)) {
       await mkdir(`${source}/${file.slice(0, file.lastIndexOf('/') + 1)}`, { recursive: true });

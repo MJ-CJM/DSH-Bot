@@ -1,5 +1,5 @@
 /**
- * Real rc.2 Web screenshots, with the installed Desktop CLI and cached Chromium.
+ * Real rc.2 Web screenshots, with the pinned CLI and cached Chromium.
  * Run from the repository root after scripts/pnpm check:
  *   DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs
  * Default: five responsive Bots pages, two Chinese Bot-chat dialogs and two
@@ -9,7 +9,7 @@
  * --v015 captures T08i Bots/menu, directory settings, and the usable native
  * conversation with its Bots workspace/whale row in zh light/dark.
  * --home-only remains an alias for --v015.
- * --v016 captures Chinese light/dark native navigation with the shared whale,
+ * --v016 captures Chinese light/dark native navigation with the three-whale mark,
  * verifies its geometry/paint, and publishes .codex/screens/v016-{theme}.png.
  * --seed-only verifies committed mock assistant activity without Chromium.
  * --manual-browser prepares that same Host for an external browser until stopped.
@@ -34,7 +34,8 @@ import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
 import remoteContribution from 'dsh-bot/remote';
 import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
-import { captureFailureEvidence, captureRefreshStability, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readNavigationWhale, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyNavigationWhale, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
+import { captureFailureEvidence, captureRefreshStability, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readNavigationBrand, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyNavigationBrand, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
+import { BOT_BRAND_PARTS, BOT_BRAND_VIEW_BOX } from '../src/shared/bot-brand.ts';
 import en from '../locale/en.json' with { type: 'json' };
 import zh from '../locale/zh.json' with { type: 'json' };
 
@@ -88,7 +89,7 @@ async function verifyNativeBotsConversation(page, conversation, editor, workspac
 }
 
 if (process.argv.includes('--help')) {
-  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --v022-avatar: 4 zh light/dark screenshots: cropped avatar selector, then unobscured Bots list after closing the editor; verifies six variants, twelve colors, keyboard and contrast. Publishes .codex/screens/v022-avatar-{light,dark}.png and v022-avatar-list-{light,dark}.png, no model requests. --v022-seed-only: verify the exact Remote/Host screenshot fixtures without a browser or PNGs. --v022-host-only: nonvisual shipped Client/Gateway/Host native every60 delivery, manual run, native edit/delete and changed-event verification with loopback mock, no PNGs. --v022: 8 en/zh light/dark native schedule overview/detail screenshots using a real native tool, every60 delivery and manual run, followed by native history navigation; publishes .codex/screens/v022-{light,dark}.png and detail variants. --v016: 2 zh light/dark native navigation screenshots, verifies adjacent Plugins/automation/Bots rows and whale paint/geometry, then publishes .codex/screens/v016-light.png and v016-dark.png; sends no model prompts. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
+  console.log('From the repository root: DSH_HOME="$PWD/.dsh-dev" node scripts/screenshot.mjs\nDefault: 5 Bots pages (zh/en light/dark wide + zh light narrow), 2 zh light/dark Bot-chat dialogs, and 2 zh light/dark native workspace lists; plus a zh-light-wide refresh A/B pair after at least two observed polling cycles. --workspace-only: 2 zh light/dark native workspace lists. --right-tab-only: 2 zh light/dark conversation/Bots right tabs, then recent/new-session navigation checks. --v015 (alias --home-only): 6 zh light/dark T08i Bots/menu, directory settings and native conversation screenshots, asserting enabled/editable/non-inert input, Bots hero chip and Bots group with whale avatar. --v022-avatar: 4 zh light/dark screenshots: cropped avatar selector, then unobscured Bots list after closing the editor; verifies six variants, twelve colors, keyboard and contrast. Publishes .codex/screens/v022-avatar-{light,dark}.png and v022-avatar-list-{light,dark}.png, no model requests. --v022-seed-only: verify the exact Remote/Host screenshot fixtures without a browser or PNGs. --v022-host-only: nonvisual shipped Client/Gateway/Host native every60 delivery, manual run, native edit/delete and changed-event verification with loopback mock, no PNGs. --v022: 8 en/zh light/dark native schedule overview/detail screenshots using a real native tool, every60 delivery and manual run, followed by native history navigation; publishes .codex/screens/v022-{light,dark}.png and detail variants. --v016: 2 zh light/dark native navigation screenshots, verifies adjacent Plugins/automation/Bots rows and three-whale paint/geometry, then publishes .codex/screens/v016-light.png and v016-dark.png; sends no model prompts. --extras-only: 4 zh light/dark wide editor/Bot-chat screenshots. --seed-only: verify three loopback mock assistant sessions, previews and unread without Chromium (0 screenshots). --manual-browser: prepare the same seeded Host without Chromium, write a private browser-access.json, and wait for its sibling manual-stop file or a shutdown signal; do not send messages in the UI (0 screenshots, no visual PASS).\nUses only cached chromium_headless_shell; writes dist/screenshots/<run> and sanitized .dsh-dev/screenshots/<run> logs.');
 } else {
   assert.ok([avatarOnly, seedOnly, extrasOnly, homeOnly, navOnly, routinesOnly, routinesHostOnly, routinesSeedOnly, workspaceOnly, rightTabOnly, manualBrowser].filter(Boolean).length <= 1, 'Choose only one screenshot mode');
   assert.equal(process.cwd(), root, 'Run screenshots from the repository root');
@@ -452,17 +453,18 @@ if (process.argv.includes('--help')) {
       await page.mouse.move(width - 1, height - 1);
       await dismissFirstRunOverlays(page, recordOverlay, 'before-navigation-capture');
       step = `v016-${theme}-navigation-check`;
-      const evidence = await page.evaluate(readNavigationWhale);
+      const evidence = await page.evaluate(readNavigationBrand);
       navigationChecks.push({ language, theme, viewport, ...evidence });
       save('navigation-checks.json', navigationChecks);
-      const expectedPath = readFileSync(resolve(root, 'packages/dsh-bot/icon.svg'), 'utf8').match(/<path\b[^>]*\bd="([^"]+)"/u)?.[1];
-      assert.ok(expectedPath, 'Package icon must contain the shared whale path');
-      verifyNavigationWhale(evidence, theme, expectedPath);
+      const expectedParts = BOT_BRAND_PARTS.map(({ id, outline, negative, details }) => ({
+        id, d: [outline, negative, details].join(' '),
+      }));
+      verifyNavigationBrand(evidence, theme, BOT_BRAND_VIEW_BOX, expectedParts);
       step = `v016-${theme}-capture`;
       const file = `v016-${theme}.png`;
       await page.screenshot({ path: resolve(output, file), fullPage: true, animations: 'disabled' });
       shots.push({ file, language, theme, viewport, width, height, surface: 'navigation', bodyTheme: evidence.bodyTheme, evidence });
-      console.log(`PASS: zh/${theme} adjacent native navigation rows with centered currentColor whale`);
+      console.log(`PASS: zh/${theme} adjacent native navigation rows with centered currentColor three-whale mark`);
     }
     for (const { language, theme, viewport, width, height } of avatarOnly || seedOnly || manualBrowser || navOnly || routinesOnly || routinesHostOnly || routinesSeedOnly || workspaceOnly || rightTabOnly ? [] : screenshotCases(extrasOnly || homeOnly)) {
       const copy = language === 'zh' ? zh.ui : en.ui;

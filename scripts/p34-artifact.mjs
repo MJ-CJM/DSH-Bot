@@ -31,8 +31,8 @@ export async function auditArtifact(root, artifact, runDir) {
   assert.equal(listing.code, 0);
   for (const path of listing.output.trim().split('\n')) {
     assert.ok(path.startsWith('package/') && !path.split('/').includes('..'), `Unsafe entry ${path}`);
-    if (path === 'package/' || path === 'package/locale/') continue;
-    assert.ok(/^package\/(?:package\.json|README(?:\.en)?\.md|LICENSE|THIRD_PARTY_NOTICES\.txt|cordis\.patch\.yml|icon\.svg|locale\/(?:en|zh)\.json|lib\/.*)$/.test(path));
+    if (path === 'package/' || path === 'package/locale/' || path === 'package/assets/') continue;
+    assert.ok(/^package\/(?:package\.json|README(?:\.en)?\.md|LICENSE|THIRD_PARTY_NOTICES\.txt|cordis\.patch\.yml|icon\.svg|assets\/logo-1024\.png|locale\/(?:en|zh)\.json|lib\/.*)$/.test(path));
   }
   const unpacked = resolve(runDir, 'unpacked');
   await mkdir(unpacked, { recursive: true });

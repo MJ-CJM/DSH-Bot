@@ -48,7 +48,7 @@ export function screenshotCases(extrasOnly = false): ScreenshotCase[] {
 
 /** Observe the native sidebar rows through their accessible names and rendered
  * SVGs. No Host or Client implementation state is used to arrange the rows. */
-export function readNavigationWhale() {
+export function readNavigationBrand() {
   const box = (element: Element | null) => {
     const rect = element?.getBoundingClientRect();
     return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
@@ -68,16 +68,28 @@ export function readNavigationWhale() {
         label: row.getAttribute('aria-label'), text: row.textContent?.trim(),
         row: box(row), icon: box(svg), visible: row.checkVisibility(),
         svg: svg?.outerHTML ?? '', viewBox: svg?.getAttribute('viewBox'),
+        brand: svg?.getAttribute('data-bot-brand'), ariaHidden: svg?.getAttribute('aria-hidden'),
         fill: svg?.getAttribute('fill'), color: style?.color, computedFill: style?.fill,
-        rectCount: svg?.querySelectorAll('rect').length ?? 0,
-        paths: paths.map((path) => ({ d: path.getAttribute('d'), fill: path.getAttribute('fill'),
-          computedFill: getComputedStyle(path).fill, stroke: getComputedStyle(path).stroke, bounds: box(path) })),
+        otherElementCount: svg?.querySelectorAll(':not(path)').length ?? 0,
+        paths: paths.map((path) => {
+          const paint = getComputedStyle(path);
+          return {
+            id: path.getAttribute('data-bot-brand-part'), d: path.getAttribute('d'),
+            fill: path.getAttribute('fill'), fillRule: path.getAttribute('fill-rule'),
+            computedFill: paint.fill, stroke: paint.stroke, bounds: box(path),
+          };
+        }),
       };
     }),
   };
 }
 
-export function verifyNavigationWhale(evidence: ReturnType<typeof readNavigationWhale>, theme: 'light' | 'dark', expectedPath: string): void {
+export function verifyNavigationBrand(
+  evidence: ReturnType<typeof readNavigationBrand>,
+  theme: 'light' | 'dark',
+  expectedViewBox: string,
+  expectedParts: readonly { id: string; d: string }[],
+): void {
   if (!evidence.language.startsWith('zh') || !evidence.bodyTheme || evidence.darkPreferred !== (theme === 'dark')) {
     throw new Error('Navigation screenshot requires an active Chinese locale and the requested browser theme');
   }
@@ -101,17 +113,30 @@ export function verifyNavigationWhale(evidence: ReturnType<typeof readNavigation
       throw new Error('Navigation icon size or row alignment differs from its native neighbors');
     }
   }
-  const path = bots.paths[0];
-  if (bots.fill !== 'currentColor' || bots.rectCount !== 0 || bots.paths.length !== 1 || path?.d !== expectedPath
-    || path.fill !== 'currentColor' || path.computedFill !== bots.color || path.stroke !== 'none'
-    || /#[\da-f]{3,8}\b|\brgba?\s*\(/iu.test(bots.svg)) {
-    throw new Error('Bots navigation must render the shared whale as one currentColor path without a background or fixed colors');
+  if (bots.brand !== 'companions' || bots.ariaHidden !== 'true' || bots.viewBox !== expectedViewBox
+    || bots.fill !== 'currentColor' || bots.computedFill !== bots.color || bots.otherElementCount !== 0
+    || bots.paths.length !== expectedParts.length || /#[\da-f]{3,8}\b|(?:rgb|hsl)a?\s*\(/iu.test(bots.svg)
+    || bots.paths.some((path, index) => {
+      const expected = expectedParts[index];
+      return path.id !== expected?.id || path.d !== expected?.d || path.fillRule !== 'evenodd'
+        || path.fill !== null || path.computedFill !== bots.color || path.stroke !== 'none';
+    })) {
+    throw new Error('Bots navigation must render the three companion whales in currentColor without a background or fixed colors');
   }
-  if (!path.bounds || path.bounds.width < bots.icon.width * 0.65 || path.bounds.width > bots.icon.width + 0.5
-    || path.bounds.height < bots.icon.height * 0.5 || path.bounds.height > bots.icon.height + 0.5
-    || Math.abs(path.bounds.x + path.bounds.width / 2 - bots.icon.x - bots.icon.width / 2) > 1
-    || Math.abs(path.bounds.y + path.bounds.height / 2 - bots.icon.y - bots.icon.height / 2) > 1) {
-    throw new Error('Whale silhouette is too small, clipped or off-center in the native navigation icon box');
+  const bounds = bots.paths.flatMap(({ bounds }) => bounds ? [bounds] : []);
+  if (bounds.length !== expectedParts.length || bounds.some(({ width, height }) => width <= 0 || height <= 0)) {
+    throw new Error('A companion whale has no visible bounds');
+  }
+  const left = Math.min(...bounds.map(({ x }) => x));
+  const top = Math.min(...bounds.map(({ y }) => y));
+  const right = Math.max(...bounds.map(({ x, width }) => x + width));
+  const bottom = Math.max(...bounds.map(({ y, height }) => y + height));
+  const { x, y, width, height } = bots.icon;
+  if (right - left < width * 0.65 || bottom - top < height * 0.5
+    || left < x - 0.5 || right > x + width + 0.5 || top < y - 0.5 || bottom > y + height + 0.5
+    || Math.abs((left + right) / 2 - x - width / 2) > 1
+    || Math.abs((top + bottom) / 2 - y - height / 2) > 1) {
+    throw new Error('The three-whale mark is too small, clipped or off-center in the native navigation icon box');
   }
 }
 
