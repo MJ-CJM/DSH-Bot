@@ -1,10 +1,10 @@
 # Changelog
 
-## 0.6.7 — 发布准备
+## 0.6.7 — 2026-11-12
 
-- 准备以 `dsh-botgroup` 首次发布 npm 包。产品名称为 DSH-Bot，源码位于 `packages/dsh-bot/`。
+- 首次在 npm 发布 `dsh-botgroup@0.6.7`，GitHub v0.6.7 为 latest。两个渠道的安装包与冻结候选字节一致。 [npm](https://www.npmjs.com/package/dsh-botgroup/v/0.6.7) · [GitHub Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7)
 - README、侧栏和群默认头像统一采用三鲸鱼标志。
-- 当前公开稳定版为 v0.6.6。跨包名迁移与 npm 发布状态见 [0.6.7 发布准备](docs/releases/v0.6.7.md)。
+- 从旧 `dsh-bot` 迁移时，先移除旧包。若原 profile 覆盖行同时含 `id: dsh-bot` 和 `name: dsh-bot`，启动前将 `name` 改为 `dsh-botgroup`，保留原 ID、配置及数据目录。两种隔离宿主的 npm 安装、迁移和冷启动已通过。 [0.6.7 迁移与发布记录](docs/releases/v0.6.7.md)
 
 ## 0.6.6 — 2026-11-09
 

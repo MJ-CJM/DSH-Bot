@@ -8,7 +8,7 @@
 
 **你的个人智能体工作区。** 在 DeepSeek Harness 中创建各有职责与记忆的 Bot，持续对话、跟进工作，也可以把它们组成群聊，分工处理同一个任务。
 
-**[0.6.6 已发布](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)**：新增个人与群的非定时主动跟进，以及有原文引用的群工作召回。[查看本版变化](CHANGELOG.md)。
+**0.6.7 已发布。** DSH-Bot 采用三鲸鱼标志，继续支持个人与群的非定时主动跟进和带原文引用的群工作召回。 [npm 安装包](https://www.npmjs.com/package/dsh-botgroup/v/0.6.7) · [GitHub Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7) · [变更记录](CHANGELOG.md)
 
 ![我的 Bots：研究、审阅和写作助手](packages/dsh-bot/assets/showcase/zh-bots.png)
 
@@ -80,15 +80,25 @@ Bot 按需查找自己实际参与、当前仍可访问的群工作。**查到�
 
 ## 安装
 
-当前公开稳定版为 **0.6.6**，采用 **MIT** 许可证。安装包与下载校验见 [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)。启用和查看本地跟进无需配置模型；聊天和明确接受的模型任务需要 DSH 中可用的模型配置。
+当前稳定版为 **0.6.7**，采用 **MIT** 许可证。启用和查看本地跟进无需配置模型。聊天和明确接受的模型任务需要 DSH 中可用的模型配置。 [发布与验收记录](docs/releases/v0.6.7.md)
 
-DSH-Bot 正在准备以 `dsh-botgroup@0.6.7` 首次发布到 npm。两种隔离宿主的跨包名迁移已通过验证；npm 公开发布前，现有安装继续使用。[0.6.7 发布准备](docs/releases/v0.6.7.md)
+已安装旧包 `dsh-bot` 的用户，请先按下文的跨包名迁移步骤操作。
 
-### 方式一：在社区市场中搜索
+### 方式一：从 npm 安装
 
-如果已安装社区插件 **dshmarket**，打开 **插件 → 插件市场**，搜索 `DSH-Bot`，核对作者为 **MJ-CJM** 后安装。市场从社区目录同步，刚收录或更新时可能暂时搜不到；这时可用下面的直接安装方式。
+桌面版打开 **插件 → 添加插件 → 安装第三方插件**，输入 `dsh-botgroup@0.6.7`，安装后按宿主提示重启。
 
-支持原生“发现”页的 DSH 版本，也可以在 **插件 → 发现 → 索引源** 添加社区索引，再搜索：
+Web 实例使用下列命令。自定义实例请将 `web` 替换为实际 profile 名称。
+
+```sh
+dsh plugin --profile web add dsh-botgroup@0.6.7
+```
+
+### 方式二：在社区市场中搜索
+
+社区网页目录的安装链接已指向 0.6.7 的 GitHub 安装包。使用 **dshmarket** 时，在 **插件 → 插件市场** 搜索 `DSH-Bot` 并核对作者 **MJ-CJM**。目录的 npm 映射和下载统计仍待刷新。 [社区网页目录](https://awesome-dsh-plugin.com/zh/p/MJ-CJM/DSH-Bot--packages-dsh-bot/)
+
+原生 **插件 → 发现** 的社区索引暂未收录 DSH-Bot，等待自动刷新。可先直接从 npm 安装。原生“发现”的社区索引源如下。
 
 ```text
 https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json
@@ -96,7 +106,7 @@ https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json
 
 市场与索引的配置说明见 [dsh-market 使用指南](https://github.com/dsh-market/dsh-market/blob/main/README.zh.md)。社区市场不是 DSH 官方内置插件。
 
-### 方式二：桌面版直接安装
+### 方式三：使用 GitHub 安装包
 
 1. 打开 [最新稳定 Release](https://github.com/MJ-CJM/DSH-Bot/releases/latest)，下载同一 Release 的 `dsh-bot.tgz` 和 `dsh-bot.tgz.sha256`。不要选择自动生成的 Source code 压缩包。
 2. 在下载目录校验文件：macOS 用下面的命令，Linux 用 `sha256sum -c dsh-bot.tgz.sha256`。
@@ -109,15 +119,13 @@ shasum -a 256 -c dsh-bot.tgz.sha256
 
 固定安装地址：[下载 dsh-bot.tgz](https://github.com/MJ-CJM/DSH-Bot/releases/latest/download/dsh-bot.tgz)。复现特定版本时，使用对应 Release 的版本包及 `SHA256SUMS`。
 
-### 方式三：Web 版命令行
-
-下面只适用于运行在 `web` profile 的实例；不会把插件装入桌面版使用的 profile。自定义实例请改用自己的 profile 名称。
+Web 实例也可使用固定下载地址安装。自定义实例请将 `web` 替换为实际 profile 名称。
 
 ```sh
 dsh plugin --profile web add "https://github.com/MJ-CJM/DSH-Bot/releases/latest/download/dsh-bot.tgz"
 ```
 
-安装后按宿主提示重启。当前推荐预构建 Release 包；社区页面自动生成的 GitHub 源码安装命令不是本项目已验证的安装路线。
+安装后按宿主提示重启。npm 和 GitHub 安装包均为预构建产物。
 
 ## 第一次使用
 
@@ -151,7 +159,7 @@ dsh plugin --profile web add "https://github.com/MJ-CJM/DSH-Bot/releases/latest/
 
 同一包名内升级时，先备份原 profile 和完整数据，保留原 profile 与存储位置，通过同一安装入口添加新版包，再完全退出重开。回退需要升级前备份。
 
-从 `dsh-bot` 切换到 `dsh-botgroup` 需要单独迁移。下述步骤已在两种隔离宿主验证，待 npm 公开发布后使用：停止 Host、备份原 profile 和完整数据、通过 DSH 移除旧包并安装新包。启动前检查 `cordis.patch.yml` 中 `id: dsh-bot` 的插件覆盖行。若该行含 `name: dsh-bot`，将其改为 `name: dsh-botgroup`，保留原 `id`、`config` 和 `dataDir`。没有 `name` 的覆盖行按原样保留。确认同一 profile 只有新包后再启动 Host。[迁移验收状态](docs/releases/v0.6.7.md)
+从 `dsh-bot` 切换到 `dsh-botgroup` 时，先停止 Host，备份原 profile 和完整数据，再通过 DSH 移除旧包并安装新包。启动前检查 `cordis.patch.yml` 中 `id: dsh-bot` 的插件覆盖行。若有 `name: dsh-bot`，将其改为 `name: dsh-botgroup`，保留原 `id`、`config` 和 `dataDir`。没有 `name` 的覆盖行按原样保留。确认同一 profile 只剩新包后，启动 Host 并核对配置、Bot、记忆、群和原会话。 [迁移验收记录](docs/releases/v0.6.7.md#安装与包名过渡)
 
 **关闭电脑后，后台任务还能执行吗？**
 
@@ -159,9 +167,9 @@ dsh plugin --profile web add "https://github.com/MJ-CJM/DSH-Bot/releases/latest/
 
 ## 兼容性与功能边界
 
-开发依赖锁定 DSH `0.2.1-rc.2`。0.6.6 最终包已在 macOS 的 `0.2.1-rc.2`、`0.2.2-rc.1` 两种隔离宿主完成安装、冷启动与群工作召回边界验证，并完成八组 Web 布局和日常桌面安装检查。声明范围 `>=0.2.1-rc.2 <0.3.0` 不表示每个版本、平台都已实测；原生 rc.2 仍有受管 Bot 分叉限制，真实模型质量未验证。详见 [发布验证](docs/releases/v0.6.6.md)。
+开发依赖锁定 DSH `0.2.1-rc.2`。0.6.7 在 macOS 的 `0.2.1-rc.2` 和 `0.2.2-rc.1` 隔离宿主完成 npm 安装、跨包名迁移与冷启动，并在 rc.2 完成八组 Web 布局验证。日常桌面安装检查的记录属于 0.6.6。原生 rc.2 仍有受管 Bot 分叉限制。 [0.6.7 发布验证](docs/releases/v0.6.7.md) · [0.6.6 桌面验证记录](docs/releases/v0.6.6.md)
 
-已发布的 0.6.6 安装包保持本地验收时的原字节，随包 README 保留了当时的候选说明；当前发布状态与使用说明以本页及 Release notes 为准。
+已发布的 0.6.7 安装包保持验收时的原字节，随包 README 保留候选说明。最新安装步骤与发布状态见本页和发布记录。
 
 Bot 的工作目录不是文件隔离边界；沿用宿主权限、审批和沙箱。本地非定时跟进依赖 DSH Host 运行；零模型定时跟进、外部 IM 收发、系统/手机推送和云托管不在本版交付范围；自动共享不可用。合成模型检查不代表真实模型质量，强杀后不确定的后台结果不会自动重放。
 
