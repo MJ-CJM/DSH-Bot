@@ -8,7 +8,7 @@
 
 **你的个人智能体工作区。** 在 DeepSeek Harness 中创建各有职责与记忆的 Bot，持续对话、跟进工作，也可以把它们组成群聊，分工处理同一个任务。
 
-**[0.6.6 已发布](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)**：新增个人与群的非定时主动跟进，以及有原文引用的群工作召回。[查看本版变化](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md)。
+本包是 DSH-Bot **0.6.7 发布候选**，拟以 `dsh-botgroup` 首次发布到 npm，并采用三鲸鱼标志。当前公开稳定版仍为 **0.6.6**。[发布与变更记录](https://github.com/MJ-CJM/DSH-Bot/releases)
 
 ![我的 Bots：研究、审阅和写作助手](assets/showcase/zh-bots.png)
 
@@ -80,7 +80,17 @@ Bot 按需查找自己实际参与、当前仍可访问的群工作。**查到�
 
 ## 安装
 
-当前版本 **0.6.6**，采用 **MIT** 许可证。安装包与下载校验见 [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)。启用和查看本地跟进无需配置模型；聊天和明确接受的模型任务需要 DSH 中可用的模型配置。
+当前公开稳定版 **0.6.6** 采用 **MIT** 许可证。安装包与下载校验见 [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)。启用和查看本地跟进无需配置模型；聊天和明确接受的模型任务需要 DSH 中可用的模型配置。
+
+### npm 发布后的安装方式
+
+`dsh-botgroup@0.6.7` 公开后，全新安装可在桌面版的 **插件 → 添加插件 → 安装第三方插件** 中输入 `dsh-botgroup`，或在 Web profile 中运行：
+
+```sh
+dsh plugin --profile web add dsh-botgroup@0.6.7
+```
+
+旧包名为 `dsh-bot`。现有用户请保留原安装，等待跨包名迁移步骤通过验证后再切换。请在同一 profile 中只启用一个包。
 
 ### 方式一：在社区市场中搜索
 
@@ -147,7 +157,7 @@ dsh plugin --profile web add "https://github.com/MJ-CJM/DSH-Bot/releases/latest/
 
 **怎么升级，会丢数据吗？**
 
-升级前备份原 profile 和完整数据，保留原 profile 与存储位置，通过同一安装入口添加新版包，再完全退出重开。不要以删除 Bot 或重置数据作为升级步骤。`latest` 地址更新不等于已安装插件会自动升级。迁移后的数据不能直接交给旧版本写入，回退需要升级前备份。
+同一包名的版本升级前，请备份原 profile 和完整数据，再通过同一入口添加新版包并完全退出重开。从 `dsh-bot` 切换到 `dsh-botgroup` 的流程仍在验证中，请暂缓切换。回退需要升级前备份。
 
 **关闭电脑后，后台任务还能执行吗？**
 

@@ -16,7 +16,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
-import remoteContribution from 'dsh-bot/remote';
+import remoteContribution from 'dsh-botgroup/remote';
 import { createClientActivityProbe } from './client-activity-probe.mjs';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');

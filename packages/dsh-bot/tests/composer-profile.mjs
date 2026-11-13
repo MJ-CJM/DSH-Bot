@@ -7,7 +7,7 @@ import { installConnection } from '@deepseek-ai/dsh-client-connection/client';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import WebSocket from 'ws';
-import remoteContribution from 'dsh-bot/remote';
+import remoteContribution from 'dsh-botgroup/remote';
 
 import {
   root, home, runDir, profile, profileDir, patchPath, requestPath, responsePath, homeRequestPath,
@@ -265,7 +265,7 @@ async function runHost(phase = 'prepare') {
       secrets.add(startupUrl.searchParams.get('token'));
     }
     if (line.includes('[dsh-bot] loaded')) loaded = true;
-    if (line.includes('[dsh-bot] startup failed') || line.includes('dsh-bot (dsh-bot):')) fatal = redact(line);
+    if (line.includes('[dsh-bot] startup failed') || line.includes('dsh-bot (dsh-botgroup):')) fatal = redact(line);
   });
   try {
     await until(() => Boolean(startupUrl && loaded) || closed || fatal, 'Web Host activation');
@@ -323,11 +323,11 @@ try {
   writeFileSync(fixture, readFileSync(fixtureSource, 'utf8'));
   const dump = await command(['--profile', profile, '--patch', patchPath, '--dump-config'], 'dump');
   writeFileSync(resolve(runDir, 'dump.yml'), dump);
-  check('dump includes formal bundle layer', /^# == dsh-bot(?:,|\s*$)/m.test(dump));
+  check('dump includes formal bundle layer', /^# == dsh-botgroup(?:,|\s*$)/m.test(dump));
   check('storage backend points at isolated run directory', dump.includes(resolve(runDir, 'storages')));
   check('session persistence points at isolated run directory', dump.includes(resolve(runDir, 'sessions')));
   const manifest = JSON.parse(readFileSync(resolve(profileDir, 'package.json'), 'utf8'));
-  check('profile links formal package', manifest.dependencies['dsh-bot'], `link:${resolve(root, 'packages/dsh-bot')}`);
+  check('profile links formal package', manifest.dependencies['dsh-botgroup'], `link:${resolve(root, 'packages/dsh-bot')}`);
   await runHost();
   const prepared = JSON.parse(readFileSync(resolve(runDir, 'memory-prepare.json'), 'utf8'));
   renameSync(responsePath, resolve(runDir, 'host-probe-prepare.json'));

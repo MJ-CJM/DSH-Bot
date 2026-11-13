@@ -36,7 +36,7 @@ function editorEntry(ctx: Context) {
   const id = loader?.locate(ctx.fiber);
   if (!loader || !editor || !id) return;
   const entry = loader.resolve(id);
-  if (entry.options.name === 'dsh-bot' && editor.entries().includes(entry)) return { editor, entry };
+  if (entry.options.name === 'dsh-botgroup' && editor.entries().includes(entry)) return { editor, entry };
 }
 
 export async function persistScopedBootstrap(ctx: Context, token: ProactiveBootstrapToken, stillCurrent: () => boolean): Promise<ProactiveSetupReply> {

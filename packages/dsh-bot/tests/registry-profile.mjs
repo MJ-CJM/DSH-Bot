@@ -1,9 +1,9 @@
 /**
  * Reproducible T04 integration probe against the built, public package.
- * Run from the repository root after `scripts/pnpm -F dsh-bot build`:
+ * Run from the repository root after `scripts/pnpm -F dsh-botgroup build`:
  * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/registry-profile.mjs
  * Or verify an existing tarball without rebuilding or linking source:
- * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/registry-profile.mjs --package dist/dsh-bot-0.1.6.tgz
+ * DSH_HOME="$PWD/.dsh-dev" node packages/dsh-bot/tests/registry-profile.mjs --package dist/dsh-botgroup-0.6.7.tgz
  * No model sessions or prompts are created. Credentials stay in memory.
  */
 import assert from 'node:assert/strict';
@@ -26,9 +26,11 @@ const home = resolve(root, '.dsh-dev');
 assert.equal(process.env.DSH_HOME, home, 'Set DSH_HOME="$PWD/.dsh-dev"');
 const args = process.argv.slice(2);
 assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--package'),
-  'Usage: registry-profile.mjs [--package path/to/dsh-bot.tgz]');
+  'Usage: registry-profile.mjs [--package path/to/plugin.tgz]');
 const packagePath = args.length ? resolve(root, args[1]) : undefined;
 const sourcePackage = resolve(root, 'packages/dsh-bot');
+const { name: sourcePackageName } = JSON.parse(readFileSync(resolve(sourcePackage, 'package.json'), 'utf8'));
+const remoteDriverSpecifier = `${sourcePackageName}/remote`;
 const task = packagePath ? 't10' : 't04';
 const stamp = `${new Date().toISOString().replaceAll(':', '-')}-${process.pid}`;
 const runDir = resolve(home, task, `run-${stamp}`);
@@ -85,11 +87,11 @@ function failureDetail(result) {
     ok: false, error: { code: result.error.code, message: result.error.message, details: result.error.details },
   };
 }
-function verifyInstalledTarball() {
+function verifyInstalledTarball(packageName) {
   const files = execFileSync('tar', ['-tzf', packagePath], { encoding: 'utf8' }).trim().split('\n');
   check('tarball contains only safe package file paths', files.every((file) =>
     file.startsWith('package/') && !file.endsWith('/') && !file.split('/').includes('..')));
-  const installedRoot = realpathSync(resolve(profileDir, 'node_modules/dsh-bot'));
+  const installedRoot = realpathSync(resolve(profileDir, 'node_modules', packageName));
   const installedRelative = relative(realpathSync(profileDir), installedRoot);
   check('installed package resolves within the isolated profile',
     installedRelative.length > 0 && !installedRelative.startsWith(`..${sep}`) && installedRelative !== '..');
@@ -103,10 +105,10 @@ function verifyInstalledTarball() {
     return { file: name, sha256: actual };
   });
   const manifest = JSON.parse(readFileSync(resolve(installedRoot, 'package.json'), 'utf8'));
-  check('installed package name', manifest.name, 'dsh-bot');
+  check('installed package name', manifest.name, packageName);
   const installedRequire = createRequire(resolve(profileDir, 'package.json'));
-  const hostEntry = installedRequire.resolve('dsh-bot');
-  const remoteEntry = installedRequire.resolve('dsh-bot/remote');
+  const hostEntry = installedRequire.resolve(packageName);
+  const remoteEntry = installedRequire.resolve(`${packageName}/remote`);
   check('Host public entry resolves into installed package', hostEntry.startsWith(`${installedRoot}${sep}`));
   check('Remote public entry resolves into installed package', remoteEntry.startsWith(`${installedRoot}${sep}`));
   // The CLI resolves shared peers from its installation. This standalone Node
@@ -120,7 +122,7 @@ function verifyInstalledTarball() {
   packageEvidence = {
     archive: packagePath, archiveSha256: packageHashBefore,
     name: manifest.name, version: manifest.version, installedRoot, hostEntry, remoteEntry, files: hashes,
-    remoteDriver: { entry: import.meta.resolve('dsh-bot/remote'), verifiedFiles: driverFiles },
+    remoteDriver: { entry: import.meta.resolve(remoteDriverSpecifier), verifiedFiles: driverFiles },
   };
   save('installed-package.json', packageEvidence);
 }
@@ -278,11 +280,16 @@ async function runPhase(phase, operation) {
 
 let failure;
 try {
+  let packageName = sourcePackageName;
   if (packagePath) {
     const packageRelative = relative(root, packagePath);
     check('tarball input is an existing repository file', packagePath.endsWith('.tgz')
       && packageRelative.length > 0 && !packageRelative.startsWith(`..${sep}`) && existsSync(packagePath));
     packageHashBefore = hashFile(packagePath);
+    const archivedManifest = execFileSync('tar', ['-xOf', packagePath, 'package/package.json'], { encoding: 'utf8' });
+    packageName = JSON.parse(archivedManifest).name;
+    check('tarball declares a valid unscoped package name',
+      typeof packageName === 'string' && /^[a-z0-9][a-z0-9._-]*$/.test(packageName));
   } else {
     check('built Host and Client artifacts exist', existsSync(resolve(sourcePackage, 'lib/index.js'))
       && existsSync(resolve(sourcePackage, 'lib/client.js')));
@@ -319,17 +326,18 @@ try {
   await command(['plugin', '--profile', profile, 'add', packagePath ?? sourcePackage], 'plugin-add');
   const dump = await command(['--profile', profile, '--patch', patchPath, '--dump-config'], 'dump');
   writeFileSync(resolve(runDir, 'dump.yml'), dump);
-  check('dump contains formal package bundle layer', /^# == dsh-bot(?:,|\s*$)/m.test(dump));
+  check('dump contains formal package bundle layer',
+    Array.from(dump.matchAll(/^# == ([^,\s]+)(?:,|\s*$)/gm), match => match[1]).includes(packageName));
   check('dump points storage-json at isolated run directory', dump.includes(resolve(runDir, 'storages')));
   const manifest = JSON.parse(readFileSync(resolve(profileDir, 'package.json'), 'utf8'));
   if (packagePath) {
-    check('profile installs a tarball file dependency', /^file:.*\.tgz$/.test(manifest.dependencies['dsh-bot']));
+    check('profile installs a tarball file dependency', /^file:.*\.tgz$/.test(manifest.dependencies[packageName]));
     check('dump points session logs at isolated run directory', dump.includes(resolve(runDir, 'sessions')));
-    verifyInstalledTarball();
+    verifyInstalledTarball(packageName);
   } else {
-    check('profile links formal package', manifest.dependencies['dsh-bot'], `link:${sourcePackage}`);
+    check('profile links formal package', manifest.dependencies[packageName], `link:${sourcePackage}`);
   }
-  remoteContribution = (await import('dsh-bot/remote')).default;
+  remoteContribution = (await import(remoteDriverSpecifier)).default;
 
   const initial = await runPhase('initial', async (remote, raw, roster) => {
     check('Host publishes configured ownership prefix', ok(await remote.catalogInfo(), 'catalog info'), { presetIdPrefix: 'review-' });

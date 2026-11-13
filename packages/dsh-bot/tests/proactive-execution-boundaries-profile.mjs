@@ -63,7 +63,10 @@ async function exercise(ctx, adapter) {
   const fixtureOffer = status.repairOffers.find(offer => offer.executor === 'native');
   assert.ok(fixtureOffer);
   const repair = { fixtureId: fixtureOffer.fixtureId, specDigest: fixtureOffer.specDigest, executor: 'native' };
-  const installed = join(process.env.DSH_HOME, 'profiles/b4-browser/node_modules/dsh-bot/lib/host/proactive');
+  const entry = [...ctx.loader.entries()].find(row => row.options.id === 'dsh-bot');
+  assert.ok(entry?.options.name, 'DSH-Bot Loader entry is missing');
+  const packageName = entry.options.name;
+  const installed = join(process.env.DSH_HOME, 'profiles/b4-browser/node_modules', packageName, 'lib/host/proactive');
   const { createWorkspaceRepairOffer } = await import(join(installed, 'workspace-repair.js'));
   const { CoordinatorClient } = await import(join(installed, 'coordinator-client.js'));
   const request = CoordinatorClient.prototype.request;

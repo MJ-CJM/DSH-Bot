@@ -23,9 +23,14 @@ export async function checkUpgrade(root, runDir, env, artifact, audit, oldVersio
   };
   try {
     const old = await command('/usr/bin/tar', ['-xOf', oldArtifact, 'package/package.json']);
-    assert.equal(old.code, 0); assert.equal(JSON.parse(old.output).version, oldVersion);
+    assert.equal(old.code, 0);
+    const oldManifest = JSON.parse(old.output);
+    assert.equal(oldManifest.version, oldVersion);
     await cli(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
     for (const phase of ['old', 'new']) {
+      if (phase === 'new' && oldManifest.name !== audit.name) {
+        await cli(['plugin', '--profile', profile, 'remove', oldManifest.name], 'old-remove');
+      }
       await cli(['plugin', '--profile', profile, 'add', phase === 'old' ? oldArtifact : artifact], `${phase}-install`);
       if (phase === 'new') await auditInstalled(env.DSH_HOME, profile, audit);
       const patch = [

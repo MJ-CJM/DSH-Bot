@@ -19,7 +19,7 @@ try {
   phase = 'initialize'; await run.command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
   phase = 'install'; await run.command(['plugin', '--profile', profile, 'add', artifactPath ?? resolve(root, 'packages/dsh-bot')], 'install');
   if (artifactPath) await auditInstalled(home, profile, await auditArtifact(root, artifactPath, dir));
-  const patch = mockProfilePatch(dir, 'packages/dsh-bot/tests/groups-workspace-profile.mjs', { outputDir: dir, installedRoot: resolve(home, 'profiles', profile, 'node_modules/dsh-bot') }, ['- id: dsh-bot', '  disabled: true']);
+  const patch = mockProfilePatch(dir, 'packages/dsh-bot/tests/groups-workspace-profile.mjs', { outputDir: dir, installedRoot: resolve(home, 'profiles', profile, 'node_modules/dsh-botgroup') }, ['- id: dsh-bot', '  disabled: true']);
   await writeFile(resolve(home, 'profiles', profile, 'cordis.patch.yml'), patch);
   phase = 'host'; await run.command(['--profile', profile, '--no-open', '--host', '127.0.0.1', '--port', '0'], 'host', true);
   const result = JSON.parse(await readFile(resolve(dir, 'result.json')));

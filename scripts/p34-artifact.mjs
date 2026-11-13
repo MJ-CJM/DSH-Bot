@@ -39,7 +39,8 @@ export async function auditArtifact(root, artifact, runDir) {
   assert.equal((await command('/usr/bin/tar', ['-xzf', artifact, '-C', unpacked])).code, 0);
   const packedRoot = resolve(unpacked, 'package');
   const manifest = JSON.parse(await readFile(resolve(packedRoot, 'package.json')));
-  assert.equal(manifest.name, 'dsh-bot');
+  const current = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json')));
+  assert.equal(manifest.name, current.name);
   assert.equal(manifest.version, JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version);
   assert.equal(manifest.engines.dsh, '>=0.2.1-rc.2 <0.3.0');
   assert.equal(manifest.license, JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).license);
@@ -82,7 +83,7 @@ export async function auditArtifact(root, artifact, runDir) {
 }
 export async function auditInstalled(home, profile, artifact) {
   assert.match(profile, /^[a-z0-9-]+$/);
-  const installedRoot = resolve(home, 'profiles', profile, 'node_modules/dsh-bot');
+  const installedRoot = resolve(home, 'profiles', profile, 'node_modules', artifact.name);
   for (const { file, sha256: expected } of artifact.files) {
     assert.equal(sha256(await readFile(resolve(installedRoot, file))), expected, `Installed mismatch: ${file}`);
   }

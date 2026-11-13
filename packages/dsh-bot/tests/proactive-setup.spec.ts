@@ -5,7 +5,7 @@ import type { ProactiveBootstrapToken, ProactiveConfig } from '../src/host/proac
 import { proactiveSetupRequest } from '../src/shared/proactive/setup.js';
 
 function fixture(raw: Record<string, unknown> = {}) {
-  const entry = { options: { name: 'dsh-bot', config: raw } };
+  const entry = { options: { name: 'dsh-botgroup', config: raw } };
   const update = vi.fn(async (_id: string, options: { config: unknown }) => { Object.assign(entry.options, options); });
   const describe = vi.fn(async () => ({ configured: true }));
   const loader = { locate: () => 'own-entry', resolve: () => entry };

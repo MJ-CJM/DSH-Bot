@@ -1,6 +1,6 @@
 - insert:
     - id: dsh-bot
-      name: dsh-bot
+      name: dsh-botgroup
       config:
         seedExamples: true
         presetIdPrefix: bot-

@@ -17,7 +17,7 @@ case "${1:-}" in
   install)
     pgrep -f "$APP/Contents/MacOS/DeepSeek Harness" >/dev/null && { echo "quit the app first" >&2; exit 1; }
     [ -d "$DSH_HOME/profiles/desktop" ] || { echo "run 'launch' once and quit to initialize the isolated desktop profile" >&2; exit 1; }
-    "$ROOT/scripts/pnpm" --filter dsh-bot build
+    "$ROOT/scripts/pnpm" -C "$ROOT/packages/dsh-bot" build
     "$APP/Contents/Resources/runtime/cli/bin/dsh" plugin --profile desktop add "$ROOT/packages/dsh-bot"
     "$APP/Contents/Resources/runtime/cli/bin/dsh" plugin --profile desktop list ;;
   status)
@@ -27,7 +27,7 @@ case "${1:-}" in
     DSH="$APP/Contents/Resources/runtime/cli/bin/dsh"
     if [ ! -d "$DSH_HOME/profiles/bot-web" ]; then
       "$DSH" --profile bot-web --from-default-profile web --dump-config >/dev/null
-      "$ROOT/scripts/pnpm" --filter dsh-bot build
+      "$ROOT/scripts/pnpm" -C "$ROOT/packages/dsh-bot" build
       "$DSH" plugin --profile bot-web add "$ROOT/packages/dsh-bot"
     fi
     [ "${2:-}" = "--dry-run" ] && { "$DSH" --profile bot-web --dump-config | grep -n 'dsh-bot' | head -5; exit 0; }

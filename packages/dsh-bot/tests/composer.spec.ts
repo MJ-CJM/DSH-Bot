@@ -82,7 +82,7 @@ describe('composeBotPreset', () => {
           expect(readDocument).toHaveBeenCalledExactlyOnceWith(template);
           expect({ input: { template, model: record.model, deny: record.tools.deny }, definition }).toMatchSnapshot();
           expect(definition.plugins.filter((row) => row.name === '@deepseek-ai/dsh-skill-filesystem')).toHaveLength(1);
-          expect(definition.plugins.find((row) => row.name === 'dsh-bot/bot-context')).toMatchObject({
+          expect(definition.plugins.find((row) => row.name === 'dsh-botgroup/bot-context')).toMatchObject({
             config: { botId: record.id },
           });
           expect(definition.plugins.some((row) => row.name === 'cordis:group' && row.id === 'bot-alpha')).toBe(false);
@@ -249,7 +249,8 @@ describe('composeBotPreset', () => {
   }
 
   it.each([
-    { label: 'plugin name', row: { id: 'already-bound', name: 'dsh-bot/bot-context', config: { botId: 'alpha' } } },
+    { label: 'plugin name', row: { id: 'already-bound', name: 'dsh-botgroup/bot-context', config: { botId: 'alpha' } } },
+    { label: 'legacy plugin name', row: { id: 'already-bound', name: 'dsh-bot/bot-context', config: { botId: 'alpha' } } },
     { label: 'reserved id', row: { id: 'bot-context', name: 'fixture-plugin' } },
   ])('rejects a Bot context $label inside recursively nested groups', async ({ row }) => {
     const rows = [...templateRows('standard'), deeplyNested(row)];

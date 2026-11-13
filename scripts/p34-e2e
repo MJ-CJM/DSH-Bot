@@ -22,8 +22,9 @@ Object.assign(env, { DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1',
   TMPDIR: resolve(runDir, 'tmp'), XDG_STATE_HOME: resolve(runDir, 'state'),
   pnpm_config_store_dir: resolve(home, 'pnpm-store'), pnpm_config_cache_dir: resolve(home, 'pnpm-cache') });
 await mkdir(env.TMPDIR, { recursive: true });
-const version = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version;
-const artifact = resolve(root, `dist/dsh-bot-${version}.tgz`);
+const { name: packageName, version } = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json')));
+const asset = `${packageName}-${version}.tgz`;
+const artifact = resolve(root, 'dist', asset);
 const summary = { status: 'FAIL', runDir, realModelRequests: 0, modelRequests: 0,
   scope: 'One exact tgz; independent fresh profiles for domain fault scenarios; browser status separate.',
   checks: [], scenarios: [], browser: { status: 'FAIL', reason: process.argv.includes('--host-only') ? 'NOT_RUN; screenshots delegated to orchestrator by R-review-r3' : 'not run' },
@@ -49,7 +50,7 @@ await check('pack_and_byte_audit', async () => {
   await execute(resolve(root, 'scripts/pnpm'), ['pack:plugin'], 'pack');
   audit = await auditArtifact(root, artifact, runDir);
   await writeFile(resolve(root, 'dist/artifact-manifest.json'), `${JSON.stringify(audit, (key, value) => key === 'packedRoot' ? undefined : value, 2)}\n`);
-  await writeFile(resolve(root, `dist/dsh-bot-${version}.tgz.sha256`), `${audit.sha256}  dsh-bot-${version}.tgz\n`);
+  await writeFile(resolve(root, 'dist', `${asset}.sha256`), `${audit.sha256}  ${asset}\n`);
   return { sha256: audit.sha256, files: audit.files.length };
 });
 await check('market_parser_and_mock_installer', async () => {
@@ -95,9 +96,9 @@ await check('cli_remove_reinstall_persistent_data_and_host', async () => {
     return rows.sort((a, b) => a.file.localeCompare(b.file));
   }
   const before = await snapshot(storageDir);
-  await execute(resolve(root, 'scripts/dsh'), ['plugin', '--profile', profile, 'remove', 'dsh-bot'], 'remove');
+  await execute(resolve(root, 'scripts/dsh'), ['plugin', '--profile', profile, 'remove', packageName], 'remove');
   const removed = JSON.parse(await readFile(resolve(profileDir, 'package.json')));
-  assert.ok(!removed.dependencies?.['dsh-bot']); assert.ok(!removed.dsh.profile.bundles.includes('dsh-bot'));
+  assert.ok(!removed.dependencies?.[packageName]); assert.ok(!removed.dsh.profile.bundles.includes(packageName));
   assert.deepEqual(await snapshot(storageDir), before);
   await execute(resolve(root, 'scripts/dsh'), ['plugin', '--profile', profile, 'add', artifact], 'reinstall');
   await auditInstalled(home, profile, audit); assert.deepEqual(await snapshot(storageDir), before);

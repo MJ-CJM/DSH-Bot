@@ -21,6 +21,7 @@ import { captureRoutines, seedRoutineScreenshots, verifyRoutineClient } from './
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +33,7 @@ import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import { chromium } from 'playwright-core';
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server';
 import WebSocket from 'ws';
-import remoteContribution from 'dsh-bot/remote';
+import remoteContribution from 'dsh-botgroup/remote';
 import { createClientActivityProbe } from '../tests/fixtures/client-activity-probe.mjs';
 import { captureFailureEvidence, captureRefreshStability, dismissFirstRunOverlays, installOverlayHandler, measureAvatars, readBotsLayout, readBotsRightTab, readNavigationBrand, readWorkspaceSessionRows, redactScreenshotText, screenshotCases, verifyAvatarContrast, verifyBotsRightTab, verifyNavigationBrand, verifyRefreshStability, verifyScreenshotActivity, verifyWorkspaceSessionRows, waitForInitialBotHistory } from './screenshot-support.ts';
 import { BOT_BRAND_PARTS, BOT_BRAND_VIEW_BOX } from '../src/shared/bot-brand.ts';
@@ -236,7 +237,11 @@ if (process.argv.includes('--help')) {
     ].join('\n'));
     await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
     await command(['plugin', '--profile', profile, 'add', process.env.DSH_BOT_E2E_PACKAGE ?? resolve(root, 'packages/dsh-bot')], 'plugin-add');
-    const installedClient = resolve(home, 'profiles', profile, 'node_modules/dsh-bot/lib/client.js');
+    const profileManifest = resolve(home, 'profiles', profile, 'package.json');
+    const { dependencies } = JSON.parse(readFileSync(profileManifest, 'utf8'));
+    const pluginNames = ['dsh-botgroup', 'dsh-bot'].filter((name) => Object.hasOwn(dependencies, name));
+    assert.equal(pluginNames.length, 1, 'Expected one DSH-Bot package in the screenshot profile');
+    const installedClient = createRequire(profileManifest).resolve(`${pluginNames[0]}/client`);
     const legacyPath = resolve(run, 'storages/dsh_bot_automation.json');
     let legacyBefore;
     if (process.env.DSH_BOT_E2E_PACKAGE && routinesHostOnly) {

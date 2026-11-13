@@ -17,7 +17,7 @@ test('Candidate preparation rejects stale/unlicensed packages and never overwrit
       await copyFile(`${root}scripts/${file}`, `${directory}/scripts/${file}`);
     await copyFile(`${root}docs/release-notes-template.md`, `${directory}/docs/release-notes-template.md`);
     const source = `${directory}/packages/dsh-bot`;
-    const manifest = { name: 'dsh-bot', version: '0.6.3', license: 'MIT',
+    const manifest = { name: 'dsh-botgroup', version: '0.6.3', license: 'MIT',
       engines: { dsh: '>=0.2.1-rc.2 <0.3.0' }, exports: {}, dsh: { bundle: { patch: './cordis.patch.yml' } },
       repository: { url: 'git+https://github.com/MJ-CJM/DSH-Bot.git' },
       devDependencies: { '@deepseek-ai/cordis': '4.0.5' }, peerDependencies: { '@deepseek-ai/cordis': '^4.0.5' } };
@@ -55,20 +55,20 @@ test('Candidate preparation rejects stale/unlicensed packages and never overwrit
     const identity = JSON.parse(await readFile(`${output}/release.json`));
     assert.equal(identity.published, false);
     assert.equal(identity.runtimeAcceptance, 'NOT_RUN_BY_THIS_SCRIPT');
-    const copied = await readFile(`${output}/dsh-bot-0.6.3.tgz`);
+    const copied = await readFile(`${output}/dsh-botgroup-0.6.3.tgz`);
     assert.deepEqual(copied, await readFile(archive));
     assert.deepEqual(await readFile(`${output}/dsh-bot.tgz`), copied);
     assert.equal(identity.stableAsset, 'dsh-bot.tgz');
     assert.equal(identity.stableChecksumAsset, 'dsh-bot.tgz.sha256');
-    assert.equal(identity.plannedDownloadUrl, 'https://github.com/MJ-CJM/DSH-Bot/releases/download/v0.6.3/dsh-bot-0.6.3.tgz');
+    assert.equal(identity.plannedDownloadUrl, 'https://github.com/MJ-CJM/DSH-Bot/releases/download/v0.6.3/dsh-botgroup-0.6.3.tgz');
     assert.equal(identity.plannedStableDownloadUrl, 'https://github.com/MJ-CJM/DSH-Bot/releases/latest/download/dsh-bot.tgz');
     assert.equal(identity.sha256, createHash('sha256').update(copied).digest('hex'));
-    assert.equal(await readFile(`${output}/SHA256SUMS`, 'utf8'), `${identity.sha256}  dsh-bot-0.6.3.tgz\n`);
+    assert.equal(await readFile(`${output}/SHA256SUMS`, 'utf8'), `${identity.sha256}  dsh-botgroup-0.6.3.tgz\n`);
     assert.equal(await readFile(`${output}/dsh-bot.tgz.sha256`, 'utf8'), `${identity.sha256}  dsh-bot.tgz\n`);
     assert.match(await readFile(`${output}/MJ-CJM__DSH-Bot--packages-dsh-bot.yml`, 'utf8'), /tarball: https:\/\/github.com\/MJ-CJM\/DSH-Bot\/releases\/latest\/download\/dsh-bot\.tgz\n/);
     assert.doesNotMatch(await readFile(`${output}/RELEASE_NOTES.md`, 'utf8'), /\{\{/);
     assert.match(invoke().stderr, /EEXIST/);
-    assert.deepEqual(await readFile(`${output}/dsh-bot-0.6.3.tgz`), copied);
+    assert.deepEqual(await readFile(`${output}/dsh-botgroup-0.6.3.tgz`), copied);
     assert.deepEqual(await readFile(`${output}/dsh-bot.tgz`), copied);
 
     // The same archive must pass the real Host fixture's audit, including notices and a chosen license.

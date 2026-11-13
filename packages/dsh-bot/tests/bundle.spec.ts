@@ -115,7 +115,7 @@ describe('built bundle contract', () => {
   });
 
   it('registers a lazy Client factory using only the supplied platform require', () => {
-    const source = readFileSync(require.resolve('dsh-bot/client'), 'utf8');
+    const source = readFileSync(require.resolve('dsh-botgroup/client'), 'utf8');
     expect(source.startsWith('window.__ModuleLoader__.load(')).toBe(true);
     const registrations: {
       id: string;
@@ -126,7 +126,7 @@ describe('built bundle contract', () => {
     }, { timeout: 1000 });
     expect(registrations).toHaveLength(1);
     const entry = registrations[0];
-    expect(entry?.id).toBe('dsh-bot');
+    expect(entry?.id).toBe('dsh-botgroup');
     const requests: string[] = [];
     const plugin = entry?.factory((id) => {
       requests.push(id);
@@ -141,7 +141,7 @@ describe('built bundle contract', () => {
   });
 
   it('ships a linked source map with original sources and correct wrapper offsets', () => {
-    const clientPath = require.resolve('dsh-bot/client');
+    const clientPath = require.resolve('dsh-botgroup/client');
     const source = readFileSync(clientPath, 'utf8');
     expect(source).toMatch(/\/\/# sourceMappingURL=client\.js\.map\s*$/);
     const payload = JSON.parse(readFileSync(`${clientPath}.map`, 'utf8'));
@@ -168,8 +168,8 @@ describe('built bundle contract', () => {
   });
 
   it('ships component-owned theme CSS without literal colors or embedded shared runtimes', () => {
-    const source = readFileSync(require.resolve('dsh-bot/client'), 'utf8');
-    const payload = JSON.parse(readFileSync(`${require.resolve('dsh-bot/client')}.map`, 'utf8'));
+    const source = readFileSync(require.resolve('dsh-botgroup/client'), 'utf8');
+    const payload = JSON.parse(readFileSync(`${require.resolve('dsh-botgroup/client')}.map`, 'utf8'));
     expect(source).toContain('--dsw-alias-bg-layer-1');
     expect(source).toContain('bots_page');
     expect(source).not.toMatch(/#[\da-f]{6}\b/i);
@@ -200,9 +200,9 @@ describe('built bundle contract', () => {
     }
     expect(en.meta.title).toBe('DSH-Bot Personal Agents');
     expect(zh.meta.title).toBe('DSH-Bot 个人智能体');
-    expect(require.resolve('dsh-bot/locale/en.json')).toMatch(/locale\/en\.json$/);
-    expect(require.resolve('dsh-bot/locale/zh.json')).toMatch(/locale\/zh\.json$/);
-    const icon = require.resolve('dsh-bot/icon');
+    expect(require.resolve('dsh-botgroup/locale/en.json')).toMatch(/locale\/en\.json$/);
+    expect(require.resolve('dsh-botgroup/locale/zh.json')).toMatch(/locale\/zh\.json$/);
+    const icon = require.resolve('dsh-botgroup/icon');
     expect(statSync(icon).size).toBeLessThanOrEqual(256 * 1024);
     expect(readFileSync(icon, 'utf8')).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
   });
@@ -283,7 +283,7 @@ describe('built bundle contract', () => {
     } });
     await owner.await();
     let plugin: { inject: string[]; apply: (ctx: Context) => Promise<void> } | undefined;
-    runInNewContext(readFileSync(require.resolve('dsh-bot/client'), 'utf8'), {
+    runInNewContext(readFileSync(require.resolve('dsh-botgroup/client'), 'utf8'), {
       window: { location: { pathname: '/' }, __ModuleLoader__: {
         load: (entry: { factory: (require: (id: string) => unknown) => typeof plugin }) => {
           plugin = entry.factory((id) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives :

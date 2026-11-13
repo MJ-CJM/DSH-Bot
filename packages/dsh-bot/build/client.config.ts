@@ -18,6 +18,7 @@ const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 await checkClientThemeTokens(packageRoot);
 const outfile = resolve(packageRoot, 'lib/client.js');
 const require = createRequire(import.meta.url);
+const { name: packageName } = require('../package.json') as { name: string };
 const schemaEntry = fileURLToPath(import.meta.resolve('@deepseek-ai/schemastery'));
 // This public helper is stateless and has no runtime imports. The protocol root
 // contains shared service state and is deliberately not an allowed dependency.
@@ -70,7 +71,7 @@ const result = await build({
   // Full dependency license texts are distributed in THIRD_PARTY_NOTICES.txt.
   legalComments: 'none',
   banner: {
-    js: 'window.__ModuleLoader__.load({ id: "dsh-bot", factory(require) {\nvar module = { exports: {} }; var exports = module.exports;',
+    js: `window.__ModuleLoader__.load({ id: ${JSON.stringify(packageName)}, factory(require) {\nvar module = { exports: {} }; var exports = module.exports;`,
   },
   footer: { js: 'return module.exports;\n} });' },
 });

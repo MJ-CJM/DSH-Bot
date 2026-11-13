@@ -80,7 +80,9 @@ Bot 按需查找自己实际参与、当前仍可访问的群工作。**查到�
 
 ## 安装
 
-当前版本 **0.6.6**，采用 **MIT** 许可证。安装包与下载校验见 [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)。启用和查看本地跟进无需配置模型；聊天和明确接受的模型任务需要 DSH 中可用的模型配置。
+当前公开稳定版为 **0.6.6**，采用 **MIT** 许可证。安装包与下载校验见 [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)。启用和查看本地跟进无需配置模型；聊天和明确接受的模型任务需要 DSH 中可用的模型配置。
+
+DSH-Bot 正在准备以 `dsh-botgroup@0.6.7` 首次发布到 npm。两种隔离宿主的跨包名迁移已通过验证；npm 公开发布前，现有安装继续使用。[0.6.7 发布准备](docs/releases/v0.6.7.md)
 
 ### 方式一：在社区市场中搜索
 
@@ -147,7 +149,9 @@ dsh plugin --profile web add "https://github.com/MJ-CJM/DSH-Bot/releases/latest/
 
 **怎么升级，会丢数据吗？**
 
-升级前备份原 profile 和完整数据，保留原 profile 与存储位置，通过同一安装入口添加新版包，再完全退出重开。不要以删除 Bot 或重置数据作为升级步骤。`latest` 地址更新不等于已安装插件会自动升级。迁移后的数据不能直接交给旧版本写入，回退需要升级前备份。
+同一包名内升级时，先备份原 profile 和完整数据，保留原 profile 与存储位置，通过同一安装入口添加新版包，再完全退出重开。回退需要升级前备份。
+
+从 `dsh-bot` 切换到 `dsh-botgroup` 需要单独迁移。下述步骤已在两种隔离宿主验证，待 npm 公开发布后使用：停止 Host、备份原 profile 和完整数据、通过 DSH 移除旧包并安装新包。启动前检查 `cordis.patch.yml` 中 `id: dsh-bot` 的插件覆盖行。若该行含 `name: dsh-bot`，将其改为 `name: dsh-botgroup`，保留原 `id`、`config` 和 `dataDir`。没有 `name` 的覆盖行按原样保留。确认同一 profile 只有新包后再启动 Host。[迁移验收状态](docs/releases/v0.6.7.md)
 
 **关闭电脑后，后台任务还能执行吗？**
 
