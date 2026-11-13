@@ -1,8 +1,8 @@
 # 社区发布准备与验收
 
-**[v0.6.6 已在 GitHub 公开发布](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)**，为当前 latest。社区目录使用固定 `latest/download/dsh-bot.tgz` 地址，随 latest 更新。npm 尚未发布。MIT，Copyright © 2026 MJ-CJM。以下步骤供后续发版复用。 [v0.6.6 发布记录](releases/v0.6.6.md) · [v0.6.5 发布记录](releases/v0.6.5.md) · [v0.6.4 验证矩阵](releases/v0.6.4.md) · [v0.6.3 首发记录](releases/v0.6.3.md)
+**[v0.6.6 已在 GitHub 公开发布](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)**，为当前 latest。社区目录使用固定 `latest/download/dsh-bot.tgz` 地址。`dsh-botgroup@0.6.7` 正在准备首次 npm 发布。MIT，Copyright © 2026 MJ-CJM。 [v0.6.7 发布准备](releases/v0.6.7.md) · [v0.6.6 发布记录](releases/v0.6.6.md) · [v0.6.5 发布记录](releases/v0.6.5.md) · [v0.6.4 验证矩阵](releases/v0.6.4.md) · [v0.6.3 首发记录](releases/v0.6.3.md)
 
-[v0.6.6](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6) is the latest GitHub Release. The community catalog lists the plugin through the fixed `latest/download/dsh-bot.tgz` URL, which follows each stable Release; npm is not published. The following candidate instructions remain the process for future releases.
+[v0.6.6](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6) is the latest GitHub Release. The community catalog lists the plugin through the fixed `latest/download/dsh-bot.tgz` URL. The first npm release, `dsh-botgroup@0.6.7`, is in preparation.
 
 ## 1. 检出与基础检查
 
@@ -21,10 +21,10 @@ scripts/pnpm check:tooling
 
 ## 2. 打包与产物标识
 
-打包前先检查 `dist/dsh-bot-<版本>.tgz` 是否已存在。如存在则保留原文件，改用新的候选输出目录。选定最终候选包前确认随包交付的文档、许可证和产品构建内容。发布后可在源码分支补记发布状态，保留已验收的原包字节。下列命令以当前源码版本计算文件名。
+打包前先检查 `dist/<包名>-<版本>.tgz` 是否已存在。如存在则保留原文件，改用新的候选输出目录。选定最终候选包前确认随包交付的文档、许可证和产品构建内容。发布后可在源码分支补记发布状态，保留已验收的原包字节。下列命令读取当前清单中的包名和版本。
 
 ```sh
-archive="dist/dsh-bot-$(node -p 'require("./packages/dsh-bot/package.json").version').tgz"
+archive="dist/$(node -p 'const { name, version } = require("./packages/dsh-bot/package.json"); name + "-" + version').tgz"
 scripts/pnpm pack:plugin
 node scripts/verify-package.mjs "$archive"
 shasum -a 256 "$archive"
@@ -38,7 +38,7 @@ shasum -a 256 "$archive"
 scripts/pnpm release:prepare "$archive"
 ```
 
-脚本先复用实际 tarball 审计，拒绝未确定的许可证、根/包许可不一致或包与源码字节不同。输出位于 `dist/release-candidates/v<版本>-<hash前12位>/`：字节完全一致的版本包 `dsh-bot-<版本>.tgz` 和固定名称包 `dsh-bot.tgz`，分别对应的 `SHA256SUMS` 和 `dsh-bot.tgz.sha256`，如实记录工作树状态及两种下载地址的 `release.json`、双语 Release notes 模板、审核清单，以及使用 `latest` 地址的社区目录 YAML。同一路径重复生成会失败，不覆盖已有候选或其证据。它不启动模型、不创建 tag、不上传文件，不把构建结果写成 Host/UI 通过。运行验收后填写该候选目录中的结果，不重新打包。
+脚本先复用实际 tarball 审计，拒绝未确定的许可证、根/包许可不一致或包与源码字节不同。输出位于 `dist/release-candidates/v<版本>-<hash前12位>/`：字节完全一致的版本包 `<包名>-<版本>.tgz` 和固定名称包 `dsh-bot.tgz`，分别对应的 `SHA256SUMS` 和 `dsh-bot.tgz.sha256`，如实记录工作树状态及两种下载地址的 `release.json`、双语 Release notes 模板、审核清单，以及使用 `latest` 地址的社区目录 YAML。同一路径重复生成会失败，不覆盖已有候选或其证据。它不启动模型、不创建 tag、不上传文件，不把构建结果写成 Host/UI 通过。运行验收后填写该候选目录中的结果，不重新打包。
 
 GitHub Actions 的 **Release candidate** 工作流可由维护者手动触发。它只生成并上传候选 artifacts，权限为 `contents: read`，不会自动发布。必须对下载得到的同一 tgz 完成运行验收；本地另行构建的包不继承其 hash。工作流自身的新版本是否实跑，见本次验收记录。
 
@@ -68,14 +68,14 @@ DSH_HOME="<原桌面实例 DSH_HOME 的绝对路径>" scripts/dsh plugin --profi
 
 | 项目 | 当前状态与要求 |
 | --- | --- |
-| 版本 | 最新稳定版 v0.6.5，首个公开版本 v0.6.3。每个 tag 固定到对应的安装包字节。 |
+| 版本 | 最新稳定版 v0.6.6，首个公开版本 v0.6.3。每个 tag 固定到对应的安装包字节。 |
 | 基础检查与链接 | 按本次实际日志填写 PASS/FAIL，不能照抄历史次数 |
 | 历史包/升级 | 独立回归；缺旧包或未跑完整 Host 时写 FAIL/NOT_RUN |
 | 同包运行与 UI | 新打包的 hash 对应新运行证据；只改文档不声称产品运行已重新验收 |
 | 真实模型质量/宿主兼容 | 按版本记录实测宿主与模型类型。v0.6.5 未独立验证真实模型质量或跨版本宿主兼容。 |
 | 许可证 | MIT，Copyright © 2026 MJ-CJM；根/包文本一致，第三方通知保留 |
 | 安全入口 | GitHub 私密漏洞报告已启用并于 2026-11-01 回读确认，见 [SECURITY.md](../SECURITY.md) |
-| 发布位置 | [GitHub Release v0.6.5](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.5) 为 latest。社区目录使用固定 latest 地址，npm 尚未发布。 |
+| 发布位置 | [GitHub Release v0.6.6](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6) 为 latest。npm 首发候选为 `dsh-botgroup@0.6.7`。 |
 | 最终动作 | 维护者完成许可/产物/验收审阅后另行决定发布；本文不执行 commit、push、tag 或发布 |
 
 发版时上传已审核的同一 tgz、对应校验和与实际验收结果。公开下载核验后，同步仓库和子包的中英文 README 与发布记录。
@@ -124,3 +124,13 @@ tarball: https://github.com/MJ-CJM/DSH-Bot/releases/latest/download/dsh-bot.tgz
 固定名称是每个 Release 都携带的附件，并不是在旧 Release 上替换安装包。每次稳定发版都必须上传它；`latest/download/` 后不能接带版本号的文件名。版本包和固定 tag URL 保留用于复现与回退。社区入口跟随最新版不表示现有安装自动升级；本地改代码也不会自动发布到社区。
 
 旧包回归材料仍由维护者提供，固定 hash 见 [testing.md](testing.md)。只有拿到原始文件后才能附加为单独测试资源；本任务不从当前源码重造历史包，也不将旧包加入正式安装附件。
+
+## 8. npm 首发与市场回读
+
+维护者审阅同一候选包的隔离 Host、Web 和跨包名迁移结果后，确认 npm 账号可发布，并将默认分支的 `packages/dsh-bot/package.json` 合入为 `name: dsh-botgroup`。在 npm 发布已验收的原 tgz，再从公共 registry 回读 `latest`、`repository.url`、`dist.tarball` 和 `dist.integrity`，重新下载核对 SHA-256。[v0.6.7 发布准备](releases/v0.6.7.md)
+
+同一包名的升级按第 4 节处理。从 `dsh-bot` 切换到 `dsh-botgroup` 的步骤已在 0.2.1-rc.2 与 0.2.2-rc.1 隔离 Host 验证，待 npm 公开发布后使用。停止 Host，备份原 profile 和完整数据，通过 DSH 原生插件管理移除旧包，再安装新包。启动前检查 `cordis.patch.yml` 中 `id: dsh-bot` 的插件覆盖行。若该行有 `name: dsh-bot`，仅将其改为 `name: dsh-botgroup`，保留 `id`、`config` 和 `dataDir`。没有 `name` 的覆盖行按原样保留。原生 Loader 会因包名不匹配跳过整个覆盖行。确认 profile 仅保留新包后启动 Host，回读原插件配置、Bot、记忆、群和原会话。两包同时留在一个 profile 时，后加载的 bundle 覆盖同 ID 的插件项，移除后加载的包可能恢复前一项。
+
+社区目录按默认分支上已收录子目录的清单读取包名，并优先核对 npm `latest` 的 `repository.url` 是否指回 `MJ-CJM/DSH-Bot`。保留现有 YAML 和固定 GitHub 下载地址，包名调整无需另提目录 PR，`npm:` 字段会被目录校验拒绝。 [社区目录规则](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md) · [映射实现](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/scripts/probe-npm.mjs)
+
+日更后从 `plugins.json` 回读条目，确认 npm 映射、安装来源及下载统计。市场的 npm 下载数覆盖滚动 30 天。历史 GitHub Release 附件下载单独统计。 [市场数据说明](https://github.com/dsh-market/dsh-market#data-source)

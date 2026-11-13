@@ -80,7 +80,9 @@ The screenshot below shows native subtasks and ordinary schedules with scripted 
 
 ## Install
 
-Current version: **0.6.6**, licensed under **MIT**. Download and verify the package from the [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6). Enabling and inspecting local follow-up needs no model configuration; chat and explicitly accepted model tasks require a working DSH model configuration.
+The current public stable version is **0.6.6**, licensed under **MIT**. Download and verify the package from the [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6). Enabling and inspecting local follow-up needs no model configuration; chat and explicitly accepted model tasks require a working DSH model configuration.
+
+DSH-Bot is preparing its first npm release as `dsh-botgroup@0.6.7`. Keep using existing `dsh-bot` installations until the migration steps have been verified and published. [0.6.7 release preparation](docs/releases/v0.6.7.md)
 
 ### Option 1: Search the community market
 
@@ -147,7 +149,9 @@ No. It becomes idle when no work remains. Defaults allow four concurrent members
 
 **How do I upgrade and retain data?**
 
-Back up the original profile and complete data first. Keep the same profile and storage location, install the newer package through the same entry point, then fully reopen DSH. Do not delete Bots or reset data as an upgrade step. A changing latest URL does not automatically upgrade existing installations. Older versions cannot write migrated data; rollback requires a pre-upgrade backup.
+For upgrades within the same package name, back up the original profile and all data first. Keep the same profile and storage location, install the newer package through the same entry point, then fully reopen DSH. Rollback requires a pre-upgrade backup.
+
+Switching from `dsh-bot` to `dsh-botgroup` requires a migration. The following steps passed on both isolated Host versions; use them after the npm release is public: stop the Host, back up the original profile and all data, then use DSH to remove the old package and install the new one. Before starting the Host, check the plugin override with `id: dsh-bot` in `cordis.patch.yml`. If the row has `name: dsh-bot`, change it to `name: dsh-botgroup` and preserve the existing `id`, `config`, and `dataDir`. Leave rows without a `name` as they are. Start the Host once the profile contains only the new package. [Migration verification status](docs/releases/v0.6.7.md)
 
 **Do background tasks keep running after my computer shuts down?**
 

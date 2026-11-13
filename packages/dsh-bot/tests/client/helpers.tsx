@@ -31,7 +31,7 @@ export function workspace(id = 'workspace-one', title = 'Test workspace'): Works
 export function loadBuiltClient(): typeof client {
   const require = createRequire(import.meta.url);
   let plugin: typeof client | undefined;
-  const source = readFileSync(require.resolve('dsh-bot/client'), 'utf8');
+  const source = readFileSync(require.resolve('dsh-botgroup/client'), 'utf8');
   const platformRequire = ((id: string) => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : /^@deepseek-ai\/dsh-client-ui-input-trigger(?:\/client)?$/.test(id) ? inputTriggerPlatform : require(id)) as NodeJS.Require;
   const previousLoader = Object.getOwnPropertyDescriptor(window, '__ModuleLoader__');
   Object.defineProperty(window, '__ModuleLoader__', { configurable: true, value: {

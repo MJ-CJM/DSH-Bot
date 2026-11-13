@@ -27,7 +27,7 @@ jobs:
       - run: scripts/pnpm pack:plugin
       - name: Prepare versioned and stable-name assets with review materials
         run: |
-          set -- dist/dsh-bot-*.tgz
+          set -- dist/dsh-botgroup-*.tgz
           test "$#" -eq 1
           scripts/pnpm release:prepare "$1"
       # Artifacts only: no tag, Release, npm publish, repo settings or external PR.

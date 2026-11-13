@@ -91,7 +91,7 @@ test('Tarball verification accepts complete bytes and rejects corrupt payloads o
   const source = `${directory}/packages/dsh-bot`;
   const hostSource = "export const DSH_BOT_MODULE_VERSION = '1.2.3';\n";
   const files = {
-    'package.json': JSON.stringify({ name: 'dsh-bot', version: '1.2.3', engines: { dsh: '>=0.2.1-rc.2 <0.3.0' }, exports: {}, dsh: {}, dependencies: { fixture: '1.0.0' } }),
+    'package.json': JSON.stringify({ name: 'dsh-botgroup', version: '1.2.3', engines: { dsh: '>=0.2.1-rc.2 <0.3.0' }, exports: {}, dsh: {}, dependencies: { fixture: '1.0.0' } }),
     'lib/index.js': "export const VERSION = '1.2.3';\n",
     'lib/index.d.ts': 'export declare const VERSION: string;\n',
     'lib/client.js': 'window.__ModuleLoader__.load({});\n',

@@ -1,6 +1,6 @@
 import '../../../scripts/deepening/network-guard.mjs';
 import assert from 'node:assert/strict';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -45,6 +45,7 @@ export function apply(ctx, config) {
         rootContextHooks++;
         return { ...decision, messages: [...decision.messages, createUserMessage({ source: { kind: 'dsh-bot-fixture-context' }, content: [{ type: 'text', text: 'Synthetic native context injection' }] })] };
       }));
+      const { name: packageName } = JSON.parse(await readFile(resolve(config.installedRoot, 'package.json'), 'utf8'));
       const product = await import(pathToFileURL(resolve(config.installedRoot, 'lib/index.js')).href);
       const productConfig = { dataDir: resolve(config.outputDir, 'bots'), seedExamples: false, messagingEnabled: true };
       const activate = async () => {
@@ -93,7 +94,7 @@ export function apply(ctx, config) {
       assert.equal(ctx.agents.get(group.rootSessionId), undefined); assert.equal(ctx.agents.get(legacy.rootSessionId), undefined);
       // Public preset registration lets Controller restore before the next product generation exists.
       temporaryPreset = await ctx.agentPresets.register({ id: ROOT_PRESET, name: ROOT_PRESET,
-        plugins: [{ id: 'group-root-guard', name: 'dsh-bot/group-root-guard' }] });
+        plugins: [{ id: 'group-root-guard', name: `${packageName}/group-root-guard` }] });
       const controller = (await ctx.sessionController.resolveAgent(group.rootSessionId)).agent,
         legacyController = (await ctx.sessionController.resolveAgent(legacy.rootSessionId)).agent;
       assert.ok(controller); assert.ok(legacyController);

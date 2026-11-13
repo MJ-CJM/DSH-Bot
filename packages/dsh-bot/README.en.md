@@ -8,7 +8,7 @@ English · [中文](README.md)
 
 **Your personal agent workspace.** Create Bots with their own roles and memory in DeepSeek Harness. Keep working with them in ongoing conversations, follow up on work, or bring them together to collaborate in a group chat.
 
-**[0.6.6 is available](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6)** with unscheduled follow-up for personal Bots and groups, plus source-backed group-work recall. [See what changed](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md).
+This is the **DSH-Bot 0.6.7 release candidate**. It introduces the three-whale mark and is prepared for a first npm release as `dsh-botgroup`. The current public stable version is **0.6.6**. [Releases and changes](https://github.com/MJ-CJM/DSH-Bot/releases)
 
 ![Your Bots: research, review and writing assistants](assets/showcase/en-bots.png)
 
@@ -80,7 +80,17 @@ The screenshot below shows native subtasks and ordinary schedules with scripted 
 
 ## Install
 
-Current version: **0.6.6**, licensed under **MIT**. Download and verify the package from the [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6). Enabling and inspecting local follow-up needs no model configuration; chat and explicitly accepted model tasks require a working DSH model configuration.
+The current public stable version is **0.6.6**, licensed under **MIT**. Download and verify the package from the [v0.6.6 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.6). Enabling and inspecting local follow-up needs no model configuration; chat and explicitly accepted model tasks require a working DSH model configuration.
+
+### Install from npm after publication
+
+Once `dsh-botgroup@0.6.7` is public, for a fresh install enter `dsh-botgroup` under **Plugins → Add plugin → Install third-party plugin** in Desktop, or run this command for a Web profile:
+
+```sh
+dsh plugin --profile web add dsh-botgroup@0.6.7
+```
+
+The previous package name is `dsh-bot`. Keep existing installations until the migration steps have been verified and published. Enable only one package in any profile.
 
 ### Option 1: Search the community market
 
@@ -147,7 +157,7 @@ No. It becomes idle when no work remains. Defaults allow four concurrent members
 
 **How do I upgrade and retain data?**
 
-Back up the original profile and complete data first. Keep the same profile and storage location, install the newer package through the same entry point, then fully reopen DSH. Do not delete Bots or reset data as an upgrade step. A changing latest URL does not automatically upgrade existing installations. Older versions cannot write migrated data; rollback requires a pre-upgrade backup.
+For upgrades within the same package name, back up the original profile and complete data, install the newer package through the same entry point, then fully reopen DSH. Wait for verified migration steps before switching from `dsh-bot` to `dsh-botgroup`. Rollback requires a pre-upgrade backup.
 
 **Do background tasks keep running after my computer shuts down?**
 

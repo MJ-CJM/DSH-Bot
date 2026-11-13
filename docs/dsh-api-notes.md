@@ -1,5 +1,11 @@
 # DSH API 核实记录
 
+## npm 包名迁移（0.6.7，2026-11-12）
+
+- `dsh-botgroup` 是安装和模块解析名称，稳定的 Cordis 行 `id: dsh-bot`、存储域、数据路径、locale 与 Typert 合同保持原值。Client 工厂 ID 与 npm 包名一致。
+- 原生 ConfigEditor 可写入带 `name` 的 profile 覆盖行；原生组合器在名称不匹配时跳过整行。两个隔离 Host 都实测：remove/add 保留文件，但必须在启动前将原插件覆盖的可选 `name: dsh-bot` 改为 `name: dsh-botgroup` 才能恢复自定义设置。只保留 id 不足以证明自动迁移。
+- 同包 rc.2/rc.1、Bot/群/记忆/会话、ConfigEditor 主动设置、冷启动及 rc.2 Web 验收见 [0.6.7 发布准备](releases/v0.6.7.md)。未新增 DSH API 或依赖，未修改日常桌面，未使用真实模型。npm 与目录发布仍待完成。
+
 ## 个人 Bot 群经历召回（2026-11-09）
 
 - `@deepseek-ai/dsh-session-query@0.2.1-rc.2` 公开 `readSurface`、`observeSession`、`readEvent`、`filterEvents` 和 search API 已在隔离真实 Host 核实。默认 Web 全文索引关闭；开启后的搜索会先协调语料，中文连续子串也不等同于全文词匹配。因此产品先用现有群执行记录核验范围，再从公开当前 surface 精确读取允许消息，字面匹配分页。详见[原生取证](verification/group-recall-native.md)。

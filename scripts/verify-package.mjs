@@ -28,7 +28,7 @@ try {
   // pnpm pack may reformat/reorder JSON without changing published metadata.
   // Compare the entire object, including every dependency and publishing field.
   assert.deepEqual(manifest, current, 'Packed package metadata differs from source');
-  assert.equal(manifest.name, 'dsh-bot');
+  assert.equal(manifest.name, 'dsh-botgroup');
   assert.equal(manifest.version, current.version);
   assert.equal(manifest.engines.dsh, '>=0.2.1-rc.2 <0.3.0');
   assert.deepEqual(manifest.exports, current.exports);

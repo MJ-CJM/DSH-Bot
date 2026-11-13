@@ -47,15 +47,15 @@ async function command(executable, args, name, live = false) {
 try {
   await command('dsh', ['--version'], 'version');
   if (!process.env.DSH_BOT_E2E_PACKAGE) await command('pnpm', ['-C','packages/dsh-bot','pack','--pack-destination', runDir], 'pack-bot');
-  const version = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json'))).version;
-  const botArchive = process.env.DSH_BOT_E2E_PACKAGE ?? resolve(runDir, `dsh-bot-${version}.tgz`);
+  const { name: packageName, version } = JSON.parse(await readFile(resolve(root, 'packages/dsh-bot/package.json')));
+  const botArchive = process.env.DSH_BOT_E2E_PACKAGE ?? resolve(runDir, `${packageName}-${version}.tgz`);
   const source = await prepareIm(runDir);
   await command('pnpm', ['-C',source,'pack','--pack-destination',runDir], 'pack-im-locked');
   await command('dsh', ['--profile',profile,'--from-default-profile','web','--dump-config'], 'initialize');
   await command('dsh', ['plugin','--profile',profile,'add',botArchive], 'install-bot');
   await command('dsh', ['plugin','--profile',profile,'add',resolve(runDir,'xmanrui-dsh-im-5.5.0.tgz')], 'install-im');
   for (const file of ['host/collaboration/service.js','host/collaboration/remote.js','host/im/service.js','client.js']) {
-    assert.deepEqual(await readFile(resolve(home,'profiles',profile,'node_modules/dsh-bot/lib',file)), await readFile(resolve(root,'packages/dsh-bot/lib',file)));
+    assert.deepEqual(await readFile(resolve(home,'profiles',profile,'node_modules',packageName,'lib',file)), await readFile(resolve(root,'packages/dsh-bot/lib',file)));
   }
   await save('installed.json', { archiveSha256: createHash('sha256').update(await readFile(botArchive)).digest('hex'), installedBytesMatch: true });
   for (const phase of ['first','cold']) {

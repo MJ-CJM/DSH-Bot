@@ -13,6 +13,7 @@ export interface ComposerConfig {
   presetOrder: number;
 }
 type Row = PresetDefinition['plugins'][number];
+const botContextModule = 'dsh-botgroup/bot-context';
 
 export function botSkillsDirectory(botId: string, config: Pick<ComposerConfig, 'dataDir'>): string {
   return join(config.dataDir, 'bots', botId, 'skills');
@@ -65,7 +66,7 @@ export async function composeBotPreset(
       if (allRows.some((row) => row.id === 'tool-schedule')) throw new Error('Template tool-schedule id collision');
       rows.push({ id: 'tool-schedule', name: '@deepseek-ai/dsh-tool-schedule' });
     }
-    if (allRows.some((row) => row.id === 'bot-context' || row.name === 'dsh-bot/bot-context')) {
+    if (allRows.some((row) => row.id === 'bot-context' || row.name === botContextModule || row.name === 'dsh-bot/bot-context')) {
       throw new Error('Template already contains bot-context');
     }
     const skills = allRows.filter((row) => row.name === '@deepseek-ai/dsh-skill-filesystem');
@@ -94,7 +95,7 @@ export async function composeBotPreset(
     }
     // The generation captures tools/model from registry.presetBot() at activation;
     // its only public row parameter is the bound identity.
-    rows.push({ id: 'bot-context', name: 'dsh-bot/bot-context', config: { botId: bot.id } });
+    rows.push({ id: 'bot-context', name: botContextModule, config: { botId: bot.id } });
     return {
       id: `${config.presetIdPrefix}${bot.id}`,
       name: bot.name,

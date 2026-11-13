@@ -29,7 +29,7 @@ const download = `${repository}/releases/download/${tag}/${asset}`;
 const stableDownload = `${repository}/releases/latest/download/${stableAsset}`;
 const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const identity = {
-  status: 'candidate', published: false, version: manifest.version, license: manifest.license,
+  status: 'candidate', published: false, name: manifest.name, version: manifest.version, license: manifest.license,
   gitHead: git(['rev-parse', 'HEAD']), workingTreeDirty: Boolean(git(['status', '--porcelain'])),
   asset, bytes: bytes.length, sha256, tag, plannedDownloadUrl: download,
   stableAsset, stableChecksumAsset, plannedStableDownloadUrl: stableDownload,
@@ -74,6 +74,8 @@ await write('PUBLISH_CHECKLIST.md', [
   '- [ ] Verify latest resolves to the intended stable tag; never use a versioned filename after latest/download/.',
   '- [ ] Update README publication status and install links only when the Release is live.',
   '- [ ] Set repository topic dsh-plugin and description; confirm a private security-reporting channel.',
-  '- [ ] Submit the generated YAML once under data/plugins/ in awesome-dsh-plugin; later releases retaining this URL need no directory PR. Leave generated READMEs alone.', '',
+  '- [ ] Publish the exact verified archive to npm; re-download and compare its contents and registry integrity.',
+  '- [ ] Keep the default-branch package name and npm repository metadata aligned. The existing awesome-dsh-plugin entry automatically discovers npm; do not add an unsupported npm YAML field.',
+  '- [ ] Verify plugins.json npm/install mapping and the dated npm download figure after the catalog refresh. GitHub asset downloads remain separate.', '',
 ].join('\n'));
 console.log(`Prepared candidate (NOT published or runtime-accepted): ${destination}`);

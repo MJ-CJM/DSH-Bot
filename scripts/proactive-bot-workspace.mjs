@@ -13,6 +13,9 @@ assert.equal(process.env.DSH_HOME,resolve(root,'.dsh-dev'));
 assert.equal(execFileSync(resolve(root,'scripts/dsh'),['--version'],{encoding:'utf8'}).trim(),'0.2.1-rc.2');
 const groupRepair=process.argv[3]==='--group-repair';
 assert.ok(process.argv.length===3||(process.argv.length===4&&groupRepair),'Pass the built tarball and optional --group-repair');
+const artifact=resolve(process.argv[2]);
+const { name: packageName }=JSON.parse(execFileSync('/usr/bin/tar',['-xOf',artifact,'package/package.json'],{encoding:'utf8'}));
+assert.ok(['dsh-bot','dsh-botgroup'].includes(packageName),'Unexpected DSH-Bot package name');
 const base=resolve(root,'.dsh-dev/proactive-bot/workspace');
 await mkdir(base,{recursive:true});
 const dir=await mkdtemp(resolve(base,'host-'));
@@ -28,11 +31,11 @@ const adapter=resolve(dir,'json-cli.cjs');
 await writeFile(adapter,`let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{const req=JSON.parse(s);const file=req.task.files.find(f=>f.path==='math.cjs');console.log(JSON.stringify({edits:[{path:file.path,beforeDigest:file.beforeDigest,content:file.content.replace('a - b','a + b')}]}));});`);
 const sourceId=`ci:${createHash('sha256').update(JSON.stringify(['fixture/demo','main'])).digest('hex')}`;
 const workspace={id:'addition',title:'Engineering addition fixture',sourceId,root:project,files:[{path:'math.cjs',editable:true},{path:'verify.cjs',editable:false}],verifier:{id:'addition-test',command:process.execPath,args:['verify.cjs'],timeoutMs:10000,maxOutputBytes:65536}};
-const bridge=resolve(dir,'home/profiles/b4-browser/node_modules/dsh-bot/lib/host/proactive/executors/json-command-bridge-entry.js');
+const bridge=resolve(dir,'home/profiles/b4-browser/node_modules',packageName,'lib/host/proactive/executors/json-command-bridge-entry.js');
 const command={id:'node-workspace',label:'Node JSON fixture',command:process.execPath,args:[bridge,JSON.stringify({argv:[process.execPath,adapter],timeoutMs:8000,maxOutputBytes:65536})],timeoutMs:10000,maxOutputBytes:65536};
 let host;
 try {
-  host=await webHost(dir,groupRepair?'proactive-group-workspace':'proactive-workspace',resolve(process.argv[2]),resolve(root,'packages/dsh-bot/tests/proactive-workflow-profile.mjs'),[
+  host=await webHost(dir,groupRepair?'proactive-group-workspace':'proactive-workspace',artifact,resolve(root,'packages/dsh-bot/tests/proactive-workflow-profile.mjs'),[
     '- id: dsh-bot','  config:','    proactiveEnabled: true','    proactiveExecutionEnabled: true',
     '    proactiveProvider: dp-loopback','    proactiveModel: fixture',
     `    proactiveNodeExecutable: ${JSON.stringify(process.execPath)}`,

@@ -21,7 +21,7 @@ export class GroupRoots {
             owner.agentPresets.register({
               id: GROUP_ROOT_PRESET,
               name: `${zh.ui['groups.presetName']} / ${en.ui['groups.presetName']}`,
-              plugins: [{ id: 'group-root-guard', name: 'dsh-bot/group-root-guard' }],
+              plugins: [{ id: 'group-root-guard', name: 'dsh-botgroup/group-root-guard' }],
             }),
           'dsh-bot: group root preset',
         );

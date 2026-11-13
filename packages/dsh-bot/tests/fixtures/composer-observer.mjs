@@ -4,7 +4,7 @@ import { setTimeout } from 'node:timers/promises';
 import { format } from 'node:util';
 import { agentEvents } from '@deepseek-ai/dsh-agent';
 import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm';
-import { getBotBinding } from 'dsh-bot/bot-context';
+import { getBotBinding } from 'dsh-botgroup/bot-context';
 
 export const inject = ['loader', 'sessionController', 'sessions', 'agents', 'agentPresets', 'agentDefaultModel',
   'systemPrompt', 'skills', 'tools', 'llm', 'workspaceRegistry', 'sandboxPolicy', 'sessionProjections'];

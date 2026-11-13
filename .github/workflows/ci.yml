@@ -40,11 +40,11 @@ jobs:
         run: scripts/pnpm -C packages/dsh-bot pack --pack-destination ../../dist
       - name: Verify actual tarball contents
         run: |
-          set -- dist/dsh-bot-*.tgz
+          set -- dist/dsh-botgroup-*.tgz
           test "$#" -eq 1
           node scripts/verify-package.mjs "$1"
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-bot-${{ matrix.os }}
-          path: dist/dsh-bot-*.tgz
+          path: dist/dsh-botgroup-*.tgz
           if-no-files-found: error

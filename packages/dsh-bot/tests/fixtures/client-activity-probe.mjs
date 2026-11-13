@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { Context } from '@deepseek-ai/cordis';
 import * as Gateway from '@deepseek-ai/dsh-api-gateway/client';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
-import remoteContribution from 'dsh-bot/remote';
+import remoteContribution from 'dsh-botgroup/remote';
 
 /** Existing profile callers provide the actual authenticated Connection, so
  * this exercises the real Host/Gateway WebSocket without a model prompt. The
@@ -60,7 +60,7 @@ async function verifyChangeStream(ctx) {
 export async function createClientActivityProbe(connection, parent, clientPath) {
   const require = createRequire(import.meta.url);
   let plugin;
-  new Function('window', readFileSync(clientPath ?? require.resolve('dsh-bot/client'), 'utf8'))({ __ModuleLoader__: {
+  new Function('window', readFileSync(clientPath ?? require.resolve('dsh-botgroup/client'), 'utf8'))({ __ModuleLoader__: {
     load: ({ factory }) => { plugin = factory((id) => id === '@deepseek-ai/dsh-client-ui-primitives' ? {} : require(id)); },
   } });
   assert.ok(plugin, 'Built Client factory loaded');
