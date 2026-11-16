@@ -94,7 +94,11 @@ export function useBotsPage({
   const [countAttempt, setCountAttempt] = useState(0);
   const [deleteMemories, setDeleteMemories] = useState(true);
   const [deleteHome, setDeleteHome] = useState(false);
-  const [dialog, setDialog] = useState<Dialog>();
+  const [dialog, setDialog] = useState<Dialog | undefined>(() => {
+    if (pageState.create !== 'bot') return;
+    delete pageState.create;
+    return { kind: 'create' };
+  });
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const navigation = useRef<AbortController>();
@@ -370,6 +374,7 @@ export function useBotsPage({
     selectedId,
     setSelectedId,
     showDetail,
+    directoryVisible: tab !== 'management' && !showDetail && !requestedDetail,
     setShowDetail,
     more,
     setMore,

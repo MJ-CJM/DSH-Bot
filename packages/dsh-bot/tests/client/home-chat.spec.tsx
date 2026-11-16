@@ -1,5 +1,5 @@
 import { requireValue } from './test-required.js';
-import { openEditor, openProfile } from './bot-ui-helpers.js';
+import { openBotChats, openEditor, openProfile } from './bot-ui-helpers.js';
 // @vitest-environment jsdom
 import { act } from 'react';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
@@ -21,7 +21,7 @@ describe('single main conversation launch', () => {
       await app.setWorkspaces({ items: [workspace(), workspace('two')] });
       let container = app.container;
       if (surface !== 'page') { await app.unmountPage(); container = surface === 'footer' ? await app.mountSidebar() : await app.mountRightTab(); }
-      if (surface === 'footer') await click(button(container, t['sidebar.sessions']));
+      if (surface === 'footer') await openBotChats(container, language);
       const start = surface === 'right' ? required(container.querySelector<HTMLElement>('[role="option"]'))
         : button(container, surface === 'page' ? 'Alpha Bot' : t['sidebar.newSession'].replace('{name}', 'Alpha Bot'));
       if (surface === 'right') await doubleClick(start);

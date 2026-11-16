@@ -5,7 +5,7 @@ import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { groupSendSchema, ownerFollowUpBindingSchema, type GroupKey, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
 import { OperationError, digest, need, parse } from '../common/operations.js';
-import { groupContext, routeMembers } from './routing.js';
+import { groupContext, selectOnDemand } from './routing.js';
 
 import { blocks, terminal } from './model.js';
 import type { GroupState } from './state.js';
@@ -13,6 +13,7 @@ import type { GroupRoots } from './roots.js';
 import type { GroupMessages } from './messages.js';
 import type { GroupTurnRunner } from './turn-runner.js';
 import { ownerFollowUpChoice, verifyOwnerFollowUpChoice } from './owner-follow-up.js';
+import { checkSupergroup, checkSupergroupEnqueue, type SupergroupAuthority } from './supergroup-admission.js';
 export class GroupTurns {
   constructor(
     private state: GroupState,
@@ -20,9 +21,9 @@ export class GroupTurns {
     private messages: GroupMessages,
     private runner: GroupTurnRunner,
   ) {}
-  async send(key: GroupKey, value: unknown) {
+  async send(key: GroupKey, value: unknown, authority?: SupergroupAuthority) {
     const input = parse(groupSendSchema, value);
-    return this.accept(key, input);
+    return this.accept(key, input, undefined, authority);
   }
   startProactiveReview(
     key: GroupKey, value: unknown, review: NonNullable<GroupTurn['proactive']>, check: () => Promise<void>,
@@ -57,14 +58,20 @@ export class GroupTurns {
   }
   private accept(key: GroupKey, input: ReturnType<typeof groupSendSchema.parse>,
     restricted?: { review: NonNullable<GroupTurn['proactive']>; check: () => Promise<void> }
-      | { binding: OwnerFollowUpBinding; admit: () => Promise<void>; check: () => Promise<void> }) {
+      | { binding: OwnerFollowUpBinding; admit: () => Promise<void>; check: () => Promise<void> }, authority?: SupergroupAuthority) {
     return this.state.queue.run(async () => {
       const proactive = restricted && 'review' in restricted ? restricted : undefined;
       const owner = restricted && 'binding' in restricted ? restricted : undefined;
       const g = this.state.record(key),
         id = `turn:${digest([key, input.operationId])}`,
         hash = digest({ ...input, ...(input.fileReceiptIds.length ? {} : { fileReceiptIds: undefined }),
-          ...(proactive ? { proactive: proactive.review } : {}), ...(owner ? { ownerFollowUp: owner.binding } : {}) });
+          ...(proactive ? { proactive: proactive.review } : {}), ...(owner ? { ownerFollowUp: owner.binding } : {}),
+          ...(g.supergroup ? { supergroup: g.supergroup } : {}) });
+      const scoped = g.supergroup ? await checkSupergroup(this.state, g) : undefined;
+      checkSupergroupEnqueue(this.state, g);
+      if (g.supergroup && (!authority || this.state.supergroupAuthorities.get(g.id) !== authority || restricted ||
+          input.followup || input.fileReceiptIds.length || input.replyTo && !authority.groupInput || input.text !== scoped?.text.trim()) || !g.supergroup && authority)
+        throw new OperationError('approval-denied');
       const used = this.state.turns(g).flatMap(t => [
         ...(t.operationId === input.operationId ? [{ requestDigest: t.requestDigest }] : []),
         ...(t.followups ?? []).filter(row => row.operationId === input.operationId),
@@ -109,13 +116,18 @@ export class GroupTurns {
       if (input.replyTo && !replied) throw new OperationError('invalid');
       const replyMember = replied?.speaker && this.state.members(g).find(m =>
         m.bot.botId === replied.speaker?.bot.botId && m.bot.botCreatedAt === replied.speaker.bot.botCreatedAt);
-      const selected = routeMembers(
-        g,
-        this.state.members(g),
-        input.memberIds.length ? input.memberIds : replyMember ? [replyMember.id] : [],
-        input.round,
-        this.state.registry.config.groupMaxTurns,
-      );
+      const memberRows = this.state.members(g);
+      const descriptions = new Map<string, string>();
+      if (g.onDemand && !g.supergroup && !restricted && !input.memberIds.length && !replyMember && !input.round) {
+        // Read only public Bot metadata; a missing Bot falls through to existing admission checks.
+        for (const member of memberRows) {
+          const bot = await this.state.bot(member.bot).catch(() => undefined);
+          if (bot) descriptions.set(member.id, `${bot.name} ${bot.description}`);
+        }
+      }
+      const choice = selectOnDemand(restricted ? { ...g, onDemand: false } : g, memberRows, input.text,
+        input.memberIds, replyMember?.id, input.round, this.state.registry.config.groupMaxTurns, descriptions);
+      const selected = choice.selected;
       await this.state.validateMembers(selected.map((m) => m.bot));
       const provider = this.state.ctx.subagents.getProvider('spawn');
       if (proactive) await proactive.check();
@@ -136,7 +148,10 @@ export class GroupTurns {
       });
       // Keep native user attribution: fileUploads retires bound receipts by user rpcId.
       // Extra protocol metadata is public JSON source data for the workspace projection.
-      const source = proactive ? {
+      const source = scoped && g.supergroup ? { kind: 'dsh-bot-supergroup' as const, group: key, turnId: id,
+        workId: g.supergroup.workId, originSessionId: g.supergroup.originSessionId,
+        originMessageId: g.supergroup.originMessageId, originSeq: scoped.seq,
+      } : proactive ? {
         kind: 'dsh-bot-group-proactive' as const, group: key, turnId: id,
         ticketId: proactive.review.ticketId, assignmentId: proactive.review.assignmentId,
         ...(repair ? { repairPhase: repair.phase } : {}),
@@ -145,7 +160,8 @@ export class GroupTurns {
         cardId: owner.binding.cardId, predecessorTurnId: owner.binding.predecessorTurnId,
       } : { kind: 'user' as const, group: key, turnId: id,
         ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(files.length ? { rpcId: id } : {}) };
-      const message = createUserMessage({ source, content: [...blocks(input.text), ...files] });
+      const message = scoped && 'existing' in scoped && !scoped.projected ? scoped.message : createUserMessage({ source,
+        content: scoped?.projected ? blocks(scoped.text) : scoped ? scoped.message.content : [...blocks(input.text), ...files] });
       const at = Date.now();
       const turn: GroupTurn = {
         id,
@@ -155,6 +171,7 @@ export class GroupTurns {
         inputMessageId: message.id,
         membershipRevision: g.membershipRevision,
         orderedMemberIds: selected.map((m) => m.id),
+        ...(!restricted && !g.supergroup ? { routing: choice.routing } : {}),
         mode: restricted ? 'round-robin' : g.mode,
         ...(proactive ? { proactive: proactive.review } : {}),
         ...(owner ? { ownerFollowUp: owner.binding } : {}),
@@ -213,13 +230,19 @@ export class GroupTurns {
           });
         }
         using receiptBinding = uploads?.bindPrompt(root.agent, receiptIds as Parameters<NonNullable<typeof uploads>['bindPrompt']>[1], id);
-        const append = () => root.agent.session.append('user/message', message, { surfaceOp: 'append' });
+        const append = async () => { await checkSupergroup(this.state, g);
+          if (scoped && 'existing' in scoped) {
+            const event = root.agent.session.snapshotEvents().find(row => row.type === 'user/message' && row.data.id === message.id);
+            if (!event || Number(event.seq) !== scoped.seq) throw new OperationError('approval-denied');
+            return event;
+          }
+          return root.agent.session.append('user/message', message, { surfaceOp: 'append' }); };
         const send = restricted ? async () => {
           if (owner) await verifyOwnerFollowUpChoice(this.state, key, owner.binding);
           await restricted.check();
           return append();
         } : append;
-        const event = flowId ? await need(flow).dispatch(flowId, send) : restricted ? await send() : append();
+        const event = flowId ? await need(flow).dispatch(flowId, send) : restricted ? await send() : await append();
         receiptBinding?.commit();
         await this.roots.flush(root);
         const accepted = await this.state.putTurn({ ...turn, inputSeq: Number(event.seq) });
@@ -336,6 +359,7 @@ export class GroupTurns {
   async continueTurn(key: GroupKey, turnId: string, revision: number) {
     return this.state.queue.run(async () => {
       const g = this.state.record(key), t = need(this.state.turns(g).find(row => row.id === turnId));
+      if (g.supergroup) throw new OperationError('approval-denied');
       if (t.revision !== revision || t.membershipRevision !== g.membershipRevision) throw new OperationError('conflict');
       if (t.protocol !== 2 || t.state !== 'paused' || g.archived || this.state.chains.has(t.id)) throw new OperationError('unavailable');
       if (!this.state.registry.config.groupMaxContinuations) throw new OperationError('invalid');

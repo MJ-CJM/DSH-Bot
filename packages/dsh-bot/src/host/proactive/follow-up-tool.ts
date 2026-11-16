@@ -11,6 +11,7 @@ import { canReadLabel } from '../data-flow/labels.js';
 import { getGroupWorkerBinding } from '../groups/worker-tool.js';
 import { digest } from './wire.js';
 import type {} from './index.js';
+import { isNativeAmbientSource } from '../common/native-ambient-source.js';
 
 export const BOT_FOLLOW_UP_TOOL_NAME = 'bot_follow_up';
 const watch = {
@@ -49,8 +50,7 @@ async function origin(agent: Agent): Promise<Origin> {
   const main = await registry.mainSessions?.find(binding.botId);
   if (!sameBot(binding, { botId: bot.id, botCreatedAt: bot.createdAt }) || main?.sessionId !== agent.session.id)
     throw new HarnessError('Bot conversation changed', 'automation/conflict');
-  const ambient = new Set(['agent-instructions', 'runtime-context', 'time-context', 'tmux-context']);
-  const event = agent.session.snapshotEvents().findLast(row => row.type === 'user/message' && !ambient.has(row.data.source.kind));
+  const event = agent.session.snapshotEvents().findLast(row => row.type === 'user/message' && !isNativeAmbientSource(row.data.source.kind));
   if (event?.type !== 'user/message' || event.data.source.kind !== 'user')
     throw new HarnessError('A human message is required', 'automation/invalid');
   return { subject: { kind: 'bot', bot: binding }, name: bot.name,

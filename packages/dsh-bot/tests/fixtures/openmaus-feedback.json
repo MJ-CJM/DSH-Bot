@@ -1,0 +1,56 @@
+{
+  "format": "dsh-bot-sanitized-feedback",
+  "version": 1,
+  "policy": "Only public repository reports and synthetic replacements; no private histories, credentials, names, paths or paid model traffic.",
+  "cases": [
+    {
+      "id": "F01-question-and-recipient",
+      "feedback": "tasks/supergroup/MESSAGE-INTERACTION.md",
+      "report": "docs/verification/bot-message-interaction-repair.md",
+      "suite": "direct",
+      "assertion": "Concrete questions and exact sender/recipient identity reach a clean native peer; the actual reply is visible in both original chats."
+    },
+    {
+      "id": "F02-notify-does-not-ask",
+      "feedback": "tasks/supergroup/MESSAGE-INTERACTION.md",
+      "report": "docs/verification/bot-message-interaction-repair.md",
+      "suite": "direct",
+      "assertion": "Notify creates a visible message without starting a recipient model or demanding a reply."
+    },
+    {
+      "id": "F03-first-turn-native-context",
+      "feedback": "tasks/supergroup/AUTHORIZATION.md",
+      "report": "docs/verification/bot-native-context-approval.md",
+      "suite": "first-turn",
+      "assertion": "Native skill and approval notices coexist with a real first human request; unknown sources and native vetoes stay rejected."
+    },
+    {
+      "id": "F04-expert-clean-context",
+      "feedback": "tasks/supergroup/AUTHORIZATION.md",
+      "report": "docs/verification/supergroup-collaboration-authorization.md",
+      "suite": "group",
+      "assertion": "An expert joins the same work with exact material readers and shared budget, without private parent history or memory."
+    },
+    {
+      "id": "F05-original-delivery-and-stop",
+      "feedback": "tasks/supergroup/AUTHORIZATION.md",
+      "report": "docs/verification/supergroup-collaboration-authorization.md",
+      "suite": "group-input",
+      "assertion": "Real group input returns through the originating Bot; duplicate operations, stale generations, cancellation and lost replies cannot replay execution."
+    },
+    {
+      "id": "F06-both-visible-chats",
+      "feedback": "tasks/supergroup/MESSAGE-INTERACTION.md",
+      "report": "docs/verification/bot-message-interaction-repair.md",
+      "suite": "messages",
+      "assertion": "Browser opens both Bot chats, expands actual message cards and verifies real question/reply content with exact identities."
+    },
+    {
+      "id": "F07-seven-product-increments",
+      "feedback": "tasks/supergroup/OPENMAUS-IMPROVEMENTS.md",
+      "report": "docs/verification/openmaus-improvements.md",
+      "suite": "openmaus",
+      "assertion": "Each new product path has a real isolated Host receipt and actual Browser interaction from the same frozen package."
+    }
+  ]
+}

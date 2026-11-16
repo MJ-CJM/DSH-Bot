@@ -18,6 +18,14 @@ export function memoryPanelFactory(ctx: Context, memories: Set<MemoryCatalog>, o
     return {
       catalog: memory,
       groupRecall,
+      changes: {
+        openSession: onOpenSession,
+        load: async () => unwrap(await remote().changes({ botId: id })),
+        restore: async input => {
+          unwrap(await remote().restore({ ...input, botId: id }));
+          await Promise.all([memory.refresh(), shared.refresh()]);
+        },
+      },
       shared: { catalog: shared, remote, refresh: async () => { await Promise.all([shared.refresh(), memory.refresh()]); } },
       dispose: () => { memories.delete(memory); memory.dispose(); shared.dispose(); },
       onSave: input => write(() => remote().save(id, input)),

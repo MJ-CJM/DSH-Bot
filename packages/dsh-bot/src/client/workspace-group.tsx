@@ -12,7 +12,7 @@ import type { ModelActions } from './model-catalog-state.js';
 import { createGroupCommandServices, type GroupCommandServices } from './group-commands.js';
 import { createGroupPermissionState, type GroupPermissionState } from './group-permission-state.js';
 import { GroupConversation } from './components/GroupsPanel.js';
-import { GroupMessageCard } from './components/GroupTimeline.js';
+import { GroupMemberJoins, GroupMessageCard } from './components/GroupTimeline.js';
 import { GroupTurnExecution } from './components/GroupTurnExecution.js';
 import { registerGroupExecution, type ExecutionBridge } from './group-execution.js';
 import { registerGroupViews } from './group-views.js';
@@ -27,6 +27,8 @@ const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: grou
 const userSourceSchema = z.object({ kind: z.enum(['user', 'dsh-bot-group-user', 'dsh-bot-group-followup', 'dsh-bot-group-proactive']), group: groupKeySchema, turnId: z.string().min(1), replyTo: z.string().optional() });
 const sourceSchema = z.union([botSourceSchema, userSourceSchema]);
 export interface WorkspaceGroupMessage { group: z.output<typeof groupKeySchema>; message: GroupMessage }
+const noSubscription = () => () => {};
+const noBots = () => undefined;
 declare module '@deepseek-ai/dsh-client-ui-chat/client' { interface ChatNodeDataMap { 'dsh-bot-group': WorkspaceGroupMessage } }
 export const groupMessageDefinition: ConversationNodeDefinition<WorkspaceGroupMessage> = {
   kind: 'dsh-bot-group', target: 'chat',
@@ -51,7 +53,10 @@ export const groupMessageDefinition: ConversationNodeDefinition<WorkspaceGroupMe
       location: context.start?.location ?? { kind: 'unresolved' }, visibility: 'visible', data: context.state };
   },
 };
-export function selectGroupComposer(owner: Pick<ComposerChainProps, 'sessionId'>, actions: GroupActions) {
+export function selectGroupComposer(owner: Pick<ComposerChainProps, 'sessionId'> & Partial<Pick<ComposerChainProps, 'pendingInteraction'>>, actions: GroupActions) {
+  // The public Conversation owner subscribes to pending interactions. A native
+  // approval/question takeover must precede the group's ordinary input.
+  if (owner.pendingInteraction != null) return null;
   const id = owner.sessionId;
   if (!id) return null;
   return actions.catalog.getSnapshot().groups.some(row => row.group.rootSessionId === id) ||
@@ -84,6 +89,11 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
   const catalog = useMemo(() => actions.messageView({ groupId: node.data.group.groupId, groupCreatedAt: node.data.group.groupCreatedAt }),
     [actions, node.data.group.groupId, node.data.group.groupCreatedAt]);
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot);
+  const botSnapshot = useSyncExternalStore(bots?.subscribe ?? noSubscription, bots?.getSnapshot ?? noBots);
+  const memberBots = botSnapshot?.entries.map(row => row.bot) ?? [];
+  const sourceLabel = snapshot.view?.group.id === node.data.group.groupId
+    && snapshot.view.group.createdAt === node.data.group.groupCreatedAt && snapshot.view.group.supergroup
+    ? t('groups.collaborationSource') : undefined;
   const turn = snapshot.view?.turns.find(row => row.id === node.data.message.turnId && row.inputMessageId === node.data.message.id);
   const [historicQuote, setHistoricQuote] = useState<GroupMessage>();
   const [quoteResolvedId, setQuoteResolvedId] = useState<string>();
@@ -105,7 +115,9 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
     })().catch(() => setJumpUnavailable(true));
   };
   const labels = useMemo(() => ({ code: { copyLabel: t('groups.markdownCopy'), copiedLabel: t('groups.markdownCopied') }, footnotes: t('groups.markdownFootnotes') }), [t]);
-  return <div className={`dsh-bot-group-workspace ${styles.panel}`} data-workspace-group-message={node.data.message.id} data-workspace-group={`${node.data.group.groupId}:${node.data.group.groupCreatedAt}`} tabIndex={-1}><style>{css}</style><GroupMessageCard message={node.data.message} quoted={quoted} quotedLoading={quotedLoading} onJump={jump} labels={labels} t={t}
+  return <div className={`dsh-bot-group-workspace ${styles.panel} ${styles.workspaceMessage}`} data-workspace-group-message={node.data.message.id} data-workspace-group={`${node.data.group.groupId}:${node.data.group.groupCreatedAt}`} tabIndex={-1}><style>{css}</style>
+    {snapshot.view && <GroupMemberJoins view={snapshot.view} message={node.data.message} bots={memberBots} position="before" t={t} />}
+    <GroupMessageCard message={node.data.message} quoted={quoted} quotedLoading={quotedLoading} sourceLabel={sourceLabel} onJump={jump} labels={labels} t={t}
     onOpenSession={onOpenSession} onReply={message => { const row = actions.catalog.getSnapshot().groups.find(group =>
       group.group.id === node.data.group.groupId && group.group.createdAt === node.data.group.groupCreatedAt);
       if (row) actions.reply(row.group.rootSessionId, message);
@@ -114,7 +126,9 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
       const row = actions.catalog.getSnapshot().groups.find(group => group.group.id === node.data.group.groupId && group.group.createdAt === node.data.group.groupCreatedAt);
       if (!row) throw new Error('Group session unavailable');
       return actions.imageUrl(row.group.rootSessionId, attachment);
-    }} />{jumpUnavailable && <p role="status">{t('groups.quoteUnavailable')}</p>}
+    }} />
+    {snapshot.view && <GroupMemberJoins view={snapshot.view} message={node.data.message} bots={memberBots} position="after" t={t} />}
+    {jumpUnavailable && <p role="status">{t('groups.quoteUnavailable')}</p>}
     {node.data.message.authorKind !== 'bot' && turn && snapshot.view && bots && executionBridge && <GroupTurnExecution
       key={JSON.stringify([node.data.group.groupId, node.data.group.groupCreatedAt, turn.id])} view={snapshot.view} turn={turn} actions={actions} bots={bots}
       onOpenExecution={executionBridge.open} executionBridge={executionBridge} renderFactorySlot={renderFactorySlot} t={t} />}
@@ -137,4 +151,5 @@ export function registerWorkspaceGroups(ctx: Context, actions: GroupActions, bot
       yield scope.uiConversation.events.register(groupMessageDefinition);
     }, 'dsh-bot: group message projection')), 'dsh-bot: group renderer');
   });
+  return executionBridge;
 }

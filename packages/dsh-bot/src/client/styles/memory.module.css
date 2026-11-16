@@ -162,3 +162,7 @@
 .scopeStrip { overflow-x: auto; min-width: 0; padding: 4px; }
 .scopeStrip > [role="tablist"] { min-width: max-content; flex-wrap: nowrap; }
 .panel .scopeStrip button { white-space: nowrap; min-height: 44px; }
+.changePayload {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

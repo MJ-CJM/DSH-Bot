@@ -42,7 +42,7 @@ function ScopedPanel({ source, subject, mode, active = true, editable = true, na
   const details = mode === 'detail' && status?.state === 'ready';
   const { page, error: pageError } = useFollowUpCatalog(firstPage, visible && details);
   const [loadedPage, setLoadedPage] = useState<{ base: typeof page; rows: FollowUpCard[]; next?: string }>();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(false), [watchTarget, setWatchTarget] = useState('');
   const [history, setHistory] = useState(false);
   const [busy, setBusy] = useState(false), busyRef = useRef(false);
   const [feedback, setFeedback] = useState<'unknown' | 'rejected' | 'openFailed' | 'pageFailed'>();
@@ -145,8 +145,9 @@ function ScopedPanel({ source, subject, mode, active = true, editable = true, na
     {details && <Button size="sm" variant="ghost" aria-pressed={history} onClick={() => setHistory(value => !value)}>
       {t('followUp.history')}
     </Button>}
-    {rows.length > 0 && <ul className={styles.rows}>{rows.map(row => <FollowUpRow key={row.id} row={row}
-      detail={mode === 'detail'} editCard={editCard} canChange={canChange && !!policy?.localEnabled}
+    {rows.length > 0 && <ul className={styles.rows}>{rows.map(row => { const origin = row.when?.origin ?? row.origin;
+      return <FollowUpRow key={row.id} row={row}
+      detail={mode === 'detail'} onWatch={row.completionTarget && row.state === 'open' && policy?.localEnabled ? () => { setWatchTarget(row.id); setAdding(true); } : undefined} editCard={editCard} canChange={canChange && !!policy?.localEnabled}
       canForget={canForget}
       continuation={mode === 'detail' && subject.kind === 'group' && row.origin.kind === 'group-turn' &&
         row.condition.kind === 'failed' && row.state === 'open' && policy && groupContinuation?.canContinue(row.origin.turnId) &&
@@ -156,26 +157,30 @@ function ScopedPanel({ source, subject, mode, active = true, editable = true, na
             groupContinuation.onAccepted(turnId);
             void refresh().catch(() => {});
           }} onAbandoned={() => void refresh().catch(() => {})} t={t} />}
-      open={navigation?.canOpen(row.origin) ? () => void open(row.origin) : undefined} t={t} />)}</ul>}
+      open={row.when && origin.kind === 'native-subagent'
+        ? () => source.openSession(origin, lifetime.current.signal, true)
+        : navigation?.canOpen(origin) ? () => void open(origin) : undefined} t={t} />; })}</ul>}
     {enabled && rows.length === 0 && !summaryError && !pageError && (mode === 'summary' || page) &&
       <p className={styles.notice}>{t('followUp.empty')}</p>}
     {mode === 'summary' && onShowAll && ready && <Button size="sm" variant="ghost" onClick={onShowAll}>{t('followUp.viewAll')}</Button>}
     {details && next && <Button size="sm" variant="ghost" disabled={busy || !visible} onClick={() => void more()}>{t('followUp.more')}</Button>}
-    {details && ready && policy?.localEnabled && editable && (adding ? <ManualWatchForm disabled={!canChange} onCancel={() => setAdding(false)}
+    {details && ready && policy?.localEnabled && editable && (adding ? <ManualWatchForm key={watchTarget} initialTargetId={watchTarget} disabled={!canChange}
+      targets={allRows.filter(row => row.state === 'open' && row.completionTarget)} onCancel={() => setAdding(false)}
       onAdd={watch => void run({ kind: 'watch', input: { commandId: crypto.randomUUID(), subject, id: crypto.randomUUID(),
         expectedRevision: ready.summary.policy.revision, watch } })} t={t} />
-      : <Button size="sm" variant="outline" disabled={!canChange} onClick={() => setAdding(true)}>{t('followUp.add')}</Button>)}
+      : <Button size="sm" variant="outline" disabled={!canChange} onClick={() => { setWatchTarget(''); setAdding(true); }}>{t('followUp.add')}</Button>)}
     {advanced?.(!!ready && !ready.scopeOnly)}
   </section>;
 }
 
-function FollowUpRow({ row, detail, canChange, canForget, editCard, open, continuation, t }: Locale & {
+function FollowUpRow({ row, detail, canChange, canForget, editCard, open, onWatch, continuation, t }: Locale & {
   row: FollowUpCard;
   detail: boolean;
   canChange: boolean;
   canForget: boolean;
   editCard(row: FollowUpCard, action: FollowUpAction['action']): void;
   open?: () => void;
+  onWatch?: () => void;
   continuation?: ReactNode;
 }) {
   const condition = row.condition;
@@ -184,6 +189,8 @@ function FollowUpRow({ row, detail, canChange, canForget, editCard, open, contin
       <strong>{row.title}</strong>
       <p className={styles.meta}>{t(`followUp.source.${row.origin.kind}`)} · {t(`followUp.condition.${condition.kind}`)}
         {row.state !== 'open' && <> · {t(`followUp.history.${row.state}`)}</>}</p>
+      {detail && row.when && <p>{t(`followUp.when.${row.when.kind}`)} · {t('followUp.when.original', { id: row.when.cardId })}</p>}
+      {detail && row.deadlineAt && <p>{t('followUp.when.deadline', { time: new Date(row.deadlineAt).toLocaleString() })}</p>}
       {detail && condition.kind === 'waiting-input' && <><p>{condition.wait.reason}</p><p>{condition.wait.request}</p></>}
       {detail && condition.kind === 'tracking' && condition.completion && <p>{t('followUp.completionValue', { value: condition.completion })}</p>}
       {detail && condition.kind === 'approval-pending' && <>
@@ -199,6 +206,7 @@ function FollowUpRow({ row, detail, canChange, canForget, editCard, open, contin
     </div>
     {continuation && <div className={styles.continuation}>{continuation}</div>}
     {detail && <div className={styles.rowActions}>
+      {onWatch && <Button size="sm" variant="outline" disabled={!canChange} onClick={onWatch}>{t('simple.watchTask')}</Button>}
       {open && <Button size="sm" variant="ghost" onClick={open}>{t('followUp.open')}</Button>}
       {row.state === 'open' && <>
         {row.origin.kind === 'watch' && (condition.kind === 'approval-pending'
@@ -215,26 +223,45 @@ function FollowUpRow({ row, detail, canChange, canForget, editCard, open, contin
 }
 
 type WatchDraft = Extract<FollowUpCommand, { kind: 'watch' }>['input']['watch'];
-function ManualWatchForm({ disabled, onCancel, onAdd, t }: Locale & {
+function ManualWatchForm({ disabled, targets, initialTargetId = '', onCancel, onAdd, t }: Locale & {
   disabled: boolean;
+  targets: readonly FollowUpCard[];
+  initialTargetId?: string;
   onCancel(): void;
   onAdd(watch: WatchDraft): void;
 }) {
-  const [title, setTitle] = useState(''), [completion, setCompletion] = useState('');
+  const initialTarget = targets.find(row => row.id === initialTargetId);
+  const defaultDeadline = () => { const date = new Date(Date.now() + 24 * 60 * 60 * 1000); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+  const [title, setTitle] = useState(initialTarget?.title ?? ''), [completion, setCompletion] = useState(initialTarget ? t('simple.reviewResult') : '');
   const [reason, setReason] = useState(''), [request, setRequest] = useState('');
+  const [targetId, setTargetId] = useState(initialTargetId), [deadline, setDeadline] = useState(initialTarget ? defaultDeadline : () => '');
+  const target = targets.find(row => row.id === targetId)?.completionTarget;
   const waiting = !!(reason.trim() || request.trim());
-  const invalid = !title.trim() || !completion.trim() || waiting && (!reason.trim() || !request.trim());
+  const invalid = !title.trim() || !completion.trim() || waiting && (!reason.trim() || !request.trim()) ||
+    !!targetId && (!target || !deadline || !Number.isFinite(Date.parse(deadline)) || Date.parse(deadline) <= Date.now());
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (disabled || invalid) return;
     onAdd({ title: title.trim(), completion: completion.trim(), source: { kind: 'manual' },
+      ...(target && deadline ? { when: target, deadlineAt: new Date(deadline).toISOString() } : {}),
       ...(waiting ? { wait: { reason: reason.trim(), request: request.trim() } } : {}) });
   };
   return <form className={styles.form} onSubmit={submit}>
     <fieldset disabled={disabled}>
       <legend>{t('followUp.add')}</legend>
       <label>{t('followUp.watchTitle')}<input required maxLength={500} value={title} onChange={event => setTitle(event.target.value)} /></label>
-      <label>{t('followUp.watchCompletion')}<textarea required maxLength={500} rows={2} value={completion} onChange={event => setCompletion(event.target.value)} /></label>
+      <label>{t('followUp.watchCompletion')}<textarea aria-label={t('followUp.watchCompletion')} required maxLength={500} rows={2} value={completion} onChange={event => setCompletion(event.target.value)} /></label>
+      <label>{t('followUp.when.choose')}<select value={targetId} onChange={event => {
+        const next = event.target.value; setTargetId(next);
+        if (next) { const row = targets.find(item => item.id === next); if (!title.trim()) setTitle(row?.title ?? ''); if (!completion.trim()) setCompletion(t('simple.reviewResult')); if (!deadline) setDeadline(defaultDeadline()); }
+      }}>
+        <option value="">{t('followUp.when.manual')}</option>
+        {targets.map(row => <option key={row.id} value={row.id}>{row.title} · {t(`followUp.when.${row.completionTarget?.kind ?? 'subtask-completed'}`)}</option>)}
+      </select></label>
+      {targetId && <>
+        <p>{t('followUp.when.notice')}</p>
+        <label>{t('followUp.when.expires')}<input type="datetime-local" required value={deadline} onChange={event => setDeadline(event.target.value)} /></label>
+      </>}
       <details><summary>{t('followUp.waitFields')}</summary>
         <label>{t('followUp.waitReason')}<input required={waiting} maxLength={500} value={reason} onChange={event => setReason(event.target.value)} /></label>
         <label>{t('followUp.waitRequest')}<textarea required={waiting} maxLength={500} rows={2} value={request} onChange={event => setRequest(event.target.value)} /></label>

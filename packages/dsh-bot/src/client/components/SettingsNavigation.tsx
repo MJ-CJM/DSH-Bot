@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { Modal } from './Modal.js';
 import styles from '../styles/bots.module.css';
@@ -18,10 +18,12 @@ const leaveImmediately = (run: () => void) => run();
 export function useSettingsLeave() { return useContext(SettingsDrafts)?.leave ?? leaveImmediately; }
 
 export function useSettingsNavigation(t: PropsLocale<'dsh-bot'>['t']) {
+  const parent = useContext(SettingsDrafts), scope = useId();
   const dirty = useRef(new Set<string>());
+  useEffect(() => () => parent?.set(scope, false), [parent, scope]);
   const [pending, setPending] = useState<{ run(): void }>();
   const [registry] = useState<DraftRegistry>(() => ({
-    set(id, value) { if (value) dirty.current.add(id); else dirty.current.delete(id); },
+    set(id, value) { if (value) dirty.current.add(id); else dirty.current.delete(id); parent?.set(scope, dirty.current.size > 0); },
     leave(run) { if (dirty.current.size) setPending({ run }); else run(); },
   }));
   return {

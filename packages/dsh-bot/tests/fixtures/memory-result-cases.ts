@@ -20,6 +20,8 @@ export function memoryResultCases(memory: MemoryRecord): Record<string, [unknown
     previewForget: [preview, { previewRevision: 'bad' }], previewShared: [preview, { previewRevision: 'bad' }],
     previewContribution: [preview, { previewRevision: 'bad' }],
     query: [{ revision: 1, rows: [], total: 0 }, { revision: -1, rows: [], total: 0 }],
+    changes: [{ revision: 1, rows: [] }, { revision: 1, rows: [], erasedContent: 'forbidden' }],
+    restore: [undefined, { restored: true }],
     createManaged: [uuid, 'bad'], confirm: [uuid, 'bad'], revise: [undefined, {}], resolve: [undefined, {}],
   };
 }

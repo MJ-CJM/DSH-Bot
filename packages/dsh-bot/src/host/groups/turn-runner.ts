@@ -19,12 +19,14 @@ import type { SubagentActivation, SubagentResult } from '@deepseek-ai/dsh-subage
 import type { GroupDelivery, GroupTurn, GroupSpeaker } from '../../shared/groups.js';
 import { OperationError, need, digest } from '../common/operations.js';
 import { groupContext } from './routing.js';
+import { compatibleActivationSpec } from '../common/subagent-activation.js';
 
 import { blocks, textOf, terminal } from './model.js';
 import { memberRunFailure } from './failure.js';
 import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
 import type { GroupMessages } from './messages.js';
+import { checkSupergroup, checkSupergroupEnqueue, groupReaders } from './supergroup-admission.js';
 export class GroupTurnRunner {
   private concurrent: ConcurrentGroups;
   constructor(
@@ -41,6 +43,8 @@ export class GroupTurnRunner {
       return old;
     }
     const g = this.state.record(t.group), rows = this.state.deliveries(t.id);
+    await checkSupergroup(this.state, g);
+    checkSupergroupEnqueue(this.state, g);
     const timeout = t.protocol === 2 ? this.state.registry.config.groupTaskTimeoutMs : this.state.registry.config.groupRoundTimeoutMs;
     if (this.state.cancelledTurns.has(t.id) || (terminal(need(this.state.table('turns').get(t.id))) && !(t.protocol === 2 && this.state.table('turns').get(t.id)?.state === 'paused')) ||
       (timeout > 0 && Date.now() >= t.createdAt + timeout)) throw new OperationError('unavailable');
@@ -57,11 +61,39 @@ export class GroupTurnRunner {
     return row;
   }
   async groupMessage(agent: Agent, binding: WorkerBinding, input: z.output<typeof groupToolInput>, callId: string, signal: AbortSignal) {
+    if (input.action === 'request-expert') return this.state.queue.run(async () => {
+      signal.throwIfAborted();
+      const turn = need(this.state.table('turns').get(binding.turnId)), group = this.state.record(turn.group);
+      const delivery = need(this.state.table('deliveries').get(binding.deliveryId));
+      if (!group.supergroup || !this.state.expertHandler || this.state.workers.get(agent.session.id) !== binding ||
+          binding.agent !== agent || !binding.isActive?.() || this.state.cancelledTurns.has(turn.id) ||
+          group.membershipRevision !== turn.membershipRevision || !['starting', 'running'].includes(delivery.state) ||
+          !group.supergroup.readers.some(reader => reader.botId === input.botId) || input.botId === delivery.bot.botId)
+        throw new OperationError('approval-denied');
+      await checkSupergroup(this.state, group);
+      const id = `expert-request:${digest([delivery.id, callId])}`;
+      const previous = this.messages.messages(group).find(message => message.causeId === id);
+      if (!previous) {
+        const bot = await this.state.bot(delivery.bot), root = need(this.state.roots.get(group.id));
+        const message = createUserMessage({ source: { kind: 'dsh-bot-group', group: turn.group, turnId: turn.id,
+          memberId: delivery.memberId, speaker: { bot: delivery.bot, name: bot.name }, childSessionId: agent.session.id,
+          stopReason: 'expert-request', causeId: id }, content: blocks(JSON.stringify({ botId: input.botId, question: input.question })) });
+        await groupResult(this.state, group, delivery.bot, agent.session.id, root.agent, JSON.stringify(message), id,
+          () => root.agent.session.append('user/message', message, { surfaceOp: 'append' }), signal);
+        await this.roots.flush(root);
+      }
+      await checkSupergroup(this.state, group);
+      // The callback only records a request. Waiting for this turn would deadlock its own worker.
+      await this.state.expertHandler({ group: turn.group, workId: group.supergroup.workId, agent, binding, callId,
+        botId: input.botId, question: input.question });
+      return { status: 'accepted', requestId: id };
+    });
     if (this.state.table('turns').get(binding.turnId)?.protocol === 2) return this.concurrent.message(agent, binding, input, callId, signal);
     return this.state.queue.run(async () => {
       signal.throwIfAborted();
       const t = need(this.state.table('turns').get(binding.turnId)), g = this.state.record(t.group),
         d = need(this.state.table('deliveries').get(binding.deliveryId));
+      await checkSupergroup(this.state, g);
       if (this.state.workers.get(agent.session.id) !== binding || this.state.cancelledTurns.has(t.id) ||
         !['starting', 'running'].includes(d.state)) throw new OperationError('approval-denied');
       if (input.action === 'skip') {
@@ -104,12 +136,14 @@ export class GroupTurnRunner {
     return this.state.queue.run(async () => {
       const d = need(this.state.table('deliveries').get(deliveryId)),
         g = this.state.record(t.group);
+      await checkSupergroup(this.state, g);
+      checkSupergroupEnqueue(this.state, g);
       const member = this.state.members(g).find((m) => m.id === d.memberId);
       if (
         this.state.stopped ||
         this.state.cancelledTurns.has(t.id) ||
         d.state !== 'pending' ||
-        ((t.proactive || t.ownerFollowUp) && g.membershipRevision !== t.membershipRevision) ||
+        ((t.proactive || t.ownerFollowUp || g.supergroup) && g.membershipRevision !== t.membershipRevision) ||
         signal.aborted ||
         !member?.enabled ||
         member.removedAt !== undefined ||
@@ -150,6 +184,7 @@ export class GroupTurnRunner {
         messages.filter((m) => m.seq <= t.contextThroughSeq),
         [...previous, ...messages.filter(m => m.id === (d.triggerMessageId ? question.replyTo : t.replyTo))],
         this.state.registry.config.groupContextMaxBytes,
+        g.memberRoles?.find(row => row.bot.botId === bot.id && row.bot.botCreatedAt === bot.createdAt)?.role,
       );
       if (t.protocol === 2 && d.automatic) {
         const current = need(this.state.table('turns').get(t.id));
@@ -186,7 +221,8 @@ export class GroupTurnRunner {
     await this.state.queue.run(async () => {
       const g = this.state.record(t.group),
         d = need(this.state.table('deliveries').get(deliveryId));
-      if ((t.proactive || t.ownerFollowUp) && g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
+      await checkSupergroup(this.state, g);
+      if ((t.proactive || t.ownerFollowUp || g.supergroup) && g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
       const text = textOf(result.output);
       const hasContent = !d.skipped && !signal.aborted && (Boolean(text.trim()) || result.output.some((b) => b.type !== 'text'));
       const state = signal.aborted
@@ -459,9 +495,9 @@ export class GroupTurnRunner {
         prepared.context.text, d0.id, controller.signal);
       const childId = input?.childId ?? SessionId(randomUUID());
       reservedChild = childId;
-      this.state.workers.set(childId, { turnId: t.id, deliveryId: d0.id, childId, rootId: g.rootSessionId, presetId: prepared.d.presetId, modelSelection: prepared.modelSelection, isActive: () => !this.state.stopped && !this.state.cancelledTurns.has(t.id) && !controller.signal.aborted && this.state.workers.get(childId)?.deliveryId === d0.id, audience: this.state.members(g).filter(m => m.enabled && m.removedAt === undefined).map(m => m.bot) });
+      this.state.workers.set(childId, { turnId: t.id, deliveryId: d0.id, childId, rootId: g.rootSessionId, presetId: prepared.d.presetId, modelSelection: prepared.modelSelection, isActive: () => !this.state.stopped && !this.state.cancelledTurns.has(t.id) && !controller.signal.aborted && this.state.workers.get(childId)?.deliveryId === d0.id, audience: groupReaders(this.state, g) });
       workerReservations.set(childId, need(this.state.workers.get(childId)));
-      const start = (dispatchSignal = controller.signal) => this.state.ctx.subagents.startActivation({
+      const start = (dispatchSignal = controller.signal) => this.state.ctx.subagents.startActivation(compatibleActivationSpec({
         childId,
         provider: 'spawn',
         delivery: 'caller',
@@ -474,8 +510,9 @@ export class GroupTurnRunner {
           prompt: [...blocks(prepared.context.text), ...prepared.attachmentBlocks],
           maxDepth: this.state.registry.config.groupMaxDepth,
         },
-      });
-      activation = input ? await need(flow).dispatch(input.id, (_envelope, signal) => start(signal), controller.signal) : await start();
+      }));
+      activation = input ? await need(flow).dispatch(input.id, (_envelope, signal) => start(signal), controller.signal,
+        () => checkSupergroup(this.state, g).then(() => {})) : await start();
       // Observe settlement independently of the shared queue and delivery-result persistence.
       // This closes only supplemental inbox admission; a successful result remains successful.
       void activation.result.then(() => inputAdmission.abort(), () => inputAdmission.abort());

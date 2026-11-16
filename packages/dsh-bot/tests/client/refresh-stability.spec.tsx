@@ -1,4 +1,4 @@
-import { openHistory } from './bot-ui-helpers.js';
+import { openBotChats, openHistory } from './bot-ui-helpers.js';
 // @vitest-environment jsdom
 import { act } from 'react';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
@@ -63,7 +63,7 @@ describe('background refresh across mounted Bot surfaces', () => {
     const app = await mount();
     const right = await app.mountRightTab();
     const sidebar = await app.mountSidebar();
-    await click(button(sidebar, en.ui['sidebar.sessions']));
+    await openBotChats(sidebar);
     const toggle = sidebar.querySelector<HTMLButtonElement>('[aria-expanded][aria-label^="Toggle"]')
       ?? sidebar.querySelector<HTMLButtonElement>('section[data-bot-id] button[aria-expanded]');
     if (!toggle) throw new Error('Missing Bot group');
@@ -123,7 +123,7 @@ describe('background refresh across mounted Bot surfaces', () => {
       blank: false, updatedAt: Date.now(), retainedBy: {}, projectionValues: { agentPreset: 'host-selected/alpha-bot' } } as unknown as SessionSummary;
     await app.setSessions({ ids: [session.id], byId: { [session.id]: session } });
     const sidebar = await app.mountSidebar();
-    await click(button(sidebar, copy['sidebar.sessions']));
+    await openBotChats(sidebar, language);
     for (const root of [app.container, sidebar]) {
       const row = root.querySelector('[data-session-id="untitled"]');
       expect(row?.textContent).toContain(copy['sidebar.untitled']);

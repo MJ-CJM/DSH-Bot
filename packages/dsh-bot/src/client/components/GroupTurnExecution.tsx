@@ -13,10 +13,13 @@ import { groupFailureCode, groupFailureText } from '../group-failure.js';
 import styles from '../styles/groups.module.css';
 
 /** One disclosure owned by the original question, never by its replies or the composer. */
-export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution, executionBridge, renderFactorySlot, t }: {
+export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution, executionBridge, renderFactorySlot, onStopTurn, onRequestSupplement, t }: {
   view: GroupView; turn: GroupTurn; actions: GroupActions; bots: BotCatalog;
   onOpenExecution(childId: string): void;
   executionBridge?: ExecutionBridge; renderFactorySlot?: PropsRenderFactories['renderFactorySlot'];
+  onStopTurn?: (() => Promise<void>) | null;
+  /** null suppresses group-root draft controls in a projected main conversation. */
+  onRequestSupplement?: ((deliveryId: string) => void) | null;
 } & PropsLocale<'dsh-bot'>) {
   const key = { groupId: view.group.id, groupCreatedAt: view.group.createdAt };
   const expansionKey = JSON.stringify([key.groupId, key.groupCreatedAt, turn.id]);
@@ -53,6 +56,7 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
     finally { lock.current = false; setBusy(false); }
   };
   const supplement = (deliveryId: string) => {
+    if (onRequestSupplement) { onRequestSupplement(deliveryId); return; }
     actions.patchDraft(view.group.rootSessionId, draft => ({ ...draft,
       followup: { turnId: turn.id, deliveryId }, replyTo: undefined, mentions: [], mentionBindings: [] }));
     const composer = [...document.querySelectorAll<HTMLElement>('[data-workspace-group-composer]')]
@@ -63,8 +67,8 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
     <button type="button" className={styles.turnSummary} aria-expanded={expanded} aria-controls={bodyId} onClick={() => {
       actions.turnExpansion.set(expansionKey, !expanded); setChoice(!expanded);
     }}>
-      <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-      {t('groups.executionDetails')} · {t('groups.turnSummary', { count: turn.orderedMemberIds.length, state: t(`groups.${turn.state}`) })}
+      <span className={styles.executionChevron} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+      <span>{t('groups.executionDetails')}</span><span className={styles.turnSummaryState}>{t('groups.turnSummary', { count: turn.orderedMemberIds.length, state: t(`groups.${turn.state}`) })}</span>
     </button>
     {latest && executionBridge && deliveries.map(delivery => delivery.childSessionId && !['pending', 'starting'].includes(delivery.state) &&
       <GroupPermissionDenialProbe key={delivery.childSessionId} parentId={view.group.rootSessionId} childId={delivery.childSessionId}
@@ -91,7 +95,7 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
         {active && (delivery.state === 'running' || (turn.protocol === 2 && ['starting', 'pending'].includes(delivery.state))) && <Menu
           open={menu === delivery.id} onClose={() => setMenu(undefined)} align="end"
           anchor={<Button variant="ghost" disabled={disabled} aria-label={t('execution.memberActions', { name: nameOf(delivery) })} aria-expanded={menu === delivery.id} aria-haspopup="menu" onClick={() => setMenu(menu === delivery.id ? undefined : delivery.id)}>···</Button>}
-          items={[...(delivery.state === 'running' ? [{ id: 'supplement', label: t('groups.supplement') }] : []), ...(turn.protocol === 2 ? [{ id: 'stop', label: t('execution.stopMember') }] : [])]}
+          items={[...(delivery.state === 'running' && onRequestSupplement !== null ? [{ id: 'supplement', label: t('groups.supplement') }] : []), ...(turn.protocol === 2 ? [{ id: 'stop', label: t('execution.stopMember') }] : [])]}
           onSelect={id => { setMenu(undefined); if (id === 'supplement') supplement(delivery.id); else void perform(async () => unwrapGroup(await actions.remote().stopMember(key, turn.id, delivery.memberId, turn.revision))); }} />}
 
         </div>
@@ -100,8 +104,8 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
           key={delivery.childSessionId} parentId={view.group.rootSessionId} childId={delivery.childSessionId}
           readyToRead={!['pending', 'starting'].includes(delivery.state)} bridge={executionBridge} renderFactorySlot={renderFactorySlot} t={t} />}
       </div>)}
-      {active && <button type="button" disabled={disabled} onClick={() => {
-        void perform(async () => unwrapGroup(await actions.remote().cancel(key, turn.id, turn.revision)));
+      {active && onStopTurn !== null && <button type="button" disabled={disabled} onClick={() => {
+        void perform(async () => onStopTurn ? onStopTurn() : unwrapGroup(await actions.remote().cancel(key, turn.id, turn.revision)));
       }}>{t('execution.stopTurn')}</button>}
       {turn.protocol === 2 && <details className={styles.executionMeta}><summary>{t('execution.advanced')}</summary><p>{t('execution.allowance')} · {turn.automaticExecutions ?? 0} / {turn.continuationAllowance ?? 0}</p></details>}
       {failed && <p role="alert">{t('groups.conflict')}</p>}

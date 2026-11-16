@@ -1,5 +1,7 @@
 # DSH-Bot 整体优化与重构方案
 
+> 2026-11-12 范围更新：后续 Supergroup 采用[单对话整体方案](../supergroup/README.md)，按[SG00–SG05](../../../tasks/supergroup/README.md)推进。自动选择已有 Bot、执行中邀请专家和回原对话交付均为 P0；不要求用户手动选群或成员，不固定为两人、三个工程阶段。下方是此前主动协作的设计与实施历史，其已有权限和验证边界继续有效。
+
 日期：2026-11-08。状态：**D1–D6 已获批准，A 批基础修复与简化侧栏已通过隔离验收；B/C 未开始**。起始代码基线：`codex/proactive-bot-implementation@e9bcdcf`。本方案细化[17 项落地清单](../../../tasks/proactive-bot/NEXT-personal-proactive-superagent.md)，不把原方案中的目标、现有代码和真实运行效果混为一层。
 
 ## 1 推荐决策

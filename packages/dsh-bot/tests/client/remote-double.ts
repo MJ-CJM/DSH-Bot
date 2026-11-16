@@ -248,6 +248,12 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		updateTask: vi.fn<CollaborationMethods["updateTask"]>(),
 	};
 	const groups = {
+    teamList: vi.fn<GroupMethods["teamList"]>(async () => ({ ok: true, value: [] })),
+    teamCapture: vi.fn<GroupMethods["teamCapture"]>(),
+    teamSave: vi.fn<GroupMethods["teamSave"]>(),
+    teamRemove: vi.fn<GroupMethods["teamRemove"]>(),
+    teamPreview: vi.fn<GroupMethods["teamPreview"]>(),
+    teamApply: vi.fn<GroupMethods["teamApply"]>(),
 		open: vi.fn<GroupMethods["open"]>(async () => {
 			if (!data.groupView) throw new Error("No group fixture");
 			return { ok: true, value: { sessionId: data.groupView.group.rootSessionId, workspaceId: "workspace" } };

@@ -5,8 +5,8 @@ type Selection = { bot: BotRecord | undefined; select(id: string): void };
 export const SettingsBotContext = createContext<Selection | undefined>(undefined);
 
 /** Selection is an incarnation, not a reusable Bot ID. Deleted Bots require explicit re-selection. */
-export function useBotSelection(bots: readonly BotRecord[]): Selection {
-  const [identity, setIdentity] = useState<{ id: string; createdAt: number }>();
+export function useBotSelection(bots: readonly BotRecord[], initial?: { id: string; createdAt: number }): Selection {
+  const [identity, setIdentity] = useState<{ id: string; createdAt: number } | undefined>(initial);
   const bot = identity ? bots.find(b => b.id === identity.id && b.createdAt === identity.createdAt) : bots[0];
   // Pin the first accepted identity even when the catalog arrives after mount.
   if (!identity && bot) setIdentity({ id: bot.id, createdAt: bot.createdAt });

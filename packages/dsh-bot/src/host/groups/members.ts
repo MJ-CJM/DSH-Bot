@@ -18,13 +18,16 @@ import { validateDefaultCwd } from '../home.js';
 import { sameBot, terminal } from './model.js';
 import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
+import { checkSupergroup, supergroupMetadata, validateSupergroupAuthority, type SupergroupAuthority } from './supergroup-admission.js';
 export class GroupMembers {
   constructor(
     private state: GroupState,
     private roots: GroupRoots,
   ) {}
-  async create(value: unknown) {
+  async create(value: unknown, authority?: SupergroupAuthority) {
     const input = parse(groupCreateSchema, value);
+    if (input.memberRoles?.some(row => !input.members.some(bot => sameBot(bot, row.bot))) ||
+        new Set(input.memberRoles?.map(row => JSON.stringify(row.bot))).size !== (input.memberRoles?.length ?? 0)) throw new OperationError('invalid');
     return this.state.queue.run(async () => {
       this.state.check();
       const id = `group:${digest(input.operationId)}`,
@@ -32,7 +35,13 @@ export class GroupMembers {
       const prior = this.state.table('groups').get(id);
       if (prior) {
         if (prior.createDigest !== hash) throw new OperationError('conflict');
+        if (prior.supergroup && !authority || !prior.supergroup && authority) throw new OperationError('approval-denied');
+        if (authority) { await validateSupergroupAuthority(this.state, authority, prior); this.state.supergroupAuthorities.set(prior.id, authority); }
         return prior;
+      }
+      if (authority) {
+        await validateSupergroupAuthority(this.state, authority);
+        if (input.members.some(key => !authority.readers.some(reader => sameBot(key, reader)))) throw new OperationError('approval-denied');
       }
       await this.state.validateMembers(input.members);
       this.state.route();
@@ -52,6 +61,8 @@ export class GroupMembers {
         rootPresetId: GROUP_ROOT_PRESET,
         cwd,
         mode: input.mode,
+        ...(input.onDemand !== undefined ? { onDemand: input.onDemand } : {}),
+        ...(input.memberRoles ? { memberRoles: input.memberRoles } : {}),
         membershipRevision: 1,
         revision: 1,
         archived: false,
@@ -59,9 +70,11 @@ export class GroupMembers {
         createdAt: at,
         updatedAt: at,
         schemaVersion: 1,
+        ...(authority ? { supergroup: supergroupMetadata(authority) } : {}),
       };
       // Durable create intent exists before the native side effect. No implicit retry of an uncertain create.
       await this.state.putGroup(g);
+      if (authority) this.state.supergroupAuthorities.set(g.id, authority);
       try {
         for (const [order, key] of input.members.entries()) {
           const m: GroupMember = {
@@ -100,6 +113,7 @@ export class GroupMembers {
     const input = parse(groupSetModelSchema, value);
     return this.state.queue.run(async () => {
       const g = this.state.record(key);
+      if (g.supergroup) throw new OperationError('approval-denied');
       if (g.archived || input.expectedModelRevision !== (g.modelRevision ?? 0)) throw new OperationError('conflict');
       if (g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
       if (input.memberId) {
@@ -142,10 +156,18 @@ export class GroupMembers {
       return next;
     });
   }
-  async edit(key: GroupKey, value: unknown) {
+  async edit(key: GroupKey, value: unknown, authority?: SupergroupAuthority) {
     const input = parse(groupEditSchema, value);
+    if (input.memberRoles?.some(row => !input.members.some(bot => sameBot(bot, row.bot))) ||
+        new Set(input.memberRoles?.map(row => JSON.stringify(row.bot))).size !== (input.memberRoles?.length ?? 0)) throw new OperationError('invalid');
     return this.state.queue.run(async () => {
       const g = this.state.record(key);
+      if (g.supergroup) {
+        if (!authority || this.state.supergroupAuthorities.get(g.id) !== authority) throw new OperationError('approval-denied');
+        await checkSupergroup(this.state, g);
+        if (this.state.turns(g).some(turn => this.state.chains.has(turn.id) || !terminal(turn)) ||
+            input.members.some(key => !g.supergroup?.readers.some(reader => sameBot(key, reader)))) throw new OperationError('conflict');
+      } else if (authority) throw new OperationError('approval-denied');
       if (
         g.archived ||
         input.expectedRevision !== g.revision ||
@@ -154,6 +176,7 @@ export class GroupMembers {
         throw new OperationError('conflict');
       if (!normalizeSessionTitle(input.name, Number.MAX_SAFE_INTEGER)) throw new OperationError('invalid');
       await this.state.validateMembers(input.members);
+      await checkSupergroup(this.state, g);
       const old = this.state.members(g),
         at = Date.now();
       const retainedMemberIds = new Set(old.filter(m => m.removedAt === undefined && input.members.some(b => sameBot(b, m.bot))).map(m => m.id));
@@ -168,6 +191,8 @@ export class GroupMembers {
         ...(removedMembers || removedSelections ? { modelRevision: (g.modelRevision ?? 0) + 1 } : {}),
         name: input.name,
         mode: input.mode,
+        ...(input.onDemand !== undefined ? { onDemand: input.onDemand } : {}),
+        memberRoles: (input.memberRoles ?? g.memberRoles ?? []).filter(row => input.members.some(bot => sameBot(bot, row.bot))),
         revision: g.revision + 1,
         membershipRevision: g.membershipRevision + 1,
         updatedAt: at,

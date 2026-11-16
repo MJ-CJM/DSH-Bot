@@ -76,7 +76,9 @@ export function apply(ctx, config) {
       const agents = {};
       for (const [id, sessionId] of Object.entries(mains)) { const r = await ctx.sessionController.resolveAgent(sessionId); if ('error' in r) throw r.error; agents[id] = r.agent; }
       const prompt = async (agent, value) => { agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: value }] })); await agent.whenIdle(); };
-      // A first turn also carries the native skill catalog, which messaging provenance rejects; start each chat first.
+      // Seed completed greeting history for these presentation checks. Native
+      // first-turn authorization is covered without warmup by the dedicated
+      // bot-message-first-turn profile.
       for (const agent of Object.values(agents)) await prompt(agent, 'Hello');
       agents.planner.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: ASK }] }));
       const events = id => ctx.agents.get(id)?.session.snapshotEvents() ?? [];

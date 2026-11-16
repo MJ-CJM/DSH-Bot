@@ -23,6 +23,14 @@ export const groupSetModelSchema = z.strictObject({
   modelSelection: groupModelSelectionSchema.nullable(),
 });
 const name = botRecordFields.shape.name;
+export const groupRoleSchema = z.array(z.strictObject({ bot: botKeySchema, role: z.string().trim().min(1).max(64) })).max(16);
+export const groupRoutingSchema = z.strictObject({
+  strategy: z.enum(['explicit', 'legacy', 'local-role', 'fallback']), version: z.literal(1),
+  candidateMemberIds: z.array(resourceId), selectedMemberIds: z.array(resourceId),
+  reason: z.enum(['mention', 'reply', 'round', 'disabled', 'mode', 'role-match', 'no-match', 'failed']),
+  modelRequests: z.number().int().nonnegative().optional(),
+  deciderCalls: z.literal(0), plannedCalls: z.number().int().nonnegative(),
+});
 export const groupRecordSchema = z.strictObject({
   id: resourceId,
   operationId: resourceId,
@@ -35,6 +43,8 @@ export const groupRecordSchema = z.strictObject({
   rootPresetId: z.literal(GROUP_ROOT_PRESET),
   cwd: z.string(),
   mode: groupModeSchema,
+  onDemand: z.boolean().optional(),
+  memberRoles: groupRoleSchema.optional(),
   modelSelection: groupModelSelectionSchema.optional(),
   memberModelSelections: groupMemberModelSelectionsSchema.optional(),
   modelRevision: z.number().int().nonnegative().optional(),
@@ -43,6 +53,8 @@ export const groupRecordSchema = z.strictObject({
   revision: rev,
   archived: z.boolean(),
   state: z.enum(['creating', 'ready', 'recovery_needed']),
+  supergroup: z.strictObject({ workId: resourceId, originSessionId: z.string().min(1), originMessageId: z.string().min(1),
+    owner: botKeySchema, readers: z.array(botKeySchema).min(1).max(65), expiresAt: z.number().finite() }).optional(),
 });
 export const groupMemberSchema = z.strictObject({
   id: resourceId,
@@ -92,6 +104,7 @@ export const groupTurnSchema = z.strictObject({
   membershipRevision: rev,
   orderedMemberIds: z.array(resourceId),
   mode: groupModeSchema,
+  routing: groupRoutingSchema.optional(),
   contextThroughSeq: z.number().int(),
   modelSelection: groupModelSelectionSchema.optional(),
   memberModelSelections: groupMemberModelSelectionsSchema.optional(),
@@ -153,6 +166,8 @@ export const groupCreateSchema = z.strictObject({
   mode: groupModeSchema,
   cwd: z.string().min(1).optional(),
   historyConfirmed: z.literal(true),
+  onDemand: z.boolean().optional(),
+  memberRoles: groupRoleSchema.optional(),
 });
 export const groupEditSchema = z.strictObject({
   expectedRevision: rev,
@@ -161,6 +176,8 @@ export const groupEditSchema = z.strictObject({
   mode: groupModeSchema,
   members: z.array(botKeySchema).min(2).max(16),
   historyConfirmed: z.literal(true),
+  onDemand: z.boolean().optional(),
+  memberRoles: groupRoleSchema.optional(),
 });
 export const groupSendSchema = z.strictObject({
   operationId: resourceId,

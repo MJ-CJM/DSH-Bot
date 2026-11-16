@@ -7,7 +7,7 @@ import { workSchema, type ProactiveWork } from '../src/shared/proactive/work.js'
 import {
   followUpCardSchema, followUpPolicySchema, followUpWatchSchema, subjectKey,
   type FollowUpAction, type FollowUpBootstrap, type FollowUpCard, type FollowUpFact, type FollowUpGroupWatchProposal, type FollowUpIngest,
-  type FollowUpOrigin, type FollowUpPageRequest, type FollowUpPolicy,
+  type FollowUpOrigin, type FollowUpPageRequest, type FollowUpPolicy, type FollowUpCompletionTarget,
   type FollowUpPolicyChange, type FollowUpSourceRequest, type FollowUpWatchCreate, type FollowUpWatchUpdate, type Subject,
 } from '../src/shared/proactive/follow-up.js';
 
@@ -100,7 +100,7 @@ export function openFollowUp(db: DatabaseSync) {
     return changePolicy({ action: 'enable-local', subject: input.subject, expectedRevision: policy(input.subject).revision });
   }
 
-  type Projection = Omit<FollowUpFact, 'condition'> & { condition: FollowUpCard['condition'] };
+  type Projection = Omit<FollowUpFact, 'condition'> & { condition: FollowUpCard['condition']; completionTarget?: FollowUpCompletionTarget };
   function project(engine: Engine, subject: Subject, fact: Projection, generation: number, previous?: FollowUpCard) {
     const key = subjectKey(subject);
     const id = digest([key, originKey(fact.origin)]);
@@ -120,7 +120,86 @@ export function openFollowUp(db: DatabaseSync) {
       id, decisionId: decision.id, subject, origin: fact.origin, title: fact.title,
       revision: previous ? previous.revision + 1 : 0, observedAt: fact.occurredAt,
       condition: fact.condition, state: fact.condition.kind === 'closed' ? 'closed' : ignored ? 'ignored' : 'open',
+      ...(fact.completionTarget ? { completionTarget: fact.completionTarget } : {}),
     });
+  }
+
+  function validateWatchTarget(subject: Subject, target: FollowUpCompletionTarget | undefined, deadlineAt?: string) {
+    if (!target) return;
+    if (!deadlineAt || Date.parse(deadlineAt) <= Date.now()) throw new Rejection('invalid');
+    const row = readHead.get(subjectKey(subject), target.cardId);
+    const card = row?.card ? decodeCard({ card: row.card }) : undefined;
+    if (card?.state !== 'open' || !card.completionTarget || digest(card.completionTarget) !== digest(target)) throw new Rejection('stale');
+  }
+
+  function settleWatch(engine: Engine, key: string, raw: { card: unknown; watch: unknown },
+    condition: FollowUpCard['condition'], factId: string) {
+    const watch = followUpWatchSchema.parse(JSON.parse(String(raw.watch)));
+    const card = decodeCard(raw);
+    if (watch.state !== 'active' || !watch.when || card.state === 'stopped' || card.state === 'closed') return;
+    const next = project(engine, watch.subject, { nativeId: watch.id, nativeRevision: watch.revision + 1,
+      payloadDigest: digest([watch, factId]), occurredAt: new Date().toISOString(), origin: card.origin,
+      title: watch.title, condition }, 0, card);
+    next.when = watch.when; next.deadlineAt = watch.deadlineAt;
+    watch.state = condition.kind === 'closed' ? 'stopped' : 'completed'; watch.revision++;
+    db.prepare('UPDATE pb_follow_up_head SET card=?,watch=?,observed_at=? WHERE subject=? AND id=?')
+      .run(JSON.stringify(next), JSON.stringify(watch), next.observedAt, key, card.id);
+  }
+
+  function watchDeadlines(engine: Engine, subject: Subject) {
+    const key = subjectKey(subject);
+    for (const raw of db.prepare(`SELECT card,watch FROM pb_follow_up_head WHERE subject=?
+      AND json_extract(watch,'$.state')='active' AND json_extract(watch,'$.when') IS NOT NULL`).all(key)) {
+      const watch = followUpWatchSchema.parse(JSON.parse(String(raw.watch)));
+      if (!watch.when) continue;
+      const revoked = watch.when.kind === 'ci-completed' &&
+        db.prepare('SELECT generation FROM pb_source_revocation WHERE id=?').get(watch.when.sourceId);
+      const source = watch.when.kind === 'ci-completed' &&
+        db.prepare('SELECT generation FROM pb_source WHERE id=?').get(watch.when.sourceId);
+      if (watch.deadlineAt && Date.parse(watch.deadlineAt) <= Date.now() ||
+        source && Number(source.generation) > (watch.when.kind === 'ci-completed' ? watch.when.sourceGeneration : 0) ||
+        revoked && Number(revoked.generation) >= (watch.when.kind === 'ci-completed' ? watch.when.sourceGeneration : 0))
+        settleWatch(engine, key, { card: raw.card, watch: raw.watch }, { kind: 'closed', reason: 'cancelled' }, 'deadline-or-source-revoked');
+    }
+  }
+
+  function observeCompletion(engine: Engine, subject: Subject, fact: FollowUpFact, sourceGeneration: number) {
+    watchDeadlines(engine, subject);
+    const key = subjectKey(subject);
+    for (const raw of db.prepare(`SELECT card,watch FROM pb_follow_up_head WHERE subject=?
+      AND json_extract(watch,'$.state')='active' AND json_extract(watch,'$.when.kind')='subtask-completed'`).all(key)) {
+      const watch = followUpWatchSchema.parse(JSON.parse(String(raw.watch)));
+      const target = watch.when;
+      if (target?.kind !== 'subtask-completed' || digest(target.origin) !== digest(fact.origin) ||
+        target.sourceGeneration !== sourceGeneration ||
+        fact.nativeRevision <= target.afterRevision || !['closed', 'failed'].includes(fact.condition.kind)) continue;
+      settleWatch(engine, key, { card: raw.card, watch: raw.watch },
+        fact.condition.kind === 'failed' ? fact.condition
+          : fact.condition.kind === 'closed' && fact.condition.reason === 'cancelled' ? fact.condition : { kind: 'needs-review' },
+        digest([fact.nativeId, fact.nativeRevision, fact.payloadDigest]));
+    }
+  }
+
+  function observeCi(engine: Engine, sourceId: string, sourceGeneration: number, threadId: string,
+    attempt: number, observedAt: string, conclusion: string) {
+    for (const raw of db.prepare(`SELECT subject,card,watch FROM pb_follow_up_head
+      WHERE json_extract(watch,'$.state')='active' AND json_extract(watch,'$.when.kind')='ci-completed'
+      AND json_extract(watch,'$.when.sourceId')=? AND json_extract(watch,'$.when.sourceGeneration')=?
+      AND json_extract(watch,'$.when.threadId')=?`).all(sourceId, sourceGeneration, threadId)) {
+      const watch = followUpWatchSchema.parse(JSON.parse(String(raw.watch)));
+      if (!policy(watch.subject).localEnabled) continue;
+      watchDeadlines(engine, watch.subject);
+      const target = watch.when;
+      if (target?.kind !== 'ci-completed' || attempt < target.afterAttempt ||
+        attempt === target.afterAttempt && observedAt <= target.afterObservedAt) continue;
+      // Refresh after deadline/revocation reconciliation so stale rows cannot fire.
+      const current = readHead.get(subjectKey(watch.subject), decodeCard({ card: raw.card }).id);
+      if (!current?.watch || !current.card) continue;
+      settleWatch(engine, subjectKey(watch.subject), current as { card: unknown; watch: unknown },
+        conclusion === 'cancelled' ? { kind: 'closed', reason: 'cancelled' }
+          : conclusion === 'failure' ? { kind: 'failed' } : { kind: 'needs-review' },
+        digest([sourceId, sourceGeneration, threadId, attempt, observedAt, conclusion]));
+    }
   }
 
   function saveHead(key: string, id: string, generation: number, fact: FollowUpFact, eventDigest: string, card: FollowUpCard | null) {
@@ -157,14 +236,21 @@ export function openFollowUp(db: DatabaseSync) {
       payloadDigest: digest([origin, row.revision, row.state, row.evidenceDigest ?? null, row.wait ?? null]),
       title: row.title.slice(0, 500).trim() || row.ticketId, condition,
     };
-    const card = !previous && condition.kind === 'closed' ? null : project(engine, subject, fact, 0, previous);
+    const ci = db.prepare('SELECT source,generation,thread,attempt,observed_at FROM pb_ci_head WHERE decision=?').get(row.decisionId);
+    const completionTarget: FollowUpCompletionTarget | undefined = ci ? { kind: 'ci-completed', cardId: id,
+      origin,
+      sourceId: String(ci.source), sourceGeneration: Number(ci.generation), threadId: String(ci.thread),
+      afterAttempt: Number(ci.attempt), afterObservedAt: String(ci.observed_at) } : undefined;
+    const card = !previous && condition.kind === 'closed' ? null : project(engine, subject, { ...fact, completionTarget }, 0, previous);
     saveHead(key, id, 0, fact, digest(fact), card);
+    observeCompletion(engine, subject, fact, 0);
   }
 
   function reconcileWork(engine: Engine, subject: Subject, expectedPolicyRevision: number) {
     const current = policy(subject);
     if (current.revision !== expectedPolicyRevision) throw new Rejection('stale');
     if (!current.localEnabled) throw new Rejection('forbidden');
+    watchDeadlines(engine, subject);
     const key = subjectKey(subject);
     const source = `@work-reconcile:${digest(key)}`;
     const checkpoint = db.prepare('SELECT generation,checkpoint FROM pb_source WHERE id=?').get(source);
@@ -224,8 +310,12 @@ export function openFollowUp(db: DatabaseSync) {
       const previous = row?.card && decodeCard({ card: row.card });
       if (previous && previous.state === 'stopped') continue;
       const card = !previous && fact.condition.kind === 'closed' ? null :
-        project(engine, input.subject, fact, input.sourceGeneration, previous || undefined);
+        project(engine, input.subject, { ...fact, ...(fact.condition.kind === 'tracking' ? {
+          completionTarget: { kind: 'subtask-completed' as const, cardId: id, origin: fact.origin,
+            sourceGeneration: input.sourceGeneration, afterRevision: fact.nativeRevision },
+        } : {}) }, input.sourceGeneration, previous || undefined);
       saveHead(key, id, input.sourceGeneration, fact, eventDigest, card);
+      observeCompletion(engine, input.subject, fact, input.sourceGeneration);
       stored++;
     }
     db.prepare(`INSERT INTO pb_source VALUES (?,?,?) ON CONFLICT(id)
@@ -237,6 +327,7 @@ export function openFollowUp(db: DatabaseSync) {
     const current = policy(input.subject);
     if (current.revision !== input.expectedRevision) throw new Rejection('stale');
     if (!current.localEnabled) throw new Rejection('forbidden');
+    validateWatchTarget(input.subject, input.watch.when, input.watch.deadlineAt);
     const key = subjectKey(input.subject);
     const proposed = input.watch.source.kind === 'group-proposal';
     if (proposed && db.prepare(`SELECT 1 FROM pb_follow_up_head WHERE subject=?
@@ -255,6 +346,7 @@ export function openFollowUp(db: DatabaseSync) {
         : watch.wait ? { kind: 'waiting-input', wait: watch.wait } : { kind: 'tracking', completion: watch.completion },
     };
     const card = project(engine, input.subject, fact, 0);
+    card.when = watch.when; card.deadlineAt = watch.deadlineAt;
     db.prepare('INSERT INTO pb_follow_up_head VALUES (?,?,?,?,?,?,?,?)').run(
       key, id, 0, 0, fact.payloadDigest, card.observedAt, JSON.stringify(card), JSON.stringify(watch),
     );
@@ -270,10 +362,12 @@ export function openFollowUp(db: DatabaseSync) {
     if (!row?.card || !row.watch) throw new Rejection('stale');
     const card = decodeCard({ card: row.card });
     const previous = followUpWatchSchema.parse(JSON.parse(String(row.watch)));
+    validateWatchTarget(input.subject, input.watch.when, input.watch.deadlineAt);
     if (card.revision !== input.expectedRevision || previous.state !== 'active' ||
         card.state === 'stopped' || card.state === 'closed') throw new Rejection('stale');
     const watch = followUpWatchSchema.parse({
-      ...previous, ...input.watch, wait: input.watch.wait, revision: previous.revision + 1,
+      ...previous, ...input.watch, wait: input.watch.wait, when: input.watch.when,
+      deadlineAt: input.watch.deadlineAt, revision: previous.revision + 1,
     });
     const fact: FollowUpFact = {
       origin: card.origin, nativeId: watch.id, nativeRevision: watch.revision,
@@ -281,6 +375,7 @@ export function openFollowUp(db: DatabaseSync) {
       condition: watch.wait ? { kind: 'waiting-input', wait: watch.wait } : { kind: 'tracking', completion: watch.completion },
     };
     const next = project(engine, input.subject, fact, 0, card);
+    next.when = watch.when; next.deadlineAt = watch.deadlineAt;
     db.prepare('UPDATE pb_follow_up_head SET native_revision=?,payload_digest=?,observed_at=?,card=?,watch=? WHERE subject=? AND id=?')
       .run(watch.revision, fact.payloadDigest, next.observedAt, JSON.stringify(next), JSON.stringify(watch), key, card.id);
     return 1;
@@ -307,7 +402,7 @@ export function openFollowUp(db: DatabaseSync) {
         JSON.stringify(next), JSON.stringify(confirmed), key, card.id);
       return 1;
     }
-    if (input.action === 'complete' && watch?.state !== 'active') throw new Rejection('forbidden');
+    if (input.action === 'complete' && watch?.state !== 'active' && watch?.state !== 'completed') throw new Rejection('forbidden');
     if (input.action === 'ignore' && card.state === 'ignored') return 0;
     const next: FollowUpCard = {
       ...card, revision: card.revision + 1,
@@ -325,7 +420,7 @@ export function openFollowUp(db: DatabaseSync) {
   }
 
   return {
-    policy, changePolicy, ingest, createWatch, updateWatch, act, scopedRecovery, bootstrap, observeWork, reconcileWork,
+    policy, changePolicy, ingest, createWatch, updateWatch, act, scopedRecovery, bootstrap, observeWork, reconcileWork, observeCi,
     allowsLegacy(subject?: Subject) {
       return !scopedRecovery() && (!subject || policy(subject).legacyCi !== 'denied');
     },

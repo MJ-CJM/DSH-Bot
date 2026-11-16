@@ -25,9 +25,14 @@ import type { BotCatalog } from '../state.js';
 import type { ChatLauncherActions } from '../chat-launcher.js';
 import type { BotsPageNavigation } from './page-navigation.js';
 
+import type { TaskSupportActions } from '../task-support.js';
+import type { PendingWorkSource, NativeStatusHook } from '../pending-work.js';
+
 export interface BotsPageInjected extends ChatLauncherActions {
   proactive?: ProactiveActions;
   proactiveWork?: ProactiveWorkSource;
+  taskSupport?: TaskSupportActions;
+  pendingWork?: PendingWorkSource;
   followUp?: FollowUpSource;
   onOpenFollowUpWork?(owner: BotKey, id: string): void;
   proactiveGovernance?:GovernanceActions;
@@ -66,5 +71,5 @@ export interface BotsPageInjected extends ChatLauncherActions {
   onEnsureBotsWorkspace(): Promise<string>;
   onPickDirectory?: () => Promise<string | null>;
 }
-export type BotsPageProps = InjectFace<BotsPageInjected> & PropsLocale<'dsh-bot'>;
+export type BotsPageProps = InjectFace<BotsPageInjected> & PropsLocale<'dsh-bot'> & { useSessionStatus?: NativeStatusHook };
 export type Dialog = { kind: 'create' } | { kind: 'edit' | 'delete' | 'duplicate' | 'memory'; bot: BotRecord };

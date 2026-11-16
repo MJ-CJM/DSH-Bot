@@ -71,6 +71,7 @@ export class MessageStore {
       const r = messageRecordSchema.parse(value),
         e = r.envelope,
         c = this.config;
+      const scoped = r.execution?.kind === 'scoped';
       const old = this.byInvocation(r.invocationKey, r.invocationDigest);
       if (old) return old;
       if (this.get(e.id)) throw new OperationError('conflict');
@@ -170,8 +171,8 @@ export class MessageStore {
           e.correlationId !== e.id ||
           e.threadId !== e.id ||
           e.parentMessageId ||
-          keyOf(e.origin.bot) !== keyOf(e.from) ||
-          e.origin.sessionId !== e.fromSessionId ||
+          (!scoped && keyOf(e.origin.bot) !== keyOf(e.from)) ||
+          (!scoped && e.origin.sessionId !== e.fromSessionId) ||
           digest(e.path) !== digest([e.from, e.to])
         )
           throw new OperationError('invalid');

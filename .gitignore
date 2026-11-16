@@ -10,3 +10,7 @@ dist/
 /.agents/
 /.taste-skill/
 /output/
+
+# Local screenshots and review notes stay outside public commits.
+/.codex/screens/
+/.codex/deep/review-append.md

@@ -25,11 +25,12 @@ it('saved group survives open failure: retry opens the same identity without cre
     expect(element.querySelector('nav')).toBeNull(); expect([...element.querySelectorAll('button')].some(item => item.textContent === en.ui['bots.refresh'])).toBe(false);
     const form = element.querySelector('form'); if (!form) throw new Error('Missing group form');
     const checks = form.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-    for (const check of checks) await click(check);
+    for (const check of checks) if (!check.checked) await click(check);
     expect(form.querySelector('ol')?.closest('details')?.open).toBe(false);
     expect(button(element, en.ui['integrations.save']).disabled).toBe(false);
     await click(button(element, en.ui['integrations.save']));
     expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0]?.[0].onDemand).toBe(true);
     await vi.waitFor(() => expect(element.querySelector('[role="alert"]')?.textContent).toBe(en.ui['groups.createdOpenFailed']));
     expect(create).toHaveBeenCalledTimes(1); expect(create.mock.calls[0]?.[0].name).toBe('Same name、Same name');
     expect(form.querySelector('input')?.disabled).toBe(true);
@@ -51,7 +52,7 @@ async function mountCreate(props: Partial<Parameters<typeof GroupsPanel>[0]>) {
   await act(async () => root.render(<GroupsPanel initialCreate actions={actions} bots={bots} onOpenSession={async () => {}} t={t} {...props} />));
   const form = element.querySelector('form'); if (!form) throw new Error('Missing group form');
   const save = async () => {
-    for (const check of form.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) await click(check);
+    for (const check of form.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) if (!check.checked) await click(check);
     await click(button(element, en.ui['integrations.save']));
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     return create.mock.calls[0]?.[0];

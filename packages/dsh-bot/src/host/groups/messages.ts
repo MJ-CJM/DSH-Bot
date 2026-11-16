@@ -55,9 +55,12 @@ export class GroupMessages {
         ];
       if (s.kind === 'dsh-bot-group-followup' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
         return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: s.turnId, authorKind: 'user' as const, replyTo: s.replyTo }];
-      if ((s.kind === 'dsh-bot-group-proactive' || s.kind === 'dsh-bot-group-owner-followup') &&
+      if ((s.kind === 'dsh-bot-group-proactive' || s.kind === 'dsh-bot-group-owner-followup' || s.kind === 'dsh-bot-supergroup') &&
         s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
         return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: s.turnId, authorKind: 'proactive' as const }];
+      if (g.supergroup && s.kind === 'user' && (s as { supergroupWorkId?: string }).supergroupWorkId === g.supergroup.workId &&
+        (s as { group?: GroupKey }).group?.groupId === g.id && (s as { group?: GroupKey }).group?.groupCreatedAt === g.createdAt)
+        return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: turnId ?? '', authorKind: 'user' as const }];
       return turnId ? [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId, ...(attachments.length ? { attachments, hasNonText: true } : {}), authorKind: 'user' as const, replyTo: this.state.turns(g).find(t => t.id === turnId)?.replyTo }] : [];
     });
   }

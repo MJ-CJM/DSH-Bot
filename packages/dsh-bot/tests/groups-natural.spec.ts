@@ -445,7 +445,8 @@ describe('bounded independent natural work and exact supplements', () => {
     } finally {await s.close();}
   }));
   it('persists an unknown prompt outcome and never repeats it on retry or cold reopen', () => withIntegrations(async f => {
-    const s=await fixture(f);const prompt=vi.fn(async()=>{throw new Error('unknown native acceptance');});Object.assign(f.ctx.subagents,{prompt});
+    // This verifies durable unknown-outcome deduplication, not the wall-clock deadline.
+    const s=await fixture(f, 30_000);const prompt=vi.fn(async()=>{throw new Error('unknown native acceptance');});Object.assign(f.ctx.subagents,{prompt});
     try {
       s.setBehavior('hold');const g=await s.createGroup(),key=groupKey(g),members=(await s.groups.view(key)).members;
       const t=await s.groups.send(key,{operationId:'unknown-turn',text:'start',memberIds:[need(members[0]).id],expectedMembershipRevision:1});

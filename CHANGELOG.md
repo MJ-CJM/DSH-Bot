@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 — Unreleased / 待发布
+
+- 新增 Bot 中心交互、Supergroup 自动组队／途中拉专家／原对话交付，保留原生聊天与授权边界。
+- 将任务、资料、群设置与团队复用接入对话详情；工作与管理直接导航，常用表单自动预填，高级配置按需展开。
+- 补齐原任务资料与续办、待处理、条件跟进、记忆变更恢复、团队配方及普通群按需响应。
+- 沿用公开版的 `dsh-botgroup` 安装包名，内部身份与数据目录不变；提供精确宿主兼容与升级记录，不覆盖旧发布。
+- 候选包、实际测试及未运行边界见[0.7.0 准备记录](docs/releases/v0.7.0.md)。
+
 ## 0.6.7 — 2026-11-12
 
 - 首次在 npm 发布 `dsh-botgroup@0.6.7`，GitHub v0.6.7 为 latest。两个渠道的安装包与冻结候选字节一致。 [npm](https://www.npmjs.com/package/dsh-botgroup/v/0.6.7) · [GitHub Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7)

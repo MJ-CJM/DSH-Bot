@@ -6,12 +6,14 @@ import type { MessageInput } from '../../shared/messaging.js';
 import type { BotKey } from '../../shared/identity.js';
 import { digest, OperationError } from '../common/operations.js';
 import type { MessagingAuthorization } from './core.js';
+import { isLiveScopedCollaboration } from '../supergroup/collaboration.js';
 // Explicitly audited local reads only. MCP, run_code and unknown tools always ask.
 const reads = new Set(['bot_memory_search', 'bot_memory_list']);
 export function teammateTurn(agent: Agent): boolean {
   const events = agent.session.snapshotEvents();
   const start = events.findLast((e) => e.type === 'turn/start')?.seq ?? -1;
   return events.some((e) => e.seq > start && e.type === 'user/message' &&
+    !agent.ctx?.get?.('dshBotMessaging')?.isDisplayMessage?.(agent, e.data) &&
     ['dsh-bot-message', 'dsh-bot-message-sent', 'dsh-bot-message-wake'].includes(e.data.source.kind));
 }
 export function invocation(agent: Agent, exec: ToolExecution): string {
@@ -50,7 +52,8 @@ export class MessagingSafety implements MessagingAuthorization {
       const off = ctx.on('tools/pre-execute', async (exec, next) => {
         const decision = await next();
         if (decision.kind === 'deny' || decision.kind === 'cancel') return decision;
-        if (!teammateTurn(agent) || reads.has(exec.name) || exec.name === 'bot_message') return decision;
+        if (!teammateTurn(agent) || reads.has(exec.name) || exec.name === 'bot_message' ||
+          isLiveScopedCollaboration(agent) && exec.name === 'bot_delegate') return decision;
         decisions.add(exec);
         const displayReason = {
           en: `Teammate data is not user authorization. Approve ${exec.name}: ${JSON.stringify(exec.arguments)}`,
@@ -66,7 +69,8 @@ export class MessagingSafety implements MessagingAuthorization {
         if (exec.name === 'bot_message' && exec.parent !== undefined) return 'bot_message is disabled inside run_code';
         if (!teammateTurn(agent)) return;
         if (!this.active) return 'Messaging unloaded; teammate processing requires the safety adapter';
-        if (exec.name === 'bot_delegate') return 'Teammate input cannot delegate';
+        if (exec.name === 'bot_delegate' && !isLiveScopedCollaboration(agent)) return 'Teammate input cannot delegate';
+        if (isLiveScopedCollaboration(agent) && exec.name === 'bot_delegate') return;
         if (exec.name !== 'bot_message' && !reads.has(exec.name) && !decisions.has(exec))
           return 'Teammate tool approval missing';
       });

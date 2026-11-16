@@ -1,7 +1,7 @@
 import { createForChatSchema, startOnboardingSchema, onboardingStatusSchema } from './onboarding.js';
 import { autoShareStatusSchema, autoShareToggleSchema } from './data-flow.js';
 import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryConfirmSchema,
-  memoryResolveSchema, memoryPageSchema } from './memory-management.js';
+  memoryResolveSchema, memoryPageSchema, memoryChangesQuerySchema, memoryChangesPageSchema, memoryRestoreSchema } from './memory-management.js';
 /** Hand-authored, browser-safe contract for the locked DSH release's public Typert API. */
 import type { RemoteResult, RemoteStreamHandle, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import { z } from 'zod';
@@ -241,6 +241,14 @@ export const dshBotRemoteSpec = {
     'dshBot.memory/query': {
       ...memoryOwner, parameters: [parameter('input', 'queryInput', memoryQuerySchema)],
       result: activityResultCodec('ManagedMemoryPage', memoryPageSchema),
+    },
+    'dshBot.memory/changes': {
+      ...memoryOwner, parameters: [parameter('input', 'MemoryChangesQuery', memoryChangesQuerySchema)],
+      result: activityResultCodec('MemoryChangesPage', memoryChangesPageSchema),
+    },
+    'dshBot.memory/restore': {
+      ...memoryOwner, parameters: [parameter('input', 'MemoryRestore', memoryRestoreSchema)],
+      result: activityResultCodec('void', z.void()),
     },
     'dshBot.memory/createManaged': {
       ...memoryOwner, parameters: [parameter('input', 'createManagedInput', memoryCreateSchema)],

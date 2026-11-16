@@ -10,6 +10,7 @@ import zh from '../../locale/zh.json';
 import { Config } from '../../src/client/config.js';
 import { BotSessionsSidebar, groupBotSessions, type BotSessionsSidebarInjected } from '../../src/client/components/BotSessionsSidebar.js';
 import { bot, button, click, mountClient } from './helpers.js';
+import { openBotChats } from './bot-ui-helpers.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -31,7 +32,7 @@ async function setup(language: 'en' | 'zh' = 'en', limit = 2) {
   await app.unmountPage();
   const container = await app.mountSidebar();
   const dictionary = language === 'en' ? en.ui : zh.ui;
-  const show = async () => { await click(button(container, dictionary['sidebar.sessions'])); };
+  const show = () => openBotChats(container, language);
   return { ...app, sidebar: container, dictionary, show };
 }
 
@@ -147,7 +148,9 @@ describe('Bot conversations through the supported sidebar footer action', () => 
 
   it.each(['en', 'zh'] as const)('renders localized groups, expands more, folds, opens sessions and reaches management in %s', async (language) => {
     const app = await setup(language);
-    expect(button(app.sidebar, app.dictionary['sidebar.sessions']).textContent).toBe(language === 'en' ? 'Bot chats' : 'Bot 会话');
+    expect(app.sidebar.querySelector('[data-bot-mode-switch-button]')?.textContent).toContain(app.dictionary['botMode.standardMode']);
+    expect(app.core.entries('sidebar.footer.action')).toHaveLength(1);
+    expect(app.sidebar.querySelector('[aria-haspopup="dialog"]')).toBeNull();
     await app.setSessions(catalog([
       session('alpha-new', 'host-selected/alpha-bot', 30), session('alpha-mid', 'host-selected/alpha-bot', 20),
       session('alpha-old', 'host-selected/alpha-bot', 10), session('beta-one', 'host-selected/beta-bot', 8),
@@ -219,7 +222,9 @@ describe('Bot conversations through the supported sidebar footer action', () => 
   it('creates directly with the Host preset and offers a keyboard-accessible collapsed action', async () => {
     const app = await setup();
     await app.mountSidebar(false);
-    expect(button(app.sidebar, en.ui['sidebar.sessions']).textContent).toBe('');
+    const trigger = app.sidebar.querySelector<HTMLButtonElement>('[data-bot-mode-switch-button]')!;
+    expect(trigger.textContent).toBe('');
+    expect(trigger.getAttribute('aria-label')).toContain(en.ui['botMode.standardMode']);
     await app.show();
     const focused = document.activeElement;
     expect(focused?.closest('dialog')).not.toBeNull();

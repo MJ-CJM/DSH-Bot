@@ -9,6 +9,7 @@ import type { DshBotRegistry } from '../registry.js';
 import type { groupsDomain } from './model.js';
 import { GroupState } from './state.js';
 import { GroupRoots } from './roots.js';
+import { TeamRecipes } from './team-recipes.js';
 import { GroupMembers } from './members.js';
 import { GroupMessages } from './messages.js';
 import { GroupTurnRunner } from './turn-runner.js';
@@ -17,6 +18,7 @@ import { GroupRecall } from './recall.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import type { ProactiveGroupCopyRef } from '../data-flow/outlets.js';
 import type { GroupDelivery, GroupKey, GroupRecord, GroupTurn } from '../../shared/groups.js';
+import { supergroupMetadata, validateSupergroupAuthority, type SupergroupAuthority, type SupergroupExpertHandler } from './supergroup-admission.js';
 export { groupsDomain } from './model.js';
 export interface GroupFactPage {
   group: GroupKey;
@@ -29,6 +31,7 @@ export class Groups {
   private state: GroupState;
   private roots: GroupRoots;
   private membership: GroupMembers;
+  readonly teamRecipes: TeamRecipes;
   private messages: GroupMessages;
   private turns: GroupTurns;
   private recallReader: GroupRecall;
@@ -36,6 +39,7 @@ export class Groups {
     this.state = new GroupState(ctx, registry, domain, changed);
     this.roots = new GroupRoots(this.state);
     this.membership = new GroupMembers(this.state, this.roots);
+    this.teamRecipes = new TeamRecipes(this.state, this.membership);
     this.messages = new GroupMessages(this.state, this.roots);
     const runner = new GroupTurnRunner(this.state, this.roots, this.messages);
     this.state.offWorkers = installWorkerTools(this.state, runner);
@@ -54,11 +58,40 @@ export class Groups {
     return this.roots.start(...args);
   }
   open(...args: Parameters<GroupRoots['open']>) { return this.roots.open(...args); }
-  create(...args: Parameters<GroupMembers['create']>) {
-    return this.membership.create(...args);
+  create(value: unknown) { return this.membership.create(value); }
+  createSupergroup(value: unknown, authority: SupergroupAuthority) { return this.membership.create(value, authority); }
+  edit(key: GroupKey, value: unknown) { return this.membership.edit(key, value); }
+  editSupergroup(key: GroupKey, value: unknown, authority: SupergroupAuthority) { return this.membership.edit(key, value, authority); }
+  refreshSupergroupAuthority(key: GroupKey, authority: SupergroupAuthority) {
+    return this.state.queue.run(async () => {
+      const group = this.state.record(key), old = group.supergroup, next = supergroupMetadata(authority);
+      if (!old || group.archived || group.state !== 'ready' || old.workId !== next.workId ||
+          old.originSessionId !== next.originSessionId || JSON.stringify(old.owner) !== JSON.stringify(next.owner) ||
+          JSON.stringify(old.readers) !== JSON.stringify(next.readers) ||
+          this.state.turns(group).some(turn => this.state.chains.has(turn.id) || ['accepted', 'running'].includes(turn.state)))
+        throw new Error('Supergroup authority cannot be refreshed');
+      await validateSupergroupAuthority(this.state, authority, authority.groupInput ? { ...group, supergroup: next } : undefined);
+      const updated = { ...group, supergroup: next, revision: group.revision + 1, updatedAt: Date.now() };
+      await this.state.putGroup(updated);
+      this.state.supergroupAuthorities.set(group.id, authority);
+      return updated;
+    });
   }
-  edit(...args: Parameters<GroupMembers['edit']>) {
-    return this.membership.edit(...args);
+  async sendSupergroup(key: GroupKey, value: unknown, authority: SupergroupAuthority) {
+    const group = this.state.record(key);
+    if (this.state.supergroupAuthorities.get(group.id) !== authority) throw new Error('Supergroup authority unavailable');
+    await validateSupergroupAuthority(this.state, authority, group);
+    return this.turns.send(key, value, authority);
+  }
+  async waitForTurn(turnId: string) { await this.state.chains.get(turnId); }
+  async drain(key: GroupKey) {
+    const group = this.state.record(key);
+    await Promise.allSettled(this.state.turns(group).map(turn => this.state.chains.get(turn.id)));
+  }
+  setExpertHandler(handler: SupergroupExpertHandler) {
+    if (this.state.expertHandler) throw new Error('Supergroup expert handler already registered');
+    this.state.expertHandler = handler;
+    return () => { if (this.state.expertHandler === handler) this.state.expertHandler = undefined; };
   }
   setModel(...args: Parameters<GroupMembers['setModel']>) {
     return this.membership.setModel(...args);
@@ -236,6 +269,8 @@ export class Groups {
   close() {
     this.state.closing ??= (async () => {
       this.state.stopped = true;
+      this.state.supergroupAuthorities.clear();
+      this.state.expertHandler = undefined;
       this.state.shutdownPhase = 'draining-workers';
       this.state.startup.abort();
       for (const c of this.state.controllers.values()) c.abort('host-unloaded');

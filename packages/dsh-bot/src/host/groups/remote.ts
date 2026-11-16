@@ -22,6 +22,17 @@ export class GroupsRemote extends TypertRemoteService {
   ) {
     super(ctx, 'dshBotGroupsRemote', { namespace: 'dshBot.groups' });
   }
+  private owner() {
+    if (this.ctx.invocation?.peer.principal.kind !== 'owner') throw new Error('Owner access required');
+  }
+  @Remote async teamList() { this.owner(); return this.groups.teamRecipes.list(); }
+  @Remote async teamCapture(group: GroupKey, name: string) { this.owner(); return this.groups.teamRecipes.capture(group, name); }
+  @Remote async teamSave(recipe: unknown) { this.owner(); return this.groups.teamRecipes.save(recipe); }
+  @Remote async teamRemove(id: string) { this.owner(); return this.groups.teamRecipes.remove(id); }
+  @Remote async teamPreview(recipe: unknown, mappings: unknown) { this.owner(); return this.groups.teamRecipes.preview(recipe, mappings); }
+  @Remote async teamApply(group: GroupKey, recipe: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number) {
+    this.owner(); return this.groups.teamRecipes.apply(group, recipe, mappings, expectedRevision, expectedMembershipRevision);
+  }
   @Remote async recallForBot(bot: BotKey, input: GroupRecallInput) {
     const invocation = this.ctx.invocation;
     if (invocation?.peer.principal.kind !== 'owner') throw new Error('Owner access required');

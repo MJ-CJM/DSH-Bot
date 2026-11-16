@@ -237,6 +237,11 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
       save: ['alpha', { content: 'Codec result' }], count: ['alpha'], quarantineCount: [],
       previewForget: ['alpha', { memoryId: target.id, mode: 'version' }], cleanupStatuses: [], rootInstructions: [],
     };
+    const restoreId = await remote.createManaged({ botId: 'alpha', scope: 'private', kind: 'user_fact', content: 'Restore codec original',
+      valid: { from: null, to: null, basis: 'unknown' }, expectedRevision: registry.memoryKernel?.seq ?? 0 });
+    const restoreVersionId = (await remote.changes({ botId: 'alpha' })).rows.find(row => row.version.memoryId === restoreId)?.version.versionId;
+    if (!restoreVersionId) throw new Error('Missing restore version');
+    await remote.revise({ id: restoreId, expectedRevision: registry.memoryKernel?.seq ?? 0, patch: { content: 'Restore codec edited' } });
     let managedId = '', publishedId = '';
     let saved: MemoryRecord | undefined;
     for (const descriptor of TYPERT.invocations.filter(({ namespace }) => namespace === 'dshBot.memory')) {
@@ -246,6 +251,8 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
       Object.assign(cases, {
         setAutoShare: [{ enabled: false, expectedRevision: kernel.policyRevision }],
         query: [{ botId: 'alpha', scope: 'shared', view: 'all' }],
+        changes: [{ botId: 'alpha' }],
+        restore: [{ botId: 'alpha', id: restoreId, versionId: restoreVersionId, expectedRevision: kernel.seq }],
         createManaged: [{ botId: 'alpha', scope: 'shared', kind: 'user_fact', content: 'MANAGED', subject: 'user',
           factKey: 'preference', valid: { from: 1, to: null, basis: 'explicit' }, expectedRevision: kernel.seq }],
         revise: [{ id: managedId, expectedRevision: kernel.seq, patch: { content: 'MANAGED_EDIT' } }],

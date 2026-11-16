@@ -28,14 +28,15 @@ export function ManagementWorkspace({
   routines,
   collaboration,
   bots,
+  initialBot,
   createMemoryPanel,
   onOpenSession,
   t,
 }: Pick<
   BotsPageInjected,
   'management' | 'integrations' | 'routines' | 'collaboration' | 'createMemoryPanel' | 'onOpenSession'
-> & { bots: BotRecord[] } & PropsLocale<'dsh-bot'>) {
-  const selection = useBotSelection(bots);
+> & { bots: BotRecord[]; initialBot?: BotRecord } & PropsLocale<'dsh-bot'>) {
+  const selection = useBotSelection(bots, initialBot);
   const uid = useId();
   const identity = selection.bot ? `${selection.bot.id}:${selection.bot.createdAt}` : 'none';
   const [tab, setTab] = useState<Tab>(

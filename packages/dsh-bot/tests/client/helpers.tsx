@@ -19,7 +19,17 @@ import type {
 } from '../../src/shared/schema.js';
 
 import { remoteDouble } from './remote-double.js';
+import { taskSupportInputSchema, taskMaterialInputSchema, taskResumeInputSchema } from '../../src/shared/task-materials.js';
+import { supergroupCatalogInputSchema, supergroupGroupInputSchema, supergroupSendGroupInputSchema, supergroupCancelInputSchema, supergroupConfigureSchema, supergroupSessionInputSchema } from '../../src/shared/supergroup.js';
 export { bot, remoteDouble } from './remote-double.js';
+
+/** Public mode-surface contract double; actual native adapters are tested in
+ * their isolated runtime rather than implied by this fixture. */
+export const botModeCapabilities = {
+  commandModeSurfaces: ['keyboard', 'menu', 'chat.branch', 'workspace.blank-preset'] as const,
+  modePresentation: { getSnapshot: () => [], subscribe: () => () => {} },
+  resolveCommandMode: () => ({ status: 'pass' as const }),
+};
 
 type WorkspaceSnapshot = ReturnType<Context['workspaces']['list']['getSnapshot']>;
 export function workspace(id = 'workspace-one', title = 'Test workspace'): WorkspaceSnapshot['items'][number] {
@@ -66,10 +76,15 @@ export async function mountClient(
     name: 'root',
     children: {
       main: { kind: 'keyed', scope: 'root' },
+      sidebar: { kind: 'single', scope: 'root' },
+      'shell.leading': { kind: 'single', scope: 'root' },
+      'main.conversation': { kind: 'single', scope: 'session-maybe' },
+      'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
       'shell.overlay': { kind: 'list', scope: 'root' },
       'conversation.composer': { kind: 'chain', scope: 'session' },
       'conversation.view': { kind: 'list', scope: 'session' },
       'conversation.input.dock': { kind: 'list', scope: 'session' },
+      'conversation.composer.dock': { kind: 'list', scope: 'session' },
       'sidebar.panellist': { kind: 'list', scope: 'root' },
       'sidebar.footer.action': { kind: 'list', scope: 'root' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
@@ -90,7 +105,8 @@ export async function mountClient(
     if (template === undefined) throw new Error(`Missing ${language} locale ${namespace}:${key}`);
     return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? `{${name}}`));
   };
-  const mountRemote = vi.fn(async (contribution?: { package?: string }) => {
+  let supergroupEnabled = false;
+  const mountRemote = vi.fn(async (contribution?: { package?: string; descriptors?: { namespace: string; method: string }[] }) => {
     if (contribution?.package === '@deepseek-ai/dsh-permission-presets') return ctx.provide('remote.permissionPresets', {
       catalog: vi.fn(async () => ({ ok: true, value: { options: [] } })),
     } as never);
@@ -106,7 +122,40 @@ export async function mountClient(
     if (contribution?.package === 'dsh-bot/messaging') return ctx.provide('remote.dshBot.messaging', {
       request: async () => ({ ok: true as const, value: { enabled: true, nestedMessaging: false as const, pending: 0, items: [] } }),
     });
-    if (contribution?.package === 'dsh-bot/groups') return ctx.provide('remote.dshBot.groups', remote.groups);
+    if (contribution?.package === 'dsh-bot/groups') {
+      const endpoints = contribution.descriptors?.map(row => `${row.namespace}/${row.method}`).sort();
+      if (JSON.stringify(endpoints) !== JSON.stringify(['archive', 'cancel', 'continueTurn', 'create', 'edit', 'list', 'markRead',
+        'open', 'openAttachment', 'recallForBot', 'send', 'setModel', 'stopMember', 'view',
+        'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].map(method => `dshBot.groups/${method}`).sort()))
+        throw new Error('Unexpected Groups fixture Remote contract');
+      return ctx.provide('remote.dshBot.groups', remote.groups);
+    }
+    if (contribution?.package === 'dsh-bot/supergroup') {
+      const endpoints = contribution.descriptors?.map(row => `${row.namespace}/${row.method}`).sort();
+      if (JSON.stringify(endpoints) !== JSON.stringify(['dshBotSupergroup/addMaterial', 'dshBotSupergroup/pendingTasks', 'dshBotSupergroup/resumeWork', 'dshBotSupergroup/taskSupport', 'dshBotSupergroup/byGroup', 'dshBotSupergroup/cancel', 'dshBotSupergroup/catalog', 'dshBotSupergroup/configure', 'dshBotSupergroup/forSession', 'dshBotSupergroup/sendGroupInput', 'dshBotSupergroup/settings'].sort()))
+        throw new Error('Unexpected Supergroup fixture Remote contract');
+      return ctx.provide('remote.dshBotSupergroup', {
+        pendingTasks: vi.fn(async () => ({ ok: true as const, value: [] })),
+        taskSupport: vi.fn(async (input: unknown) => { taskSupportInputSchema.parse(input); throw new Error('No Supergroup work in this fixture'); }),
+        addMaterial: vi.fn(async (input: unknown) => { taskMaterialInputSchema.parse(input); throw new Error('No Supergroup work in this fixture'); }),
+        resumeWork: vi.fn(async (input: unknown) => { taskResumeInputSchema.parse(input); throw new Error('No Supergroup work in this fixture'); }),
+        catalog: vi.fn(async (input: unknown) => { supergroupCatalogInputSchema.parse(input); return { ok: true as const, value: [] }; }),
+        byGroup: vi.fn(async (input: unknown) => { supergroupGroupInputSchema.parse(input); return { ok: true as const, value: null }; }),
+        sendGroupInput: vi.fn(async (input: unknown) => { supergroupSendGroupInputSchema.parse(input); throw new Error('No Supergroup work in this fixture'); }),
+        forSession: vi.fn(async (input: unknown) => {
+          supergroupSessionInputSchema.parse(input); return { ok: true as const, value: null };
+        }),
+        cancel: vi.fn(async (input: unknown) => {
+          supergroupCancelInputSchema.parse(input); return { ok: true as const, value: null };
+        }),
+        settings: vi.fn(async () => ({ ok: true as const, value: { enabled: supergroupEnabled } })),
+        configure: vi.fn(async (raw: unknown) => {
+          const input = supergroupConfigureSchema.parse(raw);
+          if (input.expectedEnabled !== supergroupEnabled) throw new Error('Settings conflict');
+          supergroupEnabled = input.enabled; return { ok: true as const, value: { enabled: supergroupEnabled } };
+        }),
+      });
+    }
     if (contribution?.package === 'dsh-bot/collaboration') {
       const releases = [ctx.provide('remote.dshBot.collaboration', remote.collaboration), ctx.provide('remote.dshBot.im', remote.im)];
       return () => { for (const release of releases) release(); };
@@ -123,6 +172,7 @@ export async function mountClient(
     if (contribution?.package === 'dsh-bot/proactive') return ctx.provide('remote.dshBot.proactive', {
       status: async () => ({ ok: true as const, value: { state: 'disabled' as const,
         capabilities: { ...capabilities, ingest: false, snapshot: false } } }),
+      followUpSummary: async () => ({ ok: true as const, value: { state: 'disabled' as const, configEpoch: null } }),
       responsibilities: async () => ({ ok: true as const, value: [] }),
       activityPage: async (input: import('../../src/shared/proactive/activity.js').ActivityRequest) => {
         const remote = ctx.get('remote.dshBot.proactive');
@@ -159,6 +209,7 @@ export async function mountClient(
         ctx.provide('remote.dshBot.automation', remote.automation)];
       return async () => { for (const release of releases) await release(); };
     }
+    if (contribution?.package !== 'dsh-bot') throw new Error(`Unhandled Client fixture Remote contribution: ${contribution?.package}`);
     remoteMounted = true;
     const release = ctx.provide('remote.dshBot', remote.methods);
     const releaseActivity = ctx.provide('remote.dshBot.activity', remote.methods.activity);

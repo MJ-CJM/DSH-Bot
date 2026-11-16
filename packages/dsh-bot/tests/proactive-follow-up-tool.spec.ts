@@ -105,6 +105,18 @@ test('normal native tool approval persists human provenance, deduplicates replay
   } finally { await f.close(); }
 });
 
+test.each(['skill-catalog', 'user-approval'])('native %s metadata keeps follow-up tied to the real human and still requires approval', async kind => {
+  const f = await setup();
+  try {
+    const message = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Native context only' }] });
+    f.session.append('user/message', { ...message, source: { kind } } as typeof message, { surfaceOp: 'append' });
+    const approval = vi.fn(async () => 'allowed-once' as const); f.ctx.on('approval/request', approval);
+    expect((await f.execute()).isError).toBe(false);
+    expect(approval).toHaveBeenCalledOnce();
+    expect(f.service.createFollowUpWatch.mock.calls[0]?.[1].watch.source).toMatchObject({ messageId: f.nativeUser.id });
+  } finally { await f.close(); }
+});
+
 test.each(['pause', 'main-change', 'flush-failure'])('revalidates %s after approval before creating a watch', async mode => {
   const f = await setup();
   try {

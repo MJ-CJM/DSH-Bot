@@ -21,6 +21,10 @@ import { createGroupActions } from './groups-state.js';
 import { createGroupRecallBinding } from './group-recall.js';
 import { GroupSessionBadge } from './components/GroupSessionBadge.js';
 import { registerWorkspaceGroups } from './workspace-group.js';
+import { registerBotMode } from './bot-mode/index.js';
+import { ModeSwitcher } from './bot-mode/ModeSwitcher.js';
+import { createTaskSupportActions } from './task-support.js';
+import { registerSupergroup } from './supergroup.js';
 import { COLLABORATION_REMOTE } from '../shared/collaboration-contract.js';
 import { createCollaborationActions } from './collaboration-state.js';
 import { INTEGRATIONS_REMOTE } from '../shared/integrations-contract.js';
@@ -49,6 +53,7 @@ import type { DshBotRemoteMethods } from '../shared/remote-contract.js';
 import { Config } from './config.js';
 import { registerBotsRightTab } from './right-tab.js';
 import { BotsPage, type BotsPageInjected } from './pages/BotsPage.js';
+import { createPendingWorkSource } from './pending-work.js';
 import { BotComposerIdentity } from './components/BotComposerIdentity.js';
 import { createOnboardingTransport } from './onboarding-transport.js';
 import { registerOnboardingNotice } from './onboarding-notice.js';
@@ -191,7 +196,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ctx.uiWorkspace.openSession(id as SessionId);
     }
   };
-  registerWorkspaceGroups(ctx, groups, catalog, openSession, models,
+  const executionBridge = registerWorkspaceGroups(ctx, groups, catalog, openSession, models,
     bot => openBot(bot.id), (bot, prompt, signal) => askBot(bot, prompt, signal));
   registerOnboardingNotice(ctx);
   const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void, operationId?: string) => {
@@ -230,7 +235,15 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     suggestions: async owner => unwrap(await proactiveRemote().botSuggestions(owner)),
     work: async owner => unwrap(await proactiveRemote().botWork(owner)),
   }, config);
+  const taskSupport = createTaskSupportActions(ctx, listener => groups.catalog.watch?.(listener) ?? (() => {}));
   const page: BotsPageInjected = {
+    taskSupport,
+    pendingWork: createPendingWorkSource(ctx, catalog, followUp, {
+      work: async (owner, cursor) => unwrap(await proactiveRemote().activityPage({ owner, collection: 'work', ...(cursor ? { cursor } : {}) })),
+      openSession: id => openSession(id),
+      openBot: (owner, id) => detail.open(owner.botId, { botCreatedAt: owner.botCreatedAt, section: 'work',
+        ...(id ? { target: { kind: 'work', id } } : {}) }),
+    }, config),
     proactiveWork,
     followUp,
     onOpenFollowUpWork: (owner, id) => detail.open(owner.botId, {
@@ -555,35 +568,44 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ),
     'dsh-bot: sidebar entry',
   );
-  ctx.effect(
-    () =>
-      ctx.slots.inject('sidebar.footer.action', () =>
-        ctx.slots.register(
-          {
-            name: 'sidebar.footer.action',
-            id: 'dsh-bot-sessions',
-            order: 20,
-            locale: namespace,
-            inject: (): BotSessionsSidebarInjected => ({
-              hooks: {
-                catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe },
-                activity,
-                workspaceCatalog: ctx.workspaces.list,
-              },
-              sessionLimit: config.sidebarSessionLimit,
-              onStart: page.onStart,
-              onStartInWorkspace: page.onStartInWorkspace,
-              getPreferredWorkspace: page.getPreferredWorkspace,
-              onRefresh: refresh,
-              onOpenSession: openSession,
-              onManage: () => {
-                if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId);
-              },
-            }),
-          },
-          BotSessionsSidebar,
+  await registerSupergroup(ctx, groups, catalog, executionBridge, settings => {
+    const modeActions = registerBotMode(ctx, { bots: catalog, groups, activity, page, executionBridge,
+      start: id => startBot(id), memory: bot => showBotPage(bot.id, { botCreatedAt: bot.createdAt, section: 'memory' }), settings });
+    // The native footer lays contributions out horizontally. Compose mode and
+    // the existing chats dialog behind one trigger after the owner is ready.
+    ctx.effect(
+      () =>
+        ctx.slots.inject('sidebar.footer.action', () =>
+          ctx.slots.register(
+            {
+              name: 'sidebar.footer.action',
+              id: 'dsh-bot-sessions',
+              order: 20,
+              locale: namespace,
+              inject: (): BotSessionsSidebarInjected => ({
+                renderTrigger: ({ openChats, unreadCount, wide }) => <ModeSwitcher actions={modeActions} t={t} onOpenChats={openChats} unreadCount={unreadCount} compact={!wide} />,
+                hooks: {
+                  catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe },
+                  activity,
+                  workspaceCatalog: ctx.workspaces.list,
+                },
+                sessionLimit: config.sidebarSessionLimit,
+                onStart: page.onStart,
+                onStartInWorkspace: page.onStartInWorkspace,
+                getPreferredWorkspace: page.getPreferredWorkspace,
+                onRefresh: refresh,
+                onOpenSession: openSession,
+                onManage: () => {
+                  if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+                },
+              }),
+            },
+            BotSessionsSidebar,
+          ),
         ),
-      ),
-    'dsh-bot: sidebar conversations',
-  );
+      'dsh-bot: sidebar conversations',
+    );
+    return modeActions;
+  }, { actions: taskSupport, integrations, openSession: page.onOpenSession });
+
 }

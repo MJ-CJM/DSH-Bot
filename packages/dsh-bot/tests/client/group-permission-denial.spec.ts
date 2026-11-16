@@ -18,6 +18,11 @@ describe('group permission denial', () => {
     expect(hasPermissionDenial(snapshot(result(undefined, [result(undefined), result('FS_SANDBOX_DENIED')])))).toBe(true);
     expect(hasPermissionDenial(snapshot(running([result('FS_SANDBOX_DENIED')])))).toBe(true);
   });
+  it('detects structured approval rejection without treating unstructured user wording as proof', () => {
+    expect(hasPermissionDenial(snapshot(result('APPROVAL_REJECTED')))).toBe(true);
+    expect(hasPermissionDenial(snapshot(running([result('APPROVAL_REJECTED')])))).toBe(true);
+    expect(hasPermissionDenial(snapshot(result('the user rejected tool')))).toBe(false);
+  });
   it('ignores other failures, OS permission errors, running calls and missing projections', () => {
     expect(hasPermissionDenial(undefined)).toBe(false);
     expect(hasPermissionDenial(snapshot())).toBe(false);

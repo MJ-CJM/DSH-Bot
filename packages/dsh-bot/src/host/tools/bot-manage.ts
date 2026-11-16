@@ -17,6 +17,8 @@ import {
   botRemoveOptionsSchema,
 } from '../../shared/schema.js';
 import { DshBotError, parseInput } from '../errors.js';
+import { getScopedCollaborationBinding } from '../supergroup/collaboration.js';
+import { isSupergroupWorker } from '../groups/worker-tool.js';
 import type { DshBotRegistry } from '../registry.js';
 
 export const BOT_MANAGE_TOOL_NAME = 'bot_manage';
@@ -474,12 +476,14 @@ function registerMatchingAgents(ctx: Context, matches: (agent: Agent) => boolean
 /** Optional Host contribution: no global tool and no mutation of the standard preset. */
 export function registerStandardBotManage(ctx: Context): void {
   // The creation header is immutable even when a blank session changes preset.
-  registerMatchingAgents(ctx, (agent) => ctx.agentPresets.composedPreset(agent.ctx) === 'standard');
+  registerMatchingAgents(ctx, (agent) => !getScopedCollaborationBinding(agent) && !isSupergroupWorker(agent) &&
+    ctx.agentPresets.composedPreset(agent.ctx) === 'standard');
 }
 
 /** Follow the exact Bot generation, including blank-session preset changes. */
 export function registerBotPresetManage(ctx: Context, botId: string): void {
   const presetScope = scopeOf(ctx);
   if (!presetScope) throw new Error('Bot management requires a preset scope');
-  registerMatchingAgents(ctx, (agent) => scopeChainOf(scopeOf(agent.ctx)).includes(presetScope), botId);
+  registerMatchingAgents(ctx, (agent) => !getScopedCollaborationBinding(agent) && !isSupergroupWorker(agent) &&
+    scopeChainOf(scopeOf(agent.ctx)).includes(presetScope), botId);
 }

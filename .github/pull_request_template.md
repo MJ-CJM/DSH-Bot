@@ -21,5 +21,5 @@ Mention API/peer changes, actual DSH version, configuration, migration, approval
 
 ## Publication / 发布
 
-This PR does not itself publish a package or grant a license. Current licensing remains UNLICENSED unless an owner-approved license change is explicitly included. Do not attach credentials, private profiles, caches or generated archives.
-PR 本身不发布包或授予许可。不要附凭据、私有 profile、缓存或生成包。
+This PR does not itself publish a package or grant a license. The project uses MIT; retain the license and third-party notices. Do not attach credentials, private profiles, caches or generated archives.
+PR 本身不发布包；本项目采用 MIT，保留许可与第三方告知。不要附凭据、私有 profile、缓存或生成包。

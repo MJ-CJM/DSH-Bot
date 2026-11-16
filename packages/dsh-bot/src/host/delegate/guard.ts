@@ -3,6 +3,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { getBotBinding } from '../bot-context.js';
 import type { RunService } from '../automation/store.js';
+import { isNativeAmbientSource } from '../common/native-ambient-source.js';
+import { getScopedCollaborationBinding, isLiveScopedCollaboration } from '../supergroup/collaboration.js';
 
 /** Use durable Host provenance, never model arguments or prompt text. */
 export function assertInteractiveOrigin(agent: Agent, _runs: RunService): void {
@@ -15,11 +17,10 @@ export function assertInteractiveOrigin(agent: Agent, _runs: RunService): void {
   // ordinary user input clears this barrier, not an assistant or tool message.
   // Native assembly appends ambient context as user-role messages after input.
   // They neither authorize delegation nor clear an earlier notice barrier.
-  const ambient = new Set(['agent-instructions', 'runtime-context', 'time-context', 'tmux-context']);
   const input = agent.session
     .snapshotEvents()
-    .findLast((event) => event.type === 'user/message' && !ambient.has(event.data.source.kind));
-  if (input?.type === 'user/message' && input.data.source.kind !== 'user') {
+    .findLast((event) => event.type === 'user/message' && !isNativeAmbientSource(event.data.source.kind));
+  if (input?.type !== 'user/message' || input.data.source.kind !== 'user') {
     throw new HarnessError('Background notices cannot start another delegation chain', 'automation/depth');
   }
 }
@@ -53,7 +54,8 @@ export function registerAutomationGuard(ctx: Context, runs: RunService): void {
           }
           if (exec.name === 'bot_delegate') {
             if (!exec.agent) throw new HarnessError('Automation tools require an owning agent', 'automation/invalid');
-            assertInteractiveOrigin(exec.agent, runs);
+            if (isLiveScopedCollaboration(exec.agent)) await getScopedCollaborationBinding(exec.agent)!.scope.check();
+            else assertInteractiveOrigin(exec.agent, runs);
           }
           return next();
         },

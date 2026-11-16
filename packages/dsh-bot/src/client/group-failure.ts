@@ -15,6 +15,7 @@ export function groupFailureText(failure: GroupFailure, t: Translate): string {
     case 'AUTH': return t('groups.failure.auth');
     case 'ACCOUNT_SIGNED_OUT': return t('groups.failure.accountSignedOut');
     case 'ACCOUNT_SIGN_IN_REQUIRED': return t('groups.failure.accountSignInRequired');
+    case 'APPROVAL_REJECTED': return t('groups.failure.approvalRejected');
     case 'INTERRUPTED': return t('groups.failure.interrupted');
     default: return failure.message;
   }

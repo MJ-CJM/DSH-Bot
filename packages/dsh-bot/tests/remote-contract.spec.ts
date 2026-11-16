@@ -1,3 +1,5 @@
+import { GROUPS_REMOTE, groupsSpec } from '../src/shared/groups-contract.js';
+import { GROUP_ROOT_PRESET } from '../src/shared/groups.js';
 import { memoryResultCases } from './fixtures/memory-result-cases.js';
 import { createRequire } from 'node:module';
 import { Context } from '@deepseek-ai/cordis';
@@ -186,7 +188,7 @@ describe('single-source Remote contract', () => {
       .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace'
         | 'create' | 'createForChat' | 'startOnboarding' | 'retryOnboarding' | 'onboardingStatus' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'
-      | 'autoShareStatus' | 'setAutoShare' | 'query' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
+      | 'autoShareStatus' | 'setAutoShare' | 'query' | 'changes' | 'restore' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
       | 'quarantineCount' | 'previewForget' | 'chooseForget' | 'cleanupStatuses' | 'retryCleanup' | 'rootInstructions'>();
   });
   it('shares all strict descriptors between Host and Client exports', () => {
@@ -196,7 +198,7 @@ describe('single-source Remote contract', () => {
     expect(() => require.resolve('dsh-botgroup/typert')).toThrow();
     expect(require.resolve('dsh-botgroup/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(39);
+    expect(TYPERT.invocations).toHaveLength(41);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -379,5 +381,55 @@ describe('single-source Remote contract', () => {
         expect(() => codec.parse(descriptor.method === 'list' ? [invalid] : invalid)).toThrow();
       }
     }
+  });
+});
+
+
+describe('Groups portable recipe Remote contract', () => {
+  const group = { id: 'group:test', operationId: 'operation:test', createDigest: 'digest', createdAt: 1, updatedAt: 1,
+    schemaVersion: 1 as const, name: 'Group', rootSessionId: 'root:test', rootPresetId: GROUP_ROOT_PRESET,
+    cwd: '/fixture', mode: 'natural' as const, membershipRevision: 1, revision: 1, archived: false, state: 'ready' as const };
+  const key = { groupId: group.id, groupCreatedAt: group.createdAt };
+  const bots = [{ botId: 'alpha', botCreatedAt: 1 }, { botId: 'beta', botCreatedAt: 2 }];
+  const recipe = { format: 'dsh-bot-team', version: 1, name: 'Portable', mode: 'natural', onDemand: true,
+    roles: bots.map((bot, index) => ({ id: `role-${index}`, role: bot.botId, preferredBotId: bot.botId, template: 'minimal' })) };
+  const mappings = bots.map((bot, index) => ({ roleId: `role-${index}`, bot }));
+  const saved = { id: 'team:test', savedAt: 1, recipe };
+  const cases: Record<string, { args: Record<string, unknown>; valid: unknown; invalid: unknown }> = {
+    teamList: { args: {}, valid: [saved], invalid: [{ ...saved, authority: {} }] },
+    teamCapture: { args: { group: key, name: 'Portable' }, valid: recipe, invalid: { ...recipe, version: 2 } },
+    teamSave: { args: { recipe }, valid: saved, invalid: { ...saved, history: [] } },
+    teamRemove: { args: { id: saved.id }, valid: true, invalid: { removed: true } },
+    teamPreview: { args: { recipe, mappings: [] }, valid: { recipe, roles: mappings.map(row => ({ ...row,
+      match: 'preferred', capabilityMatch: true, candidates: [] })) }, invalid: { recipe, roles: [{ roleId: 'role-0', match: 'forged', capabilityMatch: true, candidates: [] }] } },
+    teamApply: { args: { group: key, recipe, mappings, expectedRevision: 1, expectedMembershipRevision: 1 }, valid: group, invalid: { ...group, authority: {} } },
+  };
+  it('lists all Groups methods exactly and validates every portable recipe argument/result on both wire directions', () => {
+    expect(GROUPS_REMOTE.descriptors.map(row => `${row.namespace}/${row.method}`)).toEqual(Object.keys(groupsSpec.methods));
+    expect(GROUPS_REMOTE.descriptors.map(row => row.method).sort()).toEqual(['archive', 'cancel', 'continueTurn', 'create', 'edit', 'list', 'markRead',
+      'open', 'openAttachment', 'recallForBot', 'send', 'setModel', 'stopMember', 'view',
+      'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].sort());
+    for (const [name, value] of Object.entries(cases)) {
+      const method = GROUPS_REMOTE.methods[`dshBot.groups/${name}`];
+      if (!method) throw new Error(`Missing Groups method ${name}`);
+      const input = method.input({ strict: true }).create();
+      expect(input.parse(value.args)).toEqual(value.args);
+      expect(() => input.parse({ ...value.args, authority: {} })).toThrow();
+      const descriptor = GROUPS_REMOTE.descriptors.find(row => row.method === name);
+      if (descriptor?.result.mode !== 'strict' || !descriptor.result.encode || !descriptor.result.decode) throw new Error(`Missing Groups wire codec ${name}`);
+      const result = descriptor.result;
+      expect(result.decode?.(JSON.parse(JSON.stringify(result.encode?.(value.valid, () => null))))).toEqual(value.valid);
+      expect(() => result.encode?.(value.invalid, () => null)).toThrow();
+      expect(() => result.decode?.(value.invalid)).toThrow();
+    }
+  });
+  it('rejects private content, version mismatches and missing application revisions before Remote dispatch', () => {
+    const input = (name: string, value: unknown) => GROUPS_REMOTE.methods[`dshBot.groups/${name}`]?.input({ strict: true }).create().parse(value);
+    for (const extra of [{ history: [] }, { memories: [] }, { credentials: {} }, { authority: {} }])
+      expect(() => input('teamSave', { recipe: { ...recipe, ...extra } })).toThrow();
+    expect(() => input('teamPreview', { recipe: { ...recipe, version: 2 }, mappings: [] })).toThrow();
+    expect(() => input('teamApply', { group: key, recipe, mappings })).toThrow();
+    expect(() => input('teamApply', { ...cases.teamApply?.args, mappings: [] })).toThrow();
+    expect(() => input('teamApply', { ...cases.teamApply?.args, expectedRevision: 0 })).toThrow();
   });
 });

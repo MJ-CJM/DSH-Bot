@@ -1,4 +1,5 @@
 import type { WorkerBinding } from './worker-tool.js';
+import type { SupergroupAuthority, SupergroupExpertHandler } from './supergroup-admission.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-agent-default-model';
@@ -51,6 +52,8 @@ export type GroupRoot = { ownership: 'owned'; agent: Agent; handle: AgentHandle 
 export class GroupState {
   public queue = new Serial();
   public workers = new Map<string, WorkerBinding>();
+  public supergroupAuthorities = new Map<string, SupergroupAuthority>();
+  public expertHandler?: SupergroupExpertHandler;
   public offWorkers?: () => void;
   public stopped = false;
   public shutdownPhase = 'running';
@@ -139,7 +142,7 @@ export class GroupState {
       if (oldest !== undefined) this.proactiveDrains.delete(oldest);
     }
   }
-  table<K extends 'groups' | 'members' | 'turns' | 'deliveries' | 'read_state'>(key: K) {
+  table<K extends 'groups' | 'members' | 'turns' | 'deliveries' | 'read_state' | 'supergroup_requests' | 'team_recipes'>(key: K) {
     return this.domain.table(key);
   }
   check() {
@@ -181,7 +184,7 @@ export class GroupState {
   async putTurn(t: GroupTurn) {
     const table = this.table('turns');
     const previous = table.get(t.id);
-    const next = { ...t, updatedAt: Date.now(), revision: Math.max(previous?.revision ?? 0, t.revision) + 1 };
+    const next = { ...t, ...(t.routing && previous?.routing ? { routing: { ...t.routing, modelRequests: Math.max(t.routing.modelRequests ?? 0, previous.routing.modelRequests ?? 0) } } : {}), updatedAt: Date.now(), revision: Math.max(previous?.revision ?? 0, t.revision) + 1 };
     await table.put(t.id, parse(groupTurnSchema, next));
     this.changed();
     this.factChanged(next.group, next.id);

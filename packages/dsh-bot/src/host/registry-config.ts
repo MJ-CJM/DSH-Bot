@@ -4,8 +4,10 @@ import { messagingConfigFields, validateMessagingConfig, type MessagingConfig } 
 import Schema from '@deepseek-ai/schemastery';
 import { shadowConfigFields, type ShadowConfig } from './shadow/config.js';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
+import { Config as SupergroupSettings, type SupergroupConfig } from './supergroup/config.js';
 
 export interface Config extends MessagingConfig, ShadowConfig, ProactiveConfig {
+  supergroup: SupergroupConfig;
   onboardingEnabled: boolean;
   onboardingMaxOutputTokens: number;
   onboardingTimeoutMs: number;
@@ -68,6 +70,7 @@ const activityLimit = (name: string, fallback: number) =>
     return value;
   }).default(fallback);
 const baseConfig = Schema.object({
+  supergroup: SupergroupSettings,
   onboardingEnabled: Schema.boolean().default(true),
   onboardingMaxOutputTokens: Schema.number().min(32).max(2048).step(1).default(256),
   onboardingTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
@@ -163,7 +166,9 @@ const baseConfig = Schema.object({
     return value;
   }).default(20),
 });
-type ConfigInput = Omit<Partial<Config>, 'memoryRetrieval'> & { memoryRetrieval?: Partial<Config['memoryRetrieval']> };
+type ConfigInput = Omit<Partial<Config>, 'memoryRetrieval' | 'supergroup'> & {
+  memoryRetrieval?: Partial<Config['memoryRetrieval']>; supergroup?: Partial<SupergroupConfig>;
+};
 export const Config: Schema<ConfigInput, Config> = Schema.transform(baseConfig, (value) => {
   const config = value as unknown as Config;
   if (![config.autoShareBotDaily, config.autoShareDomainDaily, config.memoryGrantTtlMs].filter(v => v !== undefined).every(Number.isSafeInteger))

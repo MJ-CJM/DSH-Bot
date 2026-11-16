@@ -7,19 +7,22 @@ import { invocation } from './safety.js';
 import type { MessagingSafety } from './safety.js';
 import en from '../../../locale/en.json' with { type: 'json' };
 import zh from '../../../locale/zh.json' with { type: 'json' };
+import { getScopedCollaborationBinding, type CollaborationPrepared } from '../supergroup/collaboration.js';
 export function registerMessageTool(agent: Agent, safety: MessagingSafety): () => void {
   const ctx = agent.ctx;
   const registry = ctx.get('dshBots');
   if (!registry) throw new OperationError('unavailable');
   const current = () => { const service = ctx.get('dshBotMessaging'); if (!service) throw new OperationError('unavailable'); return service; };
   const proposals = new WeakMap<ToolExecution, { digest: string; targets: Array<{ botId: string; botCreatedAt: number }> }>();
-  const stamp = async (input: MessageInput, exec: ToolExecution, target: unknown) => digest([input, target, invocation(agent, exec), await registry.get((await current().exact(agent)).botId), agent.session.snapshotEvents().filter((e) => e.type === 'user/message').map((e) => e.type === 'user/message' ? e.data.id : '')]);
+  const automatic = new WeakMap<ToolExecution, CollaborationPrepared>();
+  const owning = async () => getScopedCollaborationBinding(agent)?.bot ?? current().exact(agent);
+  const stamp = async (input: MessageInput, exec: ToolExecution, target: unknown) => digest([input, target, invocation(agent, exec), await registry.get((await owning()).botId), agent.session.snapshotEvents().filter((e) => e.type === 'user/message').map((e) => e.type === 'user/message' ? e.data.id : '')]);
   let active = true;
   const read = async (exec: ToolExecution) => {
     exec.signal.throwIfAborted();
     if (!active || !safety.active || exec.agent !== agent || exec.parent !== undefined)
       throw new OperationError('approval-denied');
-    await current().exact(agent);
+    await owning();
     return messageInputSchema.parse(exec.arguments);
   };
   const scope = async (input: MessageInput) => {
@@ -37,6 +40,11 @@ export function registerMessageTool(agent: Agent, safety: MessagingSafety): () =
       const targets = (await registry.list()).map((b) => ({ botId: b.id, botCreatedAt: b.createdAt }));
       proposals.set(exec, { digest: await stamp(input, exec, target), targets });
       if (input.action === 'list') return decision;
+      const collaboration = ctx.get('dshBotCollaboration');
+      if (decision.kind !== 'ask' && collaboration?.enabled() && input.action === 'send' && input.priority === 'normal') {
+        automatic.set(exec, await collaboration.prepare(agent, input.to, invocation(agent, exec), input, exec.signal));
+        return decision;
+      }
       const parent = current().provenance(agent).parent;
       // Only an existing native-approved thread can reuse its read-only collaboration scope.
       if (parent?.envelope.authorizationId.startsWith('native:') &&
@@ -74,7 +82,17 @@ export function registerMessageTool(agent: Agent, safety: MessagingSafety): () =
       async execute(_args, exec) {
         const input = await read(exec), target = await scope(input);
         if (proposals.get(exec)?.digest !== await stamp(input, exec, target)) throw new OperationError('conflict');
-        if (input.action === 'list') return current().directory(agent, input.cursor, input.limit);
+        if (input.action === 'list') {
+          if (!getScopedCollaborationBinding(agent)) return current().directory(agent, input.cursor, input.limit);
+          const items = registry.directorySnapshot().filter(bot => bot.id !== getBotBinding(agent)?.botId && (!input.cursor || bot.id > input.cursor)).slice(0, input.limit);
+          return { items };
+        }
+        const prepared = automatic.get(exec);
+        if (prepared) {
+          const collaboration = ctx.get('dshBotCollaboration');
+          if (!collaboration) throw new OperationError('unavailable');
+          return { ...await collaboration.execute(prepared, input, exec.signal) };
+        }
         if (typeof target === 'string') throw new OperationError('invalid');
         exec.signal.throwIfAborted();
         safety.grant(agent, input, { botId: target.botId, botCreatedAt: target.botCreatedAt }, digest([agent.session.id, invocation(agent, exec)]), proposals.get(exec)?.targets ?? [], exec.signal, () => active);

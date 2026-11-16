@@ -1,3 +1,4 @@
+import { TeamRecipes } from './TeamRecipes.js';
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Menu, PathLabel, SegmentedTabs, StateDot } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -17,12 +18,73 @@ import { GroupStatisticsBar } from './GroupStatistics.js';
 import { RetainedPanel } from './RetainedPanel.js';
 import { FollowUpPanel, type FollowUpNavigation } from '../proactive/FollowUpPanel.js';
 import { followUpSessionTarget } from '../proactive/follow-up-state.js';
+import css from '../styles/groups.module.css?inline';
 import styles from '../styles/groups.module.css';
 
 export type GroupOverviewSection = 'members' | 'activity' | 'settings';
+const noMembersView = () => undefined;
+const subscribeNoMembersView = () => () => {};
+
+/** Read-only detail surface. The management page, follow-ups and execution
+ * inspectors remain separate; opening this list never starts a member. */
+export function GroupMembersList({ summary, actions, bots, onOpenBot, openBotLabel, t }: {
+  summary: GroupSummary;
+  actions: GroupActions;
+  bots: readonly BotRecord[];
+  onOpenBot?(bot: BotRecord): void;
+  /** Describe the caller's actual destination; ordinary management opens a profile. */
+  openBotLabel?: string;
+} & PropsLocale<'dsh-bot'>) {
+  const { id, createdAt } = summary.group;
+  const [owned, setOwned] = useState<{ id: string; createdAt: number; source: ReturnType<GroupActions['createView']> }>();
+  useEffect(() => {
+    const source = actions.createView({ groupId: id, groupCreatedAt: createdAt });
+    setOwned({ id, createdAt, source });
+    return () => source.dispose();
+  }, [actions, id, createdAt]);
+  const catalog = owned?.id === id && owned.createdAt === createdAt ? owned.source : undefined;
+  const snapshot = useSyncExternalStore(catalog?.subscribe ?? subscribeNoMembersView, catalog?.getSnapshot ?? noMembersView, catalog?.getSnapshot ?? noMembersView);
+  const view = snapshot?.view;
+  const matched = view?.group.id === id && view.group.createdAt === createdAt;
+  if (!view || !matched) return <section className={styles.compactMembers} aria-label={t('groups.members')}>
+    <style>{css}</style><p role={snapshot?.error || view ? 'alert' : 'status'}>{t(snapshot?.error || view ? 'groups.disconnected' : 'groups.loading')}</p>
+    {(snapshot?.error || view) && <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button>}
+  </section>;
+  const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
+  return <section className={styles.compactMembers} aria-label={t('groups.members')} data-group-members-list={id}>
+    <style>{css}</style>
+    {snapshot?.error && <p role="alert">{t('groups.disconnected')} <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button></p>}
+    {members.length === 0 && <p>{t('navigation.memberCount', { count: 0 })}</p>}
+    {members.map(member => {
+      const bot = bots.find(row => row.id === member.bot.botId && row.createdAt === member.bot.botCreatedAt);
+      const speaker = view.messages.find(message => message.speaker?.bot.botId === member.bot.botId && message.speaker.bot.botCreatedAt === member.bot.botCreatedAt)?.speaker;
+      const name = bot?.name ?? speaker?.name ?? member.bot.botId;
+      const unavailable = !bot || view.unavailableMemberIds.includes(member.id);
+      const delivery = latestMemberDelivery(view, member.id, row => row.bot.botId === member.bot.botId && row.bot.botCreatedAt === member.bot.botCreatedAt);
+      const model = groupMemberModel(view.group, member, bot);
+      const modelText = model.selection ? `${model.selection.provider} / ${model.selection.model}` : bot ? t(model.source) : t('groups.unavailable');
+      const description = bot?.description.trim();
+      const state = unavailable ? t('groups.unavailable') : !member.enabled ? t('navigation.memberDisabled') : delivery ? t(`groups.${delivery.state}`) : t('groups.ready');
+      const navigationLabel = `${name} · ${openBotLabel ?? t('chat.profile')}`;
+      return <article key={member.id} className={styles.compactMember} data-group-member={member.id} data-group-member-state={unavailable ? 'unavailable' : !member.enabled ? 'disabled' : delivery?.state ?? 'ready'}>
+        <BotAvatar size={32} bot={bot ?? { id: member.bot.botId, avatar: speaker?.avatar, avatarColor: speaker?.avatarColor, avatarVariant: speaker?.avatarVariant }} />
+        <div className={styles.compactMemberBody}>
+          <div className={styles.compactMemberHeading}>
+            {bot && onOpenBot ? <button type="button" className={styles.compactMemberLink} title={navigationLabel} aria-label={navigationLabel} onClick={() => onOpenBot(bot)}><strong className={styles.compactMemberLinkLabel}>{name}</strong><span className={styles.compactMemberArrow} aria-hidden="true">↗</span></button> : <strong className={styles.compactMemberName} title={name}>{name}</strong>}
+            <span className={styles.compactMemberState} title={state}>{state}</span>
+          </div>
+          {description && description !== name && description !== bot?.id && !/^bot-[a-z0-9-]+$/i.test(description) && <p className={styles.compactMemberRole} title={description}>{description}</p>}
+          <p className={styles.compactMemberModel} title={`${t('groups.model')}: ${modelText}${model.selection ? ` · ${t(model.source)}` : ''}`} data-group-member-model-source={model.selection || bot ? model.source : undefined}>
+            <span className={styles.compactMemberModelValue}>{t('groups.model')}: {modelText}</span>{model.selection && <span className={styles.compactMemberModelSource}>{t(model.source)}</span>}
+          </p>
+        </div>
+      </article>;
+    })}
+  </section>;
+}
 
 export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpenRun, onAskBot, executionBridge, permissionState,
-  section: requestedSection, onSectionChange, showHeader = true, showTabs = true, visible = true, focusTurnId, focusRequest, t }: {
+  section: requestedSection, onSectionChange, showHeader = true, showTabs = true, compactSettings = false, visible = true, focusTurnId, focusRequest, t }: {
   summary: GroupSummary;
   actions: GroupActions;
   bots: BotRecord[];
@@ -36,6 +98,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
   onSectionChange?(section: GroupOverviewSection): void;
   showHeader?: boolean;
   showTabs?: boolean;
+  compactSettings?: boolean;
   visible?: boolean;
   focusTurnId?: string;
   focusRequest?: GroupActivityFocus;
@@ -53,6 +116,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [teamsOpen, setTeamsOpen] = useState(false);
   const navigation = useRef(new AbortController());
   useEffect(() => {
     if (navigation.current.signal.aborted) navigation.current = new AbortController();
@@ -103,6 +167,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
     label: t(`groups.view.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel`,
   })) as [import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>, ...import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>[]];
   return <article className={styles.overview} aria-label={view.group.name} data-group-overview={view.group.id}>
+    <style>{css}</style>
     {showHeader && <header className={styles.overviewHeader}>
       <GroupAvatar size={48} members={active} bots={bots} label={view.group.name} />
       <div className={styles.overviewIdentity}>
@@ -115,10 +180,11 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
         {onEdit && <Button variant="outline" disabled={busy || view.group.archived} onClick={() => onEdit(view)}>{t('groups.edit')}</Button>}
         <Menu open={menu} onClose={() => setMenu(false)} align="end"
           anchor={<Button variant="ghost" aria-label={t('card.more')} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>···</Button>}
-          items={[{ id: 'archive', label: t('groups.archive'), disabled: busy || view.group.archived }]}
-          onSelect={() => { void archive(); }} />
+          items={[{ id: 'teams', label: t('teams.title') }, { id: 'archive', label: t('groups.archive'), disabled: busy || view.group.archived }]}
+          onSelect={id => { if (id === 'teams') { setMenu(false); setTeamsOpen(true); } else void archive(); }} />
       </div>
     </header>}
+    {teamsOpen && <TeamRecipes view={view} actions={actions} onClose={() => setTeamsOpen(false)} onSaved={() => Promise.all([catalog.refresh(), actions.catalog.refresh()])} t={t} />}
     {(error || snapshot.error) && <p role="alert">{t(error ? 'groups.conflict' : 'groups.disconnected')}</p>}
     <div className={styles.overviewFacts}>
       <span><StateDot state={view.running ? 'ongoing' : view.group.archived ? 'idle' : 'done'} />{t(view.running ? 'groups.running' : view.group.archived ? 'groups.archived' : 'groups.ready')}</span>
@@ -146,7 +212,15 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
         })} />
     </RetainedPanel>
     <RetainedPanel active={currentSection === 'settings'} id={`${uid}-settings-panel`} labelledBy={`${uid}-settings`}>
-      <GroupSettingsView view={view} bots={bots} t={t} />
+      {compactSettings ? <details><summary>{t('botMode.advanced')}</summary><GroupSettingsView view={view} bots={bots} t={t} /></details> : <GroupSettingsView view={view} bots={bots} t={t} />}
+      {!view.group.supergroup && <label><input type="checkbox" checked={view.group.onDemand ?? false} disabled={busy || view.group.archived || view.group.mode !== 'natural'} onChange={event => {
+        const onDemand = event.currentTarget.checked; setBusy(true); setError(false);
+        void actions.remote().edit(groupKey(view.group), { expectedRevision: view.group.revision, expectedMembershipRevision: view.group.membershipRevision,
+          name: view.group.name, mode: view.group.mode, members: active.map(member => member.bot), historyConfirmed: true, onDemand,
+        }).then(result => { unwrapGroup(result); return Promise.all([catalog.refresh(), actions.catalog.refresh()]); }).catch(() => setError(true)).finally(() => setBusy(false));
+      }} />{t('teams.onDemand')}</label>}
+      <p>{t(view.group.supergroup ? 'simple.automaticTeam' : 'teams.onDemandHint')}</p>
+      {!showHeader && <Button variant="outline" onClick={() => setTeamsOpen(true)}>{t('teams.title')}</Button>}
       {!showHeader && onEdit && <Button variant="outline" disabled={busy || view.group.archived}
         onClick={() => onEdit(view)}>{t('groups.edit')}</Button>}
     </RetainedPanel>
@@ -291,6 +365,7 @@ export function GroupActivityView({ view, bots, actions, onOpenRun, executionBri
           <p className={styles.activityOverviewMeta}>
             {t(`groups.${turn.state}`)} · {new Intl.DateTimeFormat(t('activity.locale'), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(turn.createdAt))}
           </p>
+          {turn.routing && <p className={styles.activityOverviewMeta} data-group-routing={turn.id}>{t('teams.routing', { reason: t(`teams.reason.${turn.routing.reason}`), selected: turn.routing.selectedMemberIds.length, candidates: turn.routing.candidateMemberIds.length, calls: view.deliveries.filter(row => row.turnId === turn.id && row.startedAt !== undefined).length, decider: turn.routing.deciderCalls, requests: turn.routing.modelRequests ?? 0 })}</p>}
           {participants.length > 0 && <p className={styles.activityOverviewMeta}>{t('groups.participants', { names: new Intl.ListFormat(t('activity.locale'), { type: 'conjunction' }).format(participants) })}</p>}
           {failure && <p className={styles.activityOverviewFailure}>{groupFailureText(failure, t)}</p>}
         </div>

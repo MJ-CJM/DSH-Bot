@@ -32,6 +32,9 @@ import type { AutomationStatus } from '../shared/automation-contract.js';
 import { MainSessions } from './main-session.js';
 import { startAutomation } from './automation/coordinator.js';
 import { startShadow } from './shadow/service.js';
+import { Supergroup, supergroupDomain } from './supergroup/service.js';
+import { SupergroupRemote, SUPERGROUP_HOST } from './supergroup/remote.js';
+import { onlySupergroupChanged } from './supergroup/config.js';
 export const Config = RegistryConfig.volatile();
 export { DshBotRegistry };
 export const name = 'dsh-bot';
@@ -57,13 +60,19 @@ export function apply(ctx: Context, config: ReturnType<typeof Config>): void {
     return structuredClone(validated) as RegistryConfig;
   };
   let applied = snapshot();
+  let supergroup: Supergroup | undefined;
   const proactive = new ProactiveLifecycle(ctx, () => applied);
   proactive.install();
   ctx.effect(() => ctx.on('loader/volatile-update', () => {
     const next = snapshot();
     const hot = onlyProactiveChanged(applied, next);
+    const supergroupHot = onlySupergroupChanged(applied, next);
     applied = next;
-    if (hot) {
+    if (supergroupHot) {
+      registry.config.supergroup = structuredClone(next.supergroup);
+      void supergroup?.configChanged().catch(error => ctx.logger.error('[dsh-bot] Supergroup settings update failed', error));
+      ctx.emit('dsh-bot/supergroup-changed');
+    } else if (hot) {
       void proactive.replace().catch(error => ctx.logger.error('[dsh-bot] proactive settings update failed', error));
     } else {
       proactive.stopAdmission();
@@ -223,6 +232,17 @@ export function apply(ctx: Context, config: ReturnType<typeof Config>): void {
       if (!groups) throw new Error('Groups startup failed');
       await groups.start();
       ctx.effect(() => ctx.provide('dshBotGroups', groups as Groups), 'dsh-bot: groups service');
+      await ctx.effect(async () => {
+        const domain = await ctx.storageDomain.open(supergroupDomain);
+        supergroup = new Supergroup(ctx, registry, groups as Groups, domain);
+        registry.supergroup = supergroup;
+        try { await supergroup.start(); }
+        catch (error) { await supergroup.close(); registry.supergroup = undefined; throw error; }
+        ctx.emit('dsh-bot/supergroup-changed');
+        return async () => { await supergroup?.close(); registry.supergroup = undefined; ctx.emit('dsh-bot/supergroup-changed'); };
+      }, 'dsh-bot: Supergroup');
+      new SupergroupRemote(ctx, supergroup as Supergroup);
+      await ctx.effect(() => ctx.typert.register(SUPERGROUP_HOST), 'dsh-bot: Supergroup Remote');
       ctx.get('dshBotProactive')?.scheduleGroupFollowUps();
       new GroupsRemote(ctx, groups);
       await ctx.effect(() => ctx.typert.register(GROUPS_HOST), 'dsh-bot: groups Remote');
@@ -257,6 +277,7 @@ export function apply(ctx: Context, config: ReturnType<typeof Config>): void {
         () => messaging?.close(),
         () => referenceMemory?.close(),
         () => management?.close(),
+        () => supergroup?.close(),
         () => groups?.close(),
         () => collaboration?.close(),
         () => integrations?.close(),

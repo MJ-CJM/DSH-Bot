@@ -7,13 +7,14 @@ import type { SubagentActivationSpec, SubagentActivation } from '@deepseek-ai/ds
 import type { BotKey } from '../../shared/identity.js';
 import type { DshBotRegistry } from '../registry.js';
 import { outlets } from './tool-guard.js';
+import { compatibleActivationSpec } from '../common/subagent-activation.js';
 
 /** Caller delivery gates content; parent turn cancellation owns startup only. */
 export async function startDelegate(registry: DshBotRegistry, owner: Agent, from: BotKey, to: BotKey,
   call: string, spec: SubagentActivationSpec, resultSignal?: AbortSignal): Promise<SubagentActivation> {
   const flow = outlets(registry), native = owner.ctx.get('subagents');
   if (!native) throw new Error('Native delegation unavailable');
-  if (!flow) return native.startActivation(spec);
+  if (!flow) return native.startActivation(compatibleActivationSpec(spec));
   const childId = SessionId(randomUUID()), content = JSON.stringify(spec.request.prompt);
   const envelope = flow.draft('delegate-input', from, owner.session.id, call, { kind: 'bot', bot: to }, content);
   const grant = await flow.request(owner, envelope, spec.signal);
@@ -26,7 +27,7 @@ export async function startDelegate(registry: DshBotRegistry, owner: Agent, from
   let activation: SubagentActivation;
   try {
     activation = await flow.dispatch(input, (_envelope, signal) =>
-      native.startActivation({ ...spec, signal, childId, delivery: 'caller' }), spec.signal);
+      native.startActivation(compatibleActivationSpec({ ...spec, signal, childId, delivery: 'caller' })), spec.signal);
   } catch (error) { releaseLease(); throw error; }
   // The exact caller activation ends before any unchecked native resume can be admitted.
   void activation.result.finally(releaseLease).catch(() => {});

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { teamRecipeSchema, savedTeamRecipeSchema, teamPreviewSchema, teamMappingSchema, teamPreviewMappingSchema } from './team-recipes.js';
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info';
 import { botKeySchema } from './identity.js';
 import { groupRecallInputSchema, groupRecallPageSchema } from './group-recall.js';
@@ -32,6 +33,13 @@ const base = { service: 'dshBotGroupsRemote', invocation: { kind: 'direct' as co
 export const groupsSpec = {
   package: 'dsh-bot/groups',
   methods: {
+    'dshBot.groups/teamList': { ...base, parameters: [], result: codec('TeamList', z.array(savedTeamRecipeSchema)) },
+    'dshBot.groups/teamCapture': { ...base, parameters: [param('group', groupKeySchema), param('name', z.string().trim().min(1).max(64))], result: codec('TeamRecipe', teamRecipeSchema) },
+    'dshBot.groups/teamSave': { ...base, parameters: [param('recipe', teamRecipeSchema)], result: codec('SavedTeam', savedTeamRecipeSchema) },
+    'dshBot.groups/teamRemove': { ...base, parameters: [param('id', z.string().min(1))], result: codec('TeamRemoved', z.boolean()) },
+    'dshBot.groups/teamPreview': { ...base, parameters: [param('recipe', teamRecipeSchema), param('mappings', teamPreviewMappingSchema)], result: codec('TeamPreview', teamPreviewSchema) },
+    'dshBot.groups/teamApply': { ...base, parameters: [param('group', groupKeySchema), param('recipe', teamRecipeSchema), param('mappings', teamMappingSchema),
+      param('expectedRevision', z.number().int().positive()), param('expectedMembershipRevision', z.number().int().positive())], result: codec('Group', groupRecordSchema) },
     'dshBot.groups/recallForBot': {
       ...base, parameters: [param('bot', botKeySchema), param('input', groupRecallInputSchema)],
       result: codec('GroupRecallPage', groupRecallPageSchema),
