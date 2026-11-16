@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ISessions, SessionReference } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client';
 
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap { 'dsh-bot-execution': { childId: string } }
@@ -17,6 +17,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 export type ExecutionSlots = PropsRenderSlots<'dsh-bot.group.execution'>;
 export interface ExecutionBridge { ctx: Context; statistics?: GroupStatsSource; open(childId: string): void; retainReadOnly(id: SessionId, reason: string): () => void }
+
+/** This embedded occurrence has no native view tabs; leave saved view selection alone. */
+function ExecutionViews({ renderSlot }: ConversationViewsProps) {
+  return renderSlot('conversation.session', { view: 'chat' });
+}
 
 /** Read-only presentation of a real child binding; no Session open/prompt/stop calls. */
 export function GroupExecution({ childId, bridge, SessionProvider, renderSlot, t }: {
@@ -59,7 +64,10 @@ export function registerGroupExecution(ctx: Context): ExecutionBridge {
   ctx.effect(() => () => { active = false; for (const id of mounted.keys()) ctx.get('conversation')?.blocks.set(id, undefined); mounted.clear(); }, 'dsh-bot: execution view lifetime');
   ctx.effect(() => ctx.slots.inject('conversation.composer', () => ctx.slots.register({
     name: 'conversation.composer', priority: -30,
-    select: owner => owner.sessionId && mounted.has(owner.sessionId) ? { readOnly: true } : null,
+    // ConversationContent supplies a subscribed pendingInteraction owner. Native
+    // approval/question takeovers must win while the ordinary child input stays
+    // blocked; never snapshot pending state here or change the Host's policy.
+    select: owner => owner.sessionId && mounted.has(owner.sessionId) && owner.pendingInteraction == null ? { readOnly: true } : null,
   }, () => null)), 'dsh-bot: execution composer suppression');
   ctx.inject(['sidebarRight', 'sidebarRightTabs'], scope => {
     const t = scope.locale.bind('dsh-bot');
@@ -73,7 +81,7 @@ export function registerGroupExecution(ctx: Context): ExecutionBridge {
       return params && 'childId' in params ? <GroupExecution key={params.childId} {...props} childId={params.childId} bridge={bridge} /> : <p>{props.t('execution.unavailable')}</p>;
     });
       yield scope.slots.inject('dsh-bot.group.execution', () => scope.slots.register({ name: 'dsh-bot.group.execution' },
-        ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false })));
+        ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false }, { slots: { views: ExecutionViews } })));
     }, 'dsh-bot: execution tab slots')), 'dsh-bot: execution tab body');
   });
   return bridge;

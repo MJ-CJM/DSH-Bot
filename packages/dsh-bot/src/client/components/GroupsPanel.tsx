@@ -207,6 +207,7 @@ export function GroupEditor({
     operationId: string;
     name: string;
     mode: GroupView['group']['mode'];
+    onDemand?: boolean;
     members: ReturnType<typeof keyOf>[];
     cwd?: string;
     historyConfirmed: true;
@@ -215,12 +216,13 @@ export function GroupEditor({
 } & Localized) {
   const [name, setName] = useState(initial?.group.name ?? '');
   const [mode, setMode] = useState(initial?.group.mode ?? 'natural');
+  const [onDemand, setOnDemand] = useState(initial ? initial.group.onDemand ?? false : true);
   const [members, setMembers] = useState(
     () => initial?.members.filter((m) => m.enabled).map((m) => m.bot) ?? [],
   );
   const [cwd, setCwd] = useState('');
-  const initialDraft = useRef(JSON.stringify([name, mode, members, cwd]));
-  useSettingsDraft(JSON.stringify([name, mode, members, cwd]) !== initialDraft.current);
+  const initialDraft = useRef(JSON.stringify([name, mode, members, cwd, onDemand]));
+  useSettingsDraft(JSON.stringify([name, mode, members, cwd, onDemand]) !== initialDraft.current);
   const leave = useSettingsLeave();
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -252,6 +254,7 @@ export function GroupEditor({
         const input = {
           name: name.trim() || members.map(key => bots.find(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt)?.name ?? key.botId).join('、').slice(0, 120),
           mode,
+          onDemand,
           members,
           ...(cwd ? { cwd } : {}),
           historyConfirmed: true as const,
@@ -295,10 +298,11 @@ export function GroupEditor({
           );
         })}
       </fieldset>
+      {!initial && <p>{t('simple.newGroupDefaults')}</p>}
       {!initial && <GroupWorkspaceField cwd={cwd} onChange={setCwd} workspaces={workspaces} onPickDirectory={onPickDirectory}
         disabled={busy || Boolean(creationSaved)} t={t} />}
-      <details className={styles.advanced}>
-        <summary>{t('groups.advanced')}</summary>
+      <details className={styles.advanced}><summary>{t('groups.advanced')}</summary>
+      <label><input type="checkbox" checked={onDemand} disabled={busy || creationSaved || mode !== 'natural'} onChange={event => setOnDemand(event.target.checked)} />{t('teams.onDemand')}</label>
         <label>
         {t('groups.mode')}
         <select disabled={busy || creationSaved} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
@@ -391,6 +395,7 @@ export function GroupConversation({
   useEffect(() => () => { if (!workspace) catalog.dispose(); }, [catalog, workspace]);
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
   const view = snapshot.view;
+  const automaticGroup = Boolean(view?.group.supergroup ?? summary.group.supergroup);
   const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
   const focusRequest = workspace && runRequest?.sessionId === summary.group.rootSessionId ? runRequest : undefined;
   const focusMessageId = focusRequest?.source?.messageId ?? (focusRequest && view?.turns.find(row => row.id === focusRequest.turnId)?.inputMessageId);
@@ -475,7 +480,9 @@ export function GroupConversation({
     };
   }, [actions, rootId]);
   const attach = (files: FileList | null) => {
-    if (!view || !files) return;
+    // Automatic collaboration admits shared text only. Refuse before upload,
+    // even if a file-input event arrives after the group changed or was hidden.
+    if (!view || automaticGroup || !files) return;
     for (const file of files) {
       const id = crypto.randomUUID(), controller = new AbortController();
       uploadControllers.current.set(id, controller);
@@ -519,12 +526,12 @@ export function GroupConversation({
   const permissionReady = useSyncExternalStore(permissionState?.store.subscribe ?? subscribeNoPermission,
     () => { const value = permissionState?.rootSessionId === rootId ? permissionState.store.getSnapshot() : undefined; return Boolean(value && value.currentValue !== undefined && value.catalog); });
   const usable = Boolean(view && !view.group.archived && view.group.state === 'ready');
-  const local = { file: workspace && usable && !busy, model: Boolean(models) && usable && !localBusy && !sharedDraft.sending && !permissionSaving,
+  const local = { file: workspace && usable && !busy && !automaticGroup, model: Boolean(models) && usable && !localBusy && !sharedDraft.sending && !permissionSaving,
     permission: permissionReady && usable && !busy };
   const commandState = useRef({ local }); commandState.current.local = local;
   const commandLabel = (name: GroupCommandName) => t(COMMAND_FACE[name].label);
   const runCommand = (name: GroupCommandName) => {
-    if (name === 'file') attachmentInput.current?.click();
+    if (name === 'file') { if (!automaticGroup) attachmentInput.current?.click(); }
     else if (name === 'model') setModelOpen(value => value + 1);
     else if (name === 'permission') setPermissionOpen(value => value + 1);
     else if (name === 'export') commandServices?.exportLog(rootId);
@@ -589,8 +596,8 @@ export function GroupConversation({
     const selectedAtSend = [...mentions];
     actions.patchDraft(rootId, value => ({ ...value, sending: true }));
     void perform(async () => {
-      const sentTurn = unwrapGroup(await actions.remote().send(groupKey(view.group), pending.request));
-      setStatisticsSent(previous => ({ turnId: sentTurn.id, followup: Boolean(pending.request.followup), sequence: (previous?.sequence ?? 0) + 1 }));
+      const sent = actions.send ? await actions.send(groupKey(view.group), pending.request) : { turnId: unwrapGroup(await actions.remote().send(groupKey(view.group), pending.request)).id };
+      if (sent.turnId) setStatisticsSent(previous => ({ turnId: sent.turnId!, followup: Boolean(pending.request.followup), sequence: (previous?.sequence ?? 0) + 1 }));
       actions.patchDraft(rootId, value => ({ ...value, mentionBindings: value.text === pending.request.text ? [] : value.mentionBindings, followup: value.followup?.deliveryId === pending.request.followup?.deliveryId ? undefined : value.followup }));
       setDraft((current) => (current === pending.request.text ? '' : current));
         setMentions((current) => (JSON.stringify(current) === JSON.stringify(selectedAtSend) ? [] : current));
@@ -616,7 +623,7 @@ export function GroupConversation({
   return (
     <article className={`${styles.conversation} ${workspace ? `${styles.panel} ${styles.workspace}` : ''}`} aria-label={view.group.name} data-workspace-group-composer={workspace ? view.group.rootSessionId : undefined}>
       <style>{css}</style>
-      {(error || snapshot.error) && <p role="alert">{t(error ? 'groups.conflict' : 'groups.disconnected')}</p>}
+      {(error || snapshot.error) && <p role="alert">{t(error ? sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : 'groups.conflict' : 'groups.disconnected')}</p>}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       {!workspace && <>
       <h3>{view.group.name}</h3>
@@ -638,7 +645,7 @@ export function GroupConversation({
         </button>
       </div>
       {(error || snapshot.error) && (
-        <p role="alert">{t(error ? 'groups.conflict' : 'groups.disconnected')}</p>
+        <p role="alert">{t(error ? sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : 'groups.conflict' : 'groups.disconnected')}</p>
       )}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       <section className={styles.members} aria-label={t('groups.members')}>
@@ -737,7 +744,7 @@ export function GroupConversation({
           onChange={(text, mentionBindings) => { actions.patchDraft(rootId, value => ({ ...value, text, mentionBindings, mentions: [] })); setMentionIssues([]); }} onSubmit={() => submit(false)} />
         <label hidden={workspace} style={workspace ? { display: 'none' } : undefined}>
           {t('groups.attach')}
-          <input ref={attachmentInput} type="file" multiple disabled={busy || view.group.archived} onChange={event => {
+          <input ref={attachmentInput} type="file" multiple disabled={busy || view.group.archived || automaticGroup} onChange={event => {
             attach(event.currentTarget.files); event.currentTarget.value = '';
           }} />
         </label>
@@ -760,9 +767,9 @@ export function GroupConversation({
         {!workspace && <p>{t('groups.routingHint')}</p>}
         <div className={`${styles.bar} ${styles.composerFooter}`} title={t('groups.keyboardHint')}>
           {workspace && (commands
-            ? <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.addOrCommand')} title={t('groups.addOrCommand')} aria-haspopup="listbox"
+            ? <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} title={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} aria-haspopup="listbox"
               data-group-command-launcher="" disabled={view.group.archived} onMouseDown={event => event.preventDefault()} onClick={() => commandLauncher.current?.()}><IconPlusOutlineRegular size={18} /></Button>
-            : <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.attach')} title={t('groups.attach')} disabled={busy || view.group.archived} onClick={() => attachmentInput.current?.click()}><IconPaperclipOutlineRegular size={18} /></Button>)}
+            : !automaticGroup && <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.attach')} title={t('groups.attach')} disabled={busy || view.group.archived} onClick={() => attachmentInput.current?.click()}><IconPaperclipOutlineRegular size={18} /></Button>)}
           {models && <GroupModelControl group={view.group} members={view.members} bots={bots} actions={actions} models={models} disabled={localBusy || sharedDraft.sending || permissionSaving || view.group.archived || view.group.state !== 'ready'} openRequest={modelOpen || undefined} onBusyChange={setModelBusy} onSaved={() => catalog.refresh()} t={t} />}
           {permissionState && permissionState.rootSessionId === rootId && <GroupPermissionControl state={permissionState} cwd={view.group.cwd} disabled={busy || view.group.archived || view.group.state !== 'ready'} openRequest={permissionOpen || undefined} t={t} />}
           <span className={styles.keyboardHint}>{t('groups.keyboardHint')}</span>

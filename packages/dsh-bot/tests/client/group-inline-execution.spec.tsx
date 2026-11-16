@@ -16,7 +16,7 @@ import { button, click, fill } from './helpers.js';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 
-async function fixture(language: 'en' | 'zh' = 'en', denials?: string[], firstDelivery: Partial<GroupDelivery> = {}) {
+async function fixture(language: 'en' | 'zh' = 'en', denials?: string[], firstDelivery: Partial<GroupDelivery> = {}, denialCode = 'FS_SANDBOX_DENIED') {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const ctx = new Context(), data = view();
   const key = { groupId: data.group.id, groupCreatedAt: data.group.createdAt };
@@ -54,7 +54,7 @@ async function fixture(language: 'en' | 'zh' = 'en', denials?: string[], firstDe
     getSnapshot: () => ({ state: 'ready', binding: { childId } }) }) };
   if (denials) ctx.provide('uiConversation', { binding: (binding: { childId: string }) => ({ target: () => {
     const nodes = denials.includes(binding.childId) ? [{ kind: 'tool-call', data: { root: { kind: 'tool-result', isError: true,
-      error: { name: 'FsError', code: 'FS_SANDBOX_DENIED' }, subCalls: [] } } }] : [];
+      error: { name: 'HarnessError', code: denialCode }, subCalls: [] } } }] : [];
     const value = { nodes: { values: () => nodes } };
     return { subscribe: () => () => {}, getSnapshot: () => value };
   } }) } as never);
@@ -186,6 +186,18 @@ it.each([['en', ['child-first', 'child-second']], ['zh', ['child-first', 'child-
     // Earlier questions are not observed while collapsed, bounding retained native histories.
     expect(f.question('first').querySelector('[data-group-permission-denied]')).toBeNull();
     expect(f.retained).not.toContain('child-first');
+  } finally { await f.close(); }
+});
+
+it.each(['en', 'zh'] as const)('%s keeps approval rejection visible while folded without attributing it to a human or offering a permission switch', async language => {
+  const f = await fixture(language, ['child-second'], {}, 'APPROVAL_REJECTED');
+  try {
+    const notice = () => f.question('second').querySelector('[data-group-permission-denied]');
+    await vi.waitFor(() => expect(notice()?.textContent).toBe(f.t('groups.permissionDenied', { names: bots[1]?.name })));
+    expect(notice()?.querySelector('button')).toBeNull();
+    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(f.remote.cancel).not.toHaveBeenCalled();
+    expect(f.remote.continueTurn).not.toHaveBeenCalled();
   } finally { await f.close(); }
 });
 

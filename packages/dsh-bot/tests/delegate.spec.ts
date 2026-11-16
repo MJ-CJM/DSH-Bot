@@ -61,6 +61,7 @@ async function setup(ctx: Context, root: string) {
     const scope = createScope(owner, agent); payload.ctx = scope.ctx;
     await ctx.serial(scopeTarget(agent, agent), 'agent/created', { agent, source: 'startup' });
     session.append('turn/start', { turn: 0 }); session.append('step/start', { turn: 0, step: 0 });
+    session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Authorize this fixture task' }] }), { surfaceOp: 'append' });
     return { agent, session, scope, plugin };
   };
   const execute = (agent: Agent, args: unknown, callId = randomUUID(), name = 'bot_delegate') => ctx.tools.execute({
@@ -121,7 +122,7 @@ describe('native bot delegation wrapper (native service double, real ToolRuntime
     const notice = createUserMessage({ content: [{ type: 'text', text: 'notice' }], source: { kind: 'user' } });
     const sourced = Object.assign({}, notice, { source: { kind } }) as typeof notice;
     origin.session.append('user/message', sourced, { surfaceOp: 'append' });
-    for (const ambient of ['agent-instructions', 'runtime-context', 'time-context', 'tmux-context']) {
+    for (const ambient of ['agent-instructions', 'runtime-context', 'time-context', 'tmux-context', 'skill-catalog', 'user-approval']) {
       origin.session.append('user/message', Object.assign({}, notice, { source: { kind: ambient } }) as typeof notice, { surfaceOp: 'append' });
     }
     expect((await f.execute(origin.agent, args)).isError).toBe(true); expect(f.startActivation).not.toHaveBeenCalled();

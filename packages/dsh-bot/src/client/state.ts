@@ -40,6 +40,8 @@ export interface PollingSnapshot {
 export interface BotCatalog {
   subscribe(listener: () => void): () => void;
   observe(listener: () => void): () => void;
+  /** Passive notification without acquiring a polling or refresh lease. */
+  watch?(listener: () => void): () => void;
   getSnapshot(): CatalogSnapshot;
   /** Always supersedes older reads, including reads started before a mutation. */
   refresh(): Promise<void>;

@@ -205,7 +205,7 @@ test('one native listChildren observation supplies all pages of a 1,000-child pa
   } finally { await core.close(); }
 });
 
-test('cold native catalog fallback folds only the current own child outcome across log pages', async () => {
+test.each([true, false])('cold native catalog fallback folds current own child outcome across pages (catalog method: %s)', async catalogMethod => {
   const core = await proactiveWorker();
   try {
     await withIntegrations(async fixture => {
@@ -246,9 +246,9 @@ test('cold native catalog fallback folds only the current own child outcome acro
       const read = vi.fn((session: Session, offset: number, length: number) =>
         ({ events: session.snapshotEvents().slice(offset, offset + length) }));
       fixture.ctx.provide('sessions', { get: () => undefined } as unknown as Context['sessions']);
-      fixture.ctx.provide('subagents', { listChildren: async () => {
+      fixture.ctx.provide('subagents', (catalogMethod ? { listChildren: async () => {
         throw Object.assign(new Error('Minimal profile'), { code: 'SUBAGENT_CONTROL_QUERY_UNAVAILABLE' });
-      } } as unknown as Context['subagents']);
+      } } : {}) as unknown as Context['subagents']);
       fixture.ctx.provide('sessionPersistence', {
         async stat(id: typeof main) { return nativeLogs.get(id)?.header; },
         async open(id: typeof main) {

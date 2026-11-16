@@ -22,5 +22,5 @@ Describe the smallest useful change, scope, approvals and data boundaries.
 A concrete example and expected outcome; distinguish mock/synthetic from real service evidence.
 给出具体例子与预期，区分合成验证与真实服务效果。
 
-Please avoid private data and credentials. Ongoing proactive work, IM, OS/mobile push and cloud hosting are not currently shipped features.
-请勿包含私有数据或凭据；持续主动、IM、OS/手机推送和云托管目前尚未交付。
+Please avoid private data and credentials. Distinguish local opt-in task follow-up from external IM, OS/mobile push, cloud hosting or operation while DSH is closed.
+请勿包含私有数据或凭据；请区分本地可选任务跟进与外部 IM、系统/手机推送、云托管及 DSH 关闭后的运行能力。

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { sameBot, type BotKey } from '../../shared/identity.js';
-import { memoryVersionSchema, payloadSchema, type MemoryPayload } from '../../shared/memory-v2.js';
+import { memoryVersionSchema, payloadSchema, type MemoryPayload, type MemoryVersion } from '../../shared/memory-v2.js';
 import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryResolveSchema, memoryConfirmSchema,
+  memoryChangesQuerySchema, memoryRestoreSchema, type MemoryChangesQuery, type MemoryRestore,
   type MemoryQuery, type MemoryCreate, type MemoryRevise, type MemoryResolve, type MemoryConfirm } from '../../shared/memory-management.js';
 import type { BotStore } from '../stores/bots.js';
 import { DshBotError } from '../errors.js';
@@ -11,6 +12,7 @@ import { temporalFacts, type Fact } from './temporal.js';
 import { adjudicate, factKey } from './conflicts.js';
 import { rankFacts } from './query.js';
 import { retiredShard } from './shards.js';
+import { canReadLabel, mergeLabels } from '../data-flow/labels.js';
 
 /** Management capability only. Not registered as a model tool or accepted from model arguments. */
 export class MemoryManagement {
@@ -28,6 +30,94 @@ export class MemoryManagement {
     const payload = version && this.kernel.domain.table('payloads').get(version.contentRef);
     if (!version || !payload) throw new DshBotError('memory/not-found', 'Memory not found');
     return { version, payload };
+  }
+  private historyAccess(version: MemoryVersion, key: BotKey, versions: Map<string, MemoryVersion>, seen = new Set<string>(), sourceOnly = false): boolean {
+    const state = this.kernel.snapshot, current = state.versions.get(version.memoryId);
+    if (!current || !versions.has(current.versionId) || !versions.has(version.versionId) || state.forgotten.has(version.memoryId) || current.scope !== version.scope ||
+      current.userScope !== this.kernel.scope.scope.id || version.userScope !== current.userScope) return false;
+    if (sourceOnly && (!this.coversOriginalPermissions(current, version) || current.status !== 'active')) return false;
+    for (const row of [current, version]) {
+      if (row.scope === 'private' && ((!sourceOnly && !sameBot(row.ownerBotKey, key)) || retiredShard(this.kernel, row.ownerBotKey)) ||
+        row.status === 'forgotten' || (!sourceOnly && !canReadLabel(row.labels, key)) ||
+        row.labels.readers !== 'shared' && !row.labels.readers.length ||
+        row.labels.restrictions.some(r => ['secret', 'revoked', 'pending-cleanup'].includes(r))) return false;
+    }
+    if (seen.has(version.versionId)) return true;
+    seen.add(version.versionId);
+    // A valid current ledger is authority for historical visibility too. Missing
+    // or forgotten source identities must never become readable through an old diff.
+    const sourceIds = new Set([current, version].flatMap(row => [...row.labels.sourceVersions,
+      ...row.sourceRefs.flatMap(ref => ref.parentVersionId ? [ref.parentVersionId] : [])]));
+    for (const id of sourceIds) {
+      const source = versions.get(id);
+      const publication = source && (sourceOnly && source.memoryId === version.memoryId ||
+        version.scope === 'shared' && this.publishedSource(version.memoryId, source.versionId));
+      if (!source || !this.historyAccess(source, key, versions, seen, Boolean(publication))) return false;
+    }
+    return true;
+  }
+  private coversOriginalPermissions(current: MemoryVersion, original: MemoryVersion) {
+    const readers = current.labels.readers, old = original.labels.readers;
+    return (readers === 'shared' || old !== 'shared' && old.every(reader => readers.some(candidate => sameBot(candidate, reader)))) &&
+      current.labels.restrictions.every(restriction => original.labels.restrictions.includes(restriction));
+  }
+  private publishedSource(memoryId: string, versionId: string) {
+    return [...this.kernel.domain.table('ops').entries()].some(([, op]) => op.kind === 'promote' && op.versions.some(row =>
+      row.memoryId === memoryId && row.scope === 'shared' && row.trust === 'user_confirmed' &&
+      row.labels.originTrust === 'user_confirmed' && row.sourceRefs.some(ref => ref.parentVersionId === versionId) &&
+      (Boolean(op.grantUse) || row.sourceRefs.some(ref => ref.managementOpId === op.opId))));
+  }
+  private ledgerVersions() {
+    return new Map([...this.kernel.domain.table('ops').entries()].flatMap(([, op]) => op.versions.map(version => [version.versionId, version] as const)));
+  }
+  changes(input: MemoryChangesQuery) {
+    const f = memoryChangesQuerySchema.parse(input), { key } = this.bot(f.botId);
+    const rows = [];
+    const versions = this.ledgerVersions();
+    const previous = new Map<string, MemoryPayload>();
+    for (const [, op] of [...this.kernel.domain.table('ops').entries()].sort((a, b) => a[1].seq - b[1].seq)) {
+      for (const version of op.versions) {
+        if (!this.historyAccess(version, key, versions)) continue;
+        const payload = this.kernel.domain.table('payloads').get(version.contentRef);
+        if (!payload) continue;
+        const body = this.changeFields(payload), before = previous.get(version.memoryId);
+        const current = this.kernel.snapshot.versions.get(version.memoryId);
+        rows.push({ opId: op.opId, kind: op.kind, version: structuredClone(version), payload: body,
+          ...(before ? { previous: this.changeFields(before) } : {}),
+          changed: (['content', 'subject', 'factKey', 'qualifiers', 'valid'] as const)
+            .filter(field => JSON.stringify(before?.[field]) !== JSON.stringify(payload[field])),
+          restorable: !!current && current.versionId !== version.versionId && current.status === 'active' &&
+            current.scope === version.scope && !this.kernel.blocked &&
+            !current.labels.restrictions.some(r => ['secret', 'revoked', 'pending-cleanup'].includes(r)) });
+        previous.set(version.memoryId, payload);
+      }
+    }
+    return { revision: this.kernel.seq, rows: rows.reverse().slice(0, f.limit ?? 20) };
+  }
+  private changeFields(payload: MemoryPayload) {
+    const { content, subject, factKey, qualifiers, valid } = payload;
+    return structuredClone({ content, subject, factKey, qualifiers, valid });
+  }
+  async restore(input: MemoryRestore) {
+    const f = memoryRestoreSchema.parse(input); this.check(f.expectedRevision);
+    const { key } = this.bot(f.botId), current = this.fact(f.id);
+    if (this.kernel.snapshot.forgotten.has(f.id) || current.version.status !== 'active' ||
+      current.version.scope === 'private' && !sameBot(current.version.ownerBotKey, key)) throw new Error('Memory restore unavailable');
+    const versions = this.ledgerVersions(), old = versions.get(f.versionId);
+    if (!old || old.memoryId !== f.id || !this.historyAccess(old, key, versions) ||
+      !this.historyAccess(current.version, key, versions) || old.scope !== current.version.scope || old.versionId === current.version.versionId ||
+      old.scope === 'private' && !sameBot(old.ownerBotKey, key) ||
+      [...old.labels.restrictions, ...current.version.labels.restrictions]
+        .some(r => ['secret', 'revoked', 'pending-cleanup'].includes(r))) throw new Error('Memory restore unavailable');
+    const payload = this.kernel.domain.table('payloads').get(old.contentRef);
+    if (!payload) throw new Error('Memory restore unavailable');
+    const row = this.revision(current, this.changeFields(payload), {
+      provenance: { channel: 'management', bot: key }, trust: 'user_confirmed',
+      labels: { ...mergeLabels(current.version.labels, old.labels), originTrust: 'user_confirmed',
+        sourceVersions: [...new Set([...current.version.labels.sourceVersions, ...old.labels.sourceVersions, old.versionId])] },
+    });
+    row.version.sourceRefs.push({ parentVersionId: old.versionId });
+    await this.write('revise', [row], f.expectedRevision);
   }
   query(input: MemoryQuery) {
     const f = memoryQuerySchema.parse(input), { key } = this.bot(f.botId);

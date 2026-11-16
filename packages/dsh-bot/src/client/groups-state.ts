@@ -1,3 +1,5 @@
+import { supergroupViewSchema, supergroupSendGroupResultSchema } from '../shared/supergroup.js';
+import type {} from '../shared/supergroup-contract.js';
 import type { MentionBinding } from './group-mentions.js';
 import type { ModelActions } from './model-catalog-state.js';
 import type { Context } from '@deepseek-ai/cordis';
@@ -25,7 +27,7 @@ export interface GroupDraft {
   text: string; mentions: string[]; mentionBindings?: MentionBinding[]; followup?: { turnId: string; deliveryId: string }; replyTo?: GroupView['messages'][number];
   uploads: Array<{ id: string; name: string; bytes: number; state: 'uploading' | 'uploaded' | 'uploadFailed'; receiptId?: string }>;
   operation?: { signature: string; request: GroupSend };
-  sending: boolean; error: boolean;
+  sending: boolean; error: boolean; errorCode?: 'supergroup-conflict' | 'supergroup-unsupported';
 }
 type GroupRunSource = { messageId: string; seq: number };
 export interface GroupRunRequest { sessionId: string; turnId: string; requestId: number; source?: GroupRunSource }
@@ -45,6 +47,7 @@ export interface GroupActions {
   upload(sessionId: string, file: File, signal: AbortSignal): Promise<{ receiptId: string; name: string; bytes: number }>;
   imageUrl(sessionId: string, attachment: GroupAttachment['attachment']): Promise<string>;
   remote(): GroupMethods;
+  send?(key: GroupKey, request: GroupSend): Promise<{ turnId?: string }>;
   catalog: PollingCatalog<{ groups: GroupSummary[] }>;
   quotedMessage(key: GroupKey, id: string, signal?: AbortSignal): Promise<GroupView['messages'][number] | undefined>;
   loadThrough(key: GroupKey, seq: number): Promise<void>;
@@ -64,6 +67,8 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
     if (!service) throw new Error('Groups unavailable');
     return service;
   };
+  const supergroupOperations = new Map<string, { workId: string; revision: number }>();
+  ctx.effect(() => () => supergroupOperations.clear(), 'dsh-bot: group input operation receipts');
   const turnExpansion = new Map<string, boolean>();
   const modelMetadata = new Map<string, Awaited<ReturnType<ModelActions['modelInfo']>>>();
   const messageViews = new Map<string, PollingCatalog<{ view?: GroupView }>>();
@@ -91,7 +96,7 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
     publishRunRequest(turnId ? { sessionId: receipt.sessionId, turnId, requestId: ++runRequestSequence, ...(source && { source }) } : undefined);
     ctx.uiWorkspace.openSession(receipt.sessionId as SessionId);
   };
-  return {
+  const result: GroupActions = {
     drafts, draft, patchDraft,
     draftUpdates: { subscribe(listener) { draftListeners.add(listener); return () => { draftListeners.delete(listener); }; }, getSnapshot: () => draftRevision },
     consumeReply(sessionId) { if (reply?.sessionId === sessionId) { reply = undefined; for (const listener of replyListeners) listener(); } },
@@ -122,6 +127,35 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
     },
     turnExpansion, modelMetadata,
     remote,
+    async send(key, request) {
+      const group = result.catalog.getSnapshot().groups.find(row => row.group.id === key.groupId && row.group.createdAt === key.groupCreatedAt);
+      if (!group?.group.supergroup) return { turnId: unwrapGroup(await remote().send(key, request)).id };
+      const rootId = group.group.rootSessionId;
+      if (request.fileReceiptIds?.length || request.round || request.followup || !request.text?.trim()) {
+        patchDraft(rootId, value => ({ ...value, errorCode: 'supergroup-unsupported' }));
+        throw new Error('Supergroup input unsupported');
+      }
+      const service = ctx.get('remote.dshBotSupergroup');
+      if (!service) throw new Error('Supergroup unavailable');
+      const current = supergroupViewSchema.nullable().parse(unwrapGroup(await service.byGroup({ group: key })));
+      if (!current || current.work.id !== group.group.supergroup.workId) throw new Error('Supergroup identity changed');
+      const operationKey = JSON.stringify([key, request.operationId]);
+      const original = supergroupOperations.get(operationKey) ?? { workId: current.work.id, revision: current.work.revision };
+      supergroupOperations.set(operationKey, original);
+      const sent = supergroupSendGroupResultSchema.parse(unwrapGroup(await service.sendGroupInput({ group: key, workId: original.workId,
+        expectedRevision: original.revision, operationId: request.operationId, text: request.text,
+        memberIds: request.memberIds ?? [], ...(request.replyTo ? { replyTo: request.replyTo } : {}) })));
+      await Promise.all([result.catalog.refresh(), result.messageView(key).refresh()]);
+      if (sent.receipt.state === 'conflict' || sent.receipt.state === 'cancelled' || sent.receipt.state === 'unknown') {
+        patchDraft(rootId, value => ({ ...value, errorCode: 'supergroup-conflict', ...(sent.receipt.state === 'conflict' ? { operation: undefined } : {}) }));
+        if (sent.receipt.state === 'conflict') supergroupOperations.delete(operationKey);
+        throw new Error('Supergroup input saved but not queued');
+      }
+      supergroupOperations.delete(operationKey);
+      patchDraft(rootId, value => ({ ...value, errorCode: undefined }));
+      const turnId = sent.view.work.turnIds.at(-1);
+      return turnId ? { turnId } : {};
+    },
     selection,
     select(id, createdAt) {
       requested = { selectedId: id, createdAt, requestId: ++requestSequence };
@@ -169,4 +203,5 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
         options,
       ),
   };
+  return result;
 }

@@ -14,15 +14,19 @@ import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
 import type { GroupMessages } from './messages.js';
 import type { GroupTurnRunner } from './turn-runner.js';
+import { compatibleActivationSpec } from '../common/subagent-activation.js';
+import { checkSupergroup, groupReaders } from './supergroup-admission.js';
 
 /** Task-local single ownership; the shared FIFO bounds native work across tasks. */
 export class ConcurrentGroups {
   constructor(private state: GroupState, private roots: GroupRoots, private messages: GroupMessages, private runner: GroupTurnRunner) {}
   async message(agent: Agent, binding: WorkerBinding, input: z.output<typeof groupToolInput>, callId: string, signal: AbortSignal) {
+    if (input.action === 'request-expert') throw new OperationError('approval-denied');
     return this.state.queue.run(async () => {
       signal.throwIfAborted();
       const t = need(this.state.table('turns').get(binding.turnId)), g = this.state.record(t.group),
         d = need(this.state.table('deliveries').get(binding.deliveryId));
+      await checkSupergroup(this.state, g);
       if (this.state.workers.get(agent.session.id) !== binding || !binding.isActive?.() || !['starting', 'running'].includes(d.state)) throw new OperationError('approval-denied');
       if (input.action === 'skip') { await this.state.putDelivery({ ...d, skipped: true }); return { status: 'skipped' }; }
       if (d.skipped) throw new OperationError('invalid');
@@ -91,7 +95,7 @@ export class ConcurrentGroups {
     const content = JSON.stringify({ taskId: t.id, messageId: receipt.triggerMessageId, authorMemberId: author, text });
     try {
       const childMessageId = await followupInput(this.state, g, root.agent, active.bot, need(active.childSessionId), content, receipt.id, acceptedSignal,
-        () => { admitGroupInput(need(this.state.workers.get(need(active.childSessionId))), blocks(content)); return this.state.ctx.subagents.sendMessage(root.agent, SessionId(need(active.childSessionId)), blocks(content), { signal: acceptedSignal }); });
+        () => { admitGroupInput(need(this.state.workers.get(need(active.childSessionId))), blocks(content), root.agent); return this.state.ctx.subagents.sendMessage(root.agent, SessionId(need(active.childSessionId)), blocks(content), { signal: acceptedSignal }); });
       await this.state.putDelivery({ ...joined, childMessageId, state: 'skipped', reasonCode: 'inbox-accepted' });
       return true;
     } catch { throw new OperationError('recovery-needed'); }
@@ -171,7 +175,7 @@ export class ConcurrentGroups {
       childId = prior?.childSessionId ?? input?.childId ?? SessionId(randomUUID());
       const previous = this.state.workers.get(childId);
       const binding: WorkerBinding = previous ?? { turnId: t.id, deliveryId: d0.id, childId, rootId: g.rootSessionId, presetId: prepared.d.presetId, audience: [] };
-      Object.assign(binding, { deliveryId: d0.id, modelSelection: prepared.modelSelection, audience: this.state.members(g).filter(m => m.enabled && m.removedAt === undefined).map(m => m.bot),
+      Object.assign(binding, { deliveryId: d0.id, modelSelection: prepared.modelSelection, audience: groupReaders(this.state, g),
         resumeAllowed: Boolean(prior), isActive: () => !this.state.stopped && !this.state.cancelledTurns.has(t.id) && !controller.signal.aborted &&
           !admission.signal.aborted && this.state.workers.get(need(childId)) === binding });
       if (binding.agent !== this.state.ctx.agents.get(SessionId(childId))) binding.agent = undefined;
@@ -189,11 +193,12 @@ export class ConcurrentGroups {
       await this.state.queue.run(async () => this.state.putDelivery({ ...need(this.state.table('deliveries').get(d0.id)), childSessionId: childId }));
       if (prior) {
         acceptedMessageId = await followupInput(this.state, g, prepared.root.agent, prepared.d.bot, childId, prepared.context.text, d0.id, controller.signal,
-          () => { const content = [...blocks(prepared.context.text), ...prepared.attachmentBlocks]; admitGroupInput(binding, content); nativeDispatchStarted = true; return this.state.ctx.subagents.sendMessage(prepared.root.agent, SessionId(need(childId)), content, { signal: controller.signal }); });
+          () => { const content = [...blocks(prepared.context.text), ...prepared.attachmentBlocks]; admitGroupInput(binding, content, prepared.root.agent); nativeDispatchStarted = true; return this.state.ctx.subagents.sendMessage(prepared.root.agent, SessionId(need(childId)), content, { signal: controller.signal }); });
       } else {
-        const start = (signal = controller.signal) => { nativeDispatchStarted = true; return this.state.ctx.subagents.startActivation({ childId: SessionId(need(childId)), provider: 'spawn', delivery: 'caller', label: prepared.bot.name, signal,
-          request: { parent: prepared.root.agent, agentPreset: prepared.d.presetId, agentOptions: prepared.route, prompt: [...blocks(prepared.context.text), ...prepared.attachmentBlocks], maxDepth: this.state.registry.config.groupMaxDepth } }); };
-        activation = input ? await need(flow).dispatch(input.id, (_e, signal) => start(signal), controller.signal) : await start();
+        const start = (signal = controller.signal) => { nativeDispatchStarted = true; return this.state.ctx.subagents.startActivation(compatibleActivationSpec({ childId: SessionId(need(childId)), provider: 'spawn', delivery: 'caller', label: prepared.bot.name, signal,
+          request: { parent: prepared.root.agent, agentPreset: prepared.d.presetId, agentOptions: prepared.route, prompt: [...blocks(prepared.context.text), ...prepared.attachmentBlocks], maxDepth: this.state.registry.config.groupMaxDepth } })); };
+        activation = input ? await need(flow).dispatch(input.id, (_e, signal) => start(signal), controller.signal,
+          () => checkSupergroup(this.state, g).then(() => {})) : await start();
         acceptedMessageId = activation.messageId;
         this.state.activations.set(d0.id, activation);
         void activation.result.then(() => admission.abort(), () => admission.abort());

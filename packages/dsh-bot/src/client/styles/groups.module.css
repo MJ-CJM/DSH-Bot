@@ -12,18 +12,18 @@
 .panel *::after {
   box-sizing: border-box;
 }
-.panel :is(h2, h3, p) {
+.panel :is(h2, h3, p):not(:where(.nativeProcess *)) {
   margin: 0;
 }
-.panel h2 {
+.panel h2:not(:where(.nativeProcess *)) {
   font-size: 18px;
   margin-bottom: 12px;
 }
-.panel h3 {
+.panel h3:not(:where(.nativeProcess *)) {
   font-size: 16px;
 }
 /* Management uses native controls outside its legacy group editor. */
-:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) :is(button, input, textarea, select) {
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) :is(button, input, textarea, select):not(:where(.nativeProcess *)) {
   appearance: none;
   font: inherit;
   color: var(--dsw-alias-label-primary);
@@ -34,29 +34,29 @@
   min-width: 0;
   max-width: 100%;
 }
-.panel :is(input:not([type="checkbox"]), textarea, select) {
+.panel :is(input:not([type="checkbox"]), textarea, select):not(:where(.nativeProcess *)) {
   width: 100%;
 }
-:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button {
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button:not(:where(.nativeProcess *)) {
   cursor: pointer;
   line-height: 20px;
   text-align: start;
 }
-:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button:hover:enabled {
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button:hover:enabled:not(:where(.nativeProcess *)) {
   background: var(--dsw-alias-interactive-bg-hover);
 }
-:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button:disabled {
+:is(.panel:not(:where(.managementPanel)), :where(.managementPanel) .editor) button:disabled:not(:where(.nativeProcess *)) {
   color: var(--dsw-alias-label-tertiary);
   cursor: default;
 }
-.panel [role="alert"] {
+.panel [role="alert"]:not(:where(.nativeProcess *)) {
   color: var(--dsw-alias-state-error-primary);
 }
-.panel :focus-visible {
+.panel :focus-visible:not(:where(.nativeProcess *)) {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
 }
-.panel button[aria-current="page"] {
+.panel button[aria-current="page"]:not(:where(.nativeProcess *)) {
   border-color: var(--dsw-alias-state-business-primary);
   background: var(--dsw-alias-bg-layer-1);
 }
@@ -198,14 +198,14 @@
   flex-direction: column;
   gap: 6px;
 }
-.panel fieldset {
+.panel fieldset:not(:where(.nativeProcess *)) {
   min-width: 0;
   margin: 0;
   padding: 12px;
   border: 1px solid var(--dsw-alias-border-l3);
   border-radius: 8px;
 }
-.panel legend {
+.panel legend:not(:where(.nativeProcess *)) {
   padding-inline: 4px;
   color: var(--dsw-alias-label-secondary);
 }
@@ -267,7 +267,7 @@
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
 }
-.panel input[type="checkbox"] {
+.panel input[type="checkbox"]:not(:where(.nativeProcess *)) {
   display: grid;
   place-content: center;
   flex: none;
@@ -277,11 +277,11 @@
   padding: 0;
   border-radius: 4px;
 }
-.panel input[type="checkbox"]:checked {
+.panel input[type="checkbox"]:checked:not(:where(.nativeProcess *)) {
   background: var(--dsw-alias-state-business-primary);
   border-color: var(--dsw-alias-state-business-primary);
 }
-.panel input[type="checkbox"]:checked::before {
+.panel input[type="checkbox"]:checked:not(:where(.nativeProcess *))::before {
   content: "";
   width: 8px;
   height: 5px;
@@ -289,7 +289,7 @@
   border-bottom: 2px solid var(--dsw-alias-bg-base);
   transform: rotate(-45deg) translateY(-1px);
 }
-.panel select {
+.panel select:not(:where(.nativeProcess *)) {
   appearance: auto;
   padding-right: 28px;
 }
@@ -984,3 +984,115 @@
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
 }
+
+/* Small, passive work summary in the originating Bot's native conversation. */
+.panel.workCard {
+  width: min(100%, 500px);
+  margin-block: 12px 4px;
+  padding: 13px 16px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-base);
+  font-size: 13px;
+}
+.workHeading,
+.workFooter,
+.workMembers,
+.workActions,
+.workStatus {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.workHeading { gap: 12px; justify-content: space-between; }
+.workName { min-width: 0; font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workStatus { flex: none; gap: 5px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.workFooter { flex-wrap: wrap; gap: 10px 12px; margin-top: 10px; }
+.workMembers { gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.workFaces { display: flex; align-items: center; padding-inline-end: 2px; }
+.workFace { border: 2px solid var(--dsw-alias-bg-base); box-sizing: content-box; }
+.workFace + .workFace { margin-inline-start: -6px; }
+.workActions { gap: 8px; margin-inline-start: auto; flex-wrap: wrap; }
+.panel.workCard :is(.workDiscussion, .workStop) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 12px;
+}
+.panel.workCard .workDiscussion { color: var(--dsw-alias-state-business-primary); }
+.panel.workCard .workStop { color: var(--dsw-alias-label-secondary); }
+.workExecution { margin-top: 6px; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.workExecution > summary { cursor: pointer; width: fit-content; padding-block: 4px; }
+.workExecution[open] { margin-top: 12px; border-top: 1px solid var(--dsw-alias-border-l3); padding-top: 6px; }
+.workCard > [role="alert"] { margin-top: 8px; font-size: 12px; }
+
+/* These selectors only touch plugin-owned message/disclosure elements. */
+.panel.workspaceMessage { padding-block: 0; }
+.messageHeader { gap: 8px; flex-wrap: nowrap; }
+.messageAuthor { min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.messageHeader time { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.panel .messageHeader .replyAction { margin-inline-start: auto; min-height: 28px; padding: 2px 6px; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.botMessage > .messageContent { margin-inline-start: 36px; font-size: 14px; line-height: 1.7; }
+.memberJoin { display: flex; align-items: center; justify-content: center; gap: 6px; margin-block: 14px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 1.6; }
+.memberJoin > span:not([data-bot-avatar]) { min-width: 0; overflow-wrap: anywhere; }
+.memberJoin time { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; }
+.panel .inlineExecution .turnSummary { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; min-height: 32px; border: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.executionChevron { width: 10px; flex: none; color: var(--dsw-alias-label-tertiary); }
+.turnSummaryState { color: var(--dsw-alias-label-tertiary); }
+@media (max-width: 440px) {
+  .panel.workCard { padding: 12px; }
+  .workHeading { align-items: flex-start; gap: 8px; }
+  .workName { white-space: normal; overflow-wrap: anywhere; }
+  .workStatus { max-width: 45%; white-space: normal; }
+  .workActions { margin-inline-start: 0; }
+  .panel.workCard :is(.workDiscussion, .workStop),
+  .panel .messageHeader .replyAction,
+  .panel .inlineExecution .turnSummary { min-height: 44px; }
+  .memberJoin { justify-content: flex-start; }
+}
+
+/* The narrow read-only member list is intentionally separate from management. */
+.compactMembers { min-width: 0; font-size: 13px; line-height: 1.5; }
+.compactMembers > p { margin: 8px 0; color: var(--dsw-alias-label-secondary); }
+.compactMembers > [role="alert"] { color: var(--dsw-alias-state-error-primary); }
+.compactMember { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; min-width: 0; padding-block: 14px; border-bottom: 1px solid var(--dsw-alias-border-l3); }
+.compactMember:first-of-type { padding-top: 4px; }
+.compactMember:last-of-type { border-bottom: 0; }
+.compactMemberBody { min-width: 0; }
+.compactMemberHeading { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.compactMemberName,
+.compactMembers .compactMemberLink { flex: 1; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.compactMembers .compactMemberLink { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; border-radius: 3px; color: var(--dsw-alias-label-primary); background: transparent; text-align: start; cursor: pointer; font-family: inherit; }
+.compactMemberLinkLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit; }
+.compactMemberArrow { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.compactMembers .compactMemberLink:hover { color: var(--dsw-alias-state-business-primary); }
+.compactMemberState { flex: none; max-width: 44%; overflow: hidden; color: var(--dsw-alias-label-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.compactMember[data-group-member-state="running"] .compactMemberState,
+.compactMember[data-group-member-state="starting"] .compactMemberState { color: var(--dsw-alias-state-business-primary); }
+.compactMember[data-group-member-state="failed"] .compactMemberState { color: var(--dsw-alias-state-error-primary); }
+.compactMemberRole { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin: 4px 0 0; overflow: hidden; overflow-wrap: anywhere; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.6; }
+.compactMemberModel { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin: 6px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 1.5; }
+.compactMemberModelValue,
+.compactMemberModelSource { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compactMemberModelSource { font-size: 11px; }
+.compactMembers .compactMemberRetry { padding: 4px 0; border: 0; border-radius: 3px; color: var(--dsw-alias-state-business-primary); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.compactMembers :is(.compactMemberLink, .compactMemberRetry):focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 3px; }
+@media (pointer: coarse) { .compactMembers :is(.compactMemberLink, .compactMemberRetry) { min-height: 44px; } }
+.teamRecipes { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 8px; }
+.teamRecipes label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.teamRecipes textarea { box-sizing: border-box; width: 100%; min-height: 160px; resize: vertical; }
+.teamRecipes :is(input, select) { box-sizing: border-box; max-width: 100%; }
+.teamRecipes ul { padding-inline-start: 20px; }
+.teamRecipes [data-team-preview] { display: flex; flex-direction: column; gap: 10px; }
+
+.teamRecipes :is(h3, p, ul) { margin-block: 0; }
+.teamRecipes :is(input, select, textarea) { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; }
+.teamRecipes { font-size: 13px; line-height: 1.5; }
+.teamRecipes h3 { font-size: 14px; }
+.teamRecipes details > summary { cursor: pointer; color: var(--dsw-alias-label-secondary); }

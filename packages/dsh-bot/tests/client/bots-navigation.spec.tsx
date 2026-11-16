@@ -168,3 +168,18 @@ it('never substitutes a recreated Bot into an open detail or draft', async () =>
   expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-identity')).toBe(`${original.id}:${original.createdAt + 1}`);
   expect(app.remote.methods.update).not.toHaveBeenCalled();
 });
+
+it('keeps directory navigation visible inside settings and handles repeated direct management requests', async () => {
+  const app = await mount(bots, 'en', configure), page = actions(app);
+  await click(settingsButton(app));
+  const nav = app.container.querySelector('nav[aria-label="' + en.ui['navigation.sections'] + '"]')!;
+  expect(nav.hasAttribute('hidden')).toBe(false);
+  await act(async () => page.pageNavigation?.open?.('groups'));
+  expect(app.container.querySelector('[data-settings-bot]')).toBeNull();
+  expect(app.container.querySelector('section[aria-label="' + en.ui['groups.title'] + '"]')).not.toBeNull();
+  await click(settingsButton(app));
+  await act(async () => page.pageNavigation?.open?.('bots'));
+  expect(app.container.querySelector('[data-bots-list="bots"]')).not.toBeNull();
+  expect(page.pageNavigation?.getRequest?.()).toBeUndefined();
+  expect(app.remote.methods.openConversation).not.toHaveBeenCalled();
+});

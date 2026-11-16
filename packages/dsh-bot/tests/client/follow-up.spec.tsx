@@ -282,3 +282,24 @@ test('changing generation or hiding the page invalidates the old view and releas
     expect(queryByRole(app.node, 'button', { name: 'followUp.pause' })).toBeNull();
   } finally { await app.close(); }
 });
+
+test('following an existing task pre-fills the exact condition and editable deadline without executing or saving on open', async () => {
+  const row = card(bot, 'Existing research', { kind: 'native-subagent', sessionId: 'main', childSessionId: 'child', turn: 1 }, { kind: 'tracking' });
+  row.completionTarget = { kind: 'subtask-completed', cardId: row.id, origin: row.origin as Extract<FollowUpCard['origin'], { kind: 'native-subagent' }>, sourceGeneration: 1, afterRevision: 1 };
+  const followUpWatchCreate = vi.fn(async (input: { commandId: string }) => receipt(input.commandId));
+  const app = surface({ followUpSummary: async () => ok(ready(bot, true, [row])), followUpPage: async () => ok({ rows: [row] }), followUpWatchCreate });
+  try {
+    await app.render(bot);
+    await app.click('simple.watchTask');
+    expect((getByLabelText(app.node, 'followUp.watchTitle') as HTMLInputElement).value).toBe(row.title);
+    expect((getByLabelText(app.node, 'followUp.watchCompletion') as HTMLTextAreaElement).value).toBe('simple.reviewResult');
+    const deadline = getByLabelText(app.node, 'followUp.when.expires') as HTMLInputElement;
+    expect(Date.parse(deadline.value)).toBeGreaterThan(Date.now());
+    expect(followUpWatchCreate).not.toHaveBeenCalled();
+    await app.click('actions.cancel');
+    expect(followUpWatchCreate).not.toHaveBeenCalled();
+    await app.click('simple.watchTask');
+    await app.click('followUp.save');
+    expect(followUpWatchCreate).toHaveBeenCalledWith(expect.objectContaining({ subject: bot, watch: expect.objectContaining({ title: row.title, when: row.completionTarget }) }));
+  } finally { await app.close(); }
+});

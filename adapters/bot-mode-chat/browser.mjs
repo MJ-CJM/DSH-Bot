@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { chmod, cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { dirname, relative, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { buildBotModeAdapter } from '../../scripts/build-bot-mode-adapter.mjs';
+import { buildBotModeChatAdapter } from '../../scripts/build-bot-mode-chat-adapter.mjs';
+import { webHost } from '../../scripts/deepening/b4-web-host.mjs';
+import { dismissFirstRunOverlays, installOverlayHandler } from '../../packages/dsh-bot/scripts/screenshot-support.ts';
+const root=process.cwd();assert.equal(process.env.DSH_HOME,resolve(root,'.dsh-dev'));
+const dir=resolve(root,'.dsh-dev/bot-mode-chat',`${Date.now()}-${process.pid}`);await mkdir(dir,{recursive:true});
+process.env.TMPDIR=resolve(dir,'driver-tmp');await mkdir(process.env.TMPDIR,{recursive:true});
+const save=(name,value)=>writeFile(resolve(dir,`${name}.json`),JSON.stringify(value,null,2));const sha=x=>createHash('sha256').update(x).digest('hex');
+const runtime=resolve(dir,'runtime');execFileSync('/bin/cp',['-cR',resolve(root,'.dsh-dev/proactive-bot/host-runtime'),runtime]);
+const r=createRequire(resolve(runtime,'package.json')),cli=r.resolve('@deepseek-ai/dsh/package.json'),native=createRequire(cli);
+const shortcut=await buildBotModeAdapter({runtime,output:resolve(dir,'shortcuts-package')});
+const chat=await buildBotModeChatAdapter({output:resolve(dir,'chat-package')});
+for(const [id,adapter]of [['@deepseek-ai/dsh-client-shortcuts',shortcut],['@deepseek-ai/dsh-client-ui-chat',chat]]){const target=dirname(native.resolve(`${id}/package.json`));assert.ok(target.startsWith(`${runtime}/`));await cp(resolve(adapter.package,'lib'),resolve(target,'lib'),{recursive:true});await cp(resolve(adapter.package,'package.json'),resolve(target,'package.json'));}
+const bin=resolve(runtime,'chat-probe-dsh');await writeFile(bin,`#!/bin/sh\nset -eu\nbase=$(CDPATH= cd "$(dirname "$0")" && pwd)\nexec node "$base/${relative(runtime,resolve(dirname(cli),'lib/bin.js'))}" "$@"\n`);await chmod(bin,0o755);process.env.DSH_BOT_DSH_BIN=bin;
+const frozen=JSON.parse(await readFile(resolve(root,'.dsh-dev/bot-mode-native/instance/home/profiles/desktop/package.json'))).dependencies['dsh-bot'].replace(/^file:/,'');
+const frozenDir=resolve(dir,'frozen');await mkdir(frozenDir,{recursive:true});execFileSync('/usr/bin/tar',['-xzf',frozen,'-C',frozenDir]);
+async function digests(path,prefix=''){const files=[];for(const row of await readdir(path,{withFileTypes:true})){assert.ok(!row.isSymbolicLink());const file=prefix?`${prefix}/${row.name}`:row.name;if(row.isDirectory())files.push(...await digests(resolve(path,row.name),file));else files.push({file,sha256:sha(await readFile(resolve(path,row.name)))});}return files;}
+const artifactAudit={sha256:sha(await readFile(frozen)),files:await digests(resolve(frozenDir,'package')),scope:'Frozen earlier product used only to host a neutral native Chat adapter fixture; not the final product UI'};
+const q=createRequire(resolve(root,'packages/dsh-bot/package.json'));const {chromium}=q('playwright-core');
+let host,browser,page;const checks=[],errors=[],responses=[];let forkFrames=0,acceptFork;
+try{
+ host=await webHost(dir,'bot-mode-chat',frozen,resolve(root,'adapters/bot-mode-chat/probe/host.mjs'),[],{offline:true,artifactAudit});
+ const fixture=JSON.parse(await readFile(resolve(dir,'fixture.json'),'utf8'));
+ const cache=resolve(homedir(),'Library/Caches/ms-playwright');const executablePath=(await readdir(cache)).filter(n=>/^chromium_headless_shell-\d+$/.test(n)).sort().reverse().flatMap(n=>['arm64','x64'].map(a=>resolve(cache,n,`chrome-headless-shell-mac-${a}`,'chrome-headless-shell'))).find(existsSync);assert.ok(executablePath);
+ browser=await chromium.launch({executablePath,headless:true,chromiumSandbox:true,env:host.env});page=await browser.newPage({viewport:{width:1360,height:1000},locale:'en-US'});page.setDefaultTimeout(20000);
+ page.on('pageerror',e=>errors.push(String(e)));page.on('request',request=>{if(request.url().includes('fork')||(request.postData()??'').includes('fork')){forkFrames++;acceptFork?.()}});page.on('websocket',ws=>ws.on('framesent',frame=>{if(String(frame.payload).includes('fork')){forkFrames++;acceptFork?.()}}));
+ const expectedShortcut=await readFile(resolve(shortcut.package,'lib/client.js'),'utf8'),expectedChat=await readFile(resolve(chat.package,'lib/client.js'),'utf8');
+ page.on('response',async res=>{if(!res.url().includes('plugins/'))return;try{const body=await res.text();if(body.includes(chat.marker))responses.push({responseSha256:sha(body),chatExact:body.includes(expectedChat),shortcutExact:body.includes(expectedShortcut)});}catch{}});
+ await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+ await installOverlayHandler(page,()=>{});await page.goto(host.url,{waitUntil:'domcontentloaded'});await dismissFirstRunOverlays(page,()=>{},'chat-adapter');
+ await page.waitForFunction(()=>{const node=document.querySelector('[data-chat-policy-state]');if(!node)return false;const x=JSON.parse(node.textContent);return x.phase==='ready'&&x.known});
+ await page.getByRole('button',{name:'Open native fixture',exact:true}).click();
+ const main=page.locator(`[data-conversation-content][data-conversation-session="${fixture.sessionId}"]:visible`);await main.waitFor();await main.getByText('CHAT_ADAPTER_NATIVE_ASSISTANT',{exact:false}).first().waitFor();
+ const branch=main.getByRole('button',{name:'Branch into a new conversation',exact:true});await branch.first().waitFor();const copiesBefore=await main.getByRole('button',{name:'Copy',exact:true}).count();assert.ok(copiesBefore>0);
+ const state=async()=>JSON.parse(await page.locator('[data-chat-policy-state]').textContent());const before=await state();assert.ok(before.surfaces.includes('chat.branch'));const framesBefore=forkFrames;
+ await page.getByRole('button',{name:'Enable Chat policy',exact:true}).click();await page.waitForFunction(()=>JSON.parse(document.querySelector('[data-chat-policy-state]').textContent).active);await branch.first().waitFor({state:'detached'});
+ assert.equal(await branch.count(),0);assert.equal(await main.getByRole('button',{name:'Copy',exact:true}).count(),copiesBefore);assert.ok(await main.isVisible());assert.equal(forkFrames,framesBefore);
+ checks.push({name:'actual native Branch absent during mode; copy preserved; no outgoing fork frame',status:'PASS',forkFrames:forkFrames-framesBefore});
+ await main.locator('[contenteditable="true"]').first().click();await page.keyboard.press('Shift+Meta+F');assert.equal((await state()).blocked,1);assert.equal(forkFrames,framesBefore);
+ checks.push({name:'hidden Fork shortcut consumed with no fork request',status:'PASS'});await page.screenshot({path:resolve(dir,'01-branch-hidden.png'),fullPage:true});
+ await page.getByRole('button',{name:'Dispose Chat policy',exact:true}).click();await page.waitForFunction(()=>!JSON.parse(document.querySelector('[data-chat-policy-state]').textContent).active);await branch.first().waitFor();
+ const nativeRequest=new Promise((accept,reject)=>{const timer=setTimeout(()=>reject(Error('Native Branch must issue a fork request after disposal')),5000);acceptFork=()=>{clearTimeout(timer);accept()}});await branch.first().click();await nativeRequest;acceptFork=undefined;assert.ok(forkFrames>framesBefore);
+ checks.push({name:'dispose restores actual native Branch and its native fork request; existing Bot guard stays intact',status:'PASS',outgoingForkFrames:forkFrames-framesBefore});
+ assert.ok(responses.some(row=>row.chatExact&&row.shortcutExact));checks.push({name:'actual served Chat and shortcut factories equal built bytes; no HTTP rewriting',status:'PASS',responses});
+ await page.screenshot({path:resolve(dir,'02-native-branch-restored.png'),fullPage:true});assert.deepEqual(errors,[]);
+ await save('result',{status:'PASS',dir,checks,errors,adapters:{shortcut,chat},realModelRequests:0});console.log(JSON.stringify({status:'PASS',dir,checks:checks.length}));
+}catch(error){await save('result',{status:'FAIL',error:String(error.stack??error),checks,errors,responses});await page?.screenshot({path:resolve(dir,'failure.png'),fullPage:true}).catch(()=>{});console.error(JSON.stringify({status:'FAIL',dir,error:String(error)}));process.exitCode=1;}finally{await browser?.close();await host?.stop();}

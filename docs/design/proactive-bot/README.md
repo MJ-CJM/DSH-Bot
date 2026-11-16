@@ -1,5 +1,7 @@
 # DSH-Bot 主动协作完整设计
 
+> 2026-11-12 后续方向：Supergroup 的产品范围与优先级以[新整体方案](../supergroup/README.md)和[开发计划](../../../tasks/supergroup/README.md)为准。P0 在原对话完成自动组队、途中邀专家与统一交付；项目接续、待决策事项作为内部支撑，真实事件源放在 P2。本文保留已有主动协作设计与历史验收，不代表 Supergroup 已实现。
+
 > 2026-11-09：**0.6.6 非定时个人/群主动跟进**已实现并形成同包验收候选；用户确认定时能力留到后续版本。当前[验收与边界](../../verification/v066-local-follow-up.md)、[交付记录](../../releases/v0.6.6.md)和[实施台账](../../../tasks/proactive-bot/V066-implementation.md)优先于下方历史准备状态。完整目标保留在[设计](v0.6.6-personal-group-follow-up.md)，GitHub 是可选来源。
 
 > C/D 更新：用户已授权继续完成剩余开发；等待/核对、文档任务、归因、方法评估与交换、结果观察已实现，按同包隔离验证交付。具体能力边界与验收证据见 [C/D 验收记录](../../verification/proactive-optimization-cd.md)。普通入口保持现有侧栏与任务/反馈页，未升级桌面版。

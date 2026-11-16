@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@deepseek-ai/*": [
+        "../../node_modules/.pnpm/node_modules/@deepseek-ai/*"
+      ],
+      "@deepseek-ai/dsh-client-locale/client": [
+        "../../node_modules/.pnpm/node_modules/@deepseek-ai/dsh-client-locale/lib/types/client/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/client/**/*.ts"
+  ]
+}

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createGroupActions } from '../../src/client/groups-state.js';
 import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import { GroupConversation } from '../../src/client/components/GroupsPanel.js';
-import { GroupMessageCard } from '../../src/client/components/GroupTimeline.js';
+import { GroupMessageCard, GroupTimeline } from '../../src/client/components/GroupTimeline.js';
 import { selectGroupComposer, groupMessageDefinition } from '../../src/client/workspace-group.js';
 import { bots, view, summary, configure } from './group-fixture.js';
 import { mountClient, button, click, fill, field } from './helpers.js';
@@ -129,6 +129,7 @@ describe('exclusive native group message projection', () => {
     [{ code: 'QUOTA', status: 402, message: 'Insufficient Balance (request_id: r-1)' }, en.ui['groups.failure.quota'], 'QUOTA · 402'],
     [{ code: 'ACCOUNT_QUOTA', message: 'quota' }, en.ui['groups.failure.quota'], 'ACCOUNT_QUOTA'],
     [{ code: 'AUTH', status: 401, message: 'bad key' }, en.ui['groups.failure.auth'], 'AUTH · 401'],
+    [{ code: 'APPROVAL_REJECTED', message: 'the user rejected tool "bot_delegate"' }, en.ui['groups.failure.approvalRejected'], 'APPROVAL_REJECTED'],
     [{ code: 'UPSTREAM', status: 503, message: 'Service temporarily unavailable' }, 'Service temporarily unavailable', 'UPSTREAM · 503'],
     [undefined, en.ui['groups.stop.error'], ''],
   ] as const)('names the native failure cause on a partial reply: %o', async (failure, text, code) => {
@@ -208,6 +209,40 @@ it('sent quotes render real authors, invoke original jump, and show unavailable 
     await render(true); expect(element.querySelector('blockquote')?.textContent).toContain('You');
     await click(element.querySelector('blockquote button') as HTMLButtonElement); expect(jump).toHaveBeenCalledWith('original');
     await render(false); expect(element.textContent).toContain(en.ui['groups.quoteUnavailable']);
+  } finally { await act(async () => root.unmount()); }
+});
+
+it.each(['en', 'zh'] as const)('%s task source and quoted fallback follow exact Supergroup metadata in both renderers', async language => {
+  const { WorkspaceMessage } = await import('../../src/client/workspace-group.js');
+  const element = document.createElement('div'), root = createRoot(element);
+  const data = view(), key = { groupId: data.group.id, groupCreatedAt: data.group.createdAt };
+  const input = { id: 'task-source', seq: 1, at: 1, text: 'Authorized task text', turnId: 'task-turn', authorKind: 'proactive' as const };
+  const reply = { ...input, id: 'task-reply', seq: 2, replyTo: input.id, text: 'Task reference' };
+  data.messages = [input, reply];
+  const snapshot = { view: data };
+  const actions = { messageView: () => ({ subscribe: () => () => {}, getSnapshot: () => snapshot }) } as unknown as import('../../src/client/groups-state.js').GroupActions;
+  const labels = language === 'en' ? en : zh;
+  const t = ((name: keyof typeof en.ui) => labels.ui[name]) as PropsLocale<'dsh-bot'>['t'];
+  const setSupergroup = () => { data.group.supergroup = { workId: 'work', originSessionId: 'origin', originMessageId: 'origin-input',
+    owner: { botId: 'alpha', botCreatedAt: 1 }, readers: [{ botId: 'alpha', botCreatedAt: 1 }], expiresAt: 1000 }; };
+  try {
+    for (const automatic of [false, true]) {
+      if (automatic) setSupergroup(); else delete data.group.supergroup;
+      const expected = t(automatic ? 'groups.collaborationSource' : 'proactive.groupSource');
+      await act(async () => root.render(<GroupTimeline view={data} messages={data.messages} lookup={() => undefined}
+        expanded={{}} onExpand={() => {}} busy={false} onCancel={() => {}} onReply={() => {}} onOpenSession={async () => {}} onOpenAttachment={async () => {}} t={t} />));
+      expect(element.querySelector('blockquote strong')?.textContent).toBe(expected);
+      expect([...element.querySelectorAll('[data-group-author="proactive"] strong')].every(node => node.textContent === expected)).toBe(true);
+      await act(async () => root.render(<WorkspaceMessage node={{ data: { group: key, message: reply } } as never} actions={actions} onOpenSession={async () => {}} t={t} />));
+      expect(element.querySelector('blockquote strong')?.textContent).toBe(expected);
+      expect([...element.querySelectorAll('[data-group-author="proactive"] strong')].every(node => node.textContent === expected)).toBe(true);
+    }
+    // A stale or mismatched generation cannot classify another group's source.
+    data.group.createdAt = 999;
+    await act(async () => root.render(<WorkspaceMessage node={{ data: { group: key, message: reply } } as never} actions={actions} onOpenSession={async () => {}} t={t} />));
+    expect(element.querySelector('blockquote strong')?.textContent).toBe(t('proactive.groupSource'));
+    expect(element.textContent).not.toContain(t('groups.collaborationSource'));
+    expect(data.messages.map(message => message.authorKind)).toEqual(['proactive', 'proactive']);
   } finally { await act(async () => root.unmount()); }
 });
 

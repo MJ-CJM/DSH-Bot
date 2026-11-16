@@ -17,6 +17,7 @@ import { ForgetPreview, type ForgetActions } from './ForgetPreview.js';
 import { MemoryCleanupStatus } from './MemoryCleanupStatus.js';
 import { RootInstructionsWarning } from './RootInstructionsWarning.js';
 import { GroupRecallPanel } from './GroupRecallPanel.js';
+import { MemoryChanges, type MemoryChangesBinding } from './MemoryChanges.js';
 
 export type MemoryPanelInput = Pick<MemoryRecord, 'content' | 'kind' | 'tags' | 'pinned'>;
 export interface MemoryPanelProps {
@@ -27,6 +28,7 @@ export interface MemoryPanelProps {
   onRemove(id: string): unknown | Promise<unknown>;
   forgetting?: ForgetActions;
   shared?: SharedMemoryBinding;
+  changes?: MemoryChangesBinding;
   groupRecall?: GroupRecallBinding;
   onOpenSession(id: string): unknown | Promise<unknown>;
   t: PropsLocale<'dsh-bot'>['t'];
@@ -35,7 +37,7 @@ export interface MemoryPanelProps {
 /** The owning page binds each action to this Bot and refreshes the catalog after
  * mutations. No Context, Host service, portal or additional modal is needed here.
  */
-export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, forgetting, shared, groupRecall, t, active = true }:
+export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSession, forgetting, shared, changes, groupRecall, t, active = true }:
   MemoryPanelProps & { active?: boolean }) {
   const embedded = Boolean(useContext(SettingsBotContext));
   const [managedOpened, setManagedOpened] = useState(false);
@@ -251,6 +253,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
       )}
       </div>
       {groupRecall && active && <GroupRecallPanel bot={bot} binding={groupRecall} t={t} />}
+      {changes && active && <MemoryChanges key={`${bot.id}:${bot.createdAt}`} binding={changes} t={t} />}
       <details><summary>{t('memory.behavior')}</summary><p className={styles.hint}>{t('memory.sessionNotice')}</p></details>
     </section>
   );

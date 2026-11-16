@@ -6,6 +6,9 @@ export const OPERATION_CODES = {
   unavailable: 'dsh-bot/unavailable',
   unsupported: 'dsh-bot/unsupported',
   'approval-denied': 'dsh-bot/approval-denied',
+  'budget-exhausted': 'dsh-bot/budget-exhausted',
+  'route-loop': 'dsh-bot/route-loop',
+  'member-limit': 'dsh-bot/member-limit',
   'recovery-needed': 'dsh-bot/recovery-needed',
 } as const;
 export type OperationCode = keyof typeof OPERATION_CODES;

@@ -72,7 +72,7 @@ export function useMemberChat(bridge: ExecutionBridge, parentId: string, childId
   return { snapshot, failed };
 }
 
-/** Report whether a member's loaded native tool results include an access-mode denial; renders nothing. */
+/** Report structured access/approval denials without inferring who rejected them; renders nothing. */
 export function GroupPermissionDenialProbe({ parentId, childId, bridge, onChange }: {
   parentId: string; childId: string; bridge: ExecutionBridge; onChange(childId: string, denied: boolean): void;
 }) {

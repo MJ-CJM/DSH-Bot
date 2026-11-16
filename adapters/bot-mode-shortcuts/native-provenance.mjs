@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+const root=process.cwd(),base=resolve(root,'.dsh-dev/bot-mode-native');
+const log=await readFile(resolve(base,'native-main.log'),'utf8');
+const launch=[...log.matchAll(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+)/g)].at(-1)?.[1];assert.ok(launch);
+const expected=await readFile(resolve(root,'.dsh-dev/bot-mode-adapter/package/lib/client.js'),'utf8');
+const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const auth=await fetch(launch,{redirect:'manual'});assert.equal(auth.status,303);await auth.body?.cancel();
+const cookie=auth.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie);
+const origin=new URL(launch).origin;
+const index=await fetch(origin,{headers:{cookie}});const html=await index.text();
+const urls=[...new Set([...html.matchAll(/(?:src|href)="([^"]*plugins[^"]+)"/g)].map(row=>row[1].replaceAll('&amp;','&')))];
+let proof;
+for(const url of urls){if(!url.includes('dsh-client-shortcuts'))continue;const response=await fetch(new URL(url,origin),{headers:{cookie}});assert.ok(response.ok);const body=await response.text();if(!body.includes('DSH_BOT_COMMAND_MODE_ADAPTER_RC2_V1'))continue;
+assert.ok(body.includes(expected),'Actual native Host response must contain the whole built adapter Client exactly');
+proof={status:'PASS',origin,path:new URL(url,origin).pathname,responseSha256:sha(body),bytes:Buffer.byteLength(body),factorySha256:sha(expected),factoryExact:true,marker:true,transport:'Actual isolated native Host HTTP response; no response rewriting'};break;}
+assert.ok(proof,'Native Host index must expose adapted shortcuts in a real plugin response');
+await writeFile(resolve(base,'served-adapter.json'),JSON.stringify(proof,null,2));console.log(JSON.stringify(proof,null,2));

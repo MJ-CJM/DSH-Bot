@@ -1,10 +1,13 @@
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain';
+import { z } from 'zod';
+import { savedTeamRecipeSchema } from '../../shared/team-recipes.js';
 import {
   groupRecordSchema,
   groupMemberSchema,
   groupTurnSchema,
   groupDeliverySchema,
   groupReadSchema,
+  groupKeySchema,
   type GroupKey,
   type GroupTurn,
   type GroupSpeaker,
@@ -14,6 +17,8 @@ import type { BotKey } from '../../shared/integrations.js';
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
+    'dsh-bot-supergroup': { kind: 'dsh-bot-supergroup'; group: GroupKey; turnId: string; workId: string;
+      originSessionId: string; originMessageId: string; originSeq: number };
     'dsh-bot-group-setup': { kind: 'dsh-bot-group-setup'; group: GroupKey; operation: 'create' | 'restore' | 'open'; operationId: string };
     'dsh-bot-group-user': { kind: 'dsh-bot-group-user'; group: GroupKey; turnId: string; replyTo?: string; rpcId?: string };
     'dsh-bot-group-proactive': {
@@ -45,10 +50,12 @@ export const groupsDomain = defineDomain({
   version: 1,
   tables: {
     groups: domainTable(groupRecordSchema),
+    team_recipes: domainTable(savedTeamRecipeSchema),
     members: domainTable(groupMemberSchema),
     turns: domainTable(groupTurnSchema),
     deliveries: domainTable(groupDeliverySchema),
     read_state: domainTable(groupReadSchema),
+    supergroup_requests: domainTable(z.strictObject({ group: groupKeySchema, count: z.number().int().nonnegative() })),
   },
 });
 export const sameBot = (a: BotKey, b: BotKey) => a.botId === b.botId && a.botCreatedAt === b.botCreatedAt;

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createForChatSchema, type CreateForChatInput, type StartOnboardingInput } from '../shared/onboarding.js';
 import type { Onboarding } from './onboarding/coordinator.js';
+import type { Supergroup } from './supergroup/service.js';
 import { AutoShareQuota } from './memory/quota.js';
 import { autoShareToggleSchema } from '../shared/data-flow.js';
 import { migrateMemoryDeny } from '../shared/memory-tool-names.js';
@@ -37,11 +38,13 @@ declare module '@deepseek-ai/cordis' {
   }
   interface Events {
     'dsh-bot/changed'(change: BotChanged): void;
+    'dsh-bot/supergroup-changed'(): void;
   }
 }
 
 export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
   onboarding?: Onboarding;
+  supergroup?: Supergroup;
   private readonly personaListeners = new Set<() => void>();
   /** Synchronous generation snapshot for preset plugins. It deliberately bypasses
    * the Remote queue: register() activates rows while that queue is held. */

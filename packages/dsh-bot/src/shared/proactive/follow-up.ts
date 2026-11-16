@@ -56,6 +56,17 @@ export const followUpOriginSchema = z.discriminatedUnion('kind', [
 ]);
 export type FollowUpOrigin = z.output<typeof followUpOriginSchema>;
 
+/** Exact existing fact to observe, chosen from a card owned by this subject. */
+export const followUpCompletionTargetSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('subtask-completed'), cardId: resourceId,
+    origin: localOriginSchema, sourceGeneration: revision, afterRevision: revision }),
+  z.strictObject({ kind: z.literal('ci-completed'), cardId: resourceId,
+    origin: z.strictObject({ kind: z.literal('work'), ticketId: resourceId, assignmentId: resourceId }),
+    sourceId: resourceId, sourceGeneration: revision, threadId: resourceId,
+    afterAttempt: revision, afterObservedAt: z.iso.datetime() }),
+]);
+export type FollowUpCompletionTarget = z.output<typeof followUpCompletionTargetSchema>;
+
 export const followUpWaitSchema = z.strictObject({
   reason: summary,
   request: summary,
@@ -115,6 +126,8 @@ const watchDraft = z.strictObject({
     z.strictObject({ kind: z.literal('message'), sessionId: resourceId, messageId: resourceId, confirmationId: resourceId }),
   ]),
   wait: followUpWaitSchema.optional(),
+  when: followUpCompletionTargetSchema.optional(),
+  deadlineAt: z.iso.datetime().optional(),
 });
 const groupProposalSource = z.strictObject({
   kind: z.literal('group-proposal'), sessionId: resourceId, messageId: resourceId,
@@ -160,6 +173,9 @@ export const followUpCardSchema = z.strictObject({
   title: summary,
   condition: z.union([conditionSchema, approvalPending]),
   state: z.enum(['open', 'ignored', 'stopped', 'closed']),
+  completionTarget: followUpCompletionTargetSchema.optional(),
+  when: followUpCompletionTargetSchema.optional(),
+  deadlineAt: z.iso.datetime().optional(),
 });
 export type FollowUpCard = z.output<typeof followUpCardSchema>;
 

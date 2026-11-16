@@ -43,6 +43,7 @@ export class MessagingDelivery extends MessagingRecovery {
     if (this.stopped) return;
     let r = this.store.get(id);
     if (!r) return;
+    if (r.execution) return; // Scoped correspondence is already executed separately; never wake a private main.
     if (['failed', 'expired', 'canceled'].includes(r.delivery)) return;
     const at = this.now();
     if (r.delivery === 'queued' && r.envelope.expiresAt <= at) {

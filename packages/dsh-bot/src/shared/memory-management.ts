@@ -42,3 +42,15 @@ export type MemoryConfirm = z.input<typeof memoryConfirmSchema>;
 export type MemoryResolve = z.input<typeof memoryResolveSchema>;
 export type ManagedMemoryRow = z.output<typeof memoryRowSchema>;
 export type ManagedMemoryPage = z.output<typeof memoryPageSchema>;
+
+export const memoryChangesQuerySchema = z.strictObject({ botId: botIdSchema,
+  limit: z.number().int().min(1).max(50).optional() });
+export const memoryRestoreSchema = z.strictObject({ botId: botIdSchema, id: randomId,
+  versionId: randomId, expectedRevision: safeCounter });
+export const memoryChangeSchema = z.strictObject({ opId: randomId, kind: z.string(),
+  version: memoryVersionSchema, payload: fields, previous: fields.optional(),
+  changed: z.array(z.enum(['content', 'subject', 'factKey', 'qualifiers', 'valid'])), restorable: z.boolean() });
+export const memoryChangesPageSchema = z.strictObject({ revision: safeCounter, rows: z.array(memoryChangeSchema).max(50) });
+export type MemoryChangesQuery = z.input<typeof memoryChangesQuerySchema>;
+export type MemoryRestore = z.input<typeof memoryRestoreSchema>;
+export type MemoryChangesPage = z.output<typeof memoryChangesPageSchema>;

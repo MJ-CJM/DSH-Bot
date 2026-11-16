@@ -1,3 +1,4 @@
+import { need } from '../src/host/common/operations.js';
 import { executeRootSetup } from '../src/host/groups/root-guard.js';
 import { describe, expect, it, vi } from 'vitest';
 import { Session, type SessionId } from '@deepseek-ai/dsh-session';
@@ -8,14 +9,14 @@ import type { SubagentResult } from '@deepseek-ai/dsh-subagent';
 import { withIntegrations, alpha, beta } from './integration-support.js';
 import { Config } from '../lib/host/registry.js';
 import { Groups, groupsDomain } from '../src/host/groups/service.js';
-import { groupContext, routeMembers } from '../src/host/groups/routing.js';
+import { groupContext, routeMembers, selectOnDemand } from '../src/host/groups/routing.js';
 import { groupKey, GROUP_ROOT_PRESET, type GroupMessage, type GroupRecord } from '../src/shared/groups.js';
 import { groupsSpec } from '../src/shared/groups-contract.js';
 import { flowFixture } from './deepening/managed-flow-fixture.js';
 async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0]) {
   const roots = new Map<string, AgentHandle>(); const persisted = new Map<string, AgentHandle>(); const sequence: string[] = [];
   const config = Config({ dataDir: f.root, seedExamples: false, groupRoundTimeoutMs: 1000, groupTaskTimeoutMs: 1000 });
-  Object.assign(f.registry, { config, status: async () => [...f.bots.keys()].map(id => ({ id, presetId: `bot-${id}`, preset: { state: 'ok' } })) });
+  Object.assign(f.registry, { config, list: async () => [...f.bots.values()], status: async () => [...f.bots.keys()].map(id => ({ id, presetId: `bot-${id}`, preset: { state: 'ok' } })) });
   const workspaces = new Map<string, { id: string; path: string; sessionIds: SessionId[]; attachSession(id: SessionId): Promise<void> }>();
   const workspaceRegistry = { create: vi.fn(async (path: string) => {
     let workspace = workspaces.get(path);
@@ -381,5 +382,81 @@ describe('strict supplemental send codec', () => {
       createdAt: 1, updatedAt: 2, revision: 1, schemaVersion: 1, membershipRevision: 1, orderedMemberIds: [], mode: 'natural', contextThroughSeq: -1, state: 'running',
       followups: [{ operationId: 'precise', requestDigest: 'h', deliveryId: 'delivery-1', messageId: 'group-m', childMessageId: 'native-m', state: 'accepted' }] };
     expect(method.result.decode(method.result.encode(result))).toEqual(result);
+  });
+});
+
+describe('OpenMaus reusable team preferences and local routing', () => {
+  it('roundtrips allowlisted preferences durably, maps capabilities and applies through membership without execution', async () => {
+    await withIntegrations(async f => {
+      const s = await fixture(f);
+      try {
+        const group = await s.createGroup(), key = groupKey(group);
+        const recipe = await s.groups.teamRecipes.capture(key, 'Reusable team');
+        expect(Object.keys(recipe).sort()).toEqual(['format', 'mode', 'name', 'onDemand', 'roles', 'version']);
+        expect(JSON.stringify(recipe)).not.toMatch(/persona|memory|credential|cwd|rootSessionId/);
+        await expect(s.groups.teamRecipes.save({ ...recipe, history: [] })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+        await expect(s.groups.teamRecipes.save({ ...recipe, version: 2 })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+        const saved = await s.groups.teamRecipes.save(JSON.parse(JSON.stringify(recipe)));
+        await s.reopen();
+        expect((await s.groups.teamRecipes.list()).map(row => row.id)).toContain(saved.id);
+        const preview = await s.groups.teamRecipes.preview({ ...recipe, mode: 'natural', onDemand: true });
+        expect(preview.roles.every(row => row.match === 'preferred' && row.capabilityMatch)).toBe(true);
+        const suggested = await s.groups.teamRecipes.preview({ ...recipe, roles: recipe.roles.map(row => ({ ...row, preferredBotId: 'missing' })) });
+        expect(suggested.roles.every(row => row.match === 'capability' && row.capabilityMatch)).toBe(true);
+        const unmapped = await s.groups.teamRecipes.preview({ ...recipe, roles: [...recipe.roles,
+          { ...recipe.roles[0], id: 'role-2', role: 'extra', preferredBotId: 'missing', template: 'standard' }] });
+        expect(unmapped.roles[2]?.match).toBe('unmapped');
+        await expect(s.groups.teamRecipes.preview(recipe, [{ roleId: 'role-0', bot: { ...alpha, botCreatedAt: 99 } }])).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+        const mapping = preview.roles.map(row => ({ roleId: row.roleId, bot: row.bot }));
+        const applied = await s.groups.teamRecipes.apply(key, preview.recipe, mapping, group.revision, group.membershipRevision);
+        expect(applied.onDemand).toBe(true); expect(applied.memberRoles).toHaveLength(2);
+        expect(s.calls).toHaveLength(0);
+        await expect(s.groups.teamRecipes.apply(key, recipe, mapping, group.revision, group.membershipRevision)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+        await expect(s.groups.teamRecipes.apply(key, recipe, [mapping[0], { ...mapping[1], bot: need(mapping[0]).bot }], applied.revision, applied.membershipRevision)).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+        await s.groups.teamRecipes.remove(saved.id);
+        expect(await s.groups.teamRecipes.list()).toEqual([]);
+      } finally { await s.close(); }
+    });
+  });
+  it('uses legacy routes when disabled or local selection fails, and matches Chinese roles deterministically', async () => {
+    await withIntegrations(async f => {
+      const s = await fixture(f);
+      try {
+        const group = await s.groups.create({ operationId: 'local-fallback', name: 'Fallback', members: [alpha, beta],
+          mode: 'natural', onDemand: true, memberRoles: [{ bot: alpha, role: '数据库查询' }, { bot: beta, role: '浏览器界面' }], historyConfirmed: true });
+        const members = (await s.groups.view(groupKey(group))).members;
+        expect(selectOnDemand(group, members, '检查数据库', [], undefined, false, 16).routing.reason).toBe('role-match');
+        const failing = new Map<string, string>(); failing.get = () => { throw new Error('unavailable metadata'); };
+        expect(selectOnDemand(group, members, 'question', [], undefined, false, 16, failing).routing).toMatchObject({ reason: 'failed', plannedCalls: 2, deciderCalls: 0 });
+        expect(selectOnDemand({ ...group, onDemand: false }, members, '数据库', [], undefined, false, 16).selected).toHaveLength(2);
+        expect(selectOnDemand(group, members, '数据库', [], members[1]?.id, false, 16).routing.reason).toBe('reply');
+        expect(selectOnDemand(group, members, '数据库', [], undefined, true, 16).selected).toHaveLength(2);
+        expect(() => selectOnDemand(group, members, 'unknown', [], undefined, false, 1)).toThrow();
+      } finally { await s.close(); }
+    });
+  });
+  it('persists deterministic selection, honors explicit targets and falls back without changing budgets', async () => {
+    await withIntegrations(async f => {
+      const s = await fixture(f);
+      try {
+        const group = await s.groups.create({ operationId: 'local-speakers', name: 'Local speakers', members: [alpha, beta],
+          mode: 'natural', onDemand: true, memberRoles: [{ bot: alpha, role: 'database SQL' }, { bot: beta, role: 'browser CSS' }], historyConfirmed: true });
+        const key = groupKey(group), members = (await s.groups.view(key)).members;
+        const send = async (operationId: string, text: string, memberIds: string[] = []) => {
+          const turn = await s.groups.send(key, { operationId, text, memberIds, expectedMembershipRevision: group.membershipRevision });
+          await s.settle(group); return need((await s.groups.view(key)).turns.find(row => row.id === turn.id));
+        };
+        const selected = await send('role-match', 'Review browser CSS');
+        expect(selected.orderedMemberIds).toEqual([need(members.find(row => row.bot.botId === beta.botId)).id]);
+        expect(selected.routing).toMatchObject({ strategy: 'local-role', reason: 'role-match', deciderCalls: 0, plannedCalls: 1 });
+        const explicit = await send('explicit-match', 'Review browser CSS', [need(members.find(row => row.bot.botId === alpha.botId)).id]);
+        expect(explicit.routing?.reason).toBe('mention');
+        expect(explicit.orderedMemberIds).toEqual([need(members.find(row => row.bot.botId === alpha.botId)).id]);
+        const fallback = await send('no-match', 'Unrelated question');
+        expect(fallback.routing).toMatchObject({ strategy: 'fallback', reason: 'no-match', plannedCalls: 2 });
+        await s.reopen();
+        expect((await s.groups.view(key)).turns.find(row => row.id === selected.id)?.routing).toEqual(selected.routing);
+      } finally { await s.close(); }
+    });
   });
 });

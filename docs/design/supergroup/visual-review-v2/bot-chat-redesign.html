@@ -1,0 +1,426 @@
+<style>
+#dsh-chat-review {
+  color-scheme: light dark;
+  --dsw-alias-bg-base: light-dark(#ffffff, #18191c);
+  --dsw-alias-bg-layer-1: light-dark(#f6f7f9, #202125);
+  --dsw-alias-bg-layer-2: light-dark(#edeff3, #2b2d32);
+  --dsw-alias-bg-overlay: light-dark(#ffffff, #25272d);
+  --dsw-alias-label-primary: light-dark(#20232b, #e8eaf0);
+  --dsw-alias-label-secondary: light-dark(#686e7a, #adb2bf);
+  --dsw-alias-label-tertiary: light-dark(#818794, #989eac);
+  --dsw-alias-border-l1: light-dark(#e9ebef, #2e3138);
+  --dsw-alias-border-l2: light-dark(#dadde5, #414652);
+  --dsw-alias-brand-primary: light-dark(#5268d7, #9aaaff);
+  --dsw-alias-state-success-primary: light-dark(#287c65, #80c9ad);
+  --dsw-alias-state-warn-primary: light-dark(#906122, #dcb16f);
+  --dsw-alias-state-error-primary: light-dark(#b73e4c, #f49ca6);
+  --dsw-alias-interactive-bg-hover: light-dark(#eceef4, #30333b);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--dsw-alias-label-primary); font-size: 14px; line-height: 1.6;
+  container-type: inline-size; width: 100%;
+}
+#dsh-chat-review * { box-sizing: border-box; }
+#dsh-chat-review [hidden] { display: none !important; }
+#dsh-chat-review button, #dsh-chat-review input, #dsh-chat-review textarea, #dsh-chat-review select { font: inherit; color: inherit; }
+#dsh-chat-review button { cursor: pointer; }
+#dsh-chat-review button:disabled { cursor: default; opacity: .45; }
+#dsh-chat-review button:focus-visible, #dsh-chat-review a:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 3px; }
+#dsh-chat-review input:focus-visible, #dsh-chat-review textarea:focus-visible, #dsh-chat-review select:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+#dsh-chat-review h1, #dsh-chat-review h2, #dsh-chat-review h3, #dsh-chat-review p { margin: 0; }
+#dsh-chat-review svg { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.7; }
+#dsh-chat-review .app { display: flex; height: 760px; min-height: 640px; position: relative; background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l2); border-radius: 15px; overflow: hidden; }
+#dsh-chat-review .muted { color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .small { font-size: 12px; }
+#dsh-chat-review .icon-btn { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; padding: 8px; width: 34px; height: 34px; background: transparent; color: var(--dsw-alias-label-secondary); flex-shrink: 0; }
+#dsh-chat-review .icon-btn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+#dsh-chat-review .text-btn { background: transparent; border: 0; padding: 5px 0; display: inline-flex; align-items: center; gap: 5px; color: var(--dsw-alias-brand-primary); font-size: 13px; }
+#dsh-chat-review .text-btn:hover { text-decoration: underline; }
+#dsh-chat-review .side { width: 266px; min-width: 266px; background: var(--dsw-alias-bg-layer-1); display: flex; flex-direction: column; border-right: 1px solid var(--dsw-alias-border-l1); z-index: 3; }
+#dsh-chat-review .brand { height: 74px; padding: 0 16px; display: flex; align-items: center; gap: 9px; }
+#dsh-chat-review .brand-name { font-size: 20px; font-weight: 650; letter-spacing: -.8px; }
+#dsh-chat-review .brand-mark { width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0; background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-bg-base); display: grid; place-items: center; }
+#dsh-chat-review .brand .icon-btn { margin-left: auto; }
+#dsh-chat-review .mode-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dsw-alias-label-secondary); line-height: 1.3; white-space: nowrap; }
+#dsh-chat-review .mode-dot { width: 5px; height: 5px; background: var(--dsw-alias-state-success-primary); border-radius: 50%; }
+#dsh-chat-review .search { display: flex; align-items: center; gap: 8px; margin: 0 16px 18px; padding: 7px 10px; background: var(--dsw-alias-bg-layer-2); border-radius: 8px; color: var(--dsw-alias-label-tertiary); }
+#dsh-chat-review .search svg { width: 15px; height: 15px; }
+#dsh-chat-review .search input { width: 100%; min-width: 0; border: 0; background: transparent; font-size: 12px; padding: 0; }
+#dsh-chat-review .search input::placeholder { color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .object-list { flex: 1; overflow-y: auto; padding: 0 9px; }
+#dsh-chat-review .section-label { font-size: 11px; color: var(--dsw-alias-label-secondary); padding: 0 12px 6px; letter-spacing: .5px; }
+#dsh-chat-review .section-label.recent { margin-top: 18px; }
+#dsh-chat-review .contact { display: flex; align-items: center; gap: 11px; position: relative; min-height: var(--row-height, 72px); margin: 2px 0; border-radius: 10px; }
+#dsh-chat-review .contact.active { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, var(--dsw-alias-bg-layer-1)); }
+#dsh-chat-review .contact:hover { background: var(--dsw-alias-interactive-bg-hover); }
+#dsh-chat-review .contact.active:hover { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 13%, var(--dsw-alias-bg-layer-1)); }
+#dsh-chat-review .contact-main { display: flex; align-items: center; gap: 11px; background: transparent; border: 0; text-align: left; padding: 12px 11px; width: 100%; min-width: 0; border-radius: 10px; }
+#dsh-chat-review .avatar { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 13px; flex-shrink: 0; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .avatar.assistant { color: var(--dsw-alias-brand-primary); background: color-mix(in srgb, var(--dsw-alias-brand-primary) 13%, var(--dsw-alias-bg-base)); }
+#dsh-chat-review .avatar.research { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, var(--dsw-alias-bg-base)); }
+#dsh-chat-review .avatar.tech { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, var(--dsw-alias-bg-base)); }
+#dsh-chat-review .avatar.review { color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); }
+#dsh-chat-review .avatar.sm { width: 28px; height: 28px; border-radius: 9px; }
+#dsh-chat-review .avatar.sm svg { width: 15px; height: 15px; }
+#dsh-chat-review .avatar.lg { width: 54px; height: 54px; border-radius: 18px; }
+#dsh-chat-review .avatar.lg svg { width: 25px; height: 25px; }
+#dsh-chat-review .group-avatar { display: inline-block; width: 38px; height: 38px; position: relative; flex-shrink: 0; }
+#dsh-chat-review .group-avatar .avatar { position: absolute; width: 25px; height: 25px; border-radius: 8px; border: 2px solid var(--dsw-alias-bg-layer-1); }
+#dsh-chat-review .group-avatar .avatar svg { width: 13px; height: 13px; }
+#dsh-chat-review .group-avatar .avatar:nth-child(1) { left: 0; top: 0; }
+#dsh-chat-review .group-avatar .avatar:nth-child(2) { right: 0; bottom: 0; }
+#dsh-chat-review .contact-copy { min-width: 0; flex: 1; }
+#dsh-chat-review .contact-top { display: flex; align-items: baseline; gap: 6px; }
+#dsh-chat-review .contact-name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+#dsh-chat-review .contact-time { font-size: 11px; flex-shrink: 0; color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .contact-preview { font-size: 12px; color: var(--dsw-alias-label-secondary); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
+#dsh-chat-review .contact-menu { position: absolute; right: 6px; bottom: 5px; height: 23px; width: 25px; padding: 4px; opacity: 0; background: var(--dsw-alias-bg-layer-1); }
+#dsh-chat-review .contact:hover .contact-menu, #dsh-chat-review .contact:focus-within .contact-menu { opacity: 1; }
+#dsh-chat-review .pin { width: 10px; height: 10px; color: var(--dsw-alias-label-tertiary); }
+#dsh-chat-review .unread { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); margin-right: 4px; }
+#dsh-chat-review .earlier { margin: 21px 8px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+#dsh-chat-review .earlier svg { width: 12px; height: 12px; }
+#dsh-chat-review .side-foot { border-top: 1px solid var(--dsw-alias-border-l1); padding: 15px 18px; display: flex; gap: 9px; align-items: center; }
+#dsh-chat-review .side-foot .avatar { width: 30px; height: 30px; border-radius: 50%; font-size: 12px; }
+#dsh-chat-review .side-foot .icon-btn { margin-left: auto; }
+#dsh-chat-review .main { display: flex; flex-direction: column; min-width: 0; flex: 1; position: relative; }
+#dsh-chat-review .chat-head { display: flex; align-items: center; gap: 11px; height: 74px; min-height: 74px; padding: 0 25px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+#dsh-chat-review .head-text { min-width: 0; flex: 1; }
+#dsh-chat-review .head-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dsh-chat-review .head-sub { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 1px; }
+#dsh-chat-review .head-detail[aria-expanded=true] { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+#dsh-chat-review .list-back { display: none; }
+#dsh-chat-review .thread { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px 16px; }
+#dsh-chat-review .thread-inner { max-width: 760px; margin: auto; }
+#dsh-chat-review .day { font-size: 11px; text-align: center; color: var(--dsw-alias-label-tertiary); margin: 0 0 18px; }
+#dsh-chat-review .human { display: flex; justify-content: flex-end; margin: 0 0 20px 42px; }
+#dsh-chat-review .human-bubble { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, var(--dsw-alias-bg-base)); border-radius: 15px 15px 4px 15px; padding: 12px 16px; max-width: 88%; font-size: 14px; line-height: 1.8; }
+#dsh-chat-review .message { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 18px; }
+#dsh-chat-review .message > .avatar { width: 29px; height: 29px; border-radius: 10px; }
+#dsh-chat-review .message > .avatar svg { width: 15px; height: 15px; }
+#dsh-chat-review .message-body { flex: 1; min-width: 0; }
+#dsh-chat-review .author { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 550; padding: 2px 0 7px; }
+#dsh-chat-review .author time { font-size: 11px; font-weight: 400; color: var(--dsw-alias-label-tertiary); }
+#dsh-chat-review .prose { font-size: 14px; line-height: 1.85; }
+#dsh-chat-review .prose p + p { margin-top: 8px; }
+#dsh-chat-review .prose h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+#dsh-chat-review .prose ol { padding-left: 20px; margin: 10px 0; }
+#dsh-chat-review .prose li { padding-left: 3px; margin: 5px 0; }
+#dsh-chat-review .prose b { font-weight: 550; }
+#dsh-chat-review .work-card { border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; margin-top: 14px; padding: 13px 16px; max-width: 470px; background: var(--dsw-alias-bg-base); }
+#dsh-chat-review .work-top { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 550; }
+#dsh-chat-review .work-status { margin-left: auto; font-size: 11px; font-weight: 400; display: inline-flex; align-items: center; gap: 4px; color: var(--dsw-alias-state-success-primary); white-space: nowrap; }
+#dsh-chat-review .work-status svg { width: 13px; height: 13px; }
+#dsh-chat-review .work-bottom { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+#dsh-chat-review .avatar-stack { display: flex; align-items: center; padding-right: 3px; }
+#dsh-chat-review .avatar-stack .avatar + .avatar { margin-left: -5px; border: 2px solid var(--dsw-alias-bg-base); }
+#dsh-chat-review .work-bottom .text-btn { margin-left: auto; font-size: 12px; }
+#dsh-chat-review .message-actions { display: flex; gap: 3px; padding-top: 9px; }
+#dsh-chat-review .message-actions .icon-btn { width: 27px; height: 27px; padding: 5px; }
+#dsh-chat-review .message-actions svg { width: 14px; height: 14px; }
+#dsh-chat-review .event { display: flex; justify-content: center; align-items: center; gap: 3px; flex-wrap: wrap; text-align: center; font-size: 11px; color: var(--dsw-alias-label-secondary); margin: 20px 0; }
+#dsh-chat-review .event button { border: 0; background: none; color: var(--dsw-alias-brand-primary); padding: 0 2px; font-size: inherit; }
+#dsh-chat-review .group-bubble { background: var(--dsw-alias-bg-layer-1); padding: 11px 15px; border-radius: 3px 13px 13px 13px; }
+#dsh-chat-review .group-origin { display: flex; gap: 7px; align-items: center; color: var(--dsw-alias-label-secondary); font-size: 12px; margin-bottom: 20px; }
+#dsh-chat-review .group-origin .text-btn { font-size: 12px; }
+#dsh-chat-review .empty { height: 100%; display: flex; align-items: center; justify-content: center; padding-bottom: 45px; text-align: center; }
+#dsh-chat-review .empty h2 { font-size: 21px; font-weight: 550; margin-top: 19px; }
+#dsh-chat-review .empty p { font-size: 13px; color: var(--dsw-alias-label-secondary); margin-top: 8px; max-width: 360px; }
+#dsh-chat-review .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 24px; }
+#dsh-chat-review .suggestion { font-size: 12px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-base); padding: 8px 12px; border-radius: 9px; }
+#dsh-chat-review .suggestion:hover { background: var(--dsw-alias-bg-layer-1); }
+#dsh-chat-review .composer-wrap { padding: 12px 28px 21px; background: var(--dsw-alias-bg-base); flex-shrink: 0; }
+#dsh-chat-review .composer { max-width: 800px; margin: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 17px; padding: 14px 14px 10px; background: var(--dsw-alias-bg-base); box-shadow: 0 3px 16px color-mix(in srgb, var(--dsw-alias-label-primary) 4%, transparent); }
+#dsh-chat-review .composer:focus-within { border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, var(--dsw-alias-border-l2)); }
+#dsh-chat-review .composer textarea { display: block; width: 100%; border: 0; outline-offset: 4px; resize: none; min-height: 49px; height: 49px; background: transparent; padding: 0 4px; font-size: 14px; line-height: 1.7; }
+#dsh-chat-review .composer textarea::placeholder { color: var(--dsw-alias-label-tertiary); }
+#dsh-chat-review .composer-controls { display: flex; align-items: center; gap: 5px; margin-top: 5px; }
+#dsh-chat-review .picker { display: inline-flex; gap: 5px; align-items: center; border: 0; background: none; color: var(--dsw-alias-label-secondary); padding: 5px 6px; border-radius: 6px; font-size: 11px; white-space: nowrap; }
+#dsh-chat-review .picker:hover { background: var(--dsw-alias-bg-layer-1); }
+#dsh-chat-review .picker svg { width: 13px; height: 13px; }
+#dsh-chat-review .picker .chevron { width: 11px; }
+#dsh-chat-review .model-picker { margin-left: auto; }
+#dsh-chat-review .send { color: var(--dsw-alias-bg-base); background: var(--dsw-alias-label-primary); width: 31px; height: 31px; border-radius: 10px; margin-left: 5px; }
+#dsh-chat-review .send:hover { background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-bg-base); }
+#dsh-chat-review .composer-note { text-align: center; font-size: 11px; color: var(--dsw-alias-label-tertiary); margin-top: 9px; }
+#dsh-chat-review .inspector { width: 288px; min-width: 288px; border-left: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-base); display: flex; flex-direction: column; z-index: 5; }
+#dsh-chat-review .inspector-top { display: flex; align-items: center; justify-content: space-between; padding: 20px 16px 0 21px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .profile { text-align: center; padding: 13px 20px 24px; }
+#dsh-chat-review .profile .group-avatar { display: block; margin: auto; transform: scale(1.2); margin-top: 8px; margin-bottom: 18px; }
+#dsh-chat-review .profile-name { font-size: 16px; font-weight: 550; margin-top: 14px; }
+#dsh-chat-review .profile p { font-size: 12px; color: var(--dsw-alias-label-secondary); margin-top: 4px; }
+#dsh-chat-review .tabs { display: flex; justify-content: center; gap: 26px; border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 0 18px; }
+#dsh-chat-review .tab { background: transparent; border: 0; border-bottom: 2px solid transparent; font-size: 12px; padding: 0 1px 11px; color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .tab.active { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-label-primary); font-weight: 550; }
+#dsh-chat-review .panel-content { overflow-y: auto; padding: 23px 21px; flex: 1; }
+#dsh-chat-review .panel-label { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-bottom: 10px; }
+#dsh-chat-review .panel-text { font-size: 12px; line-height: 1.9; margin-bottom: 23px; }
+#dsh-chat-review .detail-row { display: flex; justify-content: space-between; gap: 9px; font-size: 12px; padding: 10px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+#dsh-chat-review .detail-row > :first-child { color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .resource { width: 100%; text-align: left; display: flex; align-items: flex-start; gap: 10px; border: 0; border-radius: 8px; background: none; padding: 10px 0; }
+#dsh-chat-review .resource:hover { background: var(--dsw-alias-bg-layer-1); }
+#dsh-chat-review .resource > .avatar { width: 31px; height: 36px; border-radius: 6px; }
+#dsh-chat-review .resource-title { display: block; font-size: 12px; }
+#dsh-chat-review .resource-desc { display: block; font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 3px; }
+#dsh-chat-review .member { display: flex; align-items: center; gap: 10px; padding: 11px 0; }
+#dsh-chat-review .member .avatar { width: 32px; height: 32px; border-radius: 11px; }
+#dsh-chat-review .member-name { font-size: 13px; }
+#dsh-chat-review .member-role { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .member-state { font-size: 11px; color: var(--dsw-alias-state-success-primary); margin-left: auto; }
+#dsh-chat-review .panel-sep { height: 1px; background: var(--dsw-alias-border-l1); margin: 20px 0; }
+#dsh-chat-review .stop { display: flex; align-items: center; gap: 6px; border: 1px solid var(--dsw-alias-border-l2); background: transparent; padding: 7px 12px; border-radius: 8px; font-size: 12px; margin-top: 20px; }
+#dsh-chat-review .stop svg { width: 13px; height: 13px; }
+#dsh-chat-review .overlay { position: absolute; inset: 0; z-index: 12; display: grid; place-items: center; background: color-mix(in srgb, var(--dsw-alias-label-primary) 20%, transparent); padding: 18px; }
+#dsh-chat-review .modal { background: var(--dsw-alias-bg-overlay); width: 380px; max-width: 100%; border: 1px solid var(--dsw-alias-border-l2); border-radius: 16px; padding: 22px; box-shadow: 0 15px 60px color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent); }
+#dsh-chat-review .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+#dsh-chat-review .modal-head h2 { font-size: 17px; font-weight: 550; }
+#dsh-chat-review .modal p { font-size: 12px; color: var(--dsw-alias-label-secondary); margin-bottom: 16px; }
+#dsh-chat-review .modal-option { display: flex; align-items: center; width: 100%; padding: 12px; margin: 6px 0; gap: 11px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 9px; background: transparent; text-align: left; font-size: 13px; }
+#dsh-chat-review .modal-option:hover { background: var(--dsw-alias-bg-layer-1); }
+#dsh-chat-review .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; gap: 15px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+#dsh-chat-review .setting-row label { font-size: 13px; }
+#dsh-chat-review .setting-row select { max-width: 135px; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; padding: 5px; font-size: 12px; }
+#dsh-chat-review .preview-tag { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding-top: 9px; color: var(--dsw-alias-label-secondary); }
+#dsh-chat-review .toast { position: absolute; left: 50%; bottom: 169px; transform: translateX(-50%); background: var(--dsw-alias-bg-overlay); border: 1px solid var(--dsw-alias-border-l2); border-radius: 9px; padding: 9px 15px; z-index: 16; box-shadow: 0 4px 24px color-mix(in srgb, var(--dsw-alias-label-primary) 10%, transparent); font-size: 12px; max-width: 90%; }
+#dsh-chat-review .state-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--dsw-alias-bg-layer-1); border-bottom: 1px solid var(--dsw-alias-border-l1); padding: 9px 22px; font-size: 12px; }
+#dsh-chat-review .state-banner button { flex-shrink: 0; }
+#dsh-chat-review .pending-note { text-align: right; font-size: 11px; color: var(--dsw-alias-state-warn-primary); margin: -14px 0 20px; }
+#dsh-chat-review .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@container (max-width: 1100px) {
+  #dsh-chat-review .side { width: 230px; min-width: 230px; }
+  #dsh-chat-review .inspector { position: absolute; right: 0; top: 0; bottom: 0; box-shadow: -12px 0 35px color-mix(in srgb, var(--dsw-alias-label-primary) 6%, transparent); }
+  #dsh-chat-review .thread { padding-left: 25px; padding-right: 25px; }
+}
+@container (max-width: 700px) {
+  #dsh-chat-review .app { height: 730px; border-radius: 12px; }
+  #dsh-chat-review .side { display: none; }
+  #dsh-chat-review .app.show-list .side { display: flex; width: 100%; min-width: 0; }
+  #dsh-chat-review .app.show-list .main { display: none; }
+  #dsh-chat-review .list-back { display: inline-flex; margin-left: -9px; }
+  #dsh-chat-review .chat-head { padding: 0 16px; gap: 9px; height: 65px; min-height: 65px; }
+  #dsh-chat-review .chat-head .avatar { width: 32px; height: 32px; border-radius: 11px; }
+  #dsh-chat-review .head-title { font-size: 14px; }
+  #dsh-chat-review .head-sub { font-size: 11px; }
+  #dsh-chat-review .thread { padding: 20px 16px 10px; }
+  #dsh-chat-review .human { margin-left: 20px; }
+  #dsh-chat-review .human-bubble { max-width: 96%; font-size: 13px; padding: 10px 13px; }
+  #dsh-chat-review .prose { font-size: 13px; }
+  #dsh-chat-review .message { gap: 8px; }
+  #dsh-chat-review .message > .avatar { width: 24px; height: 24px; border-radius: 8px; }
+  #dsh-chat-review .work-card { padding: 12px; }
+  #dsh-chat-review .work-top { font-size: 12px; flex-wrap: wrap; }
+  #dsh-chat-review .work-bottom .small { font-size: 11px; }
+  #dsh-chat-review .composer-wrap { padding: 9px 12px 13px; }
+  #dsh-chat-review .composer { padding: 12px 10px 9px; border-radius: 14px; }
+  #dsh-chat-review .composer textarea { font-size: 16px; }
+  #dsh-chat-review .picker { font-size: 11px; padding: 5px 2px; gap: 3px; }
+  #dsh-chat-review .composer-controls { gap: 3px; }
+  #dsh-chat-review .composer-controls > .icon-btn { width: 28px; }
+  #dsh-chat-review .inspector { width: 100%; min-width: 0; }
+  #dsh-chat-review .profile { padding-top: 6px; padding-bottom: 16px; }
+  #dsh-chat-review .empty p { max-width: 260px; }
+  #dsh-chat-review .preview-tag > :last-child { display: none; }
+  #dsh-chat-review .composer-note { display: none; }
+}
+@media (pointer: coarse) {
+  #dsh-chat-review .icon-btn { min-width: 40px; min-height: 40px; }
+  #dsh-chat-review .contact-menu { opacity: 1; right: 3px; bottom: 0; }
+  #dsh-chat-review .contact-preview { padding-right: 22px; }
+  #dsh-chat-review .tab { min-height: 44px; }
+}
+</style>
+<div id="dsh-chat-review" aria-label="DSH Bot 聊天界面提案">
+  <div class="app">
+    <aside class="side" aria-label="Bot 和群列表">
+      <div class="brand">
+        <div class="brand-mark"><i data-lucide="sparkles" aria-hidden="true"></i></div>
+        <div><div class="brand-name">DSH</div><div class="mode-label"><span class="mode-dot"></span>Supergroup 开启</div></div>
+        <button class="icon-btn" data-action="add" aria-label="添加 Bot 或群" data-tooltip="添加 Bot 或群"><i data-lucide="plus" aria-hidden="true"></i></button>
+      </div>
+      <label class="search"><i data-lucide="search" aria-hidden="true"></i><span class="sr">搜索 Bot 和群</span><input id="dsh-review-search" placeholder="搜索 Bot 和群" autocomplete="off"></label>
+      <nav class="object-list" aria-label="聊天对象"></nav>
+      <footer class="side-foot"><span class="avatar">我</span><span class="small">设置与偏好</span><button class="icon-btn" data-action="settings" aria-label="设置" data-tooltip="设置"><i data-lucide="settings-2" aria-hidden="true"></i></button></footer>
+    </aside>
+    <main class="main">
+      <header class="chat-head"></header>
+      <div class="state-banner" role="alert" hidden></div>
+      <div class="thread" aria-label="消息记录"><div class="thread-inner"></div></div>
+      <div class="composer-wrap">
+        <form class="composer">
+          <label class="sr" for="dsh-review-compose">消息</label><textarea id="dsh-review-compose" placeholder="发消息给通用助手…" rows="2"></textarea>
+          <div class="composer-controls">
+            <button type="button" class="icon-btn attach" data-action="attach" aria-label="添加内容" data-tooltip="添加内容"><i data-lucide="plus" aria-hidden="true"></i></button>
+            <button type="button" class="picker" data-action="permission"><i data-lucide="shield-check" aria-hidden="true"></i><span class="permission-label">仅查看</span><i data-lucide="chevron-down" class="chevron" aria-hidden="true"></i></button>
+            <button type="button" class="picker model-picker" data-action="model"><span class="model-label">默认模型</span><i data-lucide="chevron-down" class="chevron" aria-hidden="true"></i></button>
+            <button type="button" data-action="send" class="icon-btn send" aria-label="发送消息" disabled><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          </div>
+        </form>
+        <div class="composer-note">Enter 发送 · Shift + Enter 换行</div>
+      </div>
+    </main>
+    <aside class="inspector" aria-label="资料与详情" hidden></aside>
+    <div class="overlay" hidden></div>
+    <div class="toast" role="status" hidden></div>
+  </div>
+  <div class="preview-tag"><span>设计提案 · 示例内容 · 尚未应用</span><span>Bot 对话 / 群协作 / 资料与成员</span></div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('dsh-chat-review');
+  const app = root.querySelector('.app');
+  const thread = root.querySelector('.thread-inner');
+  const inspector = root.querySelector('.inspector');
+  const composer = root.querySelector('textarea');
+  const overlay = root.querySelector('.overlay');
+  const names = { assistant: '通用助手', group: 'Supergroup 方案评估', research: '研究员', tech: '技术专家', review: '审阅员' };
+  const roles = { assistant: '你的长期助手', research: '资料调研与事实核查', tech: '架构分析与实现建议', review: '独立审阅与风险检查' };
+  const modelLabel = () => state.models[state.selected] || '默认模型';
+  const permissionLabel = () => state.permissions[state.selected] || '仅查看';
+  const icons = { assistant: 'sparkles', research: 'scan-search', tech: 'code-2', review: 'shield-check' };
+  const state = { selected: 'assistant', detail: '', theme: 'auto', density: '舒适', groupState: 'completed', query: '', drafts: {}, messages: {}, pins: ['assistant'], models: {}, permissions: {}, menuKey: 'assistant', scenario: '日常对话' };
+  const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+  const esc = text => String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const avatar = (who, size = '') => `<span class="avatar ${who} ${size}">${icon(icons[who] || 'user-round')}</span>`;
+  const groupAvatar = () => `<span class="group-avatar">${avatar('research')}${avatar('tech')}</span>`;
+  const identity = who => who === 'group' ? groupAvatar() : avatar(who);
+  const initials = () => `<span class="avatar-stack">${avatar('research','sm')}${avatar('review','sm')}${avatar('tech','sm')}</span>`;
+  const redrawIcons = () => { if (globalThis.lucide) globalThis.lucide.createIcons({ attrs: { width: 18, height: 18 } }); };
+  const save = () => { if (window.openai?.setWidgetState) window.openai.setWidgetState({modelContent: { proposal: 'Bot 聊天界面重设计', selected: state.selected, detail: state.detail, density: state.density, theme: state.theme, scenario: state.scenario }, privateContent: {}}).catch(() => {}); };
+  function showToast(text) { const el=root.querySelector('.toast'); el.textContent=text; el.hidden=false; clearTimeout(showToast.timer); showToast.timer=setTimeout(()=>{el.hidden=true;},3000); }
+  function list() {
+    const previews = { assistant: '方案已整理好，可以直接在这里继续', group: state.groupState==='working' ? '技术专家正在补充落地建议…' : state.groupState==='cancelled' ? '这项工作已停止，记录仍然保留' : '已交付 · 3 位 Bot 一起完成', research: '资料调研与事实核查', tech: '架构分析与实现建议', review: '独立审阅与风险检查', 'research-alt': '行业资讯 · 11/10 创建' };
+    const rows = Object.keys(names).filter(key => (names[key]+previews[key]).includes(state.query)).sort((a,b)=>Number(state.pins.includes(b))-Number(state.pins.includes(a)));
+    let previousPinned;
+    let html='';
+    for(const key of rows) {
+      const pinned=state.pins.includes(key);
+      if(!state.query && pinned!==previousPinned)html+=`<div class="section-label ${pinned?'':'recent'}">${pinned?'置顶':'最近'}</div>`;
+      previousPinned=pinned;
+      html += `<div class="contact ${key===state.selected?'active':''}"><button class="contact-main" data-select="${key}" ${key===state.selected?'aria-current="page"':''}>${identity(key)}<span class="contact-copy"><span class="contact-top"><span class="contact-name" data-tooltip="${names[key]}">${names[key]}</span><span class="contact-time">${key==='assistant'?'10:28':key==='group'?'10:27':''}</span></span><span class="contact-preview">${key==='group'&&state.groupState==='working'?'<span class="unread" aria-label="处理中"></span>':''}${previews[key]}</span></span></button><button class="icon-btn contact-menu" data-action="row-menu" data-key="${key}" aria-label="${names[key]}的更多操作">${icon('ellipsis')}</button></div>`;
+    }
+    html += rows.length ? `<button class="text-btn earlier" data-action="earlier">${icon('chevron-right')}更早的群</button>` : '<p class="muted small" style="padding:12px">没有找到匹配的 Bot 或群</p>';
+    root.querySelector('.object-list').innerHTML=html;
+  }
+  function message(who, body, time='10:27', group=false) { return `<article class="message">${avatar(who)}<div class="message-body"><div class="author">${names[who]}<time>${time}</time></div><div class="prose ${group?'group-bubble':''}">${body}</div></div></article>`; }
+  function human(text) { return `<div class="human"><div class="human-bubble">${esc(text)}</div></div>`; }
+  function workCard() { return `<div class="work-card"><div class="work-top">Supergroup 方案评估<span class="work-status">${icon(state.groupState==='working'?'loader-circle':state.groupState==='cancelled'?'square':'check')}${state.groupState==='working'?'协作中':state.groupState==='cancelled'?'已停止':'已交付'}</span></div><div class="work-bottom">${initials()}<span class="small muted">3 位成员</span><button class="text-btn" data-select="group">查看讨论 ${icon('arrow-up-right')}</button></div></div>`; }
+  function conversation(autoScroll = true) {
+    const who=state.selected;
+    root.querySelector('.chat-head').innerHTML=`<button class="icon-btn list-back" data-action="back-list" aria-label="返回 Bot 和群列表">${icon('chevron-left')}</button>${identity(who)}<div class="head-text"><h1 class="head-title">${names[who]}</h1><div class="head-sub">${who==='group'?'3 位成员 · 由通用助手发起':roles[who]}</div></div><button class="icon-btn head-detail" data-action="detail" aria-label="资料与详情" aria-expanded="${Boolean(state.detail)}" data-tooltip="资料与详情">${icon('panel-right')}</button>`;
+    let html='';
+    if(who==='assistant') {
+      html=`<div class="day">今天 10:24</div>${human('帮我评估 Supergroup 的交互方案，重点看上手成本和落地风险。')}${message('assistant',`我会请研究员和审阅员一起看看，整理后在这里给你结论。${workCard()}`,'10:24')}`;
+      if(state.groupState==='completed') html+=message('assistant','<h3>建议保留一个聊天入口，把协作放在对话背后。</h3><ol><li><b>直接提需求。</b> 简单问题由我回答，需要分工时再组队。</li><li><b>专家按需加入。</b> 你可以看讨论，也可以留在这里等结果。</li><li><b>由我统一交付。</b> 后续修改继续告诉我，沿用同一个群。</li></ol><div class="message-actions"><button class="icon-btn" data-action="copy" aria-label="复制回答">'+icon('copy')+'</button><button class="icon-btn" data-action="feedback" aria-label="反馈回答">'+icon('thumbs-up')+'</button></div>','10:28');
+      if(state.groupState==='working') html+=message('assistant','已收到补充，我会沿用原群继续处理。你也可以进入群里补充。','刚刚');
+      if(state.groupState==='cancelled') html+=message('assistant','这项工作已停止。已有讨论和结果仍保留在群里。','刚刚');
+    } else if(who==='group') {
+      html=`<div class="group-origin">${icon('corner-up-left')}由<button class="text-btn" data-select="assistant">通用助手</button>发起 · 结果回到原 Bot</div><div class="day">今天 10:24</div>${message('research','上手流程可以保持为“找到 Bot → 说需求 → 收结果”。只有需要了解过程时，才进入群讨论。','10:25',true)}${message('review','同意。我建议确认两点：组队不能抢走用户当前页面；停止按钮必须能停止整项工作。','10:25',true)}<div class="event">研究员邀请了 <button data-select="tech">技术专家</button> 加入群聊</div>${message('tech','核对过现有实现。聊天、模型和权限都可以优先复用 DSH；本轮重点应放在列表层级、滚动区域和底部输入的稳定布局。','10:26',true)}`;
+      if(state.groupState==='completed') html+=`<div class="event">${icon('check')} 结果已交付至 <button data-select="assistant">通用助手</button></div>`;
+      else if(state.groupState==='working') html+=message('tech','正在根据你的补充核对实现范围…','刚刚',true)+`<button class="stop" data-action="stop">${icon('square')}停止这项工作</button>`;
+      else html+='<div class="event">这项工作已停止 · 讨论记录已保留</div>';
+    } else {
+      html=`<div class="empty"><div>${avatar(who,'lg')}<h2>和${names[who]}聊聊</h2><p>${roles[who]}。直接说说你想解决的问题。</p><div class="suggestions"><button class="suggestion" data-suggest="帮我评估这份技术方案的可行性。">评估一份方案</button><button class="suggestion" data-suggest="帮我梳理实现思路，先列出需要确认的问题。">梳理实现思路</button></div></div></div>`;
+    }
+    const extra=state.messages[who]||[];
+    if(extra.length && !['assistant','group'].includes(who)) html='<div class="day">今天</div>';
+    for(const text of extra) html+=human(text);
+    if(state.scenario==='长消息' && ['assistant','group'].includes(who)) html+=message(who==='group'?'tech':'assistant','<h3>实施细节</h3>'+Array.from({length:7},(_,i)=>`<p>${i+1}. 先验证实际使用状态：空对话、首条消息、较长回答、执行审批和重新连接。聊天记录独立滚动，输入区保留足够空间；切换对象时恢复各自的草稿，不复制或合并其他 Bot 的私人内容。</p>`).join(''),'10:30',who==='group');
+    if(state.scenario==='发送待确认') html+=human('请继续细化第二点。')+'<div class="pending-note">发送状态待确认 · 正在核对</div>';
+    thread.innerHTML=html;
+    requestAnimationFrame(()=>{ const box=root.querySelector('.thread'); if(autoScroll&&['assistant','group'].includes(who))box.scrollTop=box.scrollHeight; });
+    root.querySelector('.thread').style.display=(!['assistant','group'].includes(who)&&!extra.length)?'flex':'';
+    thread.style.width='100%'; thread.style.height=(!['assistant','group'].includes(who)&&!extra.length)?'100%':'';
+    composer.placeholder=who==='group'?'补充要求，或 @ 一位成员…':`发消息给${names[who]}…`;
+    composer.value=state.drafts[who]||'';
+    root.querySelector('.send').disabled=!composer.value.trim();
+    root.querySelector('.attach').hidden=who==='group';
+    root.querySelector('.model-label').textContent=who==='group'?'成员模型':modelLabel();
+    root.querySelector('.permission-label').textContent=permissionLabel();
+    const banner=root.querySelector('.state-banner');
+    const blocked=['连接中断','发送待确认'].includes(state.scenario);
+    banner.hidden=!blocked;
+    banner.innerHTML=state.scenario==='连接中断'?'连接暂时中断，已保留当前记录和草稿。<button class="text-btn" data-action="retry">重新连接</button>':'正在核对上一条消息的状态，请勿重复发送。';
+    composer.disabled=blocked;
+    if(blocked)root.querySelector('.send').disabled=true;
+  }
+  function panel() {
+    inspector.hidden=!state.detail;
+    if(!state.detail) return;
+    const who=state.selected, group=who==='group';
+    const tabs=group?['details','materials','members']:['details','materials'];
+    if(!tabs.includes(state.detail)) state.detail='details';
+    const labels={details:'详情',materials:'资料',members:'成员'};
+    let content='';
+    if(state.detail==='details') content=group?`<div class="panel-label">本次目标</div><p class="panel-text">评估 Supergroup 交互方案的上手成本和落地风险，给出实施建议。</p><div class="detail-row"><span>发起 Bot</span><button class="text-btn" data-select="assistant">通用助手</button></div><div class="detail-row"><span>工作状态</span><span>${state.groupState==='working'?'协作中':state.groupState==='cancelled'?'已停止':'已交付'}</span></div><div class="detail-row"><span>成员</span><button class="text-btn" data-tab="members">3 位 Bot</button></div>${state.groupState==='working'?`<button class="stop" data-action="stop">${icon('square')}停止这项工作</button>`:''}`:`<div class="panel-label">关于${names[who]}</div><p class="panel-text">${who==='assistant'?'帮你梳理需求、推进工作，并在需要时邀请合适的 Bot 一起解决问题。':roles[who]+'，为你提供清晰、可执行的建议。'}</p><div class="detail-row"><span>模型</span><button class="text-btn" data-action="model">${modelLabel()}</button></div><div class="detail-row"><span>访问权限</span><button class="text-btn" data-action="permission">${permissionLabel()}</button></div><div class="panel-sep"></div><button class="text-btn" data-action="memory">${icon('brain')}已保存的记忆 ${icon('chevron-right')}</button>`;
+    if(state.detail==='materials') content=group?`<div class="panel-label">本次资料</div><button class="resource" data-action="source">${avatar('review')}<span><span class="resource-title">你提出的评估要求</span><span class="resource-desc">来自本次工作 · 文字</span></span></button><div class="panel-sep"></div><div class="panel-label">成果</div><button class="resource" data-select="assistant">${avatar('assistant')}<span><span class="resource-title">交互方案评估与实施建议</span><span class="resource-desc">通用助手 · 查看原文</span></span></button><p class="panel-text muted" style="margin-top:20px">这里仅列出本次工作已授权的资料与交付引用。</p>`:`<div class="panel-label">资料与成果</div><p class="panel-text muted">${who==='assistant'?'本次协作的资料与成果保存在群内。':'暂时没有资料。'}</p>${who==='assistant'?`<button class="resource" data-select="group" data-open-materials="true">${groupAvatar()}<span><span class="resource-title">Supergroup 方案评估</span><span class="resource-desc">查看本次资料与成果</span></span></button>`:''}`;
+    if(state.detail==='members') content=`<div class="panel-label">参与本次协作的 Bot</div>${[['research','调研与方案对比'],['review','审阅与风险检查'],['tech','技术可行性核对']].map(([id,role])=>`<div class="member">${avatar(id)}<div><div class="member-name">${names[id]}</div><div class="member-role">${role}</div></div><span class="member-state">${state.groupState==='working'&&id==='tech'?'处理中':'已完成'}</span></div>`).join('')}<div class="panel-sep"></div><p class="panel-text muted">需要更多支持时，Bot 会邀请可用的专家；加入动态会显示在群里。</p><button class="text-btn" data-action="model">查看成员模型 ${icon('chevron-right')}</button>`;
+    inspector.innerHTML=`<div class="inspector-top"><span>资料与详情</span><button class="icon-btn" data-action="close-detail" aria-label="关闭资料与详情">${icon('x')}</button></div><div class="profile">${group?groupAvatar():avatar(who,'lg')}<div class="profile-name">${names[who]}</div><p>${group?'3 位 Bot · 自动协作群':roles[who]}</p></div><div class="tabs" role="tablist" aria-label="详情内容">${tabs.map(key=>`<button id="dsh-review-tab-${key}" role="tab" aria-controls="dsh-review-panel" aria-selected="${key===state.detail}" class="tab ${key===state.detail?'active':''}" data-tab="${key}">${labels[key]}</button>`).join('')}</div><div id="dsh-review-panel" class="panel-content" role="tabpanel" aria-labelledby="dsh-review-tab-${state.detail}">${content}</div>`;
+  }
+  function render(preserveScroll = false) {
+    const previousScroll = root.querySelector('.thread').scrollTop;
+    root.style.colorScheme=state.theme==='auto'?'light dark':state.theme;
+    root.style.setProperty('--row-height',state.density==='紧凑'?'64px':'72px');
+    if(state.scenario==='同名 Bot'){names['research-alt']='研究员';roles['research-alt']='行业资讯 · 11/10 创建';icons['research-alt']='newspaper';}
+    else{delete names['research-alt'];if(state.selected==='research-alt')state.selected='research';}
+    list(); conversation(!preserveScroll); panel(); redrawIcons();
+    if(preserveScroll)root.querySelector('.thread').scrollTop=previousScroll;
+  }
+  function select(key) { if(!overlay.hidden)closeModal(); state.drafts[state.selected]=composer.value; state.selected=key; state.detail=''; app.classList.remove('show-list'); render(); root.querySelector('.thread').scrollTop=0; save(); }
+  let returnFocus;
+  function modal(title, body) { returnFocus=document.activeElement; overlay.hidden=false; overlay.innerHTML=`<section class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2><button class="icon-btn" data-action="close-modal" aria-label="关闭">${icon('x')}</button></div>${body}</section>`; redrawIcons(); overlay.querySelector('button')?.focus(); }
+  function closeModal() { overlay.hidden=true; overlay.innerHTML=''; if(returnFocus?.isConnected) returnFocus.focus(); }
+  function send(event) { event?.preventDefault(); if(composer.disabled)return; const text=composer.value.trim(); if(!text)return; (state.messages[state.selected] ||= []).push(text); state.drafts[state.selected]=''; composer.value=''; if(['assistant','group'].includes(state.selected)) state.groupState='working'; render(); root.querySelector('.thread').scrollTop=root.querySelector('.thread').scrollHeight; showToast('已演示发送；这是设计预览，不会调用模型。'); save(); }
+  root.addEventListener('click', event=>{
+    const el=event.target.closest('button'); if(!el)return;
+    if(el.dataset.select){select(el.dataset.select); if(el.dataset.openMaterials){state.detail='materials';panel();redrawIcons();}return;}
+    if(el.dataset.tab){state.detail=el.dataset.tab;panel();redrawIcons();save();return;}
+    if(el.dataset.suggest){composer.value=el.dataset.suggest;state.drafts[state.selected]=composer.value;root.querySelector('.send').disabled=false;composer.focus();return;}
+    if(el.dataset.pickModel){state.models[state.selected]=el.dataset.pickModel;closeModal();render(true);return;}
+    if(el.dataset.pickPermission){state.permissions[state.selected]=el.dataset.pickPermission;closeModal();render(true);return;}
+    switch(el.dataset.action){
+      case 'send':send();break;
+      case 'retry':state.scenario='日常对话';render();showToast('已恢复预览连接状态。');save();break;
+      case 'detail': state.detail=state.detail?'':'details';panel();root.querySelector('.head-detail').setAttribute('aria-expanded',String(Boolean(state.detail)));redrawIcons();save();break;
+      case 'close-detail':state.detail='';panel();root.querySelector('.head-detail').setAttribute('aria-expanded','false');root.querySelector('.head-detail').focus();save();break;
+      case 'back-list':app.classList.add('show-list');state.detail='';panel();break;
+      case 'settings':modal('设置',`<div class="setting-row"><div><label>Supergroup</label><div class="small muted">需要时自动组队协作</div></div><span class="small" style="color:var(--dsw-alias-state-success-primary)">已开启</span></div><div class="setting-row"><label for="dsh-review-theme">外观</label><select id="dsh-review-theme"><option value="auto" ${state.theme==='auto'?'selected':''}>跟随系统</option><option value="light" ${state.theme==='light'?'selected':''}>浅色</option><option value="dark" ${state.theme==='dark'?'selected':''}>深色</option></select></div><div class="setting-row"><label>语言</label><span class="small muted">简体中文</span></div><p style="margin:18px 0 0">界面提案仅演示设置位置，真实开关和配置保持不变。</p>`);break;
+      case 'add':modal('添加',`<button class="modal-option" data-action="new-bot">${icon('bot')}新建 Bot</button><button class="modal-option" data-action="new-group">${icon('users-round')}手动建群</button><p style="margin:18px 0 0">自动协作无需手动建群，直接向 Bot 提需求即可。</p>`);break;
+      case 'new-bot':case 'new-group':showToast('正式版本会打开现有创建表单。');break;
+      case 'close-modal':closeModal();break;
+      case 'row-menu':state.menuKey=el.dataset.key;modal(names[el.dataset.key],`<button class="modal-option" data-action="pin">${icon('pin')}${state.pins.includes(el.dataset.key)?'取消置顶':'置顶'}</button>${el.dataset.key==='group'?`<button class="modal-option" data-action="archive">${icon('archive')}归档群</button>`:''}`);break;
+      case 'pin':state.pins=state.pins.includes(state.menuKey)?state.pins.filter(x=>x!==state.menuKey):[...state.pins,state.menuKey];closeModal();list();redrawIcons();break;
+      case 'archive':closeModal();showToast(state.groupState==='working'?'请先停止这项工作，再归档群。':'预览：归档后移出对象列表，历史记录保留。');break;
+      case 'earlier':modal('更早的群','<p>较早结束且未归档的工作在这里保留。归档会将群移出对象列表。</p><button class="modal-option" data-select="group">'+groupAvatar()+'Supergroup 方案评估</button>');break;
+      case 'stop':state.groupState='cancelled';render();showToast('已演示停止，讨论记录保留。');break;
+      case 'model':modal(state.selected==='group'?'成员模型':'模型',state.selected==='group'?['research','review','tech'].map(id=>`<div class="member">${avatar(id)}<div><div class="member-name">${names[id]}</div><div class="member-role">沿用该 Bot 的模型</div></div></div>`).join('')+'<p style="margin-top:16px">正式版本复用现有群模型设置。</p>':`<p>沿用 DSH 已配置的模型。这里演示选择器层级。</p><button class="modal-option" data-pick-model="默认模型">${icon('check')}默认模型</button><button class="modal-option" data-pick-model="Bot 指定模型">${icon('bot')}Bot 指定模型</button>`);break;
+      case 'permission':if(state.selected==='group'){modal('群访问权限','<p>正式版本打开现有群权限入口，沿用成员的授权和审批规则。这里不模拟放宽任何 Bot 的权限。</p>');break;}modal('访问权限',`<p>正式版本沿用 DSH 的权限和审批规则。</p>${['仅查看','工作区可写','完全访问'].map(text=>`<button class="modal-option" data-pick-permission="${text}">${icon(text===permissionLabel()?'check':'shield')}${text}</button>`).join('')}`);break;
+      case 'memory':modal(`${names[state.selected]}的记忆`,'<p>从这里打开当前 Bot 现有的记忆管理页，返回后仍是同一段对话。</p>');break;
+      case 'source':modal('本次评估要求','<p>帮我评估 Supergroup 的交互方案，重点看上手成本和落地风险。</p><p>来源：本次工作的用户文字输入。</p>');break;
+      case 'attach':showToast('正式版本沿用 DSH 原生添加内容入口。');break;
+      case 'copy':showToast('复制入口预览；未写入系统剪贴板。');break;
+      case 'feedback':showToast('反馈入口预览。');break;
+    }
+  });
+  root.querySelector('form').addEventListener('submit',send);
+  composer.addEventListener('input',()=>{state.drafts[state.selected]=composer.value;root.querySelector('.send').disabled=!composer.value.trim();});
+  composer.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();send();}});
+  root.querySelector('#dsh-review-search').addEventListener('input',event=>{state.query=event.target.value;list();redrawIcons();});
+  root.addEventListener('change',event=>{if(event.target.id==='dsh-review-theme'){state.theme=event.target.value;root.style.colorScheme=state.theme==='auto'?'light dark':state.theme;save();}});
+  root.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!overlay.hidden)closeModal();else if(state.detail){state.detail='';render(true);root.querySelector('.head-detail').focus();}}if(event.key==='Tab'&&!overlay.hidden){const items=[...overlay.querySelectorAll('button,input,select,textarea')].filter(e=>!e.disabled); const first=items[0],last=items.at(-1); if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
+  overlay.addEventListener('click',event=>{if(event.target===overlay)closeModal();});
+  function restore(value){
+    const m=value?.modelContent;if(!m)return;
+    const before=JSON.stringify([state.selected,state.detail,state.theme,state.density,state.scenario]);
+    const selected=state.selected,scenario=state.scenario;
+    if(names[m.selected])state.selected=m.selected;
+    if(['','details','materials','members'].includes(m.detail))state.detail=m.detail;
+    if(['auto','light','dark'].includes(m.theme))state.theme=m.theme;
+    if(['舒适','紧凑'].includes(m.density))state.density=m.density;
+    if(['日常对话','长消息','同名 Bot','连接中断','发送待确认'].includes(m.scenario))state.scenario=m.scenario;
+    const after=JSON.stringify([state.selected,state.detail,state.theme,state.density,state.scenario]);
+    if(before!==after)render(selected===state.selected&&scenario===state.scenario);
+  }
+  render(); restore(window.openai?.widgetState);
+  window.addEventListener('openai:set_globals',event=>{if(event.detail?.globals?.widgetState)restore(event.detail.globals.widgetState);});
+  if(globalThis.Tweak){const tweak=new globalThis.Tweak({container:root,onChange:()=>{render();save();}});tweak.addSelect(state,'density',{label:'联系人密度',options:['舒适','紧凑']});tweak.addSelect(state,'theme',{label:'外观',options:[{label:'跟随系统',value:'auto'},{label:'浅色',value:'light'},{label:'深色',value:'dark'}]});tweak.addSelect(state,'scenario',{label:'预览状态',options:['日常对话','长消息','同名 Bot','连接中断','发送待确认']});}
+})();
+</script>

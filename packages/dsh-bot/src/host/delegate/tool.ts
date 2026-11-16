@@ -10,6 +10,7 @@ import { botIdSchema } from '../../shared/ids.js';
 import { getBotBinding } from '../bot-context.js';
 import { assertInteractiveOrigin } from './guard.js';
 import type {} from '../automation/coordinator.js';
+import { getScopedCollaborationBinding, type CollaborationPrepared } from '../supergroup/collaboration.js';
 
 export const BOT_DELEGATE_TOOL_NAME = 'bot_delegate';
 const inputSchema = z.strictObject({
@@ -20,6 +21,7 @@ const inputSchema = z.strictObject({
 export function registerDelegateTool(owner: Agent): () => void {
   const ctx = owner.ctx;
   const approved = new WeakMap<ToolExecution, { id: string; createdAt: number; updatedAt: number }>();
+  const automatic = new WeakMap<ToolExecution, CollaborationPrepared>();
   const lifetime = new AbortController();
   const starts = new Set<Promise<SubagentActivation>>();
   const active = new Set<SubagentActivation>();
@@ -30,6 +32,8 @@ export function registerDelegateTool(owner: Agent): () => void {
   const read = (exec: ToolExecution) => {
     if (exec.agent !== owner || !getBotBinding(owner))
       throw new HarnessError('Missing owning Bot binding', 'automation/invalid');
+    if (ctx.get('dshBotCollaboration')?.enabled() && exec.parent !== undefined)
+      throw new HarnessError(en.tools['bot_supergroup.textToolBoundary'], 'automation/invalid');
     exec.signal.throwIfAborted();
     const stores = ctx.get('dshBotAutomationStores');
     const native = ctx.get('subagents');
@@ -45,7 +49,7 @@ export function registerDelegateTool(owner: Agent): () => void {
       throw new HarnessError('Native spawn is unavailable', 'automation/unavailable');
     }
     lifetime.signal.throwIfAborted();
-    assertInteractiveOrigin(owner, stores.runs);
+    if (!getScopedCollaborationBinding(owner)) assertInteractiveOrigin(owner, stores.runs);
     const parsed = inputSchema.safeParse(exec.arguments);
     if (!parsed.success) throw new HarnessError('Invalid delegate arguments', 'automation/invalid');
     return parsed.data;
@@ -58,6 +62,12 @@ export function registerDelegateTool(owner: Agent): () => void {
         const args = read(exec);
         const decision = await next();
         if (decision.kind === 'deny' || decision.kind === 'cancel') return decision;
+        const collaboration = ctx.get('dshBotCollaboration');
+        if (decision.kind !== 'ask' && collaboration?.enabled()) {
+          const callId = JSON.stringify([owner.session.snapshotEvents().findLast(event => event.type === 'step/start' || event.type === 'turn/start')?.seq, exec.rootCallId, exec.callId]);
+          automatic.set(exec, await collaboration.prepare(owner, args.targetBotId, callId, args, exec.signal));
+          return decision;
+        }
         const registry = ctx.get('dshBots');
         if (!registry) throw new HarnessError('Bot registry is unavailable', 'automation/unavailable');
         const target = await registry.get(args.targetBotId);
@@ -94,12 +104,27 @@ export function registerDelegateTool(owner: Agent): () => void {
               properties: {
                 childId: { type: 'string', required: true },
                 status: { type: 'string', required: true },
+                workId: { type: 'string' }, operationId: { type: 'string' }, result: { type: 'string' },
+                actualRequest: { type: 'string' }, diagnostic: { type: 'string' }, errorCode: { type: 'string' },
+                from: { type: 'object', additionalProperties: true }, to: { type: 'object', additionalProperties: true },
+                requestMessageId: { type: 'string' }, replyMessageId: { type: 'string' },
+                deliveryMode: { type: 'string', enum: ['ask', 'notify'] },
               },
             },
             render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
           },
           async execute(_args, exec) {
             const args = read(exec);
+            const prepared = automatic.get(exec);
+            if (prepared) {
+              const collaboration = ctx.get('dshBotCollaboration');
+              if (!collaboration) throw new HarnessError('Native delegation unavailable', 'automation/unavailable');
+              return collaboration.execute(prepared, args, exec.signal);
+            }
+            // A separate native approval is still respected, but it cannot turn
+            // a scoped worker into the unrestricted legacy delegation route.
+            if (getScopedCollaborationBinding(owner))
+              throw new HarnessError(en.tools['bot_supergroup.textToolBoundary'], 'automation/invalid');
             const binding = getBotBinding(owner);
             if (!binding) throw new HarnessError('Missing Bot binding', 'automation/invalid');
             try {

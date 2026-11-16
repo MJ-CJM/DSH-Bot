@@ -18,6 +18,7 @@ import { rejectMemorySecrets } from './secrets.js';
 import { forgetChoiceSchema, forgetSelectionSchema, type ForgetChoice, type ForgetSelection } from '../../shared/memory-forget.js';
 import { z } from 'zod';
 import type { MemoryQuery, MemoryCreate, MemoryRevise, MemoryConfirm, MemoryResolve } from '../../shared/memory-management.js';
+import type { MemoryChangesQuery, MemoryRestore } from '../../shared/memory-management.js';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -38,6 +39,12 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
   async setAutoShare(input: { enabled: boolean; expectedRevision: number }) { return this.ctx.dshBots.setAutoShare(input); }
   @Remote
   async query(input: MemoryQuery) { return this.ctx.dshBots.manageMemory(m => m.query(input)); }
+  @Remote
+  async changes(input: MemoryChangesQuery) { return this.ctx.dshBots.manageMemory(m => m.changes(input)); }
+  @Remote
+  async restore(input: MemoryRestore) {
+    await this.ctx.dshBots.manageMemory(m => m.restore(input)); this.ctx.dshBots.invalidate();
+  }
   @Remote
   async createManaged(input: MemoryCreate) {
     const result = await this.ctx.dshBots.manageMemory(m => m.create(input)); this.ctx.dshBots.invalidate(); return result;

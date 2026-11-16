@@ -99,7 +99,7 @@ describe('built bundle contract', () => {
       });
       expect(await ctx.dshBotProactive.status()).toMatchObject({ state: 'disabled' });
       expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/proactive', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
-        'dsh-bot/collaboration', 'dsh-bot/groups', 'dsh-bot/capabilities']);
+        'dsh-bot/collaboration', 'dsh-bot/supergroup', 'dsh-bot/groups', 'dsh-bot/capabilities']);
       if (nativeEnabled === 'corrupt-memory') expect(ctx.get('dshBotReferenceMemory')).toBeUndefined();
       if (nativeEnabled === 'corrupt-transfer') expect(ctx.get('dshBotWorkspace')).toBeUndefined();
       await fork.dispose();
@@ -172,7 +172,17 @@ describe('built bundle contract', () => {
     const payload = JSON.parse(readFileSync(`${require.resolve('dsh-botgroup/client')}.map`, 'utf8'));
     expect(source).toContain('--dsw-alias-bg-layer-1');
     expect(source).toContain('bots_page');
-    expect(source).not.toMatch(/#[\da-f]{6}\b/i);
+    // Brand artwork uses the approved repository asset's fixed colors. UI
+    // styles still use theme tokens; no other source may introduce literals.
+    const asset = readFileSync(fileURLToPath(new URL('../assets/logo.svg', import.meta.url)), 'utf8');
+    const palette = new Set([...asset.matchAll(/fill="(#[\da-f]{6})"/gi)].map(match => match[1]!.toLowerCase()));
+    const map = new SourceMap(payload);
+    for (const match of source.matchAll(/#[\da-f]{6}\b/gi)) {
+      const prefix = source.slice(0, match.index), lines = prefix.split('\n');
+      const entry = map.findEntry(lines.length - 1, lines.at(-1)!.length);
+      expect('originalSource' in entry && entry.originalSource).toMatch(/src\/client\/bot-mode\/BrandMark\.tsx$/);
+      expect(palette.has(match[0].toLowerCase())).toBe(true);
+    }
     expect(payload.sources.some((path: string) => /node_modules\/(@deepseek-ai\/cordis|react(?:-dom)?|zod)\//.test(path))).toBe(false);
     expect(source).not.toContain('document.createElement("style")');
   });
@@ -191,7 +201,10 @@ describe('built bundle contract', () => {
         'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories', 'bot_manage.approval.personaPreview',
         'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',
         'bot_memory.confirm.approval', 'bot_message.approval', 'bot_message.description', 'bot_notify.approval', 'bot_notify.description',
-        'dataFlow.export.approval', 'group_message.description', 'schedule.guidance',
+        'bot_supergroup.collaborationGuidance', 'bot_supergroup.collaborationRevoked', 'bot_supergroup.description', 'bot_supergroup.identity', 'bot_supergroup.instructions',
+        'bot_supergroup.messageDraftInstructions', 'bot_supergroup.messageEmptyReply', 'bot_supergroup.messageFailed', 'bot_supergroup.messageNotified', 'bot_supergroup.messageReceiverInstructions',
+        'bot_supergroup.scope', 'bot_supergroup.taskQuestion', 'bot_supergroup.textToolBoundary', 'bot_supergroup.unadmittedInput',
+        'dataFlow.export.approval', 'group_message.description', 'group_message.expertGuidance', 'schedule.guidance',
       ]);
       for (const value of Object.values(dictionary)) expect(value.trim()).not.toBe('');
     }
@@ -246,22 +259,25 @@ describe('built bundle contract', () => {
       $on: (event: string) => register(event === 'commands/change' ? 'commands.change' : 'schedule.changed'),
       async $mount(contribution: { package: string; descriptors: { namespace: string; method: string }[] }) {
         expect(['dsh-bot', 'dsh-bot/automation', 'dsh-bot/proactive', '@deepseek-ai/dsh-schedule', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
-          'dsh-bot/collaboration', 'dsh-bot/groups', 'dsh-bot/capabilities', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-permission-presets']).toContain(contribution.package);
+          'dsh-bot/collaboration', 'dsh-bot/groups', 'dsh-bot/supergroup', 'dsh-bot/capabilities', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-permission-presets']).toContain(contribution.package);
         await Promise.resolve();
         const endpoints = contribution.descriptors.map((entry) => `${entry.namespace}/${entry.method}`);
         for (const endpoint of endpoints) { expect(activeEndpoints.has(endpoint)).toBe(false); activeEndpoints.add(endpoint); }
         mountedEndpoints.push(...endpoints);
+        const releaseSettings = contribution.package === 'dsh-bot/supergroup' ? ctx.provide('remote.dshBotSupergroup', {
+          settings: vi.fn(async () => ({ ok: true, value: { enabled: false } })),
+        } as never) : undefined;
         const dispose = register(contribution.package === 'dsh-bot' ? 'remote.dshBot' :
           contribution.package === 'dsh-bot/proactive' ? 'remote.proactive' :
           contribution.package === 'dsh-bot/automation' ? 'remote.automation' : contribution.package === 'dsh-bot/integrations' ?
           'remote.p34' : contribution.package === '@deepseek-ai/dsh-permission-presets' ? 'remote.permission' :
           contribution.package === 'dsh-bot/capabilities' ? 'remote.capabilities' : contribution.package === '@deepseek-ai/dsh-subagent' ? 'remote.subagents' :
           contribution.package === 'dsh-bot/collaboration' ? 'remote.collaboration' : contribution.package === 'dsh-bot/groups' ?
-          'remote.groups' :
+          'remote.groups' : contribution.package === 'dsh-bot/supergroup' ? 'remote.supergroup' :
           contribution.package === 'dsh-bot/messaging' ? 'remote.messaging' : contribution.package === 'dsh-bot/workspace' ?
           'remote.workspace' :
           'remote.schedule');
-        return async () => { for (const endpoint of endpoints) expect(activeEndpoints.delete(endpoint)).toBe(true); dispose(); };
+        return async () => { await releaseSettings?.(); for (const endpoint of endpoints) expect(activeEndpoints.delete(endpoint)).toBe(true); dispose(); };
       },
     } as unknown as Context['remote']);
     let conversation: typeof import('@deepseek-ai/dsh-client-ui-conversation/client') | undefined;
@@ -296,20 +312,27 @@ describe('built bundle contract', () => {
       const fork = ctx.plugin(plugin);
       await fork.await();
       expect(fork.state).toBe(2);
-      expect(assembly?.events.entries().map(d => d.kind).sort() ?? []).toEqual(mode === 'native' ? ['dsh-bot-group', 'dsh-bot-message', 'dsh-bot-onboarding-notice'] : []);
+      expect(assembly?.events.entries().map(d => d.kind).sort() ?? []).toEqual(mode === 'native' ? ['dsh-bot-group', 'dsh-bot-message', 'dsh-bot-onboarding-notice', 'supergroup-work'] : []);
       const resources = [...(mode === 'native' ?
-        ['conversation.chat.node:dsh-bot-group', 'conversation.chat.node:dsh-bot-message', 'conversation.chat.node:dsh-bot-onboarding-notice'] :
+        ['conversation.chat.node:dsh-bot-group', 'conversation.chat.node:dsh-bot-message', 'conversation.chat.node:dsh-bot-onboarding-notice', 'conversation.chat.node:supergroup-work'] :
         // The group composer's '/' menu drops its cached native command catalog on change.
         []), 'commands.change', 'conversation.composer', 'conversation.input.dock', 'conversation.session.header.utilities', 'dictionaries', 'main:dsh-bot',
-        'remote.automation', 'remote.capabilities', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.permission', 'remote.proactive', 'remote.schedule', 'remote.subagents',
+        'plugins.bundle.config:dsh-botgroup',
+        'remote.automation', 'remote.capabilities', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.permission', 'remote.proactive', 'remote.schedule', 'remote.subagents', 'remote.supergroup',
         'remote.workspace', 'schedule.changed', 'shell.overlay',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'].sort();
-      expect([...active].sort()).toEqual(resources);
+      // Initial loading guards leave only after the authoritative disabled
+      // setting is read; disabled mode must retain no navigation takeover.
+      await vi.waitFor(() => expect([...active].sort()).toEqual(resources));
       expect(mountedEndpoints.sort()).toEqual([
         'permissionPresets/catalog', 'dshBot.capabilities/request', 'subagents/interruptByParent', 'subagents/prompt', 'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',
+        'dshBotSupergroup/forSession', 'dshBotSupergroup/cancel', 'dshBotSupergroup/catalog', 'dshBotSupergroup/byGroup', 'dshBotSupergroup/sendGroupInput',
+        'dshBotSupergroup/settings', 'dshBotSupergroup/configure',
+        'dshBotSupergroup/taskSupport', 'dshBotSupergroup/addMaterial', 'dshBotSupergroup/resumeWork', 'dshBotSupergroup/pendingTasks',
         'dshBot.collaboration/board', 'dshBot.collaboration/createTask', 'dshBot.collaboration/ensure', 'dshBot.collaboration/updateTask',
         'dshBot.connectors/applyIdle', 'dshBot.connectors/catalog', 'dshBot.connectors/importLegacy', 'dshBot.connectors/saveAssignment',
           'dshBot.connectors/saveDefinition',
+        'dshBot.groups/teamList', 'dshBot.groups/teamCapture', 'dshBot.groups/teamSave', 'dshBot.groups/teamRemove', 'dshBot.groups/teamPreview', 'dshBot.groups/teamApply',
         'dshBot.groups/archive', 'dshBot.groups/cancel', 'dshBot.groups/continueTurn', 'dshBot.groups/create', 'dshBot.groups/edit', 'dshBot.groups/list', 'dshBot.groups/markRead',
           'dshBot.groups/open', 'dshBot.groups/openAttachment', 'dshBot.groups/recallForBot', 'dshBot.groups/send', 'dshBot.groups/setModel', 'dshBot.groups/stopMember', 'dshBot.groups/view',
         'dshBot.im/status', 'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/quarantineCount', 'dshBot.memory/save',
@@ -330,7 +353,7 @@ describe('built bundle contract', () => {
         'dshBot.memory/previewForget', 'dshBot.memory/chooseForget', 'dshBot.memory/cleanupStatuses',
         'dshBot.memory/retryCleanup', 'dshBot.memory/rootInstructions',
         'dshBot.memory/autoShareStatus', 'dshBot.memory/setAutoShare',
-        'dshBot.memory/query', 'dshBot.memory/createManaged', 'dshBot.memory/revise', 'dshBot.memory/confirm',
+        'dshBot.memory/query', 'dshBot.memory/changes', 'dshBot.memory/restore', 'dshBot.memory/createManaged', 'dshBot.memory/revise', 'dshBot.memory/confirm',
         'dshBot.memory/resolve', 'dshBot.memory/previewContribution', 'dshBot.memory/previewShared',
       ].sort());
       expect([...activeEndpoints].sort()).toEqual(mountedEndpoints);
@@ -341,9 +364,14 @@ describe('built bundle contract', () => {
       expect(assembly?.events.entries() ?? []).toEqual([]);
       // Failed optional renderer registration must also roll back its slot.
       const rolledBack = mode === 'registration-failure' ?
-        ['conversation.chat.node:dsh-bot-group', 'conversation.chat.node:dsh-bot-message', 'conversation.chat.node:dsh-bot-onboarding-notice'] :
-        mode === 'missing-registry' ? ['conversation.chat.node:dsh-bot-onboarding-notice'] : [];
+        ['conversation.chat.node:dsh-bot-group', 'conversation.chat.node:dsh-bot-message', 'conversation.chat.node:dsh-bot-onboarding-notice', 'conversation.chat.node:supergroup-work'] :
+        mode === 'missing-registry' ? ['conversation.chat.node:dsh-bot-onboarding-notice', 'conversation.chat.node:supergroup-work'] : [];
       expect(releases.sort()).toEqual([...resources, ...rolledBack,
+        // A cold-start guard owns three temporary replacements; the assertion
+        // above confirms they are gone after the disabled setting resolves.
+        'sidebar', 'shell.leading', 'main.conversation',
+        // Readiness status is a distinct additive overlay beside Bot preview.
+        'shell.overlay',
         // The read-only execution view adds a separate composer chain entry.
         'conversation.composer',
         // Bot badge, first-chat guidance and group badge each own a header slot.

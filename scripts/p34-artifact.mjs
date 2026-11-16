@@ -56,7 +56,7 @@ export async function auditArtifact(root, artifact, runDir) {
     const source = await readFile(resolve(root, 'packages/dsh-bot', file));
     // pnpm serializes package.json again (including its final newline).
     if (file === 'package.json') assert.deepEqual(JSON.parse(bytes), JSON.parse(source));
-    else assert.deepEqual(bytes, source, `Source/packed mismatch: ${file}`);
+    else assert.equal(sha256(bytes), sha256(source), `Source/packed mismatch: ${file}`);
     assert.ok(!/P34_PRODUCT_SENTINEL_[a-f0-9-]{36}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(bytes.toString()), `Secret in ${file}`);
     // Sourcemaps are checked too: no local checkout path is distributed.
     assert.ok(!bytes.includes(Buffer.from(root)), `Machine path in ${file}`);

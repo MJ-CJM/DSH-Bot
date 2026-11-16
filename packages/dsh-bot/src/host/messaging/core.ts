@@ -12,6 +12,7 @@ import type { BotKey } from '../../shared/identity.js';
 import type { DshBotRegistry } from '../registry.js';
 import { getBotBinding } from '../bot-context.js';
 import { OperationError, Serial } from '../common/operations.js';
+import { isNativeAmbientSource } from '../common/native-ambient-source.js';
 import type { MessageStore, } from './store.js';
 export interface MessagingAuthorization {
   /** Called after exact origin/target resolution and before any native delivery. B04 must implement concrete native approval. */
@@ -28,7 +29,6 @@ const unavailableAuthorization: MessagingAuthorization = {
     throw new OperationError('approval-denied');
   },
 };
-const ambient = new Set(['agent-instructions', 'runtime-context', 'time-context', 'tmux-context']);
 export abstract class MessagingCore {
   protected admission = new Serial();
   protected targets = new Map<string, Promise<void>>();
@@ -83,7 +83,8 @@ export abstract class MessagingCore {
     const events = agent.session.snapshotEvents();
     const turn = events.findLast((e) => e.type === 'turn/start');
     const current = events.filter(
-      (e) => e.type === 'user/message' && !ambient.has(e.data.source.kind) && (!turn || e.seq > turn.seq),
+      (e) => e.type === 'user/message' && !isNativeAmbientSource(e.data.source.kind) &&
+        !this.ctx.get?.('dshBotMessaging')?.isDisplayMessage?.(agent, e.data) && (!turn || e.seq > turn.seq),
     );
     const incoming = current.filter(
       (e) => e.type === 'user/message' && e.data.source.kind === 'dsh-bot-message',

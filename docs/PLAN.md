@@ -1,5 +1,41 @@
 # DSH-Bot 开发计划（v1）
 
+> 2026-11-16 0.7.0 发布准备：同步公开 0.6.7 的 dsh-botgroup 包名，更新四份 README、功能与兼容说明，冻结新版本候选并验证升级。用户已追加授权提交、推送并创建 PR，由用户合并；本轮不发布、不打 tag、不更新日常桌面。见[任务](../tasks/release-0.7.0.md)和[准备记录](releases/v0.7.0.md)。
+
+> 2026-11-15 Bot 低配置体验已更新日常 DSH：直接工作管理、对话内任务／资料／群设置、团队自动预览、关注预填、新群默认按需响应；1878 tests、66 tooling tests、112 Browser checks 与安装后数据保留通过。见[验收](verification/simple-bot-workflow.md)和[任务](../tasks/supergroup/SIMPLE-BOT-WORKFLOW.md)。
+
+> 2026-11-14 OpenMaus：最终 v11 `5774f556…6392398` 已完成 7 套真实 Host、98 项 Browser、7 个反馈案例与完整检查（225 files、1874 tests PASS）。用户解锁后已完成日常冷备份、精确插件安装、正常重启及原数据自验；官方应用签名不变，Bot 模式与 Supergroup 原设置保留。详情见[完整验收](verification/openmaus-improvements.md)。
+
+> 2026-11-14 官方签名升级已完成：日常 DSH 已替换为官方 `0.2.2-rc.3`，三项 Client 适配改为 profile 独立声明组合，完整冷备份与设置编辑通过；38 份历史、140 项策略／模型／请求头及 Bot／记忆／群数据保留，正常重启和双向模式／OS 快捷键验证通过，保持用户原标准模式。后续宿主版本须同步兼容包，未实现跨版本自动 fallback。见[本轮任务](../tasks/supergroup/SIGNED-DESKTOP.md)与[验收记录](verification/official-signed-desktop-update.md)。
+
+> 2026-11-13 Bot 发送交互返工已部署日常：恢复双方可见消息、明确发收件身份、notify 原语义及错误诊断；1810 项测试、同包双 Host 与 CUA 消息卡通过。用户解锁后同包完成安装与重启，846 个安装文件核对一致，283 个冷更新数据文件及记忆／历史／模型／权限保留；当前标准模式／Supergroup 关闭保持用户选择。真实模型留待用户验证。见[本轮任务](../tasks/supergroup/MESSAGE-INTERACTION.md)与[验收](verification/bot-message-interaction-repair.md)。
+
+> 2026-11-13 自动协作已按用户后续指令更新日常 desktop profile：同一 v4 冻结包、843 文件字节核对，冷备份与原数据／模型／文件模式／审批策略保留，正常重启且 Supergroup 已开启。见[部署验收](verification/supergroup-collaboration-desktop-deploy.md)。下方“日常未更新”为实现轮历史状态。
+
+> 2026-11-13 自动协作授权 P0：已接通无群 Bot 问答、委派、自动群、途中专家、继续和原 Bot 交付，复用同一工作与预算；文件模式和既有数据不变。1796 项测试及双版本同包原生 Host 验证通过，含旧格式冷启动／停止／未知不重放。日常未更新；见[本轮任务](../tasks/supergroup/AUTHORIZATION.md)与[实施验收](verification/supergroup-collaboration-authorization.md)。
+
+> 2026-11-13 原生来源兼容修复：真实研究员日志定位到 skill-catalog／user-approval 被误当非用户输入。补丁已更新日常，1766 项测试及两个原生 Host 的首次问答／策略切换回归通过；研究员现有 never、数据标签与历史保留，未发送真实消息。见[诊断和交付](verification/bot-native-context-approval.md)。
+
+> 2026-11-13 整体交互巡检完成：单聊／群聊／模式切换、成员执行、原生审批、自动群文件入口、菜单焦点及资料失败反馈集中修正。最终 release 已更新日常 DSH，原数据与模型保留；1737 项测试、原生隔离收发／组队／专家／群补充／停止及日常只读核验见[整体验收](verification/bot-mode-interaction-audit.md)。
+
+> 2026-11-13 聊天视图修正：Bot 页面显式选择原生 chat，解决继承轨迹偏好却无标签切回的问题；标准模式保留原选择。已更新日常插件，原 hello? 与回复恢复聊天展示；完整检查、原生反例和数据收据见[验收记录](verification/bot-mode-chat-view.md)。
+
+> 2026-11-13 侧栏反馈修正：标准侧栏收敛为单一透明模式入口，「Bot 会话」收进原生菜单并保留原列表。已更新日常插件，实际菜单／会话弹窗／双向切换验证通过，恢复用户原来的标准模式；1716 项测试、安装包与数据保留见[底部修正验收](verification/bot-mode-footer.md)。
+
+> 2026-11-12 桌面反馈修正：两种模式的左下角已直接显示模式切换按钮；macOS 标题栏留白和仓库彩色 Logo 已落实到日常桌面，双向切换及实际截图验收通过。1714 项测试、原数据保留和冻结包记录见[修正验收](verification/bot-mode-desktop-polish.md)。
+
+> 2026-11-12 日常桌面交付：用户明确指定日常实例后，已完成 `0.2.2-rc.2` 三项宿主适配、Subagent API 兼容、冷备份及正常重启；Supergroup 已开启，原 Bot／记忆／历史和模型保留。最终 F 包、真实原生交互、1706 项测试及未运行范围见[日常桌面验收](verification/bot-mode-desktop022-delivery.md)和[部署任务](../tasks/supergroup/DESKTOP-022.md)。以下独立审批及旧桌面记录保留为历史。
+
+> 2026-11-12 Bot 聊天视觉重设计：用户已批准新稿并完成产品实现。联系人导航、稳定底部原生输入、轻量协作卡、按需详情、真实成员与来源呈现均已落地；最新冻结包、真实视觉/功能验收及独立服务部署以[视觉交付报告](verification/bot-mode-visual-delivery.md)为准。以下旧交付记录保留作为历史。
+
+> 2026-11-12 Bot 中心当前状态：B00–B04 已实现并部署到独立本地审批服务；最终包通过 49 项实际 Browser 检查、31 项双窗口同包重连、23 项冷启动及 5 组实际 Host 输入/协作检查。使用仓库内 `0.2.1-rc.2` runtime 和三项必要适配，Supergroup 已开启；真实桌面 `0.2.2-rc.2` 隔离副本仅证明命令桥。当前桌面、日常数据与只读参考未改动。完整包来源、检查和未运行范围见[交付验收记录](verification/bot-mode-delivery.md)。
+
+> 历史：2026-11-12 适配前 B00 取得原生 New/Archive 逃逸反例，当时完整输入桥接尚未实现。该[原始记录](verification/bot-mode-b00.md)保留作为路线依据；用户随后已批准[整体方案](design/supergroup/bot-mode-proposal.md)、[B00–B04 范围](../tasks/supergroup/BOT-MODE.md)及[必要独立宿主适配](design/supergroup/host-command-routing.md)，不再等待重复授权。
+
+> 历史：2026-11-12 原 Supergroup 本地体验已按用户后续授权将 Supergroup 开发包安装到日常 DSH 桌面 profile。实际桌面已看到「插件 → DSH-Bot 个人智能体 → Supergroup 协作 → 全局开启」，保持关闭供用户开启；原 Bot 与会话保留。开关入口修复、新包校验与桌面证据见[本地部署记录](verification/supergroup-desktop-deploy.md)。该历史部署是旧 Supergroup，不是本轮 Bot 中心候选部署；未公开发布，真实模型质量仍待体验。
+
+> 2026-11-12 Supergroup：以[整体方案](design/supergroup/README.md)与[SG00–SG05 开发计划](../tasks/supergroup/README.md)为准。**自动组队、协作中邀请已有专家、原对话交付全部纳入 P0**，连同原对话继续修改、停止和准确恢复一起验收。已在 `codex/supergroup-p0` 实施，SG00 原生路线取证后复用已有 Groups 与原生 subagents；当前证据及未运行范围见[实施验收](verification/supergroup-p0.md)。用户不必先建项目、建群或选择成员，以下历史交付记录保留。
+
 > 2026-11-09 群经历召回：用户已批准 P0–P2，在现有个人记忆页及群成员单聊入口补齐本人群工作召回；保留原记忆开关，不增加后台模型或群正文副本。实现范围见[任务单](../tasks/proactive-bot/GROUP-RECALL.md)，本轮验证见[验收记录](verification/group-work-recall.md)。候选 `46bd1d63c66e` 已按后续用户授权完成[本地桌面部署](verification/group-recall-desktop-deploy.md)，未公开发布。
 
 > 2026-11-09：**0.6.6 非定时主动跟进**已实现并冻结本地候选。用户在 P0 取证后确认定时能力留到后续版本；个人与群复用原任务、会话、审批和模型入口。完整源码检查及同包双宿主/UI/升级证据见[验收报告](verification/v066-local-follow-up.md)，进度见[实施记录](../tasks/proactive-bot/V066-implementation.md)，本地包见[交付记录](releases/v0.6.6.md)。本轮不部署日常桌面或发布。
@@ -14,7 +50,7 @@
 
 > 2026-11-08 最新实施：主动协作 A01–A08 及 PB03/PB05/PB10 补充范围已实现，最终 0.6.5 包通过 24 项隔离验收。同一安装包已更新到日常 DSH 桌面版，并通过数据保留及实际界面检查；[当前交付与证据](verification/proactive-gap-completion.md)。下文 11-06 的“等待通知”是历史准备状态。
 
-> 2026-11-06 主动协作准备：设计与任务单已从 worktree 同步至当前项目，并基于重新拉取的最新 main 创建 `codex/proactive-bot-implementation` 分支。完整方案见[主动协作设计](design/proactive-bot/README.md)。当前等待用户通知，尚未开始实现；通知后从 [PB00 兼容性验证](../tasks/proactive-bot/PB00-compatibility-spike.md)开始。优先复用 DSH 原生能力和已有 Bot 服务。下文旧 Routine/自建调度描述保留为历史，不作为新实现依据。
+> 历史：2026-11-06 主动协作准备：设计与任务单已从 worktree 同步至当前项目，并基于重新拉取的最新 main 创建 `codex/proactive-bot-implementation` 分支。完整方案见[主动协作设计](design/proactive-bot/README.md)。当时等待用户通知、尚未开始实现；原定通知后从 [PB00 兼容性验证](../tasks/proactive-bot/PB00-compatibility-spike.md)开始。优先复用 DSH 原生能力和已有 Bot 服务。下文旧 Routine/自建调度描述保留为历史，不作为新实现依据。
 
 > 2026-11-01 后续实施：用户已批准 U0/U1，先验证原生 UI API，再统一配置入口、Bot 上下文和记忆页布局。见[任务单](../tasks/U0-U1-native-settings.md)及 [Issue #12](https://github.com/MJ-CJM/DSH-Bot/issues/12)。U2–U4 已完成实现和隔离验证，见 [验收报告](verification/ui-completion/README.md)、[任务单](../tasks/U2-U4-ui-completion.md)和 [Issue #14](https://github.com/MJ-CJM/DSH-Bot/issues/14)。
 
@@ -247,7 +283,7 @@ interface McpServerRef { serverName: string; transport: 'stdio' | 'streamable-ht
 **交付物**：`packages/dsh-bot` 可 link 安装 / 可 `pnpm pack` 成 tarball；单测 + 集成测；`docs/acceptance/P1.md`。
 
 **桌面版验收标准（佳民在 huihui 上操作）**
-1. 插件 → 添加插件 → 本地路径 `/Users/youzihui/ai-workspace/DSH-Bot/packages/dsh-bot`，安装并启用后，插件列表显示中文标题、简介和图标，无报错。
+1. 插件 → 添加插件 → 本地路径 `<仓库根>/packages/dsh-bot`，安装并启用后，插件列表显示中文标题、简介和图标，无报错。
 2. 侧栏出现"Bots"，打开后看到 2 个示例 Bot。
 3. 新建 Bot"小红书文案助手"（人设：只用中文、活泼语气），保存后新任务的 preset 选择器出现该 Bot；点"开始聊天"进入新任务，会话头部显示该 Bot。
 4. 问"你是谁"，回答符合人设；切到"研究员"新开任务，人设明显不同。

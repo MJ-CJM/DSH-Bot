@@ -896,6 +896,8 @@ export function openCoordinator(
 							event.ci.conclusion,
 							decision.id,
 						);
+						followUp.observeCi(engine, body.sourceId, body.generation, event.threadId,
+							event.ci.attempt, observedAt, event.ci.conclusion);
 					} else
 						engine.decide(id, {
 							kind: "ignore",

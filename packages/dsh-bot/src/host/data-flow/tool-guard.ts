@@ -1,3 +1,4 @@
+import { isAdmittedSupergroupInput } from '../supergroup/input-capability.js';
 import { graphCapability } from './graph-capability.js';
 import { connectorDestination, connectorDispatch } from './connector-boundary.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -7,6 +8,8 @@ import { unknownLabel } from './labels.js';
 import type { ManagedOutlets } from './outlets.js';
 import { nativePolicy } from './native-policy.js';
 import { isOwnedGroupTool, isAdmittedGroupInput } from '../groups/worker-tool.js';
+import { isNativeAmbientSource } from '../common/native-ambient-source.js';
+import { isScopedCollaborationInput } from '../supergroup/collaboration.js';
 
 /** Missing real Host infrastructure fails closed; older isolated unit fixtures have no memory kernel. */
 export function outlets(registry: DshBotRegistry): ManagedOutlets | undefined {
@@ -31,7 +34,7 @@ export async function inheritOwnSchedule(agent: Agent, bot: BotKey, registry: Ds
   } catch { return false; }
 }
 const local = new Set(['bot_memory_save', 'bot_memory_search', 'bot_memory_list', 'bot_memory_forget',
-  'bot_message', 'bot_delegate', 'bot_notify', 'bot_follow_up', 'bot_group_recall']);
+  'bot_message', 'bot_delegate', 'bot_notify', 'bot_follow_up', 'bot_group_recall', 'bot_supergroup']);
 /** Own lifetime is the Agent. Unload does not remove protection from surviving Agents. */
 export function protectDataFlow(agent: Agent, bot: BotKey, registry: DshBotRegistry) {
   const flow = outlets(registry); if (!flow) return;
@@ -47,6 +50,7 @@ export function protectDataFlow(agent: Agent, bot: BotKey, registry: DshBotRegis
         readers: 'shared', originTrust: 'candidate', sourceVersions: [], restrictions: [], grants: [],
       });
       for (const message of payload.messages) {
+        if (await isScopedCollaborationInput(agent, message)) continue;
         if (message.source.kind === 'user' && !agent.session.header.parentSession) {
           await flow.inherit(agent.session.id, { readers: [bot], originTrust: 'candidate',
             sourceVersions: [], restrictions: [], grants: [] });
@@ -55,9 +59,11 @@ export function protectDataFlow(agent: Agent, bot: BotKey, registry: DshBotRegis
           else await flow.inherit(agent.session.id, unknownLabel());
         } else if ((message.source as { kind: string }).kind === 'schedule') {
           if (!await inheritOwnSchedule(agent, bot, registry, flow)) await flow.inherit(agent.session.id, unknownLabel());
+        } else if (message.source.kind === 'dsh-bot-supergroup-result') {
+          if (!await isAdmittedSupergroupInput(agent, message)) throw new Error('Supergroup result capability unavailable');
         } else if (isAdmittedGroupInput(agent, message)) {
           // Already inherited by the exact-content parent bridge before native delivery.
-        } else if (!['user', 'runtime-context', 'dsh-bot-message', 'dsh-bot-message-sent',
+        } else if (!isNativeAmbientSource(message.source.kind) && !['user', 'dsh-bot-message', 'dsh-bot-message-sent',
           'dsh-bot-message-wake', 'dsh-bot-group', 'dsh-bot-delegate'].includes(message.source.kind)) {
           await flow.inherit(agent.session.id, unknownLabel());
         }

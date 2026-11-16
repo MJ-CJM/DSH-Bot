@@ -24,12 +24,14 @@ type PageCatalog = PollingCatalog<{ page?: FollowUpPage }>;
 
 export interface FollowUpSource {
   summary(subject: Subject): Catalog;
+  /** Background owner read; does not signal a user interaction to the scheduler. */
+  readSummary(subject: Subject): Promise<FollowUpStatus>;
   firstPage(subject: Subject): PageCatalog;
   page(request: FollowUpPageRequest): Promise<FollowUpPage>;
   pending(subject: Subject): FollowUpCommand | undefined;
   run(command: FollowUpCommand): Promise<SuggestionActionReply>;
   groupContinuation?: GroupFollowUpTransport;
-  openSession(origin: FollowUpOrigin, signal: AbortSignal): void;
+  openSession(origin: FollowUpOrigin, signal: AbortSignal, original?: boolean): void;
 }
 export function followUpSessionTarget(origin: FollowUpOrigin): SessionId | SubagentAddress | undefined {
   if (origin.kind === 'native-subagent') return {
@@ -61,6 +63,16 @@ export function createFollowUpSource(ctx: Context, options: BotCatalogOptions): 
     if (value.rows.some(row => subjectKey(row.subject) !== subjectKey(request.subject))) throw new Error('Follow-up page owner mismatch');
     return value;
   };
+  const readSummary = async (subject: Subject): Promise<FollowUpStatus> => {
+    const key = subjectKey(subject);
+    const status = followUpStatusReply.parse(unwrap(await remote().followUpSummary(subject)));
+    if (status.state !== 'ready') return status;
+    const summary = followUpSummarySchema.parse(status.summary);
+    if (subjectKey(summary.policy.subject) !== key || summary.rows.some(row => subjectKey(row.subject) !== key)) {
+      throw new Error('Follow-up summary owner mismatch');
+    }
+    return { ...status, summary };
+  };
   const send = async (command: FollowUpCommand): Promise<SuggestionActionReply> => {
     const service = remote();
     if (command.kind === 'policy') return unwrap(await service.followUpPolicy(command.input));
@@ -72,21 +84,12 @@ export function createFollowUpSource(ctx: Context, options: BotCatalogOptions): 
       const key = subjectKey(subject);
       let catalog = summaries.get(key);
       if (!catalog) {
-        catalog = createPollingCatalog<{ status?: FollowUpStatus }>(ctx, {}, async () => {
-          const status = followUpStatusReply.parse(unwrap(await remote().followUpSummary(subject)));
-          if (status.state === 'ready') {
-            const summary = followUpSummarySchema.parse(status.summary);
-            if (subjectKey(summary.policy.subject) !== key || summary.rows.some(row => subjectKey(row.subject) !== key)) {
-              throw new Error('Follow-up summary owner mismatch');
-            }
-            return { status: { ...status, summary } };
-          }
-          return { status };
-        }, options);
+        catalog = createPollingCatalog<{ status?: FollowUpStatus }>(ctx, {}, async () => ({ status: await readSummary(subject) }), options);
         summaries.set(key, catalog);
       }
       return catalog;
     },
+    readSummary,
     firstPage(subject) {
       const key = subjectKey(subject);
       let catalog = pages.get(key);
@@ -102,8 +105,8 @@ export function createFollowUpSource(ctx: Context, options: BotCatalogOptions): 
       async accept(input) { return followUpGroupReplySchema.parse(unwrap(await remote().followUpGroupAccept(input))); },
       async abandon(input) { return unwrap(await remote().followUpGroupAbandon(input)); },
     },
-    openSession(origin, signal) {
-      const target = followUpSessionTarget(origin);
+    openSession(origin, signal, original = false) {
+      const target = original && origin.kind === 'native-subagent' ? origin.sessionId as SessionId : followUpSessionTarget(origin);
       if (!target) throw new Error('Original follow-up task unavailable');
       if (active && !signal.aborted) ctx.uiWorkspace.openSession(target);
     },

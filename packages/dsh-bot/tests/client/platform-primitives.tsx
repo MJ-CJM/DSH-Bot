@@ -6,6 +6,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
   return <button type="button" {...props} ref={ref} data-platform-variant={variant} data-platform-size={size}>{icon}{children}</button>;
 });
 
+export function Switch({ checked, onChange, label, disabled = false }: { checked: boolean; onChange(next: boolean): void; label: string; disabled?: boolean }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} />;
+}
+
 export function FishLogo({ size = 24, className }: { size?: number; className?: string }) {
   return <svg data-platform-fish="" aria-hidden="true" width={size} height={size} className={className} />;
 }

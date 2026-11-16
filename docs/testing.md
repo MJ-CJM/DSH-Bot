@@ -20,7 +20,7 @@ The default worker limit is two because many suites fsync real JSON files or lau
 The tarball and installations are removed when the suite finishes. No `dist/` fixture is read or overwritten. Focused verification after building:
 
 ```sh
-scripts/pnpm -F dsh-bot exec vitest run --config ../../vitest.config.ts tests/deepening/v041-cache.spec.ts tests/deepening/release-fixtures.spec.ts tests/deepening/catalog-validation.spec.ts
+scripts/pnpm -F dsh-botgroup exec vitest run --config ../../vitest.config.ts tests/deepening/v041-cache.spec.ts tests/deepening/release-fixtures.spec.ts tests/deepening/catalog-validation.spec.ts
 ```
 
 ## Historical release suite

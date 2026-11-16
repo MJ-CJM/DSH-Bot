@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
+import type { Agent } from '@deepseek-ai/dsh-agent';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import type { DshBotRegistry } from '../registry.js';
 import type { GroupFactPage } from '../groups/service.js';
@@ -39,6 +40,7 @@ export class FollowUpEvents {
   private stopped = false;
   private flight?: Promise<void>;
   private abort = new AbortController();
+  private parentObservers = new Map<string, { agent: Agent; dispose: () => void | Promise<void> }>();
   constructor(private ctx: Context, private registry: DshBotRegistry) {}
   reset(forceBaseline = true) {
     this.refreshing = true;
@@ -66,6 +68,44 @@ export class FollowUpEvents {
   }
   private boundParent(subject: BotSubject) {
     return this.registry.mainSessions?.boundSessionId(subject.bot.botId, subject.bot.botCreatedAt);
+  }
+  private async observeParents() {
+    const agents = this.ctx.get('agents');
+    const subjects = [...this.policies.values()].flatMap(policy => policy.subject.kind === 'bot' ? [policy.subject] : []);
+    const active = new Map<string, { subject: BotSubject; agent: Agent }>(subjects.flatMap(subject => {
+      const id = this.boundParent(subject), agent = id && agents?.get(SessionId(id));
+      return agent ? [[agent.id, { subject, agent }] as const] : [];
+    }));
+    for (const [id, observer] of this.parentObservers) if (active.get(id)?.agent !== observer.agent) {
+      this.parentObservers.delete(id); await observer.dispose();
+    }
+    for (const [id, { subject, agent }] of active) {
+      if (this.parentObservers.has(id)) continue;
+      const lifecycle = async (childId: string) => {
+        try {
+          const header = this.ctx.sessions.get(SessionId(childId))?.header ??
+            (await this.ctx.sessionPersistence.stat(SessionId(childId), { signal: this.abort.signal }))?.header;
+          if (this.stopped || !header || header.origin !== 'subagent' || header.parentSession !== id || this.boundParent(subject) !== id) return;
+          this.childChanged(id, childId, header.createdAt);
+        } catch { /* A removed/unknown native identity is not a completion fact. */ }
+      };
+      const dispose = agent.ctx.effect(() => {
+        const off = [
+          agent.ctx.on('session/event', (session, event) => {
+            if (session.id === id && event.type === 'subagent/catalog' &&
+              (event.data.mode === 'one-shot' || event.data.mode === 'continuable'))
+              this.childChanged(id, event.data.childId, event.data.childCreatedAt);
+          }),
+          agent.ctx.on('subagent/start', info => lifecycle(info.id)),
+          agent.ctx.on('subagent/end', info => lifecycle(info.id)),
+        ];
+        return () => { for (const release of off) release(); };
+      }, 'dsh-bot: main native follow-up observers');
+      this.parentObservers.set(id, { agent, dispose });
+      // The Agent can predate this Host or policy. Flush its real catalog before
+      // the existing bounded baseline reads it; never activate another Agent.
+      if (await this.ctx.sessions.flush(agent.session)) this.baseline(subject);
+    }
   }
   private baseline(subject: Subject) {
     this.enqueue({ kind: 'work', subject });
@@ -144,7 +184,7 @@ export class FollowUpEvents {
   private async discover(job: ParentJob) {
     if (this.boundParent(job.subject) !== job.parent) return;
     const parent = SessionId(job.parent);
-    if (job.offset === undefined) {
+    if (job.offset === undefined && typeof this.ctx.subagents.listChildren === 'function') {
       try {
         const catalog = job.catalog ?? { rows: (await this.ctx.subagents.listChildren(parent, this.abort.signal))
           .filter(row => row.mode === 'one-shot' || row.mode === 'continuable'), offset: 0 };
@@ -202,7 +242,7 @@ export class FollowUpEvents {
         const condition: FollowUpFact['condition'] = latest.type === 'turn/start' ? { kind: 'tracking' }
           : latest.data.reason.kind === 'error' ? { kind: 'failed', reason: latest.data.reason.error.message.slice(0, 500) || 'error' }
           : latest.data.reason.kind === 'completed' ? { kind: 'closed', reason: 'resolved' }
-          : latest.data.reason.kind === 'aborted' ? { kind: 'closed', reason: 'cancelled' } : { kind: 'closed', reason: 'resolved' };
+          : latest.data.reason.kind === 'aborted' ? { kind: 'closed', reason: 'cancelled' } : { kind: 'tracking' };
         const payload = { origin: { kind: 'native-subagent' as const, sessionId: job.parent,
           childSessionId: job.child, turn: latest.data.turn }, title, condition };
         fact = followUpFactSchema.parse({ ...payload, nativeId: job.child, nativeRevision: Number(latest.seq),
@@ -229,6 +269,9 @@ export class FollowUpEvents {
     if (!service || this.stopped) return;
     for (let page = 0; page < 4 && this.refreshing; page++) await this.seed(service);
     if (this.refreshing) return;
+    await this.observeParents();
+    // Reuse the native-fact maintenance queue for expiry/source revocation too.
+    for (const policy of this.policies.values()) this.enqueue({ kind: 'work', subject: policy.subject });
     for (const [key, subject] of this.dirty) {
       if (this.urgent.size + this.background.size >= 512) break;
       this.dirty.delete(key);
@@ -257,7 +300,12 @@ export class FollowUpEvents {
     }
     if (!this.stopped) for (const job of retry) this.enqueue(job);
   }
-  async close() { this.stopped = true; this.abort.abort(); await this.flight?.catch(() => {}); this.urgent.clear(); this.background.clear(); }
+  async close() {
+    this.stopped = true; this.abort.abort();
+    await this.flight?.catch(() => {});
+    for (const observer of this.parentObservers.values()) await observer.dispose();
+    this.parentObservers.clear(); this.urgent.clear(); this.background.clear();
+  }
 }
 
 export async function mountFollowUpEvents(ctx: Context, registry: DshBotRegistry) {

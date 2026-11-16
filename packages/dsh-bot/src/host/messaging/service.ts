@@ -4,15 +4,21 @@ import { isWake, withoutWakeControls } from './wake.js';
 
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { getBotBinding } from '../bot-context.js';
-import { MessagingRouting } from './reply-routing.js';
+import { MessagingProjection } from './scoped-projection.js';
+import type { BotKey } from '../../shared/identity.js';
 export { messagingDomain } from './store.js';
 export type { MessagingAuthorization, MessagingCapabilities } from './core.js';
-export class Messaging extends MessagingRouting {
+export class Messaging extends MessagingProjection {
   async exclusive<T>(id: string, work: () => Promise<T>): Promise<T> {
     if (this.stopped) throw new OperationError('unavailable');
     const row = this.store.get(id);
     if (!row) throw new OperationError('not-found');
-    const key = keyOf(row.envelope.to);
+    return this.exclusiveTarget(row.envelope.to, work);
+  }
+  /** Same target queue for native clean task execution and ordinary main-chat delivery. */
+  async exclusiveTarget<T>(target: BotKey, work: () => Promise<T>): Promise<T> {
+    if (this.stopped) throw new OperationError('unavailable');
+    const key = keyOf(target);
     const result = (this.targets.get(key) ?? Promise.resolve()).then(work);
     const done = result.then(() => {}, () => {});
     this.targets.set(key, done); this.track(done);
@@ -29,6 +35,8 @@ export class Messaging extends MessagingRouting {
   }
   async start() {
     await this.store.reconcile();
+    for (const row of this.store.rows()) if (row.execution && ['pending', 'claimed'].includes(row.processing))
+      await this.store.update(row.envelope.id, { processing: 'unknown', lastErrorCode: 'scoped-execution-unconfirmed' });
     if (!this.capabilities.processing) return;
     this.releases.push(
       this.ctx.on('session/event', (session, event) => {
@@ -36,6 +44,7 @@ export class Messaging extends MessagingRouting {
           return;
         for (const r of this.store.rows())
           if (
+            !r.execution &&
             r.envelope.toSessionId === session.id &&
             ['delivered', 'delivering', 'unknown'].includes(r.delivery)
           )
@@ -54,7 +63,7 @@ export class Messaging extends MessagingRouting {
       ),
     );
     for (const r of this.store.rows())
-      if (['queued', 'delivering', 'delivered', 'unknown'].includes(r.delivery))
+      if (!r.execution && ['queued', 'delivering', 'delivered', 'unknown'].includes(r.delivery))
         this.kick(r.envelope.id, true);
   }
 

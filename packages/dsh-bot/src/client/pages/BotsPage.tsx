@@ -1,7 +1,9 @@
+import { PendingTaskSupport } from '../task-support.js';
+import { PendingWork } from '../pending-work.js';
 import { GroupsPanel } from '../components/GroupsPanel.js';
 import { ManagementWorkspace } from '../components/ManagementWorkspace.js';
 import { SettingsDrafts, useSettingsNavigation } from '../components/SettingsNavigation.js';
-import { useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { RecentConversations } from './RecentConversations.js';
 import { Button, Toast } from '@deepseek-ai/dsh-client-ui-primitives';
 import styles from '../styles/bots.module.css';
@@ -14,18 +16,36 @@ import { BotsTab } from './BotsTab.js';
 import { BotDialogs } from './BotDialogs.js';
 export type { BotsPageInjected, BotsPageProps } from './bots-page-types.js';
 
+const noPageRequest = () => undefined;
+const noPageSubscription = () => () => {};
 export function BotsPage(page: BotsPageProps) {
   const { management, groups, routines, integrations, collaboration, createMemoryPanel, onOpenSession, onRefresh, t } =
     page;
   const model = useBotsPage(page);
   const settings = useSettingsNavigation(t);
-  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(() => {
+    if (page.pageNavigation?.create !== 'group') return false;
+    delete page.pageNavigation.create;
+    return true;
+  });
+  const request = useSyncExternalStore(page.pageNavigation?.subscribe ?? noPageSubscription, page.pageNavigation?.getRequest ?? noPageRequest);
+  const handledRequest = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!request || handledRequest.current === request.sequence) return;
+    handledRequest.current = request.sequence;
+    page.pageNavigation?.consume?.(request.sequence);
+    settings.leave(() => {
+      model.setTab(request.section); model.setShowDetail(false);
+      setCreatingGroup(request.create === 'group');
+      if (request.create === 'bot') model.open({ kind: 'create' });
+    });
+  }, [request, page.pageNavigation, settings, model]);
   const text = (key: string) => t(key as Parameters<typeof t>[0]);
   const { snapshot, pageElement, compact, tab, setTab, section, busy, open, entries, unavailable, toast, setToast } = model;
   const selectedGroup = groups?.catalog.getSnapshot().groups.find(row => row.group.id === model.selectedGroup?.id && row.group.createdAt === model.selectedGroup.createdAt);
   const sectionLabel = section === 'bots' ? t('navigation.myBots') : section === 'groups' ? (selectedGroup?.group.name ?? t('groups.title')) : t('chat.recent');
   return (
-    <section
+    <SettingsDrafts.Provider value={settings.registry}><section
       ref={pageElement}
       className={`${styles.page} ${compact ? styles.compact : styles.wide}`}
       data-bots-page=""
@@ -43,7 +63,7 @@ export function BotsPage(page: BotsPageProps) {
               <button type="button" ref={model.settingsButton} className={styles.button} data-settings-navigation="" onClick={() => tab === 'management' ? settings.leave(model.returnFromSettings) : setTab('management')}>{tab === 'management' ? t('navigation.returnTo', { name: sectionLabel }) : text('chat.settings')}</button>
             </div>
           </header>
-          <nav hidden={tab === 'management' || model.showDetail} className={styles.sectionNavigation} aria-label={t('navigation.sections')}>
+          <nav hidden={model.showDetail && tab !== 'management'} className={styles.sectionNavigation} aria-label={t('navigation.sections')}>
             {(['bots', 'groups', 'recent'] as const).filter(key => key !== 'groups' || groups).map(key => <button
               type="button" key={key} className={styles.button} aria-current={tab !== 'management' && section === key ? 'page' : undefined}
               onClick={() => {
@@ -53,7 +73,8 @@ export function BotsPage(page: BotsPageProps) {
               {t(key === 'bots' ? 'navigation.myBots' : key === 'groups' ? 'groups.title' : 'chat.recent')}
             </button>)}
           </nav>
-          {tab === 'management' && (
+          {tab === 'management' && (<>
+            <p className={styles.subtitle}>{t('simple.settingsHint')}</p>
             <SettingsDrafts.Provider value={settings.registry}>
             <ManagementWorkspace
               management={management}
@@ -61,13 +82,16 @@ export function BotsPage(page: BotsPageProps) {
               routines={routines}
               collaboration={collaboration}
               bots={entries.map((entry) => entry.bot)}
+              initialBot={section === 'bots' && model.showDetail ? model.selected?.bot : undefined}
               createMemoryPanel={createMemoryPanel}
               onOpenSession={onOpenSession}
               t={t}
             />
             </SettingsDrafts.Provider>
-          )}
+          </>)}
           <div hidden={tab === 'management' || model.showDetail}>
+          {section === 'bots' && model.directoryVisible && page.taskSupport && <PendingTaskSupport actions={page.taskSupport} open={page.onOpenSession} t={t} />}
+          {section === 'bots' && model.directoryVisible && page.pendingWork && <PendingWork source={page.pendingWork} useSessionStatus={page.useSessionStatus} t={t} />}
           {(section === 'bots' || section === 'recent') && <RecentConversations key={section} page={page} model={model} mode={section} />}
           {groups && section === 'groups' && (
             <GroupsPanel
@@ -137,6 +161,6 @@ export function BotsPage(page: BotsPageProps) {
           </button>
         </div>
       )}
-    </section>
+    </section></SettingsDrafts.Provider>
   );
 }

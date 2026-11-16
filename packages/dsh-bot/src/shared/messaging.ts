@@ -128,6 +128,8 @@ export const messageRecordSchema = z
     nativeInput: nativeMessageSchema.optional(),
     outgoingInput: nativeMessageSchema.optional(),
     flowId: z.uuid().optional(),
+    execution: z.strictObject({ kind: z.literal('scoped'), workId: id, operationId: id,
+      phase: z.enum(['request', 'reply']), nativeDigest: digest, outgoingDigest: digest }).optional(),
     invocationKey: id,
     invocationDigest: digest,
     revision: positive,
