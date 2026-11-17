@@ -66,6 +66,10 @@ export async function persistProjection(domain: MemoryDomain, state: Projection)
   for (const [id, row] of domain.table('flows').entries()) if (row.envelope && row.envelope.binding.epoch < state.epoch) {
     await domain.table('flows').put(id, { id, state: row.state === 'dispatching' || row.state === 'unknown' ? 'unknown' : 'cancelled' });
   }
+  for (const [id, run] of domain.table('consolidation_runs').entries()) if (run.epoch < state.epoch) {
+    const { outputHash: _outputHash, ...receipt } = run;
+    await domain.table('consolidation_runs').put(id, { ...receipt, sourceIds: [], state: 'revoked' });
+  }
   const cache = domain.table('projections');
   await persistWatermark(domain, state);
   for (const [id] of cache.entries()) if (id !== 'snapshot') await cache.delete(id);

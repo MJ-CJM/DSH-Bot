@@ -188,7 +188,7 @@ describe('single-source Remote contract', () => {
       .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace'
         | 'create' | 'createForChat' | 'startOnboarding' | 'retryOnboarding' | 'onboardingStatus' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'
-      | 'autoShareStatus' | 'setAutoShare' | 'query' | 'changes' | 'restore' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
+      | 'consolidationStatus' | 'consolidate' | 'decideConsolidation' | 'autoShareStatus' | 'setAutoShare' | 'query' | 'changes' | 'restore' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
       | 'quarantineCount' | 'previewForget' | 'chooseForget' | 'cleanupStatuses' | 'retryCleanup' | 'rootInstructions'>();
   });
   it('shares all strict descriptors between Host and Client exports', () => {
@@ -198,7 +198,7 @@ describe('single-source Remote contract', () => {
     expect(() => require.resolve('dsh-botgroup/typert')).toThrow();
     expect(require.resolve('dsh-botgroup/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(41);
+    expect(TYPERT.invocations).toHaveLength(44);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {

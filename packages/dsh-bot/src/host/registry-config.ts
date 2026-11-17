@@ -1,3 +1,4 @@
+import { Config as ConsolidationConfig } from './memory/consolidation-config.js';
 import { proactiveConfigFields, type ProactiveConfig } from './proactive/config.js';
 import { Config as RetrievalConfig } from './memory/retrieval-config.js';
 import { messagingConfigFields, validateMessagingConfig, type MessagingConfig } from './messaging/config.js';
@@ -7,6 +8,7 @@ import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
 import { Config as SupergroupSettings, type SupergroupConfig } from './supergroup/config.js';
 
 export interface Config extends MessagingConfig, ShadowConfig, ProactiveConfig {
+  memoryConsolidation: import('./memory/consolidation-config.js').Config;
   supergroup: SupergroupConfig;
   onboardingEnabled: boolean;
   onboardingMaxOutputTokens: number;
@@ -70,6 +72,7 @@ const activityLimit = (name: string, fallback: number) =>
     return value;
   }).default(fallback);
 const baseConfig = Schema.object({
+  memoryConsolidation: ConsolidationConfig,
   supergroup: SupergroupSettings,
   onboardingEnabled: Schema.boolean().default(true),
   onboardingMaxOutputTokens: Schema.number().min(32).max(2048).step(1).default(256),

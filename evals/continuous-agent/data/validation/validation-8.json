@@ -1,0 +1,32 @@
+{
+  "id": "validation-8",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "Should another follow-up be sent for project-e6f41fc45887?",
+  "sources": [
+    {
+      "id": "validation-8-e1",
+      "at": 1,
+      "text": "Remember: project-e6f41fc45887 check value-d1a70f01d6b0 succeeded; the owner was already notified.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-8-e2",
+      "at": 2,
+      "text": "Duplicate event: same check and revision, no new information.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-8-e3",
+      "at": 3,
+      "text": "Future result: 03cd2b7bd498967a624983c2",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

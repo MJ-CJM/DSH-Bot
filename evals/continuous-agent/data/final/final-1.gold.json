@@ -1,0 +1,10 @@
+{
+  "required": [
+    "value-a6abf0f40525"
+  ],
+  "forbidden": [
+    "old-ceec9f935882"
+  ],
+  "action": "answer",
+  "canary": "3010a644fc8576cfabb426b1e79cda85"
+}

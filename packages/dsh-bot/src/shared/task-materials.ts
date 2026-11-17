@@ -18,7 +18,11 @@ export const taskResumeSchema = z.strictObject({
   operationId: id, digest, messageId: id, contentDigest: digest.optional(), originalDigest: digest.optional(), previousMessageId: id.optional(), expectedRevision: z.number().int().positive(),
   state: z.enum(['dispatching', 'queued', 'unknown']), blockerIds: z.array(id), createdAt: z.number(),
 });
+export const taskRecoverySchema = z.strictObject({ state: z.enum(['closed', 'unknown', 'waiting-approval', 'dispatch-intent',
+  'running', 'waiting-input', 'ready-to-resume', 'delivered', 'queued']), nativeApprovalCount: z.number().int().nonnegative(),
+  holdsAgent: z.boolean(), timerWakeup: z.literal(false), durableToolResume: z.literal(false) });
 export const taskSupportSchema = z.strictObject({
+  recovery: taskRecoverySchema.optional(),
   workId: id, revision: z.number().int().positive(), originSessionId: id, inputMessageId: id,
   ownerName: z.string().optional(), originalQuestion: z.string().optional(), readerNames: z.array(z.string()).optional(),
   owner: botKeySchema, readers: z.array(botKeySchema).min(1).max(65), blockers: z.array(taskBlockerSchema), materials: z.array(taskMaterialSchema),

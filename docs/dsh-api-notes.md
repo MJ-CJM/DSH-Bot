@@ -1903,3 +1903,11 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 ## v11 首次连接阻碍的证据边界（2026-11-14）
 
 `forSession` 仅在本条真实原输入后有原生 assistant tool-call 与准确 turn/callId 的失败 tool/result，且工具命名空间对应当前启用但未就绪的 connector，才建立首次关联；同连接后续成功清除失败。普通回复、引用错误文字、无关工具及旧输入失败不能推断任务受阻。只复用现有 Session 事件与 Connectors 定义／运行状态，没有新 API 或 guard 放宽。
+
+## 2026-11-16：记忆整理与持续任务
+
+实现及证据见 [实施记录](reports/continuous-agent/implementation.md)。复用公开 `agents.create({ sessionId, meta, agentOptions, setup })`、`AgentHandle.dispose`、scoped `tools.restrict/guard`、`agent/request`、`agent/request-error`、`llm/stream`、`sessions.flush`。实际 rc.2/rc.3 Host 验证单次请求、工具拒绝和注销；不是只靠类型推导。生成 Session 纳入原 memory admission/lineage/forget。
+
+`defineDomain` 的 `compatibleVersions` 允许 per-record 读旧记录；不兼容记录可能被跳过，不能据此安全降级。memory 格式 3 升级在旧 v2 layout 表写 strict-schema 围栏，旧 reader 拒绝；保留冷备份回退。
+
+`ApprovalService.request` 的公开合同是 same-process request；`approval/asked` / `approval/decided` 是审计，不是持久可重放工具。恢复页只投影等待，不代替原生许可。原生日程 rc.2 与 rc.3 自然冷启动跨期实验均未产生到期收据，自动定时桥不启用。

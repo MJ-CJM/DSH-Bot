@@ -1,0 +1,32 @@
+{
+  "id": "final-1",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "What is project-12043f7da2fa's long-term preference?",
+  "sources": [
+    {
+      "id": "final-1-e1",
+      "at": 1,
+      "text": "Remember: project-12043f7da2fa prefers value-a6abf0f40525.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-1-e2",
+      "at": 2,
+      "text": "Only for today's demo, use old-ceec9f935882.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-1-e3",
+      "at": 3,
+      "text": "Future result: 508816d17e87c62d32321256",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

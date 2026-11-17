@@ -352,6 +352,7 @@ describe('built bundle contract', () => {
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
         'dshBot.memory/previewForget', 'dshBot.memory/chooseForget', 'dshBot.memory/cleanupStatuses',
         'dshBot.memory/retryCleanup', 'dshBot.memory/rootInstructions',
+        'dshBot.memory/consolidationStatus', 'dshBot.memory/consolidate', 'dshBot.memory/decideConsolidation',
         'dshBot.memory/autoShareStatus', 'dshBot.memory/setAutoShare',
         'dshBot.memory/query', 'dshBot.memory/changes', 'dshBot.memory/restore', 'dshBot.memory/createManaged', 'dshBot.memory/revise', 'dshBot.memory/confirm',
         'dshBot.memory/resolve', 'dshBot.memory/previewContribution', 'dshBot.memory/previewShared',

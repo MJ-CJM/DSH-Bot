@@ -1,0 +1,8 @@
+{
+  "required": [],
+  "forbidden": [
+    "value-6fc7089ef662"
+  ],
+  "action": "abstain",
+  "canary": "82dc7fb427af092bfdb21c2536171f8f"
+}

@@ -1,3 +1,4 @@
+import { consolidationReadable } from './consolidation-source.js';
 import { MemoryLineage } from '../data-flow/lineage.js';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
@@ -29,6 +30,7 @@ export class MemoryAdmission {
     this.kernel?.assertOwnership();
     if (exec.agent && exec.name === 'mcp__bot_memory_graph__read_graph' && this.cleanupReads.get(exec.callId) === exec.agent) return;
     this.assertAllowed();
+    if (exec.agent) this.assertDerivedSources(exec.agent.session.id);
     // Raw events are intentionally retained. After forgetting, unreviewed readers and side-effect tools stay closed.
     if (this.kernel?.snapshot.forgotten.size && !['bot_memory_save', 'bot_memory_search', 'bot_memory_list', 'bot_memory_forget',
       'bot_group_recall',
@@ -76,7 +78,16 @@ export class MemoryAdmission {
   markStartupFailed(): void {
     if (!this.ready) this.startupFailed = true;
   }
+  private assertDerivedSources(sessionId: string) {
+    if (!this.kernel) return;
+    const ids = new Set([...new MemoryLineage(this.kernel).seen(sessionId), ...(this.seen.get(sessionId) ?? [])]);
+    for (const [, op] of this.kernel.domain.table('ops').entries()) for (const v of op.versions)
+      if (ids.has(v.versionId) && !consolidationReadable(this.kernel, v)) throw new Error('Derived memory source changed; start a fresh request context');
+  }
   private changed = () => {
+    for (const agent of this.agents.values()) {
+      try { this.assertDerivedSources(agent.session.id); } catch { agent.cancel({ kind: 'hook', reason: 'Derived memory source changed' }, { keepInbox: true }); }
+    }
     if (!this.kernel?.blocked && !this.stopped) return;
     // No whenIdle here: forget can be called from the very turn being cancelled.
     for (const agent of this.agents.values()) agent.cancel({ kind: 'hook', reason: 'Memory admission blocked' }, { keepInbox: true });
@@ -158,14 +169,14 @@ export class MemoryAdmission {
     }
     const kernel = this.kernel;
     if (!kernel) throw new Error('Memory admission is not ready');
-    this.assertSurface(agent, options);
+    this.assertSurface(agent, options); this.assertDerivedSources(agent.session.id);
     const epoch = capturedEpoch, id = randomUUID();
     if (epoch === undefined) throw new Error('Memory request predates readiness');
     let finish!: () => void;
     const done = new Promise<void>(resolve => { finish = resolve; });
     try {
       await kernel.serial(async () => {
-        this.assertAllowed(); this.assertSurface(agent, options);
+        this.assertAllowed(); this.assertSurface(agent, options); this.assertDerivedSources(agent.session.id);
         if (epoch !== kernel.epoch) throw new Error('Stale memory request epoch');
         // Every managed request records its actual context dependencies before dispatch.
         await kernel.domain.table('receipts').put(id, { id, epoch, sessionId: agent.session.id,
@@ -173,7 +184,7 @@ export class MemoryAdmission {
         this.assertAllowed();
         this.leases.set(id, { agent, done, finish });
       });
-      this.assertAllowed(); this.assertSurface(agent, options);
+      this.assertAllowed(); this.assertSurface(agent, options); this.assertDerivedSources(agent.session.id);
       if (epoch !== kernel.epoch) throw new Error('Stale memory request epoch');
       yield* next();
     } catch (error) { this.denied++; throw error; }

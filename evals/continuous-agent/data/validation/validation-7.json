@@ -1,0 +1,32 @@
+{
+  "id": "validation-7",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "Should the owner receive a follow-up for project-cf62333e8d71?",
+  "sources": [
+    {
+      "id": "validation-7-e1",
+      "at": 1,
+      "text": "Remember: notify me once when project-cf62333e8d71 check value-4007aea4410e succeeds.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-7-e2",
+      "at": 2,
+      "text": "Verified check value-4007aea4410e succeeded. No notification has been sent.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-7-e3",
+      "at": 3,
+      "text": "Future result: 22e794ccf36f0e90c6dd9216",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

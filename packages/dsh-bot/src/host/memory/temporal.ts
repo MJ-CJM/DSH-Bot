@@ -1,3 +1,4 @@
+import { consolidationReadable } from './consolidation-source.js';
 import type { MemoryVersion, MemoryPayload } from '../../shared/memory-v2.js';
 import type { MemoryKernel } from './op-log.js';
 
@@ -35,7 +36,7 @@ export function temporalView(kernel: MemoryKernel, query: TimeQuery): { facts: F
       const payload = kernel.domain.table('payloads').get(latest.contentRef);
       if (payload) selected = { version: latest, payload };
     }
-    if (selected) facts.push(selected);
+    if (selected && consolidationReadable(kernel, selected.version, query.at)) facts.push(selected);
   }
   return { facts, boundary };
 }

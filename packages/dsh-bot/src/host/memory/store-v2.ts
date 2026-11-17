@@ -1,3 +1,4 @@
+import { consolidationReadable } from './consolidation-source.js';
 import { MemoryLineage } from '../data-flow/lineage.js';
 import { mergeLabels } from '../data-flow/labels.js';
 import { randomUUID } from 'node:crypto';
@@ -42,7 +43,7 @@ export class V2MemoryStore {
   records(botId: string): MemoryRecord[] {
     const owner = this.owner(botId), rows: MemoryRecord[] = [];
     for (const v of this.kernel.snapshot.versions.values()) {
-      if (v.scope !== 'private' || !sameBot(v.ownerBotKey, owner) || v.status !== 'active') continue;
+      if (!consolidationReadable(this.kernel, v) || v.scope !== 'private' || !sameBot(v.ownerBotKey, owner) || v.status !== 'active') continue;
       if (v.labels.readers === 'shared' || !v.labels.readers.some(reader => sameBot(reader, owner)) ||
         v.labels.restrictions.some(r => r === 'revoked' || r === 'pending-cleanup')) continue;
       const payload = this.kernel.domain.table('payloads').get(v.contentRef);
@@ -91,6 +92,7 @@ export class V2MemoryStore {
   }
   private async put(record: MemoryRecord, owner: BotKey): Promise<void> {
     const previous = this.kernel.snapshot.versions.get(record.id);
+    if (previous?.consolidation) throw new Error('Use consolidation review for derived memories');
     const { version, payload } = privateVersion(this.kernel, record, owner, { memoryId: record.id,
       versionId: randomUUID(), contentRef: randomUUID(), revision: (previous?.revision ?? 0) + 1 },
       record.source?.by === 'model' ? 'model' : 'management');

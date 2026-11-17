@@ -136,6 +136,12 @@ function TaskSupportForm({ workId, actions, integrations, bot, refresh, openSess
         <ConnectorsPanel actions={integrations} bots={[bot]} onOpenSession={async id => { if (!openSession) throw new Error('Unavailable'); await openSession(id); }} t={t} />
       </details>}
       <Button variant="ghost" disabled={busy} onClick={() => { void run('refresh'); }}>{t('bots.refresh')}</Button>
+      {value.recovery && <div data-task-recovery={value.recovery.state}>
+        <p role="status">{t(`taskSupport.recovery.${value.recovery.state}`)}</p>
+        {value.recovery.holdsAgent && <p>{t('taskSupport.recovery.holdsAgent')}</p>}
+        <details><summary>{t('taskSupport.recovery.capabilities')}</summary><p>{t('taskSupport.recovery.timerUnavailable')}</p>
+          <p>{t('taskSupport.recovery.toolUnavailable')}</p></details>
+      </div>}
       <p>{t('taskSupport.readers')}: {(value.readerNames || value.readers.map(row => row.botId)).join(', ')}</p>
       <ul>{value.materials.map(row => <li key={row.id} data-task-material={row.kind}><strong>{row.name}</strong><p>{row.question}</p></li>)}</ul>
       <fieldset disabled={busy || !!pending || readOnly}>

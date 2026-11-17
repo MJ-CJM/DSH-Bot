@@ -16,7 +16,7 @@ async function fixture() {
   const dir = await mkdtemp(join(base, 'layout-')), ctx = new Context();
   await ctx.plugin(Storage).await(); await ctx.plugin(Json, { root: join(dir, 'storage') }).await();
   await ctx.plugin(Domain, { backend: 'json' }).await();
-  const old = await ctx.storageDomain.open({ ...memoryDomain, layout: 'single' }), kernel = new MemoryKernel(old, () => {});
+  const old = await ctx.storageDomain.open({ ...memoryDomain, version: 2, layout: 'single' }), kernel = new MemoryKernel(old, () => {});
   await kernel.recover();
   const fact = annotatedFact({ id: 'layout', content: 'LAYOUT_CANARY', scope: 'shared', trust: 'user_confirmed', from: null,
     to: null, basis: 'unknown', seq: 1, kind: 'user_fact', subject: 'user', factKey: 'city', qualifiers: {} });
@@ -36,7 +36,7 @@ it('recopies an interrupted native layout bootstrap before using it, and erases 
     await kernel.recover(); expect(kernel.seq).toBe(1);
     expect(kernel.snapshot.versions.has(f.fact.version.memoryId)).toBe(true);
     expect(domain.table('layout').get('upgrade')?.phase).toBe('ready'); await kernel.close();
-    const legacy = await f.ctx.storageDomain.open({ ...memoryDomain, layout: 'single' });
+    const legacy = await f.ctx.storageDomain.open({ ...memoryDomain, version: 2, layout: 'single' });
     expect(legacy.table('payloads').size).toBe(0); expect(legacy.table('ops').size).toBe(0); await legacy.close();
     const reopened = await openMemoryDomain(f.ctx), restored = new MemoryKernel(reopened, () => {});
     await restored.recover(); expect(restored.seq).toBe(1); await restored.close();

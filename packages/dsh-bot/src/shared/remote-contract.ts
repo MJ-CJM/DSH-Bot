@@ -1,3 +1,4 @@
+import { consolidationInputSchema, consolidationDecisionSchema, consolidationRunSchema, consolidationViewSchema } from './memory-consolidation.js';
 import { createForChatSchema, startOnboardingSchema, onboardingStatusSchema } from './onboarding.js';
 import { autoShareStatusSchema, autoShareToggleSchema } from './data-flow.js';
 import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryConfirmSchema,
@@ -230,6 +231,15 @@ export const dshBotRemoteSpec = {
         },
       ],
       result: codec('void', z.void()),
+    },
+    'dshBot.memory/consolidationStatus': {
+      ...memoryOwner, parameters: [parameter('botId', 'string', botIdSchema)], result: activityResultCodec('ConsolidationView', consolidationViewSchema),
+    },
+    'dshBot.memory/consolidate': {
+      ...memoryOwner, parameters: [parameter('input', 'ConsolidationInput', consolidationInputSchema)], result: activityResultCodec('ConsolidationRun', consolidationRunSchema),
+    },
+    'dshBot.memory/decideConsolidation': {
+      ...memoryOwner, parameters: [parameter('input', 'ConsolidationDecision', consolidationDecisionSchema)], result: activityResultCodec('ConsolidationRun', consolidationRunSchema),
     },
     'dshBot.memory/autoShareStatus': {
       ...memoryOwner, parameters: [], result: activityResultCodec('AutoShareStatus', autoShareStatusSchema),

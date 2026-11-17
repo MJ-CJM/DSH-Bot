@@ -1,3 +1,4 @@
+import type { ConsolidationInput, ConsolidationDecision } from '../../shared/memory-consolidation.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import {
@@ -32,6 +33,24 @@ export class DshBotMemoryRemote extends TypertRemoteService implements DshBotMem
 
   constructor(ctx: Context) {
     super(ctx, 'dshBotMemory', { namespace: 'dshBot.memory' });
+  }
+  private async consolidationOwner(botId: string) {
+    const bot = await this.ctx.dshBots.get(botId); return { botId: bot.id, botCreatedAt: bot.createdAt };
+  }
+  @Remote
+  async consolidationStatus(botId: string) {
+    const owner = await this.consolidationOwner(botId), service = await this.ctx.dshBots.memoryConsolidation();
+    return { enabled: service.config.enabled, revision: service.kernel.seq, runs: service.list(owner) };
+  }
+  @Remote
+  async consolidate(input: ConsolidationInput) {
+    const owner = await this.consolidationOwner(input.botId), service = await this.ctx.dshBots.memoryConsolidation();
+    const result = await service.start(input, owner); this.ctx.dshBots.invalidate(); return result;
+  }
+  @Remote
+  async decideConsolidation(input: ConsolidationDecision) {
+    const owner = await this.consolidationOwner(input.botId), service = await this.ctx.dshBots.memoryConsolidation();
+    const result = await service.decide(input, owner); this.ctx.dshBots.invalidate(); return result;
   }
   @Remote
   async autoShareStatus() { return this.ctx.dshBots.autoShareStatus(); }

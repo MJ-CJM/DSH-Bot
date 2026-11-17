@@ -1,0 +1,32 @@
+{
+  "id": "validation-6",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "What did the owner choose for project-ca723b24f19c?",
+  "sources": [
+    {
+      "id": "validation-6-e1",
+      "at": 1,
+      "text": "Assistant hypothesis, unverified: project-ca723b24f19c could use value-da1a6a949883.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-6-e2",
+      "at": 2,
+      "text": "The owner has not made a choice.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-6-e3",
+      "at": 3,
+      "text": "Future result: 1c212db535283b627b913780",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

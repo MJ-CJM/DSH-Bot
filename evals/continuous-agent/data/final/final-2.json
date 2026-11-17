@@ -1,0 +1,32 @@
+{
+  "id": "final-2",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "Give project-74e2d91b656a's current destination, preserving the fact that it changed.",
+  "sources": [
+    {
+      "id": "final-2-e1",
+      "at": 1,
+      "text": "Remember: project-74e2d91b656a's destination was old-6ce8c178bfd9.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-2-e2",
+      "at": 2,
+      "text": "Correction: project-74e2d91b656a's destination is now value-17d99005806f.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-2-e3",
+      "at": 3,
+      "text": "Future result: 1a454448fbb9377996a952ff",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { MemoryConsolidation } from './MemoryConsolidation.js';
 import { SegmentedTabs } from '@deepseek-ai/dsh-client-ui-primitives';
 import { SettingsBotContext } from './SettingsBotContext.js';
 import { SharedMemoryPanel, type SharedMemoryBinding } from './SharedMemoryPanel.js';
@@ -253,6 +254,7 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
       )}
       </div>
       {groupRecall && active && <GroupRecallPanel bot={bot} binding={groupRecall} t={t} />}
+      {shared && active && <MemoryConsolidation key={`consolidation:${bot.id}:${bot.createdAt}`} binding={shared} botId={bot.id} t={t} />}
       {changes && active && <MemoryChanges key={`${bot.id}:${bot.createdAt}`} binding={changes} t={t} />}
       <details><summary>{t('memory.behavior')}</summary><p className={styles.hint}>{t('memory.sessionNotice')}</p></details>
     </section>

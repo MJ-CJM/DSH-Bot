@@ -1,0 +1,32 @@
+{
+  "id": "final-3",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "What remains to do for project-9840ef0d715a?",
+  "sources": [
+    {
+      "id": "final-3-e1",
+      "at": 1,
+      "text": "Remember: I committed to deliver value-0b87955f1d52 for project-9840ef0d715a tomorrow.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-3-e2",
+      "at": 2,
+      "text": "The design is complete; delivery is still pending.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-3-e3",
+      "at": 3,
+      "text": "Future result: 2f93a0e2451615bf640c3340",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

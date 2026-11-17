@@ -1,5 +1,7 @@
 # DSH-Bot 开发计划（v1）
 
+> 2026-11-16 记忆质量与持续任务优化：用户已批准[设计](design/continuous-agent/README.md)及[P0–P5 计划](../tasks/continuous-agent/README.md)。分支 `codex/agent-memory-reliability` 已实现评估机制、手动私有记忆整理和任务恢复投影；原生日程冷恢复失败，定时桥保持关闭。已完成隔离 Host/Browser 与本地安装自验，证据及未通过项见[实施验收](reports/continuous-agent/implementation.md)，真实模型质量仍未运行。
+
 > 2026-11-16 0.7.0 发布准备：同步公开 0.6.7 的 dsh-botgroup 包名，更新四份 README、功能与兼容说明，冻结新版本候选并验证升级。用户已追加授权提交、推送并创建 PR，由用户合并；本轮不发布、不打 tag、不更新日常桌面。见[任务](../tasks/release-0.7.0.md)和[准备记录](releases/v0.7.0.md)。
 
 > 2026-11-15 Bot 低配置体验已更新日常 DSH：直接工作管理、对话内任务／资料／群设置、团队自动预览、关注预填、新群默认按需响应；1878 tests、66 tooling tests、112 Browser checks 与安装后数据保留通过。见[验收](verification/simple-bot-workflow.md)和[任务](../tasks/supergroup/SIMPLE-BOT-WORKFLOW.md)。

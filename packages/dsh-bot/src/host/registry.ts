@@ -1,3 +1,5 @@
+import { MemoryConsolidation } from './memory/consolidation.js';
+import { nativeConsolidation } from './memory/consolidation-native.js';
 import { createHash } from 'node:crypto';
 import { createForChatSchema, type CreateForChatInput, type StartOnboardingInput } from '../shared/onboarding.js';
 import type { Onboarding } from './onboarding/coordinator.js';
@@ -43,6 +45,17 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
+  async memoryConsolidation() {
+    return this.manageMemory(m => {
+      if (!this.consolidationService) {
+        const service = new MemoryConsolidation(m.kernel, this.config.memoryConsolidation,
+          key => !!this.onboardingSnapshot(key.botId, key.botCreatedAt), nativeConsolidation(this.ctx, this));
+        this.consolidationService = service;
+        this.ctx.effect(() => () => service.close(), 'dsh-bot: memory consolidation owner');
+      }
+      return this.consolidationService;
+    });
+  }
   onboarding?: Onboarding;
   supergroup?: Supergroup;
   private readonly personaListeners = new Set<() => void>();

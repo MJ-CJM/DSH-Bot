@@ -1,3 +1,4 @@
+import { recoveryView } from './recovery-view.js';
 import { createHash } from 'node:crypto';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { Context } from '@deepseek-ai/cordis';
@@ -123,9 +124,20 @@ export class TaskSupport {
     }
     return same(blockers, current.blockers ?? []) ? current : { ...current, blockers: blockers.slice(-128) };
     });
+    // Reconcile only exact native admission evidence. Absence is not permission to resend.
+    const original = this.original(work, agent);
+    work = await this.owner.change(id, undefined, current => {
+      const resumes = current.resumes?.map(row => {
+        if (row.state !== 'unknown' || !row.contentDigest || row.originalDigest !== original.digest) return row;
+        const event = agent.session.snapshotEvents().find(e => e.type === 'user/message' && e.data.id === row.messageId);
+        return event?.type === 'user/message' && event.data.source.kind === 'user' && hash(event.data.content) === row.contentDigest
+          ? { ...row, state: 'queued' as const } : row;
+      });
+      return same(resumes, current.resumes) ? current : { ...current, resumes };
+    });
     const ci = await this.ci(work).catch(() => []);
     const names = await Promise.all(work.readers.map(key => this.registry.get(key.botId)));
-    return taskSupportSchema.parse({ originalQuestion: this.original(work, agent).text, ownerName: (await this.registry.get(work.owner.botId)).name, readerNames: names.map((bot, index) => bot.name ?? work.readers[index]?.botId ?? ''), workId: work.id, revision: work.revision, owner: work.owner, readers: work.readers,
+    return taskSupportSchema.parse({ recovery: recoveryView(work, agent.session.snapshotEvents(), agent.status !== 'idle'), originalQuestion: this.original(work, agent).text, ownerName: (await this.registry.get(work.owner.botId)).name, readerNames: names.map((bot, index) => bot.name ?? work.readers[index]?.botId ?? ''), workId: work.id, revision: work.revision, owner: work.owner, readers: work.readers,
       originSessionId: work.originSessionId, inputMessageId: work.inputMessageId, blockers: work.blockers ?? [],
       materials: work.materials ?? [], resumes: work.resumes ?? [],
       inputs: this.inputs(work, agent).map(({ text: _text, ...row }) => row), ci: ci.map(({ text: _text, sourceId: _sourceId, ...row }) => row) });

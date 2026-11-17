@@ -13,10 +13,11 @@ export function SharedMemoryList({ rows, busy, edit, confirm, forget, contributi
     data-memory-id={row.version.memoryId} className={panel.record}>
     <p className={panel.content}>{row.payload.content}</p>
     <span>{t(`shared.state.${row.state}`)}</span>
+    {row.version.consolidation && <p>{t('memory.consolidation.candidateNotice')}</p>}
     <MemoryProvenance row={row} t={t} />
     <div className={styles.actions}>
-      <button type="button" className={styles.button} disabled={busy} onClick={() => edit(row)}>{t('memory.edit')}</button>
-      <button type="button" className={styles.button} disabled={busy} onClick={() => confirm(row)}>
+      <button type="button" className={styles.button} disabled={busy || !!row.version.consolidation} onClick={() => edit(row)}>{t('memory.edit')}</button>
+      <button type="button" className={styles.button} disabled={busy || !!row.version.consolidation} onClick={() => confirm(row)}>
         {t(row.version.scope === 'private' ? 'shared.publish' : 'shared.confirm')}</button>
       <button type="button" className={styles.dangerButton} disabled={busy} onClick={() => forget(row)}>{t('actions.delete')}</button>
       {row.version.scope === 'shared' && row.version.shard !== 'user' && <button type="button" className={styles.dangerButton}

@@ -1,3 +1,4 @@
+import { consolidationReadable } from './consolidation-source.js';
 import { randomUUID } from 'node:crypto';
 import { sameBot, type BotKey } from '../../shared/identity.js';
 import { memoryVersionSchema, payloadSchema, type MemoryPayload, type MemoryVersion } from '../../shared/memory-v2.js';
@@ -32,6 +33,7 @@ export class MemoryManagement {
     return { version, payload };
   }
   private historyAccess(version: MemoryVersion, key: BotKey, versions: Map<string, MemoryVersion>, seen = new Set<string>(), sourceOnly = false): boolean {
+    if (!consolidationReadable(this.kernel, version)) return false;
     const state = this.kernel.snapshot, current = state.versions.get(version.memoryId);
     if (!current || !versions.has(current.versionId) || !versions.has(version.versionId) || state.forgotten.has(version.memoryId) || current.scope !== version.scope ||
       current.userScope !== this.kernel.scope.scope.id || version.userScope !== current.userScope) return false;
@@ -86,7 +88,7 @@ export class MemoryManagement {
           ...(before ? { previous: this.changeFields(before) } : {}),
           changed: (['content', 'subject', 'factKey', 'qualifiers', 'valid'] as const)
             .filter(field => JSON.stringify(before?.[field]) !== JSON.stringify(payload[field])),
-          restorable: !!current && current.versionId !== version.versionId && current.status === 'active' &&
+          restorable: !!current && current.versionId !== version.versionId && current.status === 'active' && !current.consolidation &&
             current.scope === version.scope && !this.kernel.blocked &&
             !current.labels.restrictions.some(r => ['secret', 'revoked', 'pending-cleanup'].includes(r)) });
         previous.set(version.memoryId, payload);
@@ -101,7 +103,7 @@ export class MemoryManagement {
   async restore(input: MemoryRestore) {
     const f = memoryRestoreSchema.parse(input); this.check(f.expectedRevision);
     const { key } = this.bot(f.botId), current = this.fact(f.id);
-    if (this.kernel.snapshot.forgotten.has(f.id) || current.version.status !== 'active' ||
+    if (current.version.consolidation || this.kernel.snapshot.forgotten.has(f.id) || current.version.status !== 'active' ||
       current.version.scope === 'private' && !sameBot(current.version.ownerBotKey, key)) throw new Error('Memory restore unavailable');
     const versions = this.ledgerVersions(), old = versions.get(f.versionId);
     if (!old || old.memoryId !== f.id || !this.historyAccess(old, key, versions) ||
@@ -136,6 +138,7 @@ export class MemoryManagement {
     const quarantine = new Set([...this.kernel.domain.table('migration_items').entries()]
       .filter(([, item]) => item.quarantine).map(([, item]) => item.memoryId));
     // Management can see quarantined orphans, but ordinary Bot views cannot see another Bot's private rows.
+    facts = facts.filter(row => consolidationReadable(this.kernel, row.version));
     const judged = f.scope === 'quarantine' ? facts.filter(r => quarantine.has(r.version.memoryId) && r.version.status === 'proposed')
       .map(r => ({ ...r, state: r.version.status })) : adjudicate(facts, time.at, key);
     let rows = judged.filter(r => f.scope === 'quarantine' || (r.version.scope === f.scope &&
@@ -193,6 +196,7 @@ export class MemoryManagement {
   async revise(input: MemoryRevise) {
     const f = memoryReviseSchema.parse(input); this.check(f.expectedRevision);
     const old = this.fact(f.id);
+    if (old.version.consolidation) throw new Error('Use consolidation review for derived memories');
     if (old.version.status === 'proposed' && [...this.kernel.domain.table('migration_items').entries()]
       .some(([, item]) => item.quarantine && item.memoryId === f.id)) throw new Error('Assign this legacy item explicitly first');
     const row = this.revision(old, f.patch, { trust: 'user_confirmed', status: 'active',
@@ -201,7 +205,9 @@ export class MemoryManagement {
   }
   async confirm(input: MemoryConfirm) {
     const f = memoryConfirmSchema.parse(input); this.check(f.expectedRevision);
-    const old = this.fact(f.id), { bot, key } = this.bot(f.botId);
+    const old = this.fact(f.id);
+    if (old.version.consolidation) throw new Error('Use consolidation review for derived memories');
+    const { bot, key } = this.bot(f.botId);
     if (f.scope === 'shared' && old.version.status === 'proposed' && [...this.kernel.domain.table('migration_items').entries()]
       .some(([, item]) => item.quarantine && item.memoryId === f.id)) throw new Error('Assign this legacy item privately first');
     if (old.version.labels.restrictions.includes('secret') && f.scope === 'shared') throw new Error('Secret cannot be shared');
@@ -229,6 +235,7 @@ export class MemoryManagement {
   async resolve(input: MemoryResolve) {
     const f = memoryResolveSchema.parse(input); this.check(f.expectedRevision);
     const rows = f.ids.map(id => this.fact(id)), first = rows[0];
+    if (rows.some(row => row.version.consolidation)) throw new Error('Review consolidation through its source-bound decision');
     if (!first || !factKey(first) || rows.some(r => factKey(r) !== factKey(first) || r.version.scope !== first.version.scope ||
       r.version.scope === 'private' && first.version.scope === 'private' && !sameBot(r.version.ownerBotKey, first.version.ownerBotKey)))
       throw new Error('Resolve only one fact in one permission domain');
