@@ -29,8 +29,12 @@ import type { TaskSupportActions } from '../task-support.js';
 import type { PendingWorkSource, NativeStatusHook } from '../pending-work.js';
 
 export interface BotsPageInjected extends ChatLauncherActions {
+  /** Open only this Bot incarnation; stale directory rows must never open a replacement Bot. */
+  onStartExact?(bot: Pick<BotRecord, 'id' | 'createdAt'>, signal?: AbortSignal): Promise<void>;
+  onOpenAutomaticCollaboration?(): void;
   proactive?: ProactiveActions;
   proactiveWork?: ProactiveWorkSource;
+  openPendingTask?(target: import('../task-support.js').TaskOrigin): Promise<void>;
   taskSupport?: TaskSupportActions;
   pendingWork?: PendingWorkSource;
   followUp?: FollowUpSource;

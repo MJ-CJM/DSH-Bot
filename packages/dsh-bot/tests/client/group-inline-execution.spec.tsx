@@ -119,6 +119,36 @@ it('preserves independent disclosure choices through live updates and native mes
   } finally { await f.close(); }
 });
 
+it('keeps the original execution accessible through expiry and closure without offering stale review', async () => {
+  const f = await fixture('zh', undefined, { reasonCode: 'export-approval-required', exportFlowId: crypto.randomUUID() });
+  try {
+    const question = f.question('first');
+    const disclosure = question.querySelector('button[aria-expanded]') as HTMLButtonElement;
+    await click(disclosure);
+    expect(question.textContent).toContain(f.t('groups.export.pending'));
+    expect(button(question, f.t('groups.export.openQueue'))).toBeTruthy();
+
+    f.data.group = { ...f.data.group, membershipRevision: 2 };
+    await f.refresh();
+    const member = question.querySelector('[data-group-execution-card="delivery-first"]');
+    expect(question.textContent).not.toContain(f.t('groups.export.pending'));
+    expect(member?.textContent).toContain(f.t('groups.export.expiredStatus'));
+    expect(button(question, f.t('groups.export.openExpired'))).toBeTruthy();
+    expect(question.textContent).not.toContain(f.t('groups.export.openQueue'));
+
+    const before = f.data.deliveries[0];
+    if (!before) throw new Error('Missing historical delivery in fixture');
+    f.data.deliveries[0] = { ...before, staleExportClosedAt: 10 };
+    await f.refresh();
+    expect(question.textContent).toContain('Question first');
+    expect(member?.textContent).toContain(f.t('groups.export.expiredClosed'));
+    expect(question.textContent).not.toContain(f.t('groups.export.openExpired'));
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    await click(button(question, f.t('execution.viewDetails')));
+    expect(f.bridge.open).toHaveBeenCalledExactlyOnceWith('child-first');
+  } finally { await f.close(); }
+});
+
 it('keeps native details, supplement focus, member stop and task cancellation bound to the selected question', async () => {
   const f = await fixture();
   try {
@@ -262,5 +292,18 @@ it('lets a repeated run request replace its older lookup without restarting on c
     await act(async () => { await vi.waitFor(() => expect(f.actions.runRequests.getSnapshot()).toBeUndefined()); });
     expect(loadThrough).toHaveBeenCalledExactlyOnceWith(f.key, message.seq);
     expect(scroll).toHaveBeenCalledTimes(1);
+  } finally { await f.close(); }
+});
+
+it('shows verified status-only memory counts and a selectable provider request ID per failed member', async () => {
+  const f = await fixture('en', undefined, { memoryWriteStatus: 'saved', failure: { code: 'QUOTA', status: 402, message: 'Balance exhausted', requestId: 'req-synthetic-402' } });
+  try {
+    f.data.turns = f.data.turns.map(turn => turn.id === 'first' ? { ...turn, memoryStatusOnly: true } : turn);
+    await f.refresh();
+    expect(f.question('first').textContent).toContain(f.t('groups.memoryStatus.summary', { saved: 1, failed: 0, unverified: 0 }));
+    expect(f.question('first').querySelector('code')?.textContent).toBe('req-synthetic-402');
+    expect(f.question('first').textContent).toContain(f.t('groups.failureRequestId'));
+    await click(f.question('first').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    expect(f.question('first').querySelector('[data-group-member-process]')).toBeNull();
   } finally { await f.close(); }
 });

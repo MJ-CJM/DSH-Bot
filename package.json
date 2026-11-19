@@ -13,7 +13,7 @@
     "lint": "biome lint packages",
     "check:format": "node scripts/check-format.mjs",
     "check:docs": "node scripts/check-doc-links.mjs",
-    "check:tooling": "node --test scripts/community-build.test.mjs scripts/prepare-release.test.mjs scripts/update-bot-mode-desktop-plugin.test.mjs scripts/install-official-desktop-compat.test.mjs scripts/deploy-official-desktop.test.mjs scripts/deepening/network-guard.test.mjs",
+    "check:tooling": "node --test scripts/native-workspace-profile.test.mjs scripts/community-build.test.mjs scripts/prepare-release.test.mjs scripts/update-bot-mode-desktop-plugin.test.mjs scripts/install-official-desktop-compat.test.mjs scripts/deploy-official-desktop.test.mjs scripts/deepening/network-guard.test.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",
     "test:release": "scripts/pnpm --filter './packages/dsh-bot' exec vitest run --config ../../vitest.release.config.ts",
     "check": "scripts/pnpm build && scripts/pnpm test && scripts/pnpm typecheck && scripts/pnpm lint",

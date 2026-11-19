@@ -1,3 +1,5 @@
+import { groupMemoryWriteStatus } from './memory-status.js';
+import { readableGroupMessages, groupMessageDigests } from './context-flow.js';
 import { groupMemberModel, proactiveMemberModel } from './model-selection.js';
 import { verifyOwnerFollowUpChoice } from './owner-follow-up.js';
 import { ConcurrentGroups } from './concurrent.js';
@@ -10,7 +12,7 @@ import { assertModelBudget } from '../proactive/model-budget.js';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type { z } from 'zod';
 import type { WorkerBinding, groupToolInput } from './worker-tool.js';
-import { groupChild, groupResult } from './data-flow.js';
+import { groupChild, groupResult, GroupExportError, checkGroupDispatch } from './data-flow.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { nextRoundRobinMember } from './round-robin.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
@@ -74,6 +76,9 @@ export class GroupTurnRunner {
       const id = `expert-request:${digest([delivery.id, callId])}`;
       const previous = this.messages.messages(group).find(message => message.causeId === id);
       if (!previous) {
+        const roster = this.state.members(group).filter(member => member.removedAt === undefined);
+        if (!roster.some(member => member.bot.botId === input.botId) && roster.length >= this.state.memberLimit(true))
+          throw new OperationError('member-limit');
         const bot = await this.state.bot(delivery.bot), root = need(this.state.roots.get(group.id));
         const message = createUserMessage({ source: { kind: 'dsh-bot-group', group: turn.group, turnId: turn.id,
           memberId: delivery.memberId, speaker: { bot: delivery.bot, name: bot.name }, childSessionId: agent.session.id,
@@ -158,14 +163,18 @@ export class GroupTurnRunner {
       if (bot.updatedAt !== d.botRevision || status?.presetId !== d.presetId || status.preset.state !== 'ok')
         throw new OperationError('conflict');
       const root = need(this.state.roots.get(g.id));
-      const messages = this.messages.messages(g);
+      const allMessages = this.messages.messages(g);
+      const readable = readableGroupMessages(this.state, g, root.agent);
+      const messageDigests = outlets(this.state.registry) && !g.supergroup ? groupMessageDigests(g, root.agent) : undefined;
+      const messages = allMessages.filter(message => readable.has(message.id));
       const question = need(messages.find((m) => m.id === (d.triggerMessageId ?? t.inputMessageId)));
+      if ((question.replyTo || t.replyTo) && !readable.has((question.replyTo ?? t.replyTo)!)) throw new OperationError('group-data-blocked');
       const previous = t.proactive || t.ownerFollowUp ? [] : this.state
         .turns(g).filter(prior => prior.id === t.id || t.predecessorTurnIds?.includes(prior.id))
         .flatMap(prior => this.state.deliveries(prior.id))
         .filter((row) => t.protocol === 2 ? row.turnId !== t.id : row.ordinal < d.ordinal || row.turnId !== t.id)
         .filter((d) => d.outputMessageId)
-        .map((d) => need(messages.find((m) => m.id === d.outputMessageId)));
+        .flatMap((d) => messages.filter((m) => m.id === d.outputMessageId));
       const participantNames = await Promise.all(
         this.state.members(g).filter(m => m.enabled && m.removedAt === undefined).map(async (d) => {
           try {
@@ -185,6 +194,7 @@ export class GroupTurnRunner {
         [...previous, ...messages.filter(m => m.id === (d.triggerMessageId ? question.replyTo : t.replyTo))],
         this.state.registry.config.groupContextMaxBytes,
         g.memberRoles?.find(row => row.bot.botId === bot.id && row.bot.botCreatedAt === bot.createdAt)?.role,
+        t.memoryStatusOnly,
       );
       if (t.protocol === 2 && d.automatic) {
         const current = need(this.state.table('turns').get(t.id));
@@ -198,7 +208,7 @@ export class GroupTurnRunner {
         contextOutputMessageIds: context.outputIds,
         contextTruncated: context.truncated,
       });
-      const attachmentBlocks = [...new Map([question, ...messages.filter(m => m.id === question.replyTo || context.outputIds.includes(m.id))]
+      const attachmentBlocks = [...new Map(messages.filter(m => context.messageIds.includes(m.id))
         .flatMap(m => m.attachments ?? []).map(block => [`${block.type}:${block.attachment.attachmentId}`, block])).values()] as import('@deepseek-ai/dsh-llm').ContentBlock[];
       const modelSelection = t.memberModelSelections?.find(row => row.memberId === d.memberId)?.modelSelection ?? t.modelSelection;
       const selected = t.ownerFollowUp?.modelSelection ??
@@ -206,7 +216,7 @@ export class GroupTurnRunner {
       const route = selected ? { ...selected,
         // Explicit undefined clears a same-route effort inherited from the root's creation options.
         reasoningEffort: selected.reasoningEffort === undefined ? undefined : ReasoningEffortId(selected.reasoningEffort) } : this.state.route();
-      return { root, bot, d, context, attachmentBlocks, route, modelSelection };
+      return { root, bot, d, context, attachmentBlocks, route, modelSelection, group: g, messageDigests };
     });
   }
   async recordDeliveryResult(
@@ -223,6 +233,19 @@ export class GroupTurnRunner {
         d = need(this.state.table('deliveries').get(deliveryId));
       await checkSupergroup(this.state, g);
       if ((t.proactive || t.ownerFollowUp || g.supergroup) && g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
+      if (t.memoryStatusOnly) {
+        if (g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
+        await verify?.();
+        const memoryWriteStatus = !signal.aborted && d.childMessageId
+          ? await groupMemoryWriteStatus(this.state.ctx, childId, d.childMessageId, signal) : 'unverified';
+        await verify?.();
+        if (this.state.record(t.group).membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
+        await this.state.putDelivery({ ...d, endedAt: Date.now(), memoryWriteStatus,
+          state: signal.aborted ? 'cancelled' : memoryWriteStatus === 'saved' ? 'completed' : 'failed',
+          stopReason: result.stopReason, failure: undefined, reasonCode: undefined,
+          outputMessageId: undefined, outputSeq: undefined, exportFlowId: undefined });
+        return;
+      }
       const text = textOf(result.output);
       const hasContent = !d.skipped && !signal.aborted && (Boolean(text.trim()) || result.output.some((b) => b.type !== 'text'));
       const state = signal.aborted
@@ -263,8 +286,16 @@ export class GroupTurnRunner {
         });
         const append = () => prepared.root.agent.session.append('user/message', message, { surfaceOp: 'append' });
         const send = verify ? async () => { await verify(); return append(); } : append;
-        const event = await groupResult(this.state, g, d.bot, childId, prepared.root.agent,
-          JSON.stringify(message), `${deliveryId}:result`, send, signal);
+        let event: Awaited<ReturnType<typeof send>>;
+        try {
+          event = await groupResult(this.state, g, d.bot, childId, prepared.root.agent,
+            JSON.stringify(message), `${deliveryId}:result`, send, signal, true);
+        } catch (error) {
+          if (!(error instanceof GroupExportError)) throw error;
+          await this.state.putDelivery({ ...d, state: 'failed', endedAt: Date.now(), stopReason: result.stopReason,
+            reasonCode: error.reasonCode, ...(error.flowId ? { exportFlowId: error.flowId } : {}), ...(failure ? { failure } : {}) });
+          return;
+        }
         await this.roots.flush(prepared.root);
         output = { outputMessageId: message.id, outputSeq: Number(event.seq) };
       }
@@ -339,7 +370,7 @@ export class GroupTurnRunner {
       };
       await verify();
       const group = this.state.record(t.group);
-      const input = await groupChild(this.state, group, prepared.root.agent, d.bot, prepared.context.text, d.id, signal);
+      const input = await groupChild(this.state, group, prepared.root.agent, d.bot, prepared.context.text, d.id, signal, prepared.context.messageIds, prepared.messageDigests);
       const childId = input?.childId ?? SessionId(randomUUID());
       const source = owner ? { kind: 'dsh-bot-group-owner-followup' as const, group: t.group, turnId: t.id,
         cardId: owner.cardId, predecessorTurnId: owner.predecessorTurnId,
@@ -413,7 +444,7 @@ export class GroupTurnRunner {
         });
       };
       const flow = outlets(this.state.registry);
-      child = input ? await need(flow).dispatch(input.id, (_envelope, s) => create(s), signal) : await create(signal);
+      child = input ? await need(flow).dispatch(input.id, (_envelope, s) => create(s), signal, () => checkGroupDispatch(this.state, group)) : await create(signal);
       setSandboxMode(child.agent.session, 'read-only');
       if (this.state.ctx.tools.schemas(child.agent).length) throw new OperationError('approval-denied');
 
@@ -489,10 +520,10 @@ export class GroupTurnRunner {
       const prepared = await this.prepareDelivery(t, d0.id, controller.signal);
       if (!prepared) return;
       // A member can be removed while native startup awaits: signal remains authoritative.
-      const g = this.state.record(t.group);
+      const g = prepared.group;
       const flow = outlets(this.state.registry);
       const input = await groupChild(this.state, g, prepared.root.agent, prepared.d.bot,
-        prepared.context.text, d0.id, controller.signal);
+        prepared.context.text, d0.id, controller.signal, prepared.context.messageIds, prepared.messageDigests);
       const childId = input?.childId ?? SessionId(randomUUID());
       reservedChild = childId;
       this.state.workers.set(childId, { turnId: t.id, deliveryId: d0.id, childId, rootId: g.rootSessionId, presetId: prepared.d.presetId, modelSelection: prepared.modelSelection, isActive: () => !this.state.stopped && !this.state.cancelledTurns.has(t.id) && !controller.signal.aborted && this.state.workers.get(childId)?.deliveryId === d0.id, audience: groupReaders(this.state, g) });
@@ -512,7 +543,7 @@ export class GroupTurnRunner {
         },
       }));
       activation = input ? await need(flow).dispatch(input.id, (_envelope, signal) => start(signal), controller.signal,
-        () => checkSupergroup(this.state, g).then(() => {})) : await start();
+        () => checkGroupDispatch(this.state, g)) : await start();
       // Observe settlement independently of the shared queue and delivery-result persistence.
       // This closes only supplemental inbox admission; a successful result remains successful.
       void activation.result.then(() => inputAdmission.abort(), () => inputAdmission.abort());

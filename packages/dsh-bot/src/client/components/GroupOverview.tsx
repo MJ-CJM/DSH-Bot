@@ -1,9 +1,11 @@
 import { TeamRecipes } from './TeamRecipes.js';
+import { GroupExportSettings } from './GroupExportSettings.js';
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Menu, PathLabel, SegmentedTabs, StateDot } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupSummary, GroupView } from '../../shared/groups.js';
 import { groupKey } from '../../shared/groups.js';
+import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
 import type { GroupActions } from '../groups-state.js';
 import { unwrapGroup } from '../groups-state.js';
@@ -125,6 +127,8 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
   }, []);
   const uid = useId();
   if (!view) return <p role={snapshot.error ? 'alert' : 'status'}>{t(snapshot.error ? 'groups.disconnected' : 'groups.loading')}</p>;
+  if (view.group.id !== summary.group.id || view.group.createdAt !== summary.group.createdAt || view.group.rootSessionId !== summary.group.rootSessionId)
+    return <p role="alert">{t('groups.disconnected')}</p>;
   const open = async () => {
     setBusy(true); setError(false);
     try { await actions.open(groupKey(view.group), navigation.current.signal); }
@@ -147,7 +151,8 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
     const bot = bots.find(item => item.id === member.bot.botId && item.createdAt === member.bot.botCreatedAt);
     return { id: member.id, bot: member.bot, label: bot?.name ?? member.bot.botId };
   });
-  const groupContinuation = followUp?.groupContinuation && !view.group.archived && view.group.state === 'ready' ? {
+  const overMemberLimit = members.length > GROUP_MEMBER_LIMIT;
+  const groupContinuation = followUp?.groupContinuation && !overMemberLimit && !view.group.archived && view.group.state === 'ready' ? {
     members: continuationMembers.map(member => continuationMembers.some(peer => peer.id !== member.id && peer.label === member.label)
       ? { ...member, label: `${member.label} · ${member.bot.botId}` } : member),
     transport: followUp.groupContinuation,
@@ -186,6 +191,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
     </header>}
     {teamsOpen && <TeamRecipes view={view} actions={actions} onClose={() => setTeamsOpen(false)} onSaved={() => Promise.all([catalog.refresh(), actions.catalog.refresh()])} t={t} />}
     {(error || snapshot.error) && <p role="alert">{t(error ? 'groups.conflict' : 'groups.disconnected')}</p>}
+    {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit: GROUP_MEMBER_LIMIT })}</p>}
     <div className={styles.overviewFacts}>
       <span><StateDot state={view.running ? 'ongoing' : view.group.archived ? 'idle' : 'done'} />{t(view.running ? 'groups.running' : view.group.archived ? 'groups.archived' : 'groups.ready')}</span>
       {view.group.modelSelection && <span>{t('groups.modelSourceGroup')}: {view.group.modelSelection.provider} / {view.group.modelSelection.model}</span>}
@@ -212,6 +218,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onOpe
         })} />
     </RetainedPanel>
     <RetainedPanel active={currentSection === 'settings'} id={`${uid}-settings-panel`} labelledBy={`${uid}-settings`}>
+      {visible && currentSection === 'settings' && <GroupExportSettings group={view.group} actions={actions} bots={bots} onSaved={catalog.refresh} t={t} />}
       {compactSettings ? <details><summary>{t('botMode.advanced')}</summary><GroupSettingsView view={view} bots={bots} t={t} /></details> : <GroupSettingsView view={view} bots={bots} t={t} />}
       {!view.group.supergroup && <label><input type="checkbox" checked={view.group.onDemand ?? false} disabled={busy || view.group.archived || view.group.mode !== 'natural'} onChange={event => {
         const onDemand = event.currentTarget.checked; setBusy(true); setError(false);

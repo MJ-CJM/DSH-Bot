@@ -9,6 +9,7 @@ import * as storageDomain from '@deepseek-ai/dsh-storage-domain';
 import * as storageJson from '@deepseek-ai/dsh-storage-json';
 import { describe, expect, it, vi } from 'vitest';
 import { MainSessions, mainSessionDomain } from '../src/host/main-session.js';
+import * as botContext from '../src/host/bot-context.js';
 import { botCreateSchema, botSchema } from '../src/shared/schema.js';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -102,11 +103,43 @@ describe('single main mapping with real JSON store and native title service', ()
     const cold = f.add('cold', 50);
     const stat = vi.fn(async () => ({ header: cold.header }));
     f.ctx.provide('sessionPersistence', { stat } as unknown as Context['sessionPersistence']);
+    Object.assign(f.ctx.sessionController, { projections: vi.fn(async () => ({ kind: 'sequenced', asOfSeq: 0, values: { agentPreset: 'bot-alpha' } })) });
     const originalRename = required(f.rename.getMockImplementation());
     const get = vi.spyOn(f.ctx.sessions, 'get').mockReturnValue(undefined);
     f.rename.mockImplementationOnce(async request => { get.mockRestore(); return originalRename(request); });
     expect(await f.mains.find('alpha')).toEqual({ sessionId: 'cold' });
     expect(stat).toHaveBeenCalledExactlyOnceWith('cold'); expect(f.ctx.sessionController.inspect).not.toHaveBeenCalled();
+  }));
+  it('rejects an exact-generation open before side effects and rechecks after native title persistence', async () => fixture(async f => {
+    await expect(f.mains.open('alpha', 9)).rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(f.create).not.toHaveBeenCalled(); expect(f.rename).not.toHaveBeenCalled();
+    const rename = required(f.rename.getMockImplementation());
+    f.rename.mockImplementationOnce(async input => { const result = await rename(input); f.change({ createdAt: 11 }); return result; });
+    await expect(f.mains.open('alpha', 10)).rejects.toMatchObject({ code: 'bot/conflict' });
+  }));
+  it('refuses the wrong effective preset even when an old matching live Bot binding remains', async () => fixture(async f => {
+    const main = await f.mains.open('alpha', 10), session = required(f.ctx.sessions.get(main.sessionId as SessionId));
+    const live = { session } as Agent; bindings.set(live, { botId: 'alpha', botCreatedAt: 10 });
+    vi.spyOn(f.ctx.agents, 'get').mockReturnValue(live);
+    vi.spyOn(f.ctx.sessionProjections, 'snapshot').mockReturnValue({ values: { agentPreset: 'standard' } } as ReturnType<Context['sessionProjections']['snapshot']>);
+    try { expect(await f.mains.find('alpha')).toBeUndefined(); }
+    finally { bindings.delete(live); }
+  }));
+  it('refuses a native creation that returned a different effective preset before binding or renaming', async () => fixture(async f => {
+    vi.spyOn(f.ctx.sessionProjections, 'snapshot').mockReturnValue({ values: { agentPreset: 'standard' } } as ReturnType<Context['sessionProjections']['snapshot']>);
+    await expect(f.mains.open('alpha', 10)).rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(f.mains.boundSessionIds()).toEqual([]); expect(f.rename).not.toHaveBeenCalled();
+  }));
+  it.each(['other-preset', 'migration-required', 'unavailable'] as const)('does not open a cold main with %s identity', async kind => fixture(async f => {
+    const cold = f.add('cold', 50);
+    await f.table.put(JSON.stringify(['alpha', 10]), { botId: 'alpha', botCreatedAt: 10, sessionId: cold.id });
+    f.ctx.provide('sessionPersistence', { stat: async () => ({ header: cold.header }) } as unknown as Context['sessionPersistence']);
+    vi.spyOn(f.ctx.sessions, 'get').mockReturnValue(undefined);
+    const projections = vi.fn(async () => kind === 'unavailable' ? null : { kind: kind === 'migration-required' ? 'migration-required' : 'sequenced', values: { agentPreset: 'standard' }, asOfSeq: 0 });
+    Object.assign(f.ctx.sessionController, { projections });
+    if (kind === 'other-preset') expect(await f.mains.find('alpha')).toBeUndefined();
+    else await expect(f.mains.find('alpha')).rejects.toMatchObject({ code: 'bot/unavailable' });
+    expect(projections).toHaveBeenCalledOnce(); expect(f.create).not.toHaveBeenCalled(); expect(f.rename).not.toHaveBeenCalled();
   }));
   it('accepts native title normalization once without repeated writes or repair loops', async () => fixture(async f => {
     f.change({ name: 'Multi   space' });
@@ -114,16 +147,102 @@ describe('single main mapping with real JSON store and native title service', ()
     expect(f.ctx.sessionTitle.get(required(f.ctx.sessions.get(main.sessionId as SessionId)))?.title).toBe('Multi space');
     expect(f.rename).toHaveBeenCalledTimes(1);
   }));
-  it('creates a fresh main when the mapped session disappears, without promoting hidden old history', async () => fixture(async f => {
+  it('preserves an unavailable saved main until explicit fresh recovery, without promoting hidden old history', async () => fixture(async f => {
     f.add('older-history', 1); f.add('old-main', 2);
     expect(await f.mains.find('alpha')).toEqual({ sessionId: 'old-main' });
     f.ctx.provide('sessionPersistence', { stat: async () => undefined } as unknown as Context['sessionPersistence']);
     const get = f.ctx.sessions.get.bind(f.ctx.sessions);
     vi.spyOn(f.ctx.sessions, 'get').mockImplementation(id => id === 'old-main' ? undefined : get(id));
     expect(await f.mains.find('alpha')).toBeUndefined();
-    const replacement = await f.mains.open('alpha');
+    await expect(f.mains.open('alpha')).rejects.toMatchObject({ code: 'bot/unavailable' });
+    await expect(f.mains.open('alpha', 10)).rejects.toMatchObject({ code: 'bot/unavailable' });
+    expect(f.create).not.toHaveBeenCalled();
+    expect(f.mains.boundSessionId('alpha', 10)).toBe('old-main');
+    const replacement = await f.mains.fresh('alpha', 10, 'old-main');
     expect(replacement.sessionId).not.toBe('older-history'); expect(f.create).toHaveBeenCalledTimes(1);
     expect(get('older-history' as SessionId)).toBeDefined();
+  }));
+  it('does not create a replacement when a saved native main was downgraded to the standard preset', async () => fixture(async f => {
+    const main = await f.mains.open('alpha', 10), count = f.create.mock.calls.length;
+    vi.spyOn(f.ctx.sessionProjections, 'snapshot').mockReturnValue({ values: { agentPreset: 'standard' } } as ReturnType<Context['sessionProjections']['snapshot']>);
+    await expect(f.mains.open('alpha', 10)).rejects.toMatchObject({ code: 'bot/unavailable' });
+    await expect(f.mains.open('alpha')).rejects.toMatchObject({ code: 'bot/unavailable' });
+    expect(f.create).toHaveBeenCalledTimes(count);
+    expect(f.mains.boundSessionId('alpha', 10)).toBe(main.sessionId);
+  }));
+  it('restores its exact blank native main from the default preset only on an exact Bot open', async () => fixture(async f => {
+    const main = await f.mains.open('alpha', 10);
+    const session = required(f.ctx.sessions.get(main.sessionId as SessionId));
+    const runMaintenance = <T>(task: (signal: AbortSignal) => Promise<T>) => task(new AbortController().signal);
+    const agent = { session, ctx: f.ctx, status: 'idle', inbox: { nextTurn: [], nextStep: [] }, runMaintenance } as unknown as Agent;
+    vi.spyOn(f.ctx.agents, 'get').mockReturnValue(agent);
+    let preset = 'standard';
+    vi.spyOn(f.ctx.sessionProjections, 'snapshot').mockImplementation(() =>
+      ({ values: { agentPreset: preset } }) as ReturnType<Context['sessionProjections']['snapshot']>);
+    const select = vi.fn(async (_agent, value: string) => {
+      preset = value;
+      return value;
+    });
+    const prepare = vi.fn(async (agent: Agent, owner: { botId: string; botCreatedAt: number }) => { bindings.set(agent, owner); });
+    const preparation = vi.spyOn(botContext, 'blankBotPreparation').mockReturnValue(prepare);
+    Object.assign(f.ctx.agentPresets, { defaultId: 'standard', select });
+
+    expect(await f.mains.find('alpha')).toBeUndefined();
+    await expect(f.mains.open('alpha')).rejects.toMatchObject({ code: 'bot/unavailable' });
+    await expect(f.mains.open('alpha', 9)).rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(select).not.toHaveBeenCalled();
+    try { expect(await f.mains.open('alpha', 10)).toEqual(main); }
+    finally { preparation.mockRestore(); }
+    expect(select).toHaveBeenCalledExactlyOnceWith(agent, 'bot-alpha');
+    expect(prepare).toHaveBeenCalledExactlyOnceWith(agent, { botId: 'alpha', botCreatedAt: 10 });
+    expect(f.flush).toHaveBeenLastCalledWith(session);
+    expect(f.create).toHaveBeenCalledOnce();
+    expect(f.mains.boundSessionIds()).toEqual([main.sessionId]);
+  }));
+  it.each(['business history', 'queued input', 'other Bot preset', 'retired live Bot generation'] as const)(
+    'keeps an unavailable main untouched with %s', async cause => fixture(async f => {
+      const main = await f.mains.open('alpha', 10);
+      const session = required(f.ctx.sessions.get(main.sessionId as SessionId));
+      const pending = createUserMessage({ content: [{ type: 'text', text: 'Pending input' }], source: { kind: 'user' } });
+      const agent = { session, status: 'idle', inbox: { nextTurn: cause === 'queued input' ? [pending] : [], nextStep: [] } } as unknown as Agent;
+      if (cause === 'business history') session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'Existing input' }], source: { kind: 'user' } }), { surfaceOp: 'append' });
+      if (cause === 'retired live Bot generation') bindings.set(agent, { botId: 'alpha', botCreatedAt: 9 });
+      vi.spyOn(f.ctx.agents, 'get').mockReturnValue(agent);
+      const preset = cause === 'other Bot preset' ? 'bot-beta' : 'standard';
+      const select = vi.fn();
+      Object.assign(f.ctx.agentPresets, { defaultId: preset, select });
+      vi.spyOn(f.ctx.sessionProjections, 'snapshot').mockReturnValue({ values: { agentPreset: preset } } as ReturnType<Context['sessionProjections']['snapshot']>);
+
+      await expect(f.mains.open('alpha', 10)).rejects.toMatchObject({ code: 'bot/unavailable' });
+      expect(select).not.toHaveBeenCalled();
+      expect(f.create).toHaveBeenCalledOnce();
+      expect(f.mains.boundSessionIds()).toEqual([main.sessionId]);
+    }));
+  it('keeps failed recovery unavailable even when native rollback does not restore the default', async () => fixture(async f => {
+    const main = await f.mains.open('alpha', 10);
+    const session = required(f.ctx.sessions.get(main.sessionId as SessionId));
+    const runMaintenance = <T>(task: (signal: AbortSignal) => Promise<T>) => task(new AbortController().signal);
+    const agent = { session, ctx: f.ctx, status: 'idle', inbox: { nextTurn: [], nextStep: [] }, runMaintenance } as unknown as Agent;
+    vi.spyOn(f.ctx.agents, 'get').mockReturnValue(agent);
+    let preset = 'standard';
+    vi.spyOn(f.ctx.sessionProjections, 'snapshot').mockImplementation(() =>
+      ({ values: { agentPreset: preset } }) as ReturnType<Context['sessionProjections']['snapshot']>);
+    const select = vi.fn(async (_agent, value: string) => {
+      if (value === 'standard') throw new Error('Native rollback failed');
+      preset = value;
+      return value;
+    });
+    const preparation = vi.spyOn(botContext, 'blankBotPreparation').mockReturnValue(async () => { throw new Error('Setup failed'); });
+    Object.assign(f.ctx.agentPresets, { defaultId: 'standard', select });
+    try {
+      await expect(f.mains.open('alpha', 10)).rejects.toMatchObject({ code: 'bot/unavailable' });
+      expect(preset).toBe('bot-alpha');
+      expect(await f.mains.find('alpha')).toBeUndefined();
+      await expect(f.mains.open('alpha', 10)).rejects.toMatchObject({ code: 'bot/unavailable' });
+    } finally { preparation.mockRestore(); }
+    expect(select.mock.calls.map(([, value]) => value)).toEqual(['bot-alpha', 'standard']);
+    expect(f.create).toHaveBeenCalledOnce();
+    expect(f.mains.boundSessionIds()).toEqual([main.sessionId]);
   }));
   it('never reuses the mapping when the same Bot id is recreated', async () => fixture(async f => {
     const previous = await f.mains.open('alpha');

@@ -118,13 +118,13 @@ try {
       let role = await openActiveRole();
       check('Bot details show the complete committed lasting-role prefix', await role.locator('p').textContent() === expectedRole);
       await page.setViewportSize({ width, height: 1000 });
-      // The detail is a dialog when opened from the Bots list and a full page view when reached through
-      // the side panel's "All settings" (#31); either way no action may overflow it horizontally.
-      check('all Bot detail actions fit inside the detail view', await role.evaluate(element => {
+      // Native detail tabs may scroll horizontally; persona controls must fit
+      // inside both the native dialog and the full detail page.
+      check('all persona actions fit inside the detail view', await role.evaluate(element => {
         const container = element.closest('dialog') ?? element.closest('[data-bot-detail]');
         const bounds = container.getBoundingClientRect();
-        return Array.from(container.querySelectorAll('button, summary')).filter(element => element.checkVisibility()).every(element => {
-          const box = element.getBoundingClientRect(); return box.left >= bounds.left - 1 && box.right <= bounds.right + 1;
+        return Array.from(element.querySelectorAll('button, summary')).filter(action => action.checkVisibility()).every(action => {
+          const box = action.getBoundingClientRect(); return box.left >= bounds.left - 1 && box.right <= bounds.right + 1;
         });
       }));
       await shot('current-role');
@@ -149,6 +149,8 @@ try {
       check('Change role in chat preserves an existing native draft and does not send',
         preservedDraft.requests === roleBefore.requests && preservedDraft.inputs.length === roleBefore.inputs.length && preservedDraft.bot.persona.prefix === expectedRole);
       await shot('role-draft-preserved');
+      const collapseSidebar = page.getByRole('button', { name: /^(Collapse right sidebar|(?:折叠|收起|关闭)右侧(?:边)?栏)$/ });
+      if (width === 390 && await collapseSidebar.isVisible()) await collapseSidebar.click();
       await roleComposer.click(); await roleComposer.press('ControlOrMeta+A'); await roleComposer.press('Backspace');
       await until(async () => (await draftText()) === '');
       check('role draft is cleared through the native editor before subsequent cases');
@@ -156,18 +158,21 @@ try {
       check('custom emoji Bot sidebar retains its chosen avatar', (await page.locator(`[data-row-key="session:${fixture.sessions['v063-empty-emoji']}"] [data-bot-avatar]`).textContent())?.includes('🦉'));
       await shot('emoji-avatar');
       await openNative(fixture.group.rootSessionId);
-      await page.locator(`[data-row-key="session:${fixture.group.rootSessionId}"] [data-group-avatar="whales"]`).waitFor({ state: 'attached' });
-      const groupHeader = page.getByRole('button', { name: `${t['groups.manage']} · ${fixture.group.name}`, exact: true });
+      const groupRow = page.locator(`[data-row-key="session:${fixture.group.rootSessionId}"] [data-group-session-leading] [data-group-avatar="members"]`);
+      await groupRow.waitFor({ state: 'attached' });
+      const groupHeader = page.locator(`[data-group-details-opener="${fixture.group.id}"]`);
       await groupHeader.locator('[data-group-avatar="whales"]').waitFor();
       await page.getByRole('textbox', { name: t['groups.message'], exact: true }).waitFor();
       await page.locator('[data-conversation-content]:visible').getByText(language === 'zh' ? '加载历史记录中...' : 'Loading history...', { exact: true }).waitFor({ state: 'hidden' });
-      check('group sidebar and header both use composite whales');
-      await shot('group-whales');
+      check('group sidebar shows both member avatars and the header retains its group mark', await groupRow.locator('[data-bot-avatar]').count() === 2);
+      await shot('group-avatars');
       await page.setViewportSize({ width: 1360, height: 1000 }); await openBotsPanel(page, t['bots.title']); bots = page.locator('[data-bots-page]:visible');
       // Since the inline-details rework (616703f), "New Bot" sits on the My Bots tab instead of a "New" menu.
       await bots.getByRole('button', { name: t['navigation.myBots'], exact: true }).click();
       await bots.locator('[data-bots-list="bots"]').getByRole('button', { name: t['bots.create'], exact: true }).click();
-      const create = bots.locator('dialog:visible'); check('creation still needs only one visible input', await create.locator('input:visible').count() === 1);
+      const create = page.getByRole('dialog', { name: t['bots.create'], exact: true });
+      await create.waitFor();
+      check('creation still needs only one visible input', await create.locator('input:visible').count() === 1);
       const name = `${language === 'zh' ? '论文助手' : 'Research assistant'} ${id}`;
       await create.getByRole('textbox', { name: t['editor.name'], exact: true }).fill(name);
       await page.setViewportSize({ width, height: 1000 }); await shot('create');

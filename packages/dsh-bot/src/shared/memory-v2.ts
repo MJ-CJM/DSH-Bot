@@ -1,3 +1,4 @@
+import { consolidationEvidenceSchema } from './memory-consolidation.js';
 import { z } from 'zod';
 import { botKeySchema, sameBot } from './identity.js';
 import { memoryFields, timestampSchema, avatarSchema, avatarColorSchema, avatarVariantSchema } from './schema.js';
@@ -28,6 +29,7 @@ export const payloadSchema = z.strictObject({
     createdAt: timestampSchema, updatedAt: timestampSchema }).optional(),
 });
 const versionFields = {
+  consolidation: consolidationEvidenceSchema.optional(),
   schemaVersion: z.literal(2), memoryId: randomId, versionId: randomId,
   userScope: randomId, contentRef: randomId, revision: safeCounter.positive(), commitSeq: safeCounter.positive(),
   kind: z.enum(['user_fact', 'user_event', 'bot_role', 'how_to_work']),

@@ -1,3 +1,4 @@
+import { consolidationReadable } from '../memory/consolidation-source.js';
 import { randomUUID } from 'node:crypto';
 import type { DataLabel } from '../../shared/data-flow.js';
 import type { MemoryKernel } from '../memory/op-log.js';
@@ -14,7 +15,7 @@ export class MemoryLineage {
     const ids = new Set(versionIds), found = new Map<string, DataLabel>();
     for (const [, op] of this.kernel.domain.table('ops').entries()) for (const v of op.versions) if (ids.has(v.versionId)) {
       found.set(v.versionId, { ...v.labels, sourceVersions: [...new Set([...v.labels.sourceVersions, v.versionId])],
-        restrictions: this.kernel.snapshot.forgotten.has(v.memoryId) ? [...v.labels.restrictions, 'revoked'] : v.labels.restrictions });
+        restrictions: this.kernel.snapshot.forgotten.has(v.memoryId) || !consolidationReadable(this.kernel, v) ? [...v.labels.restrictions, 'revoked'] : v.labels.restrictions });
     }
     return mergeLabels(...versionIds.map(id => found.get(id) ?? unknownLabel()));
   }

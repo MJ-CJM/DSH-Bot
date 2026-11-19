@@ -13,3 +13,15 @@ it('hot classification declines simultaneous unrelated edits', () => {
   expect(onlySupergroupChanged(previous, { ...previous, supergroup: Config({ enabled: true }) })).toBe(true);
   expect(onlySupergroupChanged(previous, { ...previous, supergroup: Config({ enabled: true }), existing: { enabled: false } })).toBe(false);
 });
+it('loads every legacy member setting through 16 with an effective six-Bot ceiling and keeps smaller limits', () => {
+  expect(RegistryConfig({}).groupMaxMembers).toBe(6);
+  for (let value = 2; value <= 16; value++) {
+    expect(Config({ maxMembers: value }).maxMembers).toBe(Math.min(value, 6));
+    expect(RegistryConfig({ groupMaxMembers: value }).groupMaxMembers).toBe(Math.min(value, 6));
+  }
+  expect(Config({ maxExperts: 64 }).maxExperts).toBe(64);
+  for (const value of [1, 17, 6.5, Infinity]) {
+    expect(() => Config({ maxMembers: value })).toThrow();
+    expect(() => RegistryConfig({ groupMaxMembers: value })).toThrow();
+  }
+});

@@ -10,6 +10,7 @@ import type { ActivitySnapshot } from '../../src/client/activity-state.js';
 import type { CatalogSnapshot } from '../../src/client/state.js';
 import type { ActivitySession } from '../../src/shared/activity.js';
 import { SessionBotHover, SessionBotLeading, type SessionBotRowInjected, type SessionBotRowProps } from '../../src/client/components/SessionBotLeading.js';
+import { summary } from './group-fixture.js';
 import { bot, click, loadBuiltClient, mountClient, workspace } from './helpers.js';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -117,6 +118,45 @@ it.each(['en', 'zh'] as const)('%s decorates exact group roots with a whale, wit
  expect(container.querySelector('[data-test-row="native-worker"]')?.textContent).toBe('');
  expect(container.querySelector('[data-bot-session-leading]')).toBeNull();
  expect(container.querySelector('[data-group-session-hover]')?.textContent).toContain('Research group');
+});
+
+it('renders four compact member colors in roster order and updates when the active roster and avatars change', async () => {
+  const colors = ['teal', 'rose', 'orange', 'indigo', 'olive', 'cyan'] as const;
+  const records = colors.map((avatarColor, order) => ({
+    ...bot({ id: `member-bot-${order}`, name: `Member ${order}`, avatarColor }), createdAt: 2,
+  }));
+  const initial = summary();
+  const members = records.map((record, order) => ({
+    id: `member:${record.id}`, order, enabled: true, joinedAt: 2,
+    group: { groupId: initial.group.id, groupCreatedAt: initial.group.createdAt },
+    bot: { botId: record.id, botCreatedAt: record.createdAt },
+  }));
+  const app = await mountClient(records, 'en', remote => { remote.data.groups = [{ ...initial, members }]; });
+  cleanups.push(app.dispose);
+  const { container } = await mountRows(app, [initial.group.rootSessionId]);
+  const groupIcon = () => container.querySelector<HTMLElement>('[data-group-session-leading] [data-group-avatar="members"]');
+  const tiles = () => [...(groupIcon()?.querySelectorAll<HTMLElement>('[data-bot-avatar]') ?? [])];
+  await vi.waitFor(() => expect(tiles().map(tile => tile.dataset.avatarColor)).toEqual(colors.slice(0, 4)));
+  expect(groupIcon()?.style.width).toBe('16px');
+  expect(groupIcon()?.style.height).toBe('16px');
+  expect(tiles().every(tile => tile.style.width === '7px' && tile.style.height === '7px')).toBe(true);
+  expect(container.querySelector('[data-group-session-leading]')?.getAttribute('aria-label')).toContain(initial.group.name);
+  expect(container.querySelector('button, a, [tabindex]')).toBeNull();
+
+  app.remote.data.groups = [{ ...initial, group: { ...initial.group, membershipRevision: 2, revision: 2 },
+    members: members.flatMap(member => {
+      switch (member.order) {
+        case 0: return [{ ...member, enabled: false }];
+        case 1: return [{ ...member, removedAt: 3 }];
+        case 2: return [{ ...member, bot: { ...member.bot, botCreatedAt: 1 } }];
+        case 3: return [member];
+        default: return [];
+      }
+    }) }];
+  app.remote.data.records = records.map(record => record.id === 'member-bot-3' ? { ...record, avatarColor: 'purple' } : record);
+  await act(async () => app.ctx.emit('connection/reset'));
+  await vi.waitFor(() => expect(tiles().map(tile => tile.dataset.avatarColor)).toEqual(['purple']));
+  expect(tiles().map(tile => [tile.dataset.botId, tile.style.width, tile.style.height])).toEqual([['member-bot-3', '16px', '16px']]);
 });
 
 describe('Bot identity in public native session row seats', () => {

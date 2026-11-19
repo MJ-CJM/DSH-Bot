@@ -1,0 +1,32 @@
+{
+  "id": "development-1",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "What is project-9a8faddab911's long-term preference?",
+  "sources": [
+    {
+      "id": "development-1-e1",
+      "at": 1,
+      "text": "Remember: project-9a8faddab911 prefers value-97d6c519f84f.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "development-1-e2",
+      "at": 2,
+      "text": "Only for today's demo, use old-76a2c1282f21.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "development-1-e3",
+      "at": 3,
+      "text": "Future result: 2e6f2d5d42dbea521f37692c",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

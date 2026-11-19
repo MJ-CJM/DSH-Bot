@@ -24,7 +24,8 @@ afterEach(async () => {
 
 describe('Bots editor, explicit launch and lifecycle', () => {
   it('renders Bot details and opens the server-selected preset, without constructing a Client prefix', async () => {
-    const app = await mount([bot({ id: 'alpha-bot', name: 'Alpha Bot', avatar: '🦊', description: 'A careful helper' })]);
+    const record = bot({ id: 'alpha-bot', name: 'Alpha Bot', avatar: '🦊', description: 'A careful helper' });
+    const app = await mount([record]);
     await openProfile(app);
     expect(app.sidebarLabel()).toBe(t['bots.title']);
     expect(app.main.options.key).toBe('dsh-bot');
@@ -33,7 +34,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     expect(app.container.querySelector('article')?.textContent).toContain('A careful helper');
     expect(app.container.querySelector('article')?.textContent).toContain('🦊');
     await click(button(app.container, t['chat.openChat']));
-    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: record.id, botCreatedAt: record.createdAt });
     expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();
@@ -153,13 +154,13 @@ describe('Bots editor, explicit launch and lifecycle', () => {
 
   it('awaits an asynchronous Host refusal and displays the reason on the page', async () => {
     const app = await mount([bot()]);
-    app.remote.methods.openConversation.mockRejectedValueOnce(new Error('Host refused the selected preset'));
+    app.remote.methods.openConversationExact.mockRejectedValueOnce(new Error('Host refused the selected preset'));
     await click(button(app.container, 'Alpha Bot'));
     expect(app.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(app.container.querySelector('[role="alert"]')?.textContent).toContain('Host refused the selected preset');
     expect(button(app.container, 'Alpha Bot').disabled).toBe(false);
     await click(button(app.container, 'Alpha Bot'));
-    expect(app.remote.methods.openConversation).toHaveBeenCalledTimes(2);
+    expect(app.remote.methods.openConversationExact).toHaveBeenCalledTimes(2);
     expect(app.container.querySelector('[role="alert"]')).toBeNull();
   });
 
@@ -168,7 +169,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     await app.setWorkspaces({ items: [] });
     await click(button(app.container, 'Alpha Bot'));
     expect(app.remote.methods.ensureHome).not.toHaveBeenCalled();
-    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: 'alpha-bot', botCreatedAt: 1 });
     expect(app.createSession).not.toHaveBeenCalled();
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
     expect(app.openWorkspace).not.toHaveBeenCalled();

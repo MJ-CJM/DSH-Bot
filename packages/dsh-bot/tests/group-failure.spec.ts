@@ -16,7 +16,8 @@ describe('member run failure', () => {
   it('reads the native LlmFailure facts from the child turn/end', () => {
     const agent = child(), startedAt = Date.now();
     fail(agent, 1, { message: 'Insufficient Balance (request_id: r-1)', code: 'QUOTA', status: 402 });
-    expect(memberRunFailure(agent, startedAt)).toEqual({ code: 'QUOTA', status: 402, message: 'Insufficient Balance (request_id: r-1)' });
+    expect(memberRunFailure(agent, startedAt)).toEqual({ code: 'QUOTA', status: 402, requestId: 'r-1',
+      message: 'Insufficient Balance (request_id: r-1)' });
   });
   it('never attributes an earlier or later-successful turn to this run', () => {
     const agent = child();

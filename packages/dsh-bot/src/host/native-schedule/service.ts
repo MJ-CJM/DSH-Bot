@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ScheduleCatalogEntry } from '@deepseek-ai/dsh-schedule';
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain';
 import { z } from 'zod';
-import { scheduleBindingSchema, type ScheduleBinding, type NativeAggregate } from '../../shared/native-schedule.js';
+import { nativeScheduleSession, scheduleBindingSchema, type ScheduleBinding, type NativeAggregate } from '../../shared/native-schedule.js';
 import { routineRecordSchema } from '../../shared/automation.js';
 import type { DshBotRegistry } from '../registry.js';
 import { getBotBinding } from '../bot-context.js';
@@ -65,10 +65,12 @@ export class NativeSchedules {
     const table = this.bindings.table('bindings');
     const visible: ScheduleBinding[] = [];
     for (const task of catalog) {
+      const sessionId = nativeScheduleSession(task);
+      if (!sessionId) continue;
       let binding = table.get(task.id);
-      if (binding && (binding.nativeScheduleId !== task.id || binding.sessionId !== task.sessionId)) continue;
+      if (binding && (binding.nativeScheduleId !== task.id || binding.sessionId !== sessionId)) continue;
       if (!binding) {
-        const live = this.ctx.agents.get(task.sessionId);
+        const live = this.ctx.agents.get(sessionId as ScheduleCatalogEntry['sessionId']);
         const bound = live ? getBotBinding(live) : undefined;
         const header = live?.session.header;
         let identity =
@@ -84,7 +86,7 @@ export class NativeSchedules {
         // A live Agent with no Bot binding is not inferred from its old header.
         if (!live) {
           try {
-            const meta = (await this.ctx.get('sessionPersistence')?.stat(task.sessionId))?.header;
+            const meta = (await this.ctx.get('sessionPersistence')?.stat(sessionId as ScheduleCatalogEntry['sessionId']))?.header;
             if (!meta) continue;
             const target = bots.find(
               (bot) =>
@@ -106,7 +108,7 @@ export class NativeSchedules {
         }
         if (!identity || !bots.some((bot) => bot.id === identity.botId && bot.createdAt === identity.botCreatedAt))
           continue;
-        binding = { ...identity, sessionId: task.sessionId, nativeScheduleId: task.id };
+        binding = { ...identity, sessionId, nativeScheduleId: task.id };
         await table.put(task.id, binding);
       }
       // Keep stale bindings as tombstones. Never rebind a replaced Bot.
@@ -142,7 +144,7 @@ export class NativeSchedules {
     const { bindings } = await this.aggregate();
     const binding = bindings.find((row) => row.nativeScheduleId === id);
     const task = ((await this.ctx.get('schedule')?.catalog()) ?? []).find(
-      (row) => row.id === id && row.sessionId === binding?.sessionId,
+      (row) => row.id === id && nativeScheduleSession(row) === binding?.sessionId,
     );
     if (!binding || !task) throw new AutomationError('automation/not-found', 'Bound native task not found');
     return { binding, task };

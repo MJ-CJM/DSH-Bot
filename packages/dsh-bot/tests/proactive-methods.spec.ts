@@ -24,6 +24,24 @@ function receipts(): MethodRunReceipt[] {
   })));
 }
 describe('independent method evaluation and portability', () => {
+  it('retains completed and uncertain attempt receipts when a native API failure interrupts evaluation', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec('CREATE TABLE pb_source (id TEXT PRIMARY KEY,generation INTEGER); CREATE TABLE pb_source_revocation (id TEXT PRIMARY KEY,generation INTEGER); CREATE TABLE pb_governance_tombstone (kind TEXT,id TEXT)');
+    try {
+      const service = openFeedback(db); service.workflow({ action: 'propose-candidate', proposal });
+      let row = required(service.candidates()[0]);
+      service.workflow({ action: 'register-method-evaluation', candidateId: row.id, expectedRevision: row.revision, plan });
+      row = required(service.candidate(row.id));
+      service.workflow({ action: 'run-method-evaluation', candidateId: row.id, expectedRevision: row.revision });
+      row = required(service.candidate(row.id));
+      const attempts = receipts().slice(0, 2); required(attempts[1]).state = 'inconclusive';
+      service.workflow({ action: 'settle-method-evaluation', candidateId: row.id, expectedRevision: row.revision,
+        operationId: required(row.methodEvaluation?.operationId), receipts: attempts, failureCode: 'evaluation-interrupted' });
+      const settled = required(service.candidate(row.id));
+      expect(settled.methodEvaluation).toMatchObject({ state: 'unknown', failureCode: 'evaluation-interrupted', receipts: attempts });
+      expect(() => service.workflow({ action: 'run-method-evaluation', candidateId: row.id, expectedRevision: settled.revision })).toThrow();
+    } finally { db.close(); }
+  });
   it('keeps held-out cases disjoint and preregisters the full attempt budget', () => {
     expect(() => methodPlan.parse({ ...plan, maxCalls: 11 })).toThrow();
     expect(() => methodPlan.parse({ ...plan, cases: [plan.cases[0], plan.cases[0], plan.cases[2]] })).toThrow();

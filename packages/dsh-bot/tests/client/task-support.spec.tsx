@@ -32,7 +32,7 @@ test.each(['en', 'zh'] as const)('%s pending aggregation opens original conversa
   try {
     expect(f.element.textContent).toContain(f.t('taskSupport.readReceipt'));
     const target = [...f.element.querySelectorAll('button')].find(row => row.textContent?.includes(f.t('taskSupport.openOrigin')))!;
-    await click(target); expect(f.open).toHaveBeenCalledExactlyOnceWith('origin');
+    await click(target); expect(f.open).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ originSessionId: 'origin', workId: 'work' }));
     expect(f.actions.resume).not.toHaveBeenCalled();
   } finally { await f.close(); }
 });

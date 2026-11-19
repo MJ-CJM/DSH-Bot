@@ -1,0 +1,8 @@
+{
+  "required": [
+    "value-dd34262352d0"
+  ],
+  "forbidden": [],
+  "action": "notify",
+  "canary": "c83f9913ace7585f2bce7d5128313c92"
+}

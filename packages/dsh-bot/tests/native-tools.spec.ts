@@ -193,6 +193,26 @@ describe('R01 native scheduling with real Agents, ToolRuntime, schedule plugin a
 
 
 describe('R02 native task association and retired storage', () => {
+  it('binds rc3 session targets without treating a new-session target or changed destination as the same Bot task', async () => fixture(async f => {
+    const p = await f.preset('standard'); const { agent } = await p.create();
+    const target = { id: 'schedule-target', kind: 'rrule', title: 'Current native task', prompt: 'Current prompt', rrule: 'DTSTART:20270101T000000Z\nRRULE:FREQ=DAILY;COUNT=1',
+      scheduledAt: '2027-01-01T00:00:00.000Z', status: 'active', target: { kind: 'session', sessionId: agent.session.id }, updatedAt: '2026-01-01T00:00:00.000Z' };
+    const catalog = vi.spyOn(f.ctx.schedule, 'catalog').mockResolvedValue([target as never]);
+    const native = new NativeSchedules(f.ctx, f.ctx.dshBots); await native.start();
+    try {
+      expect((await native.aggregate()).bindings).toEqual([{ botId: p.bot.id, botCreatedAt: p.bot.createdAt, sessionId: agent.session.id, nativeScheduleId: target.id }]);
+      expect((await native.task(target.id)).task.title).toBe(target.title);
+      catalog.mockResolvedValue([{ ...target, target: { kind: 'session', sessionId: 'unrelated-session' } } as never]);
+      expect((await native.aggregate()).bindings).toEqual([]);
+      await expect(native.task(target.id)).rejects.toMatchObject({ code: 'automation/not-found' });
+      catalog.mockResolvedValue([{ ...target, target: { kind: 'new_once', sessionId: agent.session.id } } as never]);
+      expect((await native.aggregate()).bindings).toEqual([]);
+      catalog.mockResolvedValue([target as never]);
+      expect((await native.aggregate()).bindings).toHaveLength(1);
+      f.records.set(p.bot.id, { ...p.bot, createdAt: 100, updatedAt: 100 });
+      expect((await native.aggregate()).bindings).toEqual([]);
+    } finally { await native.close(); catalog.mockRestore(); }
+  }));
   it('allows native schedule creation only from the authoritative main Bot conversation', async () => fixture(async f => {
     const preset = await f.preset('standard');
     const main = await preset.create(); const legacy = await preset.create();

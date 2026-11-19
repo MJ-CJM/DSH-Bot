@@ -84,7 +84,15 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
         });
         return next();
       }, { prepend: true }), 'dsh-bot: ordinary group observed request count');
-      const group = state.table('groups').get(state.table('turns').get(binding.turnId)?.group.groupId ?? '');
+      const turn = state.table('turns').get(binding.turnId);
+      if (turn?.memoryStatusOnly) {
+        agent.ctx.effect(() => agent.ctx.tools.guard(exec =>
+          exec.agent === agent && exec.parent === undefined &&
+          ['bot_memory_save', 'bot_memory_list', 'bot_memory_search'].includes(exec.name)
+            ? undefined : 'This group turn permits only private memory operations'), 'dsh-bot: private memory status tool boundary');
+        return;
+      }
+      const group = state.table('groups').get(turn?.group.groupId ?? '');
       if (group?.supergroup) agent.ctx.effect(() => agent.ctx.tools.guard(exec =>
         exec.agent === agent && exec.name === 'group_message' && exec.parent === undefined
           ? undefined : 'Supergroup P0 permits only checked group collaboration'), 'dsh-bot: supergroup read-only tool boundary');

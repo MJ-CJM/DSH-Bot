@@ -6,6 +6,7 @@ import type { BotRecord } from '../../shared/schema.js';
 import type { ExecutionBridge } from '../group-execution.js';
 import type { GroupActivityFocus } from '../group-management.js';
 import { aggregateStatistics, cachePercent, contextPercent, defaultStatisticsTurn, groupStatisticsWorkers, loadingStatistics, readStatisticsOnce, statisticsDeliveries, tokenTotal, type ChildStatistics } from '../group-statistics.js';
+import { turnExportStatus } from './GroupExportReview.js';
 import styles from '../styles/groups.module.css';
 
 type Localized = PropsLocale<'dsh-bot'>;
@@ -160,6 +161,7 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
   useEffect(() => { if (!active) { setMenu(false); setOpen(false); } }, [active]);
   const turn = view.turns.find(row => row.id === selected) ?? (selected === undefined ? defaultStatisticsTurn(view.turns) : undefined);
   const workers = turn && !whole ? statisticsDeliveries(view, turn.id) : [];
+  const exportState = turn && !whole ? turnExportStatus(view.group, turn, view.deliveries.filter(delivery => delivery.turnId === turn.id)) : undefined;
   const questionValues = useStatistics(bridge, view.group.rootSessionId, active ? workers : []);
   const groupRows = whole ? groupStatisticsWorkers(view) : [];
   const groupValues = useGroupTotals(bridge, view.group.rootSessionId, groupRows, whole && active);
@@ -235,7 +237,7 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
       }} />
     {turn || whole ? <>
       {whole ? <span className={styles.statisticsStatus} data-statistics-status="group"><span className={styles.statLabel}>{t('statistics.questionCount', { count: view.turns.length })}</span></span>
-        : turn && <span className={styles.statisticsStatus} data-statistics-status={turn.state}><StateDot state={TURN_DOT[turn.state]} /><span className={styles.statLabel}>{t(`statistics.status.${turn.state}`)}</span></span>}
+        : turn && <span className={styles.statisticsStatus} data-statistics-status={turn.state}><StateDot state={exportState === 'groups.export.pending' || exportState === 'groups.export.expiredStatus' ? 'warning' : TURN_DOT[turn.state]} /><span className={styles.statLabel}>{t(exportState ?? `statistics.status.${turn.state}`)}</span></span>}
       {mode === 'detailed' && sum.activity && <span className={`${styles.statItem} ${styles.statisticsWide}`} title={scope}><IconGaugeOutlineRegular /><span className={styles.statLabel}>{t('statistics.counts', sum.activity)}</span></span>}
       {(tokenCount !== undefined || cache !== undefined) && <span className={`${styles.statItem} ${tokenCount === undefined ? styles.statisticsWide : ''}`} data-group-usage="" title={scope}>
         <IconDatabaseOutlineRegular />

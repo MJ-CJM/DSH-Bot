@@ -1,0 +1,32 @@
+{
+  "id": "final-7",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "Should the owner receive a follow-up for project-6f1450de353f?",
+  "sources": [
+    {
+      "id": "final-7-e1",
+      "at": 1,
+      "text": "Remember: notify me once when project-6f1450de353f check value-dd34262352d0 succeeds.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-7-e2",
+      "at": 2,
+      "text": "Verified check value-dd34262352d0 succeeded. No notification has been sent.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-7-e3",
+      "at": 3,
+      "text": "Future result: 4600cc295bc8400d49a76045",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

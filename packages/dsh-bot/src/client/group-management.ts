@@ -6,6 +6,18 @@ export type GroupDirectoryFilter = 'all' | 'running' | 'unread' | 'archived';
 /** An explicit navigation request, including repeat visits to the same question. */
 export type GroupActivityFocus = { turnId: string; sequence: number };
 
+/** Count people, not native continuation/message receipts. Missing proof stays unverified. */
+export function groupMemoryWriteCounts(deliveries: readonly GroupDelivery[]) {
+  const members = new Map<string, 'saved' | 'failed' | 'unverified'>();
+  for (const row of deliveries) {
+    if (row.joinedDeliveryId || row.reasonCode === 'message-published' || /^group-message:[a-f0-9]{64}$/.test(row.id)) continue;
+    members.set(row.memberId, row.memoryWriteStatus ?? members.get(row.memberId) ?? 'unverified');
+  }
+  return { saved: [...members.values()].filter(status => status === 'saved').length,
+    failed: [...members.values()].filter(status => status === 'failed').length,
+    unverified: [...members.values()].filter(status => status === 'unverified').length };
+}
+
 export function filterGroupDirectory(rows: readonly GroupSummary[], query: string, filter: GroupDirectoryFilter) {
   const candidates = rows.filter(row => filter === 'all'
     || (filter === 'running' && row.running && !row.group.archived)

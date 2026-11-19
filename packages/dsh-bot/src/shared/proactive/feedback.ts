@@ -157,7 +157,7 @@ const candidateFence = { candidateId: z.uuid(), expectedRevision: revision };
 export const feedbackWorkflowAction = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal('register-method-evaluation'), ...candidateFence, plan: methodPlan }),
   z.strictObject({ action: z.literal('run-method-evaluation'), ...candidateFence }),
-  z.strictObject({ action: z.literal('settle-method-evaluation'), ...candidateFence, operationId: z.uuid(), receipts: z.array(methodRunReceipt).max(36) }),
+  z.strictObject({ action: z.literal('settle-method-evaluation'), ...candidateFence, operationId: z.uuid(), receipts: z.array(methodRunReceipt).max(36), failureCode: z.enum(['native-history-unavailable', 'evaluation-interrupted']).optional() }),
 	z.strictObject({ action: z.literal("import-dataset"), dataset: feedbackDataset }),
 	z.strictObject({ action: z.literal("propose-candidate"), proposal: feedbackProposal }),
 	z.strictObject({ action: z.literal("evaluate-candidate"), ...candidateFence, datasetId: identifier, datasetVersion: z.number().int().positive() }),

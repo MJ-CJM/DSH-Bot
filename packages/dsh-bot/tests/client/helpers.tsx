@@ -126,7 +126,7 @@ export async function mountClient(
       const endpoints = contribution.descriptors?.map(row => `${row.namespace}/${row.method}`).sort();
       if (JSON.stringify(endpoints) !== JSON.stringify(['archive', 'cancel', 'continueTurn', 'create', 'edit', 'list', 'markRead',
         'open', 'openAttachment', 'recallForBot', 'send', 'setModel', 'stopMember', 'view',
-        'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].map(method => `dshBot.groups/${method}`).sort()))
+        'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].map(method => `dshBot.groups/${method}`).sort()))
         throw new Error('Unexpected Groups fixture Remote contract');
       return ctx.provide('remote.dshBot.groups', remote.groups);
     }
@@ -287,7 +287,7 @@ export async function mountClient(
   const pickDirectory = vi.fn<Context['uiWorkspace']['pickDirectory']>(async () => null);
   ctx.provide('uiWorkspace', { openWorkspace, openSession, pickDirectory } as unknown as Context['uiWorkspace']);
   ctx.provide('workspaces', { list: workspaceSource, create: createWorkspace } as unknown as Context['workspaces']);
-  ctx.provide('sessions', { list: sessionSource, create: createSession, refreshProjections: vi.fn(async () => {}),
+  ctx.provide('sessions', { list: sessionSource, create: createSession, refresh: vi.fn(async () => {}), refreshProjections: vi.fn(async () => {}),
     retain: vi.fn(() => ({ ready: Promise.resolve({}), release: vi.fn() })) } as unknown as Context['sessions']);
   let fork = ctx.plugin(plugin, config);
   await fork.await();

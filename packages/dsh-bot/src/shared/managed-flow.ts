@@ -9,7 +9,7 @@ export const flowEnvelopeSchema = z.strictObject({
 });
 export type FlowEnvelope = z.output<typeof flowEnvelopeSchema>;
 export const flowRecordSchema = z.strictObject({
-  id: z.uuid(), state: z.enum(['admitted', 'dispatching', 'delivered', 'unknown', 'cancelled']),
+  id: z.uuid(), state: z.enum(['awaiting-approval', 'admitted', 'dispatching', 'delivered', 'unknown', 'cancelled']),
   envelope: flowEnvelopeSchema.optional(), grantUse: z.uuid().optional(),
   envelopeDigest:z.string().regex(/^[a-f0-9]{64}$/).optional(),redactedAt:z.number().int().nonnegative().optional(),
 });

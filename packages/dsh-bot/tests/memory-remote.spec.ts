@@ -1,3 +1,5 @@
+import { MemoryConsolidation } from '../src/host/memory/consolidation.js';
+import { Config as ConsolidationConfig } from '../src/host/memory/consolidation-config.js';
 import { randomUUID } from 'node:crypto';
 import { memorySchema } from '../src/shared/schema.js';
 import { privateVersion } from '../src/host/memory/version.js';
@@ -242,13 +244,23 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
     const restoreVersionId = (await remote.changes({ botId: 'alpha' })).rows.find(row => row.version.memoryId === restoreId)?.version.versionId;
     if (!restoreVersionId) throw new Error('Missing restore version');
     await remote.revise({ id: restoreId, expectedRevision: registry.memoryKernel?.seq ?? 0, patch: { content: 'Restore codec edited' } });
+    const memoryKernel = registry.memoryKernel; if (!memoryKernel) throw new Error('Missing memory kernel');
+    const consolidation = new MemoryConsolidation(memoryKernel, ConsolidationConfig({ enabled: true }), () => true,
+      async ({ run }) => ({ text: JSON.stringify({ content: 'CODEC_CANDIDATE', sourceIds: run.sourceIds }) }));
+    vi.spyOn(registry, 'memoryConsolidation').mockResolvedValue(consolidation);
+    ctx.effect(() => () => consolidation.close(), 'fixture consolidation');
     let managedId = '', publishedId = '';
+    const runId = randomUUID(), consolidationSourceId = memoryKernel.snapshot.versions.get(target.id)!.versionId;
     let saved: MemoryRecord | undefined;
     for (const descriptor of TYPERT.invocations.filter(({ namespace }) => namespace === 'dshBot.memory')) {
       if (descriptor.result.mode !== 'strict') throw new Error('Expected strict result');
       const method = descriptor.implementation ?? descriptor.method;
       const kernel = registry.memoryKernel; if (!kernel) throw new Error('Missing kernel');
       Object.assign(cases, {
+        consolidationStatus: ['alpha'],
+        consolidate: [{ operationId: runId, botId: 'alpha', expectedRevision: kernel.seq,
+          sourceIds: [consolidationSourceId], provider: 'fixture', model: 'fixture' }],
+        decideConsolidation: [{ operationId: randomUUID(), runId, botId: 'alpha', expectedRevision: kernel.seq, action: 'reject' }],
         setAutoShare: [{ enabled: false, expectedRevision: kernel.policyRevision }],
         query: [{ botId: 'alpha', scope: 'shared', view: 'all' }],
         changes: [{ botId: 'alpha' }],

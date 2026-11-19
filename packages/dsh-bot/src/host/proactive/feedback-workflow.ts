@@ -167,8 +167,12 @@ export class FeedbackWorkflow {
         const operationId = candidate?.methodEvaluation?.operationId;
         if (!candidate || !operationId || !this.port.runMethodEvaluation) return { kind: 'unknown', commandId };
         let receipts: MethodRunReceipt[] = [];
-        try { receipts = await this.port.runMethodEvaluation(candidate); } catch { /* no new attempts after uncertain execution */ }
-        const settled = await this.port.change(settlementCommand(operationId), { kind: 'feedback-workflow', input: { action: 'settle-method-evaluation', candidateId: candidate.id, expectedRevision: candidate.revision, operationId, receipts } });
+        let failureCode: 'native-history-unavailable' | 'evaluation-interrupted' | undefined;
+        try { receipts = await this.port.runMethodEvaluation(candidate); } catch (error) {
+          failureCode = error instanceof Error && error.message === 'native-history-unavailable' ? 'native-history-unavailable' : 'evaluation-interrupted';
+          if (error && typeof error === 'object' && 'receipts' in error && Array.isArray(error.receipts)) receipts = error.receipts;
+        }
+        const settled = await this.port.change(settlementCommand(operationId), { kind: 'feedback-workflow', input: { action: 'settle-method-evaluation', candidateId: candidate.id, expectedRevision: candidate.revision, operationId, receipts, ...(failureCode ? { failureCode } : {}) } });
         return settled.kind === 'receipt' ? reply : { kind: 'unknown', commandId };
       }
 			if (reply.kind !== "receipt" || reply.receipt.status !== "committed" ||

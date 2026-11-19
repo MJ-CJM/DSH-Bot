@@ -39,6 +39,7 @@ export const methodEvaluation = z.strictObject({
   operationId: z.uuid().optional(),
   outcome: z.enum(['improved', 'no-benefit', 'inconclusive']).optional(),
   receipts: z.array(methodRunReceipt).max(36),
+  failureCode: z.enum(['native-history-unavailable', 'evaluation-interrupted']).optional(),
 });
 export type MethodPlan = z.output<typeof methodPlan>;
 export type MethodTrial = z.output<typeof methodTrial>;

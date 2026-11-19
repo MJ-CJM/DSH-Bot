@@ -1,0 +1,32 @@
+{
+  "id": "development-8",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "Should another follow-up be sent for project-b761731542dc?",
+  "sources": [
+    {
+      "id": "development-8-e1",
+      "at": 1,
+      "text": "Remember: project-b761731542dc check value-9d443b4ac4e0 succeeded; the owner was already notified.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "development-8-e2",
+      "at": 2,
+      "text": "Duplicate event: same check and revision, no new information.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "development-8-e3",
+      "at": 3,
+      "text": "Future result: b978d0d79ef2f5fec8321b30",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

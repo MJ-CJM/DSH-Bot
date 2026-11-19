@@ -5,11 +5,11 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol';
 
 /**
- * Entries of the group composer's '/' menu, in display order. `file` and `model` are group
+ * Entries of the group composer's '/' menu, in display order. `file`, `memory` and `model` are group
  * features; `permission`, `export` and `feedback` are native Host commands of the group root.
  * The root runs no model, so the Host offers it no goal, plan, compact or model command.
  */
-export const GROUP_COMMANDS = ['file', 'model', 'permission', 'export', 'feedback'] as const;
+export const GROUP_COMMANDS = ['file', 'memory', 'model', 'permission', 'export', 'feedback'] as const;
 export type GroupCommandName = (typeof GROUP_COMMANDS)[number];
 /** Native commands that must appear in the root's Host catalog before the group composer offers them. */
 const HOST_GATED: ReadonlySet<GroupCommandName> = new Set(['permission', 'export', 'feedback']);
@@ -30,7 +30,7 @@ export interface GroupCommandServices {
 }
 
 /** Commands to offer, given the group's own features and the root's native catalog. */
-export function availableGroupCommands(host: ReadonlySet<string>, local: { file: boolean; model: boolean; permission: boolean },
+export function availableGroupCommands(host: ReadonlySet<string>, local: { file: boolean; memory?: boolean; model: boolean; permission: boolean },
   installed: (name: 'export' | 'feedback') => boolean): GroupCommandName[] {
   return GROUP_COMMANDS.filter((name) => {
     if (HOST_GATED.has(name) && !host.has(name)) return false;

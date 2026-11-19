@@ -9,6 +9,8 @@ export const dataLabelSchema = z.strictObject({
   sourceVersions: z.array(z.uuid()),
   restrictions: z.array(z.enum(['secret', 'no-egress', 'pending-cleanup', 'revoked'])),
   grants: z.array(z.uuid()),
+  /** References to exact, already published group copies; never raw memory access. */
+  groupCopies: z.array(z.uuid()).optional(),
 });
 export type DataLabel = z.output<typeof dataLabelSchema>;
 export const egressTargetSchema = z.discriminatedUnion('kind', [

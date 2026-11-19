@@ -1,3 +1,4 @@
+import type { MemoryConsolidation } from '../memory/consolidation.js';
 import { resolve } from 'node:path';
 import { type Context, Service } from '@deepseek-ai/cordis';
 import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry';
@@ -40,6 +41,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
   static inject = ['storageDomain', 'agentPresets'];
   static Config = Config;
   readonly config: Config;
+  protected consolidationService?: MemoryConsolidation;
   readonly memoryAdmission: MemoryAdmission;
   memoryForget?: MemoryForgetting;
   memoryConfirmation?: MemoryConfirmation;
@@ -146,6 +148,7 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
           this.stopping = true;
           this.memoryOutlets?.stop();
           this.memoryEgress?.close(); this.memoryConfirmation?.close();
+          await this.consolidationService?.close();
           await this.memoryAdmission.close();
           await this.memoryOutlets?.close();
           await this.tail;

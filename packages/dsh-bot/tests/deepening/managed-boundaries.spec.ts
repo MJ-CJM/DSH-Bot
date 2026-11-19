@@ -8,9 +8,11 @@ import { startDelegate } from '../../src/host/data-flow/delegation.js';
 import { protectDataFlow } from '../../src/host/data-flow/tool-guard.js';
 import { MemoryLineage } from '../../src/host/data-flow/lineage.js';
 import { eraseOutletCopies } from '../../src/host/data-flow/managed-copies.js';
+import { Serial } from '../../src/host/common/operations.js';
+import type { GroupDelivery } from '../../src/shared/groups.js';
 import { groupChild, groupInput, groupResult } from '../../src/host/groups/data-flow.js';
 import type { GroupState } from '../../src/host/groups/state.js';
-import type { GroupRecord } from '../../src/shared/groups.js';
+import { GROUP_ROOT_PRESET, type GroupRecord } from '../../src/shared/groups.js';
 import { withIntegrations, policy } from '../integration-support.js';
 import { flowFixture, alpha, beta } from './managed-flow-fixture.js';
 
@@ -47,14 +49,18 @@ describe('B6b product boundary wiring (UNIT: native transport doubles, real JSON
   it('persists group audience, inherits input before startup, and blocks private member output before root append', async () => {
     const x = await flowFixture();
     try {
-      const root = { session: { id: 'group-root', snapshotEvents: () => [] } } as unknown as Agent;
-      const state = { registry: x.registry(),
+      const root = { session: { id: 'group-root', header: { agentPreset: GROUP_ROOT_PRESET }, snapshotEvents: () => [] } } as unknown as Agent;
+      const deliveries = new Map([['delivery', { id: 'delivery', state: 'starting' } as GroupDelivery]]);
+      const state = { registry: x.registry(), turns: () => [], record: () => group, queue: new Serial(),
+        table: () => deliveries, putDelivery: async (row: GroupDelivery) => { deliveries.set(row.id, row); },
         members: () => [alpha, beta].map((bot, i) => ({ id: String(i), bot, enabled: true })) } as unknown as GroupState;
-      const group = { id: 'group', createdAt: 1 } as GroupRecord;
+      const group = { id: 'group', createdAt: 1, rootSessionId: 'group-root', membershipRevision: 1 } as GroupRecord;
       const id = await groupInput(state, group, root, 'GROUP_TEXT', 'turn'); expect(id).toBeTruthy();
       const child = await groupChild(state, group, root, alpha, 'CONTEXT', 'delivery', new AbortController().signal);
       if (!child) throw new Error('Missing managed child');
       expect(x.flow.label(child.childId).readers).toEqual([alpha, beta]);
+      expect(deliveries.get('delivery')).toMatchObject({ state: 'starting', childSessionId: child.childId, inputFlowId: child.id,
+        inputFlowSessionId: expect.stringMatching(/^group-context-/) });
       const append = vi.fn(() => 'APPENDED');
       await expect(groupResult(state, group, alpha, child.childId, root, 'SHARED_RESULT', 'one', append,
         new AbortController().signal)).resolves.toBe('APPENDED');

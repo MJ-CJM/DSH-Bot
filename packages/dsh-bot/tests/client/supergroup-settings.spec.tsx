@@ -22,7 +22,7 @@ async function fixture(language: 'en' | 'zh' = 'en') {
   };
 }
 
-it.each(['en', 'zh'] as const)('%s shows the global mode switch and submits exact expected value before displaying confirmed state', async language => {
+it.each(['en', 'zh'] as const)('%s shows the automatic collaboration switch and submits exact expected value before displaying confirmed state', async language => {
   const f = await fixture(language);
   try {
     await vi.waitFor(() => expect(f.toggle().disabled).toBe(false));
@@ -53,6 +53,7 @@ it('keeps last accepted state and blocks duplicate saves while a response is pen
     await act(async () => reject?.(new Error('Unconfirmed save')));
     expect(f.toggle().getAttribute('aria-checked')).toBe('false');
     expect(f.element.querySelector('[role="alert"]')?.textContent).toBe(f.t('supergroup.settingsFailed'));
+    expect(f.toggle().disabled).toBe(true);
     f.actions.settings.mockResolvedValue({ enabled: true });
     await click(button(f.element, f.t('bots.refresh')));
     expect(f.toggle().getAttribute('aria-checked')).toBe('true');
@@ -69,8 +70,11 @@ it('registers the visible native bundle page under its exact package key and rel
     await vi.waitFor(() => expect(toggle.disabled).toBe(false));
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     await click(toggle);
-    expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(page.container.textContent).toContain(en.ui['botMode.notReady']);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(app.ctx.get('remote.dshBotSupergroup')?.configure).toHaveBeenCalledExactlyOnceWith({ enabled: true, expectedEnabled: false });
+    for (const seat of ['sidebar', 'main.conversation', 'shell.leading'] as const) expect(app.core.entries(seat)).toHaveLength(0);
+    expect(app.core.entries('sidebar.panellist')).toHaveLength(1);
+    expect(app.core.entries('sidebar.footer.action')).toHaveLength(1);
     await app.unloadPlugin();
     expect(app.core.entries('plugins.bundle.config')).toHaveLength(0);
     expect(app.ctx.get('remote.dshBotSupergroup')).toBeUndefined();

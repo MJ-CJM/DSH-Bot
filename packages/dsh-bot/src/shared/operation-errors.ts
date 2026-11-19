@@ -10,6 +10,9 @@ export const OPERATION_CODES = {
   'route-loop': 'dsh-bot/route-loop',
   'member-limit': 'dsh-bot/member-limit',
   'recovery-needed': 'dsh-bot/recovery-needed',
+  'group-data-blocked': 'dsh-bot/group-data-blocked',
+  'group-export-preference-failed': 'dsh-bot/group-export-preference-failed',
+  'group-export-sent-receipt-failed': 'dsh-bot/group-export-sent-receipt-failed',
 } as const;
 export type OperationCode = keyof typeof OPERATION_CODES;
 export type OperationErrorCode = (typeof OPERATION_CODES)[OperationCode];

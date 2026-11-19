@@ -6,7 +6,11 @@ export function memoryResultCases(memory: MemoryRecord): Record<string, [unknown
     copies: 0, pendingMessages: 0, conservative: true, rootInstructions: false };
   const status = { configured: true, effectiveAutoShare: false, reason: 'unverifiable-user-input',
     botDaily: 5, domainDaily: 20, timeZone: 'Asia/Shanghai', revision: 2 };
+  const run = { id: uuid, owner: { botId: 'alpha', botCreatedAt: 1 }, requestHash: 'a'.repeat(64), sourceIds: [uuid], epoch: 0,
+    createdAt: 1, expiresAt: 2, provider: 'fixture', model: 'fixture', sessionId: 's', candidateId: uuid, state: 'proposed', modelRequests: 1 };
   return {
+    consolidationStatus: [{ enabled: false, revision: 0, runs: [] }, { enabled: false, revision: -1, runs: [] }],
+    consolidate: [run, { ...run, modelRequests: 2 }], decideConsolidation: [run, { ...run, state: 'forged' }],
     autoShareStatus: [status, { ...status, effectiveAutoShare: true }],
     setAutoShare: [status, { ...status, reason: 'verified' }],
     list: [[memory], [{ ...memory, unknown: true }]], search: [[memory], [{ id: 'bad' }]],

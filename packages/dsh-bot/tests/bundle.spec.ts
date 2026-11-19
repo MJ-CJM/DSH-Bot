@@ -91,12 +91,13 @@ describe('built bundle contract', () => {
       if (nativeEnabled === 'corrupt-transfer') await writeFile(join(root, 'dsh_bot_workspace.json'), '{synthetic-invalid');
       const fork = ctx.plugin(host, { seedExamples: false, dataDir: root, presetIdPrefix: 'bot-', presetOrder: 50 });
       await fork.await();
+      // Host startup opens its durable domains while other test workers use the same disk.
       await vi.waitFor(() => {
         const failure = messages.find((message) => typeof message === 'string'
           && message.startsWith('[dsh-bot] startup failed bot='));
         if (typeof failure === 'string') throw new Error(failure);
         expect(messages).toContain('[dsh-bot] loaded');
-      });
+      }, { timeout: 3000 });
       expect(await ctx.dshBotProactive.status()).toMatchObject({ state: 'disabled' });
       expect(registrations).toEqual(['dsh-bot/automation', 'dsh-bot', 'dsh-bot/proactive', 'dsh-bot/integrations', 'dsh-bot/messaging', 'dsh-bot/workspace',
         'dsh-bot/collaboration', 'dsh-bot/supergroup', 'dsh-bot/groups', 'dsh-bot/capabilities']);
@@ -321,8 +322,7 @@ describe('built bundle contract', () => {
         'remote.automation', 'remote.capabilities', 'remote.collaboration', 'remote.dshBot', 'remote.groups', 'remote.messaging', 'remote.p34', 'remote.permission', 'remote.proactive', 'remote.schedule', 'remote.subagents', 'remote.supergroup',
         'remote.workspace', 'schedule.changed', 'shell.overlay',
         'sidebar.footer.action', 'sidebar.panellist', 'sidebar.session.row.hover', 'sidebar.session.row.leading'].sort();
-      // Initial loading guards leave only after the authoritative disabled
-      // setting is read; disabled mode must retain no navigation takeover.
+      // No mode takes ownership of native navigation during initial loading.
       await vi.waitFor(() => expect([...active].sort()).toEqual(resources));
       expect(mountedEndpoints.sort()).toEqual([
         'permissionPresets/catalog', 'dshBot.capabilities/request', 'subagents/interruptByParent', 'subagents/prompt', 'dshBot.activity/list', 'dshBot.activity/markRead', 'dshBot.automation/status',
@@ -332,7 +332,8 @@ describe('built bundle contract', () => {
         'dshBot.collaboration/board', 'dshBot.collaboration/createTask', 'dshBot.collaboration/ensure', 'dshBot.collaboration/updateTask',
         'dshBot.connectors/applyIdle', 'dshBot.connectors/catalog', 'dshBot.connectors/importLegacy', 'dshBot.connectors/saveAssignment',
           'dshBot.connectors/saveDefinition',
-        'dshBot.groups/teamList', 'dshBot.groups/teamCapture', 'dshBot.groups/teamSave', 'dshBot.groups/teamRemove', 'dshBot.groups/teamPreview', 'dshBot.groups/teamApply',
+        'dshBot.groups/getExportApprovalSettings', 'dshBot.groups/setExportApproval',
+        'dshBot.groups/reviewExport', 'dshBot.groups/decideExport', 'dshBot.groups/discardExport', 'dshBot.groups/closeStaleExports', 'dshBot.groups/revokeExport', 'dshBot.groups/teamList', 'dshBot.groups/teamCapture', 'dshBot.groups/teamSave', 'dshBot.groups/teamRemove', 'dshBot.groups/teamPreview', 'dshBot.groups/teamApply',
         'dshBot.groups/archive', 'dshBot.groups/cancel', 'dshBot.groups/continueTurn', 'dshBot.groups/create', 'dshBot.groups/edit', 'dshBot.groups/list', 'dshBot.groups/markRead',
           'dshBot.groups/open', 'dshBot.groups/openAttachment', 'dshBot.groups/recallForBot', 'dshBot.groups/send', 'dshBot.groups/setModel', 'dshBot.groups/stopMember', 'dshBot.groups/view',
         'dshBot.im/status', 'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/quarantineCount', 'dshBot.memory/save',
@@ -348,10 +349,11 @@ describe('built bundle contract', () => {
           'dshBot.proactive/pause', 'dshBot.proactive/revokeSource',
           'dshBot.proactive/adjustSuggestion','dshBot.proactive/botSuggestions','dshBot.proactive/responsibilities','dshBot.proactive/changeResponsibility','dshBot.proactive/workHistory','dshBot.proactive/workspaceReview','dshBot.proactive/feedbackOverview','dshBot.proactive/feedbackContexts','dshBot.proactive/feedbackWorkflow','dshBot.proactive/feedbackCandidate','dshBot.proactive/feedbackHistory','dshBot.proactive/forgetSource',
         'dshBot/catalogInfo', 'dshBot/create', 'dshBot/createForChat', 'dshBot/startOnboarding', 'dshBot/retryOnboarding', 'dshBot/onboardingStatus', 'dshBot/delete', 'dshBot/duplicate', 'dshBot/ensureBotsWorkspace', 'dshBot/ensureHome', 'dshBot/get',
-          'dshBot/list', 'dshBot/openConversation', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
+          'dshBot/list', 'dshBot/openConversation', 'dshBot/openConversationExact', 'dshBot/status', 'dshBot/update', 'dshBot/watch',
         'schedule/catalog', 'schedule/delete', 'schedule/history', 'schedule/list', 'schedule/update',
         'dshBot.memory/previewForget', 'dshBot.memory/chooseForget', 'dshBot.memory/cleanupStatuses',
         'dshBot.memory/retryCleanup', 'dshBot.memory/rootInstructions',
+        'dshBot.memory/consolidationStatus', 'dshBot.memory/consolidate', 'dshBot.memory/decideConsolidation',
         'dshBot.memory/autoShareStatus', 'dshBot.memory/setAutoShare',
         'dshBot.memory/query', 'dshBot.memory/changes', 'dshBot.memory/restore', 'dshBot.memory/createManaged', 'dshBot.memory/revise', 'dshBot.memory/confirm',
         'dshBot.memory/resolve', 'dshBot.memory/previewContribution', 'dshBot.memory/previewShared',
@@ -367,13 +369,8 @@ describe('built bundle contract', () => {
         ['conversation.chat.node:dsh-bot-group', 'conversation.chat.node:dsh-bot-message', 'conversation.chat.node:dsh-bot-onboarding-notice', 'conversation.chat.node:supergroup-work'] :
         mode === 'missing-registry' ? ['conversation.chat.node:dsh-bot-onboarding-notice', 'conversation.chat.node:supergroup-work'] : [];
       expect(releases.sort()).toEqual([...resources, ...rolledBack,
-        // A cold-start guard owns three temporary replacements; the assertion
-        // above confirms they are gone after the disabled setting resolves.
-        'sidebar', 'shell.leading', 'main.conversation',
-        // Readiness status is a distinct additive overlay beside Bot preview.
-        'shell.overlay',
-        // The read-only execution view adds a separate composer chain entry.
-        'conversation.composer',
+        // Execution and unavailable Bot mains have separate scoped composers.
+        'conversation.composer', 'conversation.composer',
         // Bot badge, first-chat guidance and group badge each own a header slot.
         'conversation.session.header.utilities', 'conversation.session.header.utilities',
         'sidebar.session.row.leading', 'sidebar.session.row.hover'].sort());

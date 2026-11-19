@@ -5,6 +5,7 @@ import { SessionId } from '@deepseek-ai/dsh-session';
 import type { SubagentActivation, SubagentResult } from '@deepseek-ai/dsh-subagent';
 import { randomUUID } from 'node:crypto';
 import type { BotKey } from '../../shared/identity.js';
+import { effectiveGroupMemberLimit } from '../../shared/group-limits.js';
 import type { DshBotRegistry } from '../registry.js';
 import { getBotBinding } from '../data-flow/agent-binding.js';
 import { outlets } from '../data-flow/tool-guard.js';
@@ -189,7 +190,7 @@ export class ScopedCollaboration {
     const target = await this.registry.get(targetBotId), to = { botId: target.id, botCreatedAt: target.createdAt };
     const path = parent?.path ?? [from];
     if (path.some(key => same(key, to))) throw new OperationError('route-loop');
-    if (path.length >= this.registry.config.supergroup.maxMembers) throw new OperationError('member-limit');
+    if (path.length >= effectiveGroupMemberLimit(this.registry.config.supergroup.maxMembers)) throw new OperationError('member-limit');
     const statuses = await this.registry.status();
     const status = statuses.find(row => row.id === target.id), senderStatus = statuses.find(row => row.id === from.botId);
     const provider = this.ctx.subagents?.getProvider('spawn');
@@ -199,7 +200,7 @@ export class ScopedCollaboration {
     try {
       await scope.check();
       if (!scope.readers.some(key => same(key, to))) throw new OperationError('approval-denied');
-      const maxDepth = Math.min(scope.readers.length, this.registry.config.supergroup.maxMembers) - 1;
+      const maxDepth = Math.min(scope.readers.length, effectiveGroupMemberLimit(this.registry.config.supergroup.maxMembers)) - 1;
       if (!Number.isSafeInteger(maxDepth) || maxDepth < 1 || path.length > maxDepth) throw new OperationError('approval-denied');
       const proposed = args as { task?: unknown; content?: unknown; mode?: unknown };
       const question = typeof proposed.task === 'string' ? proposed.task : typeof proposed.content === 'string' ? proposed.content : '';

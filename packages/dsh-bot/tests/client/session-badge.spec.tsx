@@ -182,11 +182,30 @@ describe('Session Bot badge with public session projection and the shared catalo
     const badge = app.core.entries('conversation.session.header.utilities').find(entry => entry.options.id === 'dsh-bot')?.inject?.() as unknown as SessionBotBadgeInjected;
     const listener = vi.fn();
     const stopBadge = badge.hooks.catalog.subscribe(listener);
+    const proactive = app.ctx.get('remote.dshBot.proactive');
+    const supergroup = app.ctx.get('remote.dshBotSupergroup');
+    if (!proactive || !supergroup) throw new Error('Missing directory read services');
+    const followUpReads = vi.spyOn(proactive, 'followUpSummary');
+    const pendingTaskReads = vi.spyOn(supergroup, 'pendingTasks');
+    const readCounts = () => ({
+      bots: app.remote.methods.list.mock.calls.length,
+      status: app.remote.methods.status.mock.calls.length,
+      catalogInfo: app.remote.methods.catalogInfo.mock.calls.length,
+      activity: app.remote.methods.activity.list.mock.calls.length,
+      groups: app.remote.groups.list.mock.calls.length,
+      privateGroupViews: app.remote.groups.view.mock.calls.length,
+      followUp: followUpReads.mock.calls.length,
+      pendingTasks: pendingTaskReads.mock.calls.length,
+    });
     await app.unmountPage();
+    const oldReads = readCounts();
+    // Let current-turn UI cleanup settle before counting persistent polling.
+    // Freeze reads before this step: a zero-delay leftover must not fetch either.
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(readCounts()).toEqual(oldReads);
     expect(vi.getTimerCount()).toBe(0);
-    const oldCalls = app.remote.methods.list.mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-    expect(app.remote.methods.list).toHaveBeenCalledTimes(oldCalls);
+    expect(readCounts()).toEqual(oldReads);
     await app.remountPage();
     expect(vi.getTimerCount()).toBe(1);
     const mountedCalls = app.remote.methods.list.mock.calls.length;
@@ -197,7 +216,12 @@ describe('Session Bot badge with public session projection and the shared catalo
     expect(badge.hooks.catalog.getSnapshot().entries[0]?.bot.name).toBe('Updated from page');
     expect(listener).toHaveBeenCalled();
     await app.unmountPage();
+    const finalReads = readCounts();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(readCounts()).toEqual(finalReads);
     expect(vi.getTimerCount()).toBe(0);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(readCounts()).toEqual(finalReads);
     stopBadge();
   });
 

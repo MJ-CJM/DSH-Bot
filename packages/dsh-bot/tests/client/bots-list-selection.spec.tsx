@@ -11,12 +11,13 @@ describe('recent conversation list and separate profile', () => {
       const app = await mountClient([bot(), bot({ id: 'beta-bot', name: 'Beta' })], language); apps.push(app);
       const row = button(app.container, 'Beta'); row.focus(); expect(document.activeElement).toBe(row);
       await click(row);
-      expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('beta-bot');
+      expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: 'beta-bot', botCreatedAt: 1 });
+      expect(app.remote.methods.openConversation).not.toHaveBeenCalled();
       expect(app.openSession).toHaveBeenCalledOnce();
       expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
       await openProfile(app, language, 'beta-bot');
       expect(app.container.querySelector('[data-bot-detail="beta-bot"]')).not.toBeNull();
-      expect(app.remote.methods.openConversation).toHaveBeenCalledOnce();
+      expect(app.remote.methods.openConversationExact).toHaveBeenCalledOnce();
     });
   }
 });

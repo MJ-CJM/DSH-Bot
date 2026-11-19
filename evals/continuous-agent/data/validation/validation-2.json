@@ -1,0 +1,32 @@
+{
+  "id": "validation-2",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "Give project-b3cd705d0859's current destination, preserving the fact that it changed.",
+  "sources": [
+    {
+      "id": "validation-2-e1",
+      "at": 1,
+      "text": "Remember: project-b3cd705d0859's destination was old-60b65fb10ff6.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-2-e2",
+      "at": 2,
+      "text": "Correction: project-b3cd705d0859's destination is now value-868881d0be0b.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "validation-2-e3",
+      "at": 3,
+      "text": "Future result: bcda0496a0ee1d762898479c",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

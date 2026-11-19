@@ -7,7 +7,7 @@ import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm';
 export const name = 'supergroup-runtime-profile';
 export const inject = ['loader', 'llm', 'agents', 'sessions', 'dshBots', 'sessionController', 'configEditor'];
 const ambient = new Set(['runtime-context', 'time-context', 'agent-instructions', 'tmux-context', 'skill-catalog', 'user-approval', 'model-selection']);
-class Adapter extends LlmAdapter {
+export class Adapter extends LlmAdapter {
   ctx; mainId; calls = []; peerSent = false; invited = false; existingRequested = false; onGamma; promotion = false; directWork; stopGates = [];
   async listModels(provider) { return [{ provider, id: 'fixture', name: 'Synthetic Supergroup' }]; }
   async *stream(options) {

@@ -1,0 +1,32 @@
+{
+  "id": "final-8",
+  "cutoff": 2,
+  "owner": "owner",
+  "question": "Should another follow-up be sent for project-9836b787d924?",
+  "sources": [
+    {
+      "id": "final-8-e1",
+      "at": 1,
+      "text": "Remember: project-9836b787d924 check value-521dbcac8ce6 succeeded; the owner was already notified.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-8-e2",
+      "at": 2,
+      "text": "Duplicate event: same check and revision, no new information.",
+      "readers": [
+        "owner"
+      ]
+    },
+    {
+      "id": "final-8-e3",
+      "at": 3,
+      "text": "Future result: 6451e8741053844f398e1dc1",
+      "readers": [
+        "owner"
+      ]
+    }
+  ]
+}

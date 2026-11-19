@@ -1,3 +1,4 @@
+import { consolidationInputSchema, consolidationDecisionSchema, consolidationRunSchema, consolidationViewSchema } from './memory-consolidation.js';
 import { createForChatSchema, startOnboardingSchema, onboardingStatusSchema } from './onboarding.js';
 import { autoShareStatusSchema, autoShareToggleSchema } from './data-flow.js';
 import { memoryQuerySchema, memoryCreateSchema, memoryReviseSchema, memoryConfirmSchema,
@@ -8,6 +9,7 @@ import { z } from 'zod';
 import { forgetSelectionSchema, forgetPreviewSchema, forgetChoiceSchema, cleanupStatusSchema,
   rootInstructionsSchema } from './memory-forget.js';
 import { botIdSchema, memoryIdSchema } from './ids.js';
+import { botKeySchema } from './identity.js';
 import { activityListResultSchema, activitySessionIdSchema, activitySessionSchema } from './activity.js';
 export type { ActivityRecord, ActivitySession, ActivityListResult } from './activity.js';
 import {
@@ -26,6 +28,8 @@ export const botStatusSchema = z.strictObject({
   id: botIdSchema,
   presetId: z.string().min(1),
   mainSessionId: z.string().min(1).optional(),
+  boundMainSessionId: z.string().min(1).optional(),
+  mainSessionState: z.enum(['ready', 'unavailable']).optional(),
   warnings: z.array(z.enum(['avatar/invalid'])).optional(),
   preset: z.strictObject({ state: z.enum(['ok', 'broken', 'missing']), reason: z.string().optional() }),
 });
@@ -205,6 +209,11 @@ export const dshBotRemoteSpec = {
       parameters: [botId],
       result: activityResultCodec('MainSession', z.strictObject({ sessionId: z.string().min(1) })),
     },
+    'dshBot/openConversationExact': {
+      ...owner,
+      parameters: [parameter('bot', 'BotKey', botKeySchema)],
+      result: activityResultCodec('MainSession', z.strictObject({ sessionId: z.string().min(1) })),
+    },
     'dshBot/ensureHome': { ...owner, parameters: [botId], result: activityResultCodec('BotHome', botHomeSchema) },
     'dshBot/ensureBotsWorkspace': {
       ...owner,
@@ -230,6 +239,15 @@ export const dshBotRemoteSpec = {
         },
       ],
       result: codec('void', z.void()),
+    },
+    'dshBot.memory/consolidationStatus': {
+      ...memoryOwner, parameters: [parameter('botId', 'string', botIdSchema)], result: activityResultCodec('ConsolidationView', consolidationViewSchema),
+    },
+    'dshBot.memory/consolidate': {
+      ...memoryOwner, parameters: [parameter('input', 'ConsolidationInput', consolidationInputSchema)], result: activityResultCodec('ConsolidationRun', consolidationRunSchema),
+    },
+    'dshBot.memory/decideConsolidation': {
+      ...memoryOwner, parameters: [parameter('input', 'ConsolidationDecision', consolidationDecisionSchema)], result: activityResultCodec('ConsolidationRun', consolidationRunSchema),
     },
     'dshBot.memory/autoShareStatus': {
       ...memoryOwner, parameters: [], result: activityResultCodec('AutoShareStatus', autoShareStatusSchema),

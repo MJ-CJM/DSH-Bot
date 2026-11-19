@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import Schema from '@deepseek-ai/schemastery';
 import { BOT_ID_PATTERN } from '../../shared/ids.js';
+import { effectiveGroupMemberLimit } from '../../shared/group-limits.js';
 import en from '../../../locale/en.json' with { type: 'json' };
 import zh from '../../../locale/zh.json' with { type: 'json' };
 
@@ -25,7 +26,7 @@ export const Config: Schema<Partial<SupergroupConfig>, SupergroupConfig> = Schem
   taskMaterialMaxCount: integer(1, 8, 8),
   taskMaterialMaxChars: integer(256, 16384, 16384),
   taskMaterialMaxTotalChars: integer(256, 49152, 49152),
-  maxMembers: integer(2, 16, 4),
+  maxMembers: Schema.transform(integer(2, 16, 4), effectiveGroupMemberLimit).default(4),
   maxExperts: integer(1, 64, 16),
   maxRequests: integer(1, 256, 24),
   timeoutMs: integer(1000, 3600000, 300000),

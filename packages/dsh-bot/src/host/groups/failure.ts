@@ -23,9 +23,11 @@ export function memberRunFailure(agent: Pick<Agent, 'session'> | undefined, star
     const reason = event.data.reason;
     if (event.time < startedAt || reason.kind !== 'error') return undefined;
     const { code, status, message } = reason.error;
+    const requestId = reason.error.requestId ?? /\brequest_id\s*[:=]\s*([\w.-]{1,128})(?=[\s),"'\]]|$)/i.exec(message)?.[1];
     return {
       ...(code ? { code: code.slice(0, 64) } : {}),
       ...(Number.isInteger(status) ? { status } : {}),
+      ...(requestId && /^[\w.-]{1,128}$/.test(requestId) ? { requestId } : {}),
       message: clip(message),
     };
   }

@@ -1,5 +1,48 @@
 # DSH API 核实记录
 
+## 2026-11-19：空白 Bot 主聊与普通群附件
+
+- 官方 rc.5 的工作区可以复用尚未开始对话的原生空白 Session。若创建请求没有指定 preset，宿主会选择 `agentPresets.defaultId`，即使该 Session 原先属于 Bot。用户显式打开准确 Bot 代际时，插件核对持久绑定、原始 Session header、当前 preset、会话事件与收件箱，仅为仍未使用的原 Session 恢复原 Bot preset。公开 `Agent.runMaintenance` 在核对期间承接已排队的输入。`agentPresets.select` 不会重新发出 `agent/created`，因此按公开 `dsh-scope` 代际查找既有 Bot 初始化函数，并在落盘前核对实际 Bot 运行绑定。Client 在原生缓存仍显示旧身份或 Bot 目录显示不可用时，通过公开 `sessions.refreshProjections` 与目录刷新同步状态。已开始对话或身份无法确认的 Session 仍走既有保护逻辑。
+- `fileUploads.resolve` 在锁定的 rc.2 合同返回文件引用，官方 rc.5 可返回完整 file 或 image block。群在绑定上传回执前验证并采用对应的标准 `ContentBlock`，图片临时编码长度不写入消息。已有一次重复封装的记录只在对应的群消息投影中恢复文件或图片，仍使用原生历史和附件权限核验。
+
+## 2026-11-18：成员变更后的群回传待办
+
+群目录、群输入区及历史执行详情使用同一条件识别成员版本已过期的回传。候选包括待审批的已暂存回复和旧版结果不明的记录。两类过期项均移出待审核计数，显示成员名单已经变化以及现有回传已失效。
+
+本插件新增 owner Remote `closeStaleExports(group, expectedMembershipRevision)`。Host 在群队列内核对群代际和当前成员版本，批量记下关闭收据。无正文的旧记录也可关闭。原始轮次、交付、回传正文和私有授权不参与此次写入。关闭不会触发发送、预览、模型请求或扩大受众。原有审批与外发校验继续走既有 owner 审核路径，没有新增原生 DSH 接口。
+
+## 2026-11-17：普通群输入动作和长期回传设置
+
+- “只记录记忆”通过现有普通群输入框的公开菜单与草稿实现。选择后仅对下一次成功提交生效，失败、输入框让位于原生审批和重新挂载时保留该选择。Host 按既有 `memoryStatusOnly` 合同执行。
+- 群设置新增两个 owner Remote。读取接口返回当前受众、可设 Bot 及持久设置。修改接口核对群版本、名册版本和准确读者，仅持久保存指定 Bot 的未来回传偏好。审核队列仍只处理当前回复，设置操作不会批准已暂存的正文。自动回传继续使用既有逐份精确内容校验。没有新增原生宿主依赖。
+
+## 2026-11-17：原生日程与方法评估的 rc.2／rc.3 公开合同
+
+只读核对锁定 rc.2 包与仓库内官方 rc.3 `app.asar` 的公开包入口：rc.2 日程目录以顶层 `sessionId` 归属；rc.3 以 `target: { kind: 'session', sessionId }` 归属，规则为 `rrule`。插件仅接受这两种准确 Session 归属，拒绝互相矛盾的 ID，也不从 `new`／`new_once` 或 involvedSessionIds 推断 Bot 身份。既有 sidecar 保留 Bot birthday 与原 Session，改变目标或重建 Bot 不接管旧任务。
+
+rc.3 公开 `schedule.edit({ id, action, expectedUpdatedAt, patch? })` 取代旧 `update/delete`；规则编辑传 `patch.timing: { kind: 'rrule', rrule }`，保持原生验证和 updatedAt CAS。Client 当前合同的 history 只传 id／limit／before，旧合同保留 sessionId。插件“立即执行”仍是已有、需 owner 确认的手动工作流，不冒充原生定时触发或修复尚未证明的冷恢复。
+
+rc.2 `sessionController.inspect(id).events` 与 rc.3 `sessionController.events({ address: { kind: 'session', sessionId }, maxMessages })` 均为公开只读历史入口。rc.3 返回 `{ records: [{ type: 'event', event }], hasMore }`，不调用 resolveAgent 激活 Session。方法评估在第一次文档工作准入前核对能力；交付后核对准确 input／assistant ID、turn/end、provider/model 和输出摘要。有界历史不完整或任一尝试中断时保留已取得的尝试收据及 failureCode，状态为 unknown，不压成无收据的 completed，也不自动重跑。真实同包运行结果由本轮最终验收记录单独确认。
+
+整理 unknown 的 owner 关闭复用 `decideConsolidation(action='close')`。精确 proposal op 已存在时先核对，不重复生成；没有 op 的停留收据可由 owner 关闭。沿用既有 rejected 工作流终态与 decisionId/hash，另以只读投影标识 closedUnknown；不声称原生执行失败，不退还 modelRequests，也不把缺失 usage 当零。活跃生成不能关闭；来源失效的已提交候选不展示正文，且不会永久挡住有效新整理。
+
+## 2026-11-17：小群固定回传待办与记忆写入回执
+
+- 固定待办使用既有群 composer slot。批量操作串行调用既有 owner Remote 的单次决定。每条仍绑定准确预览、交付版本与受众。新增 `discardExport` 允许 owner 用准确版本丢弃失效的待审正文，无须先读取。已发送消息与持续许可分别保留结果。
+- 记忆写入状态从公开 Session 的 `tool/call` 和 `tool/result` 核对。匹配成员会话的本轮输入、调用身份和准确的 `bot_memory_save` 成功收据。状态模式只对普通群新轮开放，允许私有记忆相关工具，群根只显示状态，不发布成员生成的正文。
+- 普通群派工和参与群经历召回以相同内容的已发布副本证明授权。派工前再次校验最后纳入的正文和附件。主动任务托管副本按创建时的 `flowId` 与调用身份清理。原生会话历史按既有合同保留。
+- group composer 使用会话范围内的样式隐藏零正文、零工具、零子执行的原生流程行。正常成员会话与原生详情不受该样式影响。rc.3 实际行为以同包浏览器收据为准。
+
+## 2026-11-17：完成后的私有群回复审核
+
+实际 rc.3 的原生 `ApprovalService.request` 与锁定 rc.2 合同一致：只能在开放的 turn 内请求；本轮故障的子任务已 `turn/end: completed`，不能在回传时补调原生审批，也不能改写 never 或伪造开放轮次。复用公开 Typert owner principal，增加插件自己的 `reviewExport/decideExport` 精确内容审核，明确区别于原生工具审批。Remote 不向模型暴露，owner 预览为纯文本，不加载 Markdown 图片；展示完整内容、群和全部读者后，决策绑定内容摘要、成员代际、delivery revision 和来源版本。
+
+待审核回复存入已有 memory domain 的 `flows`（awaiting-approval），由原有 forget/epoch 清理处理，不存第二份私有正文。批准沿用 OnceGrants、两次出口检查与持久消费；保留原来源标签，不更改私有记忆 readers、不泛化后续权限、不自动启动成员或重放模型。未知实际发送仍 unknown；确定未发送的权限拦截、待审核、拒绝分别提示。重启保留未批准项，但不保留可重放的批准。
+
+旧版 native-failure 仅在 owner 主动核对时，用公开 `sessionPersistence.open(..., 'read')` 和 Session 事件校验父/子/preset/输入/最终轮次；无既往出口记录、无已发布回复且可重现权限拦截时，才生成待审核项。原生 ambient 只按既有精确白名单忽略，不把它作为授权。
+
+0.7.1 的隔离 Host、浏览器和升级验收见[发布说明](releases/v0.7.1.md)。
+
 ## 公开包名迁移与原生设置归属（2026-11-16）
 
 沿用已公开 0.6.7 的安装包名 `dsh-botgroup`。锁定原生 ui-plugin-manager 的 `plugins.bundle.config` keyed slot 按 npm 包名分发，故本版注册键改为 `dsh-botgroup`；内部 locale／Remote／存储及 `id: dsh-bot` 保留。Supergroup 配置保存核对当前公开包名，精确来源仍由原公开配置 API 处理。旧名到新名迁移须移除旧 bundle 并只改具名覆盖的 name，不能同时加载两份产品。实际同包升级与界面验证见[0.7.0 准备记录](releases/v0.7.0.md)。
@@ -1903,3 +1946,29 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 ## v11 首次连接阻碍的证据边界（2026-11-14）
 
 `forSession` 仅在本条真实原输入后有原生 assistant tool-call 与准确 turn/callId 的失败 tool/result，且工具命名空间对应当前启用但未就绪的 connector，才建立首次关联；同连接后续成功清除失败。普通回复、引用错误文字、无关工具及旧输入失败不能推断任务受阻。只复用现有 Session 事件与 Connectors 定义／运行状态，没有新 API 或 guard 放宽。
+
+## 2026-11-16：记忆整理与持续任务
+
+实现及证据见 [实施记录](reports/continuous-agent/implementation.md)。复用公开 `agents.create({ sessionId, meta, agentOptions, setup })`、`AgentHandle.dispose`、scoped `tools.restrict/guard`、`agent/request`、`agent/request-error`、`llm/stream`、`sessions.flush`。实际 rc.2/rc.3 Host 验证单次请求、工具拒绝和注销；不是只靠类型推导。生成 Session 纳入原 memory admission/lineage/forget。
+
+`defineDomain` 的 `compatibleVersions` 允许 per-record 读旧记录；不兼容记录可能被跳过，不能据此安全降级。memory 格式 3 升级在旧 v2 layout 表写 strict-schema 围栏，旧 reader 拒绝；保留冷备份回退。
+
+`ApprovalService.request` 的公开合同是 same-process request；`approval/asked` / `approval/decided` 是审计，不是持久可重放工具。恢复页只投影等待，不代替原生许可。原生日程 rc.2 与 rc.3 自然冷启动跨期实验均未产生到期收据，自动定时桥不启用。
+
+## 群回复副本与持续回传授权（2026-11-17）
+
+- 普通群根会话是公开 `GROUP_ROOT_PRESET` 的无模型日志容器。不能把子 Bot 的原始私有标签合并到根会话后，再拿它作为下一轮全群输入的读者判断；不同 Bot 私有读者求交会阻断后续群聊。
+- 本插件 `DataLabel.groupCopies` 引用同群已 delivered 的精确 managed envelope。复用公开 `Session.snapshotEvents`、既有 flow 表和 OnceGrants 的耐久消费记录核验已发表正文，建立独立的群上下文标签；不修改原根标签、read receipt、private readers 或 source version。未知正文、失效 epoch/policy、其他群/外部目标、secret/revoked/pending-cleanup 仍拒绝；原始记忆普通更新不撤回已经批准公开到该群的不可变副本。遗忘清理仍使关联副本不可用。
+- 仅普通群使用副本投影。Supergroup 的原 owner Agent 保留既有严格来源标签和原生 admission，不能借普通群投影清除真实 Agent 的私有来源。
+- 持续批准是本插件 owner Remote 的偏好，不是 DSH 原生工具权限。`decideExport(..., 'always')` 先发布用户所见的本次完整回复，成功后保存准确 Bot 代际、群代际、成员版本和完整读者；后续每条回传仍单独签发、消费并核对 exact-content grant。`revokeExport` 关闭将来的自动回传；成员变动即失效。模型工具和非 owner Remote 均无权设置。
+- 群设置复用同一耐久偏好：owner-only `getExportApprovalSettings(group)` 返回当前完整读者、可设置的实际成员、有效偏好和群／成员版本；Supergroup 读者含原工作 authority 中的额外 Bot。`setExportApproval(group, bot, enabled, expectedRevision, expectedMembershipRevision)` 对两个版本做 CAS，开启前核对实际成员、全部 Bot 代际及既有 Supergroup authority；关闭允许清除失效偏好。该入口仅保存未来偏好，不发布已有待审核正文、不改私有读者、工具或模型权限；每条未来回复仍走原 exact-content egress。失效的 authority 不因这个设置恢复。
+- Client 用公开 Remote 返回的 flowId/deliveryRevision 更新预览身份，解决旧记录恢复后的首次审核失效。审核入口位于折叠详情之外；原生执行权限与群数据回传授权分别显示。发送前的数据阻止、并发版本冲突和不确定网络结果分别提示，不自动重复执行或发布。
+
+同包群回传验证见[0.7.1 发布说明](releases/v0.7.1.md)。
+
+## 主会话身份与群路由（2026-11-18）
+
+- 本插件 owner Remote `openConversationExact({ botId, botCreatedAt })` 为目录入口提供精确 Bot 代际；旧 `openConversation(botId)` 保持单参数兼容。已保存主会话指针若不再合格，两者都拒绝自动创建替代会话，显式 fresh 恢复继续使用原指针 CAS。状态中的 `boundMainSessionId` 仅指向当前 Bot 代际的原耐久地址；`mainSessionState: unavailable` 是单项读失败，不影响其他 Bot。
+- 复用公开 `sessionController.projections({ sessionId }, signal)` 核对冷会话的 sequenced 当前 preset，不把 migration-required 的缓存提示当成身份保证，不 inspect 正文或激活 Agent。驻留 Session 的有效投影先于旧进程绑定；新建会话也必须通过同一身份检查，不能接受原生空白复用时降为 standard 的结果。
+- 群输入先读取准确同代 `groups/view` 以确定普通群或 Supergroup，再核对自动工作的原 group/work 地址；未知分类不回退到普通发送。原生审批／问题优先占据 composer；只有目录精确 root 或原生 group-root preset 证明的会话可挂群输入。未提交的路由读取在 composer 卸载时失效，已提交写入仍核对原回执，不以取消读取推断写入失败。
+- `GroupSummary.exportPendingCount` 是可选的安全计数投影：只包含仍可直接拒绝的 held 回传，不读取预览正文。读者失效或过期仍可计入可安全丢弃项；已归档、已交付、缺失 flow 和尚未重建的旧 native-failure 不计入。该计数不发布、不重建、不清理任何正文。源码回归与同包运行证据分别记录。

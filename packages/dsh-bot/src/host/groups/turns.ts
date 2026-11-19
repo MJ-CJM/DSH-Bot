@@ -1,9 +1,9 @@
-import { followupInput, groupInput } from './data-flow.js';
+import { followupInput, groupInput, checkGroupDispatch } from './data-flow.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { groupSendSchema, ownerFollowUpBindingSchema, type GroupKey, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
+import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm';
+import { groupSendSchema, groupUploadedAttachment, ownerFollowUpBindingSchema, type GroupKey, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
 import { OperationError, digest, need, parse } from '../common/operations.js';
 import { groupContext, selectOnDemand } from './routing.js';
 
@@ -72,6 +72,7 @@ export class GroupTurns {
       if (g.supergroup && (!authority || this.state.supergroupAuthorities.get(g.id) !== authority || restricted ||
           input.followup || input.fileReceiptIds.length || input.replyTo && !authority.groupInput || input.text !== scoped?.text.trim()) || !g.supergroup && authority)
         throw new OperationError('approval-denied');
+      if (input.memoryStatusOnly && (g.supergroup || restricted || input.followup || input.replyTo)) throw new OperationError('invalid');
       const used = this.state.turns(g).flatMap(t => [
         ...(t.operationId === input.operationId ? [{ requestDigest: t.requestDigest }] : []),
         ...(t.followups ?? []).filter(row => row.operationId === input.operationId),
@@ -88,6 +89,7 @@ export class GroupTurns {
         if (old.requestDigest !== hash) throw new OperationError('conflict');
         return old;
       }
+      this.state.checkNewWorkMembers(g);
       if (g.archived || g.state !== 'ready' || this.state.reasons.has(g.id))
         throw new OperationError('recovery-needed');
       if (g.membershipRevision !== input.expectedMembershipRevision) throw new OperationError('conflict');
@@ -125,8 +127,8 @@ export class GroupTurns {
           if (bot) descriptions.set(member.id, `${bot.name} ${bot.description}`);
         }
       }
-      const choice = selectOnDemand(restricted ? { ...g, onDemand: false } : g, memberRows, input.text,
-        input.memberIds, replyMember?.id, input.round, this.state.registry.config.groupMaxTurns, descriptions);
+      const choice = selectOnDemand(restricted || input.memoryStatusOnly ? { ...g, onDemand: false } : g, memberRows, input.text,
+        input.memberIds, replyMember?.id, input.memoryStatusOnly && !input.memberIds.length ? true : input.round, this.state.registry.config.groupMaxTurns, descriptions);
       const selected = choice.selected;
       await this.state.validateMembers(selected.map((m) => m.bot));
       const provider = this.state.ctx.subagents.getProvider('spawn');
@@ -142,9 +144,10 @@ export class GroupTurns {
       const receiptIds = [...new Set(input.fileReceiptIds)];
       const uploads = receiptIds.length ? need(this.state.ctx.get('fileUploads')) : undefined;
       const files = receiptIds.map(receiptId => {
-        const ref = uploads?.resolve(root.agent, receiptId as Parameters<NonNullable<typeof uploads>['resolve']>[1]);
-        if (!ref) throw new OperationError('invalid');
-        return { type: 'file' as const, attachment: ref };
+        const staged = uploads?.resolve(root.agent, receiptId as Parameters<NonNullable<typeof uploads>['resolve']>[1]);
+        const block = groupUploadedAttachment(staged);
+        if (!block) throw new OperationError('invalid');
+        return block;
       });
       // Keep native user attribution: fileUploads retires bound receipts by user rpcId.
       // Extra protocol metadata is public JSON source data for the workspace projection.
@@ -161,7 +164,9 @@ export class GroupTurns {
       } : { kind: 'user' as const, group: key, turnId: id,
         ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(files.length ? { rpcId: id } : {}) };
       const message = scoped && 'existing' in scoped && !scoped.projected ? scoped.message : createUserMessage({ source,
-        content: scoped?.projected ? blocks(scoped.text) : scoped ? scoped.message.content : [...blocks(input.text), ...files] });
+        content: scoped?.projected ? blocks(scoped.text) : scoped ? scoped.message.content : [...blocks(input.text),
+          // IDs came from the native root-owned receipt and retain their native identity.
+          ...files as Extract<ContentBlock, { type: 'file' | 'image' }>[]] });
       const at = Date.now();
       const turn: GroupTurn = {
         id,
@@ -180,9 +185,10 @@ export class GroupTurns {
         ...(g.memberModelSelections ? { memberModelSelections: g.memberModelSelections.map(row => ({
           memberId: row.memberId, modelSelection: { ...row.modelSelection },
         })) } : {}),
-        contextThroughSeq: restricted ? -1 : (this.messages.messages(g).at(-1)?.seq ?? -1),
+        ...(input.memoryStatusOnly ? { memoryStatusOnly: true as const } : {}),
+        contextThroughSeq: restricted || input.memoryStatusOnly ? -1 : (this.messages.messages(g).at(-1)?.seq ?? -1),
         predecessorTurnIds: repair?.predecessorTurnId ? [repair.predecessorTurnId] : followUp ? [followUp.predecessorTurnId] :
-          owner ? [owner.binding.predecessorTurnId] : restricted || g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
+          owner ? [owner.binding.predecessorTurnId] : restricted || input.memoryStatusOnly || g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
         state: 'accepted',
         revision: 1,
@@ -206,7 +212,11 @@ export class GroupTurns {
       }
       const flowId = await groupInput(this.state, g, root.agent, JSON.stringify(message), id);
       const flow = outlets(this.state.registry);
-      if (flowId) await need(flow).persist(flowId, () => this.state.putTurn(turn));
+      if (flowId) {
+        turn.inputFlowId = flowId;
+        turn.inputFlowSessionId = need(flow).get(flowId).envelope?.binding.invocation.split('/')[0];
+        await need(flow).persist(flowId, () => this.state.putTurn(turn));
+      }
       else await this.state.putTurn(turn);
       try {
         const statuses = await this.state.registry.status();
@@ -230,7 +240,7 @@ export class GroupTurns {
           });
         }
         using receiptBinding = uploads?.bindPrompt(root.agent, receiptIds as Parameters<NonNullable<typeof uploads>['bindPrompt']>[1], id);
-        const append = async () => { await checkSupergroup(this.state, g);
+        const append = async () => { await checkGroupDispatch(this.state, g);
           if (scoped && 'existing' in scoped) {
             const event = root.agent.session.snapshotEvents().find(row => row.type === 'user/message' && row.data.id === message.id);
             if (!event || Number(event.seq) !== scoped.seq) throw new OperationError('approval-denied');
@@ -281,6 +291,8 @@ export class GroupTurns {
       if (old.state !== 'accepted') throw new OperationError('recovery-needed');
       return t;
     }
+    if (t.memoryStatusOnly) throw new OperationError('invalid');
+    this.state.checkNewWorkMembers(g);
     if (!input.text || input.fileReceiptIds.length || input.memberIds.length || input.round || input.replyTo)
       throw new OperationError('invalid');
     if (g.membershipRevision !== input.expectedMembershipRevision || t.membershipRevision !== g.membershipRevision)
@@ -328,7 +340,7 @@ export class GroupTurns {
           requestId: input.operationId as SubagentPromptRequestId, parentSessionId: root.agent.session.id,
           childSessionId: SessionId(childId), mode: 'continuable', delivery: 'steer', content: blocks(input.text),
         }, admissionSignal);
-        });
+        }, [message.id]);
       const current = need(this.state.table('turns').get(t.id));
       return this.state.putTurn({ ...current, followups: current.followups?.map(row => row.operationId === input.operationId
         ? { ...row, state: 'accepted', childMessageId: childMessageId.messageId } : row) });
@@ -359,10 +371,11 @@ export class GroupTurns {
   async continueTurn(key: GroupKey, turnId: string, revision: number) {
     return this.state.queue.run(async () => {
       const g = this.state.record(key), t = need(this.state.turns(g).find(row => row.id === turnId));
-      if (g.supergroup) throw new OperationError('approval-denied');
+      if (g.supergroup || t.memoryStatusOnly) throw new OperationError('approval-denied');
       if (t.revision !== revision || t.membershipRevision !== g.membershipRevision) throw new OperationError('conflict');
       if (t.protocol !== 2 || t.state !== 'paused' || g.archived || this.state.chains.has(t.id)) throw new OperationError('unavailable');
       if (!this.state.registry.config.groupMaxContinuations) throw new OperationError('invalid');
+      this.state.checkNewWorkMembers(g);
       await this.roots.restore(g);
       const next = await this.state.putTurn({ ...t, state: 'accepted', continuationAllowance: (t.automaticExecutions ?? 0) + this.state.registry.config.groupMaxContinuations });
       const running = this.runner.execute(t.id).catch(() => this.state.queue.run(async () => {

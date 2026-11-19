@@ -153,3 +153,17 @@ test('concurrent duplicate material and resume operations reserve exactly once',
   await Promise.all([f.support.resume(resume), f.support.resume(resume)]);
   expect(f.work().resumes).toHaveLength(1); expect(f.agent.followup).toHaveBeenCalledTimes(1);
 });
+
+test('unknown continuation only reconciles exact native user-message evidence and never dispatches again', async () => {
+  const f = fixture(); f.ready();
+  const before = await f.support.view('work');
+  f.agent.followup.mockImplementationOnce(() => { throw new Error('unknown after dispatch'); });
+  const input = { workId: 'work', expectedRevision: before.revision, operationId: 'reconcile-op', text: 'Continue with the exact evidence', blockerIds: before.blockers.filter(r => r.state === 'ready').map(r => r.id) };
+  await f.support.resume(input);
+  const receipt = f.work().resumes![0]!;
+  expect(receipt.state).toBe('unknown');
+  expect((await f.support.view('work')).resumes[0]?.state).toBe('unknown');
+  f.events.push({ type: 'user/message', data: { id: receipt.messageId, source: { kind: 'user' }, content: [{ type: 'text', text: input.text }] } });
+  expect((await f.support.view('work')).resumes[0]?.state).toBe('queued');
+  await f.support.view('work'); expect(f.agent.followup).toHaveBeenCalledTimes(1);
+});

@@ -89,9 +89,18 @@ export function registerBotPanel(ctx: Context, actions: BotRightPanelInjected): 
     open(botId, section) {
       const sidebar = ctx.get('sidebarRight');
       const sessionId = sidebar?.mounted.getSnapshot();
-      if (!ready || !previewReady || sessionId === undefined) return false;
-      const bot = actions.hooks.catalog.getSnapshot().entries.find(entry => entry.bot.id === botId)?.bot;
-      if (!bot) return false;
+      if (!sidebar || sessionId === undefined) return false;
+      const entry = actions.hooks.catalog.getSnapshot().entries.find(record => record.bot.id === botId);
+      if (!entry) return false;
+      const { bot } = entry;
+      if (ready && entry.status?.mainSessionId === sessionId) {
+        try {
+          sidebar.openTab(BOT_PANEL_KIND, { params: { botId, botCreatedAt: bot.createdAt, section } });
+          update();
+          return true;
+        } catch { /* Compact preview remains available without a working right pane. */ }
+      }
+      if (!previewReady) return false;
       update({ botId, botCreatedAt: bot.createdAt, sessionId, section, revision: ++revision });
       return true;
     },

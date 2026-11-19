@@ -1,14 +1,16 @@
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupActions } from '../groups-state.js';
+import type { BotCatalog } from '../state.js';
 import { GroupAvatar } from './GroupAvatar.js';
 export interface GroupSessionRowInjected {
-  hooks: { groups: GroupActions['catalog'] };
+  hooks: { groups: GroupActions['catalog']; catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'> };
 }
 type Props = Pick<PropsRuntime<'sidebar.session.row.leading'>, 'sessionId'> &
   PropsLocale<'dsh-bot'> &
   InjectFace<GroupSessionRowInjected>;
-export function GroupSessionLeading({ sessionId, useGroups, t }: Props) {
+export function GroupSessionLeading({ sessionId, useGroups, useCatalog, t }: Props) {
   const group = useGroups((snapshot) => snapshot.groups.find((row) => row.group.rootSessionId === sessionId));
+  const entries = useCatalog((snapshot) => group && snapshot.loaded ? snapshot.entries : undefined);
   return group ? (
     <span
       data-group-session-leading={group.group.id}
@@ -16,7 +18,9 @@ export function GroupSessionLeading({ sessionId, useGroups, t }: Props) {
       aria-label={t('row.group', { name: group.group.name })}
       title={t('row.group', { name: group.group.name })}
     >
-      <GroupAvatar size={16} />
+      <GroupAvatar size={16}
+        members={group.members.filter(member => member.enabled && member.removedAt === undefined)}
+        bots={entries?.map(entry => entry.bot)} />
     </span>
   ) : null;
 }

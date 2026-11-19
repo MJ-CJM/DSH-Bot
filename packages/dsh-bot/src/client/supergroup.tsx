@@ -1,4 +1,4 @@
-import { TaskSupportPanel, type TaskSupportActions } from './task-support.js';
+import { TaskSupportPanel, type TaskSupportActions, type createTaskOriginFocus } from './task-support.js';
 import type { IntegrationActions } from './integrations-state.js';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Context } from '@deepseek-ai/cordis';
@@ -12,7 +12,6 @@ import { supergroupViewSchema, type SupergroupWorkView } from '../shared/supergr
 import { SUPERGROUP_REMOTE } from '../shared/supergroup-contract.js';
 import type { GroupActions } from './groups-state.js';
 import type { BotCatalog } from './state.js';
-import type { BotModeActions } from './bot-mode/index.js';
 import type { ExecutionBridge } from './group-execution.js';
 import { createChangeStream } from './change-stream.js';
 import { GroupTurnExecution } from './components/GroupTurnExecution.js';
@@ -27,11 +26,8 @@ export interface SupergroupSettingsActions {
   configure(input: { enabled: boolean; expectedEnabled: boolean }): Promise<{ enabled: boolean }>;
 }
 
-/** Visible bundle-level control; saving changes only this plugin's global mode. */
+/** Owner setting for automatic collaboration, independent of navigation. */
 export function SupergroupSettings({ actions, t }: { actions: SupergroupSettingsActions } & PropsLocale<'dsh-bot'>) {
-  const modeStatus = (actions as Partial<BotModeActions>).status;
-  const noStatus = useMemo(() => ({ state: 'off' as const }), []);
-  const mode = useSyncExternalStore(modeStatus?.subscribe ?? (() => () => {}), modeStatus?.getSnapshot ?? (() => noStatus));
   const [value, setValue] = useState<{ enabled: boolean }>();
   const [busy, setBusy] = useState(true), [failed, setFailed] = useState(false);
   const alive = useRef(false), lock = useRef(false);
@@ -39,7 +35,7 @@ export function SupergroupSettings({ actions, t }: { actions: SupergroupSettings
     if (lock.current) return;
     lock.current = true; setBusy(true); setFailed(false);
     try { const next = await actions.settings(); if (alive.current) setValue(next); }
-    catch { if (alive.current) setFailed(true); }
+    catch { if (alive.current) { setValue(undefined); setFailed(true); } }
     finally { lock.current = false; if (alive.current) setBusy(false); }
   }, [actions]);
   useEffect(() => {
@@ -52,8 +48,8 @@ export function SupergroupSettings({ actions, t }: { actions: SupergroupSettings
     <p>{t('supergroup.settingsScope')}</p>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
       <span>{t('supergroup.settingsGlobal')}</span>
-      <Switch label={t('supergroup.settingsTitle')} checked={value?.enabled ?? false} disabled={busy || !value} onChange={enabled => {
-        if (lock.current || !value) return;
+      <Switch label={t('supergroup.settingsTitle')} checked={value?.enabled ?? false} disabled={busy || !value || failed} onChange={enabled => {
+        if (lock.current || !value || failed) return;
         lock.current = true; setBusy(true); setFailed(false);
         void actions.configure({ enabled, expectedEnabled: value.enabled }).then(next => {
           if (alive.current) setValue(next);
@@ -67,7 +63,6 @@ export function SupergroupSettings({ actions, t }: { actions: SupergroupSettings
     <p role="status">{busy ? t('supergroup.settingsSaving') : !value ? t('supergroup.settingsUnknown') : value.enabled ? t('supergroup.settingsEnabled') : t('supergroup.settingsDisabled')}</p>
     <p>{t('supergroup.settingsPermissions')}</p>
     <p>{t('supergroup.settingsReturn')}</p>
-    {mode.state === 'failed' && <p role="alert">{t('botMode.notReady')}</p>}
     {failed && <><p role="alert">{t('supergroup.settingsFailed')}</p><Button disabled={busy} onClick={() => { void refresh(); }}>{t('bots.refresh')}</Button></>}
   </section>;
 }
@@ -98,7 +93,7 @@ interface WorkSource {
 export interface SupergroupUiBridge {
   source(sessionId: string, messageId: string): WorkSource;
   cancel(work: SupergroupWorkView['work']): Promise<void>;
-  support?: { actions: TaskSupportActions; integrations?: IntegrationActions; openSession?(id: string): Promise<void> };
+  support?: { actions: TaskSupportActions; integrations?: IntegrationActions; openSession?(id: string): Promise<void>; focus?: ReturnType<typeof createTaskOriginFocus> };
 }
 
 /** Passive shared invalidation stream; native Chat events trigger authoritative
@@ -200,6 +195,9 @@ export function createSupergroupUiBridge(ctx: Context, groups: GroupActions): Su
 
 type CardProps = { sessionId: string; messageId: string; bridge: SupergroupUiBridge; actions: GroupActions; bots: BotCatalog;
   executionBridge?: ExecutionBridge; nativeRevision?: unknown } & Partial<PropsRenderFactories> & PropsLocale<'dsh-bot'>;
+const noFocus = () => undefined;
+const noFocusSubscription = () => () => {};
+
 export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots, executionBridge, nativeRevision, renderFactorySlot, t }: CardProps) {
   const source = useMemo(() => bridge.source(sessionId, messageId), [bridge, sessionId, messageId]);
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot);
@@ -208,7 +206,18 @@ export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   const lock = useRef(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const card = useRef<HTMLElement>(null);
+  const focus = bridge.support?.focus;
+  const requested = useSyncExternalStore(focus?.subscribe ?? noFocusSubscription, focus?.getSnapshot ?? noFocus);
   const value = snapshot.value;
+  useEffect(() => {
+    const work = value?.work;
+    if (!requested || !work || !card.current || requested.originSessionId !== sessionId || requested.inputMessageId !== messageId
+      || requested.workId !== work.id || requested.owner.botId !== work.owner.botId || requested.owner.botCreatedAt !== work.owner.botCreatedAt) return;
+    card.current.scrollIntoView?.({ block: 'center' });
+    card.current.focus({ preventScroll: true });
+    focus?.set();
+  }, [requested, value, focus, sessionId, messageId]);
   if (!value) return snapshot.failed ? <p role="status">{t('supergroup.unavailable')}</p> : null;
   const { work, group } = value;
   if (work.inputMessageId !== messageId) return null;
@@ -216,7 +225,7 @@ export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots
   const members = group?.members.filter(row => row.enabled && row.removedAt === undefined).sort((a, b) => a.order - b.order) ?? [];
   const memberCount = group ? members.length : undefined;
   const live = work.state === 'running' || work.state === 'creating';
-  return <section className={`dsh-bot-group-workspace ${styles.panel} ${styles.workCard}`} data-supergroup-work={work.id} data-supergroup-state={work.state} aria-label={t(work.initialPending ? 'taskSupport.initialTitle' : 'supergroup.title')}>
+  return <section ref={card} tabIndex={-1} className={`dsh-bot-group-workspace ${styles.panel} ${styles.workCard}`} data-supergroup-work={work.id} data-supergroup-state={work.state} aria-label={t(work.initialPending ? 'taskSupport.initialTitle' : 'supergroup.title')}>
     <style>{css}</style>
     <div className={styles.workHeading}>
       <strong className={styles.workName} title={group?.group.name}>{group?.group.name ?? t(work.initialPending ? 'taskSupport.initialTitle' : 'supergroup.title')}</strong>
@@ -259,7 +268,7 @@ export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots
   </section>;
 }
 
-export async function registerSupergroup(ctx: Context, actions: GroupActions, bots: BotCatalog, executionBridge?: ExecutionBridge, modeFactory?: (settings: SupergroupSettingsActions) => BotModeActions, support?: SupergroupUiBridge['support']): Promise<void> {
+export async function registerSupergroup(ctx: Context, actions: GroupActions, bots: BotCatalog, executionBridge?: ExecutionBridge, support?: SupergroupUiBridge['support']): Promise<void> {
   await ctx.effect(async () => await ctx.remote.$mount(SUPERGROUP_REMOTE), 'dsh-bot: Supergroup Remote');
   const nativeSettings: SupergroupSettingsActions = {
     async settings() {
@@ -271,11 +280,10 @@ export async function registerSupergroup(ctx: Context, actions: GroupActions, bo
       const result = await service.configure(input); if (!result.ok) throw result.error; return result.value;
     },
   };
-  const settings = modeFactory?.(nativeSettings) ?? nativeSettings;
   ctx.effect(() => ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
     name: 'plugins.bundle.config', key: 'dsh-botgroup', locale: 'dsh-bot',
   }, (props: PropsRuntime<'plugins.bundle.config'> & PropsLocale<'dsh-bot'>) => props.view === 'summary'
-    ? <span>{props.t('supergroup.settingsTitle')}</span> : <SupergroupSettings actions={settings} t={props.t} />)), 'dsh-bot: Supergroup settings');
+    ? <span>{props.t('supergroup.settingsTitle')}</span> : <SupergroupSettings actions={nativeSettings} t={props.t} />)), 'dsh-bot: Supergroup settings');
   const bridge = createSupergroupUiBridge(ctx, actions);
   bridge.support = support;
   ctx.inject(['uiConversation'], scope => {

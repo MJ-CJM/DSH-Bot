@@ -6,12 +6,13 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { DataLabel, EgressTarget } from '../../shared/data-flow.js';
 import { flowEnvelopeSchema, flowRecordSchema, type FlowEnvelope, type FlowRecord, type Outlet } from '../../shared/managed-flow.js';
 import type { BotKey } from '../../shared/identity.js';
-import type { EgressChecker } from './egress.js';
+import { ExportAuthorizationRequired, type EgressChecker } from './egress.js';
 import type { OnceGrant } from './grants.js';
 import { MemoryLineage } from './lineage.js';
 import { mergeLabels } from './labels.js';
 export interface NotificationCopyRef {operationId:string;sessionId?:string;flowId?:string;}
 export interface ProactiveGroupCopyRef {
+  flowId?: string;
   sessionId?: string;
   outlet: 'group-input' | 'group-result';
 }
@@ -99,6 +100,45 @@ export class ManagedOutlets {
       await this.put({ id, state: 'admitted', envelope: parsed, ...(grant ? { grantUse: grant.id } : {}) });
     });
     return id;
+  }
+  /** Pending bodies are not admitted and cannot be dispatched, including after restart. */
+  async holdForReview(envelope: FlowEnvelope, signal?: AbortSignal): Promise<string> {
+    const id = randomUUID();
+    await this.kernel.serial(async () => {
+      this.reviewable(envelope, signal);
+      await this.put({ id, state: 'awaiting-approval', envelope });
+    });
+    return id;
+  }
+  private reviewable(envelope: FlowEnvelope, signal?: AbortSignal) {
+    try { this.check(envelope, undefined, undefined, this.signal(signal)); }
+    catch (error) { if (!(error instanceof ExportAuthorizationRequired)) throw error; }
+  }
+  review(id: string, signal?: AbortSignal) {
+    const row = this.get(id);
+    if (row.state !== 'awaiting-approval' || !row.envelope) throw new Error('Export review unavailable');
+    this.reviewable(row.envelope, signal);
+    return { envelope: row.envelope, digest: createHash('sha256').update(JSON.stringify(row.envelope)).digest('hex') };
+  }
+  /** Only the owner-facing group decision endpoint calls this, never a model tool. */
+  async approveReview(id: string, digest: string, signal?: AbortSignal) {
+    const envelope = await this.kernel.serial(async () => {
+      const review = this.review(id, signal);
+      if (review.digest !== digest) throw new Error('Export review changed');
+      // Consume the review before issuing any grant. A crash cannot replay the decision.
+      await this.put({ id, state: 'cancelled', envelopeDigest: digest, redactedAt: Date.now() });
+      return review.envelope;
+    });
+    const grant = this.checker.grants.issue(envelope.binding, envelope.content);
+    return this.admit(envelope, grant, signal);
+  }
+  async rejectReview(id: string) {
+    await this.kernel.serial(async () => {
+      const row = this.get(id);
+      if (row.state === 'cancelled' && !row.envelope && row.redactedAt !== undefined && !row.envelopeDigest) return;
+      if (row.state !== 'awaiting-approval') throw new Error('Export review unavailable');
+      await this.put({ id, state: 'cancelled', redactedAt: Date.now() });
+    });
   }
   async persist<T>(id: string, save: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     return this.kernel.serial(async () => {
@@ -218,13 +258,20 @@ export class ManagedOutlets {
     return this.kernel.serial(async () => {
       this.kernel.assertReadable(); this.kernel.assertOwnership();
       const copies: FlowRecord[] = [];
+      for (const [callId, ref] of refs) {
+        if (!ref.flowId) continue;
+        const row = this.kernel.domain.table('flows').get(ref.flowId);
+        if (!row) return false;
+        if (row.envelope && (!ref.sessionId || row.envelope.outlet !== ref.outlet ||
+            row.envelope.binding.invocation !== `${ref.sessionId}/${callId}`)) return false;
+      }
       for (const [, row] of this.kernel.domain.table('flows').entries()) {
         const envelope = row.envelope;
         if (!envelope || (envelope.outlet !== 'group-input' && envelope.outlet !== 'group-result')) continue;
         const callId = envelope.binding.invocation.split('/').at(-1);
         const ref = callId && refs.get(callId);
         if (ref) {
-          if (ref.outlet !== envelope.outlet || !ref.sessionId ||
+          if (ref.outlet !== envelope.outlet || ref.flowId && row.id !== ref.flowId || !ref.sessionId ||
               `${ref.sessionId}/${callId}` !== envelope.binding.invocation ||
               row.state === 'dispatching' || row.state === 'unknown') return false;
           copies.push(row);

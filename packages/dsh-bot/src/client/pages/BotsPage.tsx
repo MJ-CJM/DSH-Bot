@@ -5,6 +5,7 @@ import { ManagementWorkspace } from '../components/ManagementWorkspace.js';
 import { SettingsDrafts, useSettingsNavigation } from '../components/SettingsNavigation.js';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { RecentConversations } from './RecentConversations.js';
+import { DirectoryPending } from './DirectoryPending.js';
 import { Button, Toast } from '@deepseek-ai/dsh-client-ui-primitives';
 import styles from '../styles/bots.module.css';
 import identityCss from '../styles/identity.module.css?inline';
@@ -90,8 +91,9 @@ export function BotsPage(page: BotsPageProps) {
             </SettingsDrafts.Provider>
           </>)}
           <div hidden={tab === 'management' || model.showDetail}>
-          {section === 'bots' && model.directoryVisible && page.taskSupport && <PendingTaskSupport actions={page.taskSupport} open={page.onOpenSession} t={t} />}
-          {section === 'bots' && model.directoryVisible && page.pendingWork && <PendingWork source={page.pendingWork} useSessionStatus={page.useSessionStatus} t={t} />}
+          {model.directoryVisible && !creatingGroup && groups && <DirectoryPending groups={groups} t={t} />}
+          {model.directoryVisible && !creatingGroup && page.taskSupport && page.openPendingTask && <PendingTaskSupport actions={page.taskSupport} open={page.openPendingTask} t={t} />}
+          {model.directoryVisible && !creatingGroup && page.pendingWork && <PendingWork source={page.pendingWork} useSessionStatus={page.useSessionStatus} t={t} />}
           {(section === 'bots' || section === 'recent') && <RecentConversations key={section} page={page} model={model} mode={section} />}
           {groups && section === 'groups' && (
             <GroupsPanel

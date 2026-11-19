@@ -167,13 +167,18 @@ it('lets a pending group-root native interaction take over and restores the exac
   try {
     const initial = f.element.querySelector('textarea'); if (!initial) throw new Error('No group input');
     await fill(initial, 'Keep this unsent group text');
+    await click(f.element.querySelector('[data-group-command-launcher]') as HTMLElement);
+    await vi.waitFor(() => expect(f.element.querySelector('[data-group-command="memory"]')).not.toBeNull());
+    await click(f.element.querySelector('[data-group-command="memory"]') as HTMLElement);
     const before = structuredClone(f.actions.draft(f.data.group.rootSessionId));
     await act(async () => f.publish({ kind: 'approval', key: 'root-approval' }));
     expect(f.element.querySelector('textarea')).toBeNull();
     expect(f.element.querySelector('button')?.textContent).toBe('Native Reject');
     expect(f.actions.draft(f.data.group.rootSessionId).text).toBe(before.text);
+    expect(f.actions.draft(f.data.group.rootSessionId).memoryStatusOnly).toBe(true);
     await click(f.element.querySelector<HTMLButtonElement>('button') as HTMLButtonElement);
     await vi.waitFor(() => expect(f.element.querySelector('textarea')?.value).toBe(before.text));
+    expect(f.element.querySelector('[data-group-memory-status]')).not.toBeNull();
     expect(f.reject).toHaveBeenCalledTimes(1);
     expect(f.send).not.toHaveBeenCalled();
     expect(f.actions.draft(f.data.group.rootSessionId).operation).toEqual(before.operation);
@@ -185,7 +190,9 @@ it.each([false, true])('file admission before upload matches manual/automatic gr
   try {
     const picker = f.element.querySelector<HTMLInputElement>('input[type="file"]'); if (!picker) throw new Error('No file input');
     expect(picker.disabled).toBe(automatic);
-    expect([...f.element.querySelectorAll('button')].some(button => button.getAttribute('aria-label') === f.t('groups.attach'))).toBe(!automatic);
+    await click(f.element.querySelector('[data-group-command-launcher]') as HTMLElement);
+    await vi.waitFor(() => expect(Boolean(f.element.querySelector('[data-group-command="file"]'))).toBe(!automatic));
+    await act(async () => f.element.querySelector('textarea')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
     expect(f.element.textContent).not.toContain(f.t('botMode.inputUnsupported'));
     // Even an already queued/synthetic change must not make a receipt for an
     // automatic group. The ordinary group still uses the existing upload path.

@@ -1,0 +1,10 @@
+{
+  "required": [
+    "value-554b22a619fe"
+  ],
+  "forbidden": [
+    "everything is complete"
+  ],
+  "action": "answer",
+  "canary": "96aad5bd43470ac158573443101f2c53"
+}

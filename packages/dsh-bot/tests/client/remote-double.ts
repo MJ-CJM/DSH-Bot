@@ -8,6 +8,7 @@ import { EMPTY_INTEGRATIONS } from "../../src/client/integrations-state.js";
 import type { AutomationRemoteMethods } from "../../src/shared/automation-contract.js";
 import type { RunRecord } from "../../src/shared/automation.js";
 import type { NativeTask } from "../../src/client/automation-state.js";
+import type { ScheduleCatalogEntry } from '@deepseek-ai/dsh-schedule/client';
 import type { NativeAggregate } from "../../src/shared/native-schedule.js";
 import type { TypertRemoteNamespaceMap } from "@deepseek-ai/dsh-typert-protocol";
 import { RemoteError } from "@deepseek-ai/dsh-typert-protocol";
@@ -26,6 +27,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
 	const data = {
 		groups: [] as GroupSummary[],
 		groupView: undefined as GroupView | undefined,
+    groupExportEnabledBots: [] as Array<{ botId: string; botCreatedAt: number }>,
 		board: { supported: false, reason: "native-service-missing", members: [], tasks: [] } as TeamBoard,
 		integrations: structuredClone(EMPTY_INTEGRATIONS),
 		sessionRows: [] as SessionSummary[],
@@ -131,6 +133,11 @@ export function remoteDouble(initial: BotRecord[] = []) {
 				})),
 		})),
 		openConversation: vi.fn<DshBotRemoteMethods["openConversation"]>(async () => ({ ok: true, value: { sessionId: "test-created-session" } })),
+    openConversationExact: vi.fn<DshBotRemoteMethods['openConversationExact']>(async (owner) => {
+      const record = data.records.find(row => row.id === owner.botId && row.createdAt === owner.botCreatedAt);
+      if (!record) return { ok: false, error: new RemoteError('bot/conflict', 'Bot incarnation changed', {}) };
+      return { ok: true, value: { sessionId: 'test-created-session' } };
+    }),
 		ensureHome: vi.fn<DshBotRemoteMethods["ensureHome"]>(async (id) => ({ ok: true, value: { path: `/test/dsh-bot/bots/${id}/home` } })),
 		ensureBotsWorkspace: vi.fn<DshBotRemoteMethods["ensureBotsWorkspace"]>(async () => ({
 			ok: true,
@@ -204,10 +211,10 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		runNow: vi.fn<AutomationRemoteMethods<"dshBot.nativeSchedule">["runNow"]>(),
 	};
 	const schedule = {
-		catalog: vi.fn<TypertRemoteNamespaceMap["schedule"]["catalog"]>(async () => ({ ok: true, value: data.routines })),
+		catalog: vi.fn<TypertRemoteNamespaceMap["schedule"]["catalog"]>(async () => ({ ok: true, value: data.routines as ScheduleCatalogEntry[] })),
 		update: vi.fn<TypertRemoteNamespaceMap["schedule"]["update"]>(async (request) => {
 			const r = data.routines.find((row) => row.id === request.id);
-			if (!r) return { ok: true, value: { id: request.id, updated: false, code: "schedule_not_found" } };
+			if (!r || 'target' in r) return { ok: true, value: { id: request.id, updated: false, code: "schedule_not_found" } };
 			const value = { ...r, ...(request.title ? { title: request.title } : {}), ...(request.prompt ? { prompt: request.prompt } : {}) };
 			data.routines = data.routines.map((row) => (row.id === r.id ? value : row));
 			return { ok: true, value: { id: r.id, updated: true, record: value } };
@@ -248,12 +255,33 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		updateTask: vi.fn<CollaborationMethods["updateTask"]>(),
 	};
 	const groups = {
+    getExportApprovalSettings: vi.fn<GroupMethods['getExportApprovalSettings']>(async () => {
+      const current = data.groupView;
+      if (!current) throw new Error('No group fixture');
+      const members = current.members.filter(member => member.removedAt === undefined);
+      return { ok: true, value: { groupRevision: current.group.revision, membershipRevision: current.group.membershipRevision,
+        readers: members.map(member => ({ bot: member.bot, name: data.records.find(bot => bot.id === member.bot.botId && bot.createdAt === member.bot.botCreatedAt)?.name ?? member.bot.botId })),
+        eligibleBots: members.map(member => member.bot), enabledBots: [...data.groupExportEnabledBots],
+        canEnable: current.group.state === 'ready' && !current.group.archived && !current.group.supergroup } };
+    }),
+    setExportApproval: vi.fn<GroupMethods['setExportApproval']>(async (key, bot, enabled, revision, membershipRevision) => {
+      const current = data.groupView?.group;
+      if (!current || key.groupId !== current.id || key.groupCreatedAt !== current.createdAt) throw new Error('No matching group fixture');
+      if (revision !== current.revision || membershipRevision !== current.membershipRevision) throw new Error('Group revision conflict');
+      data.groupExportEnabledBots = data.groupExportEnabledBots.filter(row => row.botId !== bot.botId || row.botCreatedAt !== bot.botCreatedAt);
+      if (enabled) data.groupExportEnabledBots.push(bot);
+      const group = { ...current, revision: current.revision + 1 };
+      if (data.groupView) data.groupView = { ...data.groupView, group };
+      data.groups = data.groups.map(row => row.group.id === group.id && row.group.createdAt === group.createdAt ? { ...row, group } : row);
+      return { ok: true, value: group };
+    }),
     teamList: vi.fn<GroupMethods["teamList"]>(async () => ({ ok: true, value: [] })),
     teamCapture: vi.fn<GroupMethods["teamCapture"]>(),
     teamSave: vi.fn<GroupMethods["teamSave"]>(),
     teamRemove: vi.fn<GroupMethods["teamRemove"]>(),
     teamPreview: vi.fn<GroupMethods["teamPreview"]>(),
     teamApply: vi.fn<GroupMethods["teamApply"]>(),
+    closeStaleExports: vi.fn<GroupMethods['closeStaleExports']>(),
 		open: vi.fn<GroupMethods["open"]>(async () => {
 			if (!data.groupView) throw new Error("No group fixture");
 			return { ok: true, value: { sessionId: data.groupView.group.rootSessionId, workspaceId: "workspace" } };

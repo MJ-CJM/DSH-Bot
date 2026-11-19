@@ -1,3 +1,5 @@
+import { GroupExportQueue } from './GroupExportQueue.js';
+import { hasOperationCode } from '../../shared/operation-errors.js';
 import type { ExecutionBridge } from '../group-execution.js';
 import { GroupStatisticsBar } from './GroupStatistics.js';
 import { SettingsDrafts, useSettingsNavigation, useSettingsDraft, useSettingsLeave } from './SettingsNavigation.js';
@@ -17,8 +19,9 @@ import { resolveGroupMentions } from '../group-mentions.js';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
+import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
-import { type GroupActions, unwrapGroup } from '../groups-state.js';
+import { GroupRouteUnavailable, type GroupActions, unwrapGroup } from '../groups-state.js';
 import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
@@ -27,6 +30,7 @@ const subscribeNoPermission = (_listener: () => void) => () => {};
 /** Icon and copy of each '/' row, following the native composer menu's icons. */
 const COMMAND_FACE = {
   file: { icon: IconPaperclipOutlineRegular, label: 'groups.commandFile', hint: 'groups.commandFileHint' },
+  memory: { icon: IconDataOutlineRegular, label: 'groups.memoryStatus.toggle', hint: 'groups.memoryStatus.hint' },
   model: { icon: IconDataOutlineRegular, label: 'groups.commandModel', hint: 'groups.commandModelHint' },
   permission: { icon: IconShieldOutlineRegular, label: 'groups.commandPermission', hint: 'groups.commandPermissionHint' },
   export: { icon: IconDownloadOutlineRegular, label: 'groups.commandExport', hint: 'groups.commandExportHint' },
@@ -95,6 +99,7 @@ export function GroupsPanel({
         {!initialCreate && <nav ref={listRef} aria-label={t('groups.list')} className={styles.list}>
           <GroupDirectory rows={list.groups} bots={bots} selectedId={!creating ? active?.group.id : undefined}
             onSelect={group => { navigation.leave(() => select(group)); }}
+            onOpen={(group, signal) => actions.open(groupKey(group), signal)}
             onCreate={() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); }}
             onRefresh={() => { void actions.catalog.refresh(); }} t={t} />
         </nav>}
@@ -215,18 +220,31 @@ export function GroupEditor({
   onCancel(): void;
 } & Localized) {
   const [name, setName] = useState(initial?.group.name ?? '');
+  const editorForm = useRef<HTMLFormElement>(null);
+  const editIdentity = initial ? JSON.stringify([initial.group.id, initial.group.createdAt]) : undefined;
+  useEffect(() => {
+    if (!editIdentity) return;
+    editorForm.current?.scrollIntoView?.({ block: 'start' });
+    editorForm.current?.querySelector('input')?.focus({ preventScroll: true });
+  }, [editIdentity]);
   const [mode, setMode] = useState(initial?.group.mode ?? 'natural');
   const [onDemand, setOnDemand] = useState(initial ? initial.group.onDemand ?? false : true);
   const [members, setMembers] = useState(
-    () => initial?.members.filter((m) => m.enabled).map((m) => m.bot) ?? [],
+    () => initial?.members.filter((m) => m.removedAt === undefined).map((m) => m.bot) ?? [],
   );
+  const originalMembers = useRef(members);
+  const legacyOverLimit = originalMembers.current.length > GROUP_MEMBER_LIMIT;
+  const canSaveMembers = members.length >= 2 && (legacyOverLimit
+    ? members.length < originalMembers.current.length && members.every(member => originalMembers.current.some(original => original.botId === member.botId && original.botCreatedAt === member.botCreatedAt))
+    : members.length <= GROUP_MEMBER_LIMIT);
   const [cwd, setCwd] = useState('');
   const initialDraft = useRef(JSON.stringify([name, mode, members, cwd, onDemand]));
   useSettingsDraft(JSON.stringify([name, mode, members, cwd, onDemand]) !== initialDraft.current);
   const leave = useSettingsLeave();
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<'conflict' | 'member-limit'>();
+  const memberHintId = useId();
   const intent = useRef({
     operationId: `create:${crypto.randomUUID()}`,
     signature: '',
@@ -244,13 +262,14 @@ export function GroupEditor({
   };
   return (
     <form
+      ref={editorForm}
       className={styles.editor}
       aria-label={t(initial ? 'groups.edit' : 'groups.create')}
       onSubmit={(e) => {
         e.preventDefault();
-        if (busy || !confirmed || members.length < 2) return;
+        if (busy || !confirmed || (!creationSaved && !canSaveMembers)) return;
         setBusy(true);
-        setError(false);
+        setError(undefined);
         const input = {
           name: name.trim() || members.map(key => bots.find(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt)?.name ?? key.botId).join('、').slice(0, 120),
           mode,
@@ -264,8 +283,8 @@ export function GroupEditor({
           intent.current.operationId = `create:${crypto.randomUUID()}`;
         intent.current.signature = signature;
         void onSave({ ...input, operationId: intent.current.operationId })
-          .catch(() => {
-            setError(true);
+          .catch((cause: unknown) => {
+            setError(hasOperationCode(cause, 'member-limit') ? 'member-limit' : 'conflict');
           })
           .finally(() => {
             if (alive.current) setBusy(false);
@@ -273,13 +292,14 @@ export function GroupEditor({
       }}
     >
       <h3>{t(initial ? 'groups.edit' : 'groups.create')}</h3>
-      {error && <p role="alert">{t(creationSaved ? 'groups.createdOpenFailed' : 'groups.conflict')}</p>}
+      {error && <p role="alert">{t(creationSaved ? 'groups.createdOpenFailed' : error === 'member-limit' ? 'groups.memberLimitFailed' : 'groups.conflict', { limit: GROUP_MEMBER_LIMIT })}</p>}
       <label>
         {t('groups.name')}
         <input disabled={busy || creationSaved} value={creationSaved ? createdName ?? name : name} onChange={(e) => setName(e.target.value)} />
       </label>
-      <fieldset>
+      <fieldset aria-describedby={memberHintId}>
         <legend>{t('groups.members')}</legend>
+        <p id={memberHintId} role="status">{t(legacyOverLimit ? 'groups.memberLimitLegacy' : 'groups.memberLimit', { count: members.length, limit: GROUP_MEMBER_LIMIT })}</p>
         {bots.map((b) => {
           const selected = members.some((m) => m.botId === b.id && m.botCreatedAt === b.createdAt);
           return (
@@ -287,10 +307,11 @@ export function GroupEditor({
               <input
                 type="checkbox"
                 checked={selected}
-                disabled={busy || creationSaved}
-                onChange={(e) =>
-                  change(e.target.checked ? [...members, keyOf(b)] : members.filter((m) => m.botId !== b.id))
-                }
+                disabled={busy || creationSaved || (!selected && (legacyOverLimit || members.length >= GROUP_MEMBER_LIMIT))}
+                onChange={(e) => {
+                  if (e.target.checked && (legacyOverLimit || members.length >= GROUP_MEMBER_LIMIT)) return;
+                  change(e.target.checked ? [...members, keyOf(b)] : members.filter((m) => m.botId !== b.id || m.botCreatedAt !== b.createdAt));
+                }}
               />
               <BotAvatar bot={b} size={24} />
               {b.name} ({b.id})
@@ -353,7 +374,7 @@ export function GroupEditor({
         {t('groups.historyConsent')}
       </label>
       <div className={styles.bar}>
-        <button type="submit" disabled={busy || !confirmed || members.length < 2}>
+        <button type="submit" disabled={busy || !confirmed || (!creationSaved && !canSaveMembers)}>
           {t(creationSaved ? 'groups.open' : 'integrations.save')}
         </button>
         <button type="button" disabled={busy} onClick={() => leave(onCancel)}>
@@ -381,7 +402,7 @@ export function GroupConversation({
   executionBridge?: ExecutionBridge;
   models?: ModelActions;
   permissionState?: GroupPermissionState;
-  /** Native command bridge for the workspace composer's '/' menu; absent leaves '/' as text. */
+  /** Native command bridge; local group actions remain available without it. */
   commandServices?: GroupCommandServices;
   expandedTurns: Record<string, boolean>;
   onExpandTurn(id: string, expanded: boolean): void;
@@ -446,6 +467,11 @@ export function GroupConversation({
   }, [actions, catalog, readSeq, view?.unread, view?.readRevision, view?.group]);
   const [mentionIssues, setMentionIssues] = useState<ReturnType<typeof resolveGroupMentions>['issues']>([]);
   const rootId = summary.group.rootSessionId;
+  const dispatchLifetime = useRef(new AbortController());
+  useEffect(() => {
+    const controller = new AbortController(); dispatchLifetime.current = controller;
+    return () => controller.abort();
+  }, []);
   useSyncExternalStore(actions.draftUpdates.subscribe, actions.draftUpdates.getSnapshot);
   const sharedDraft = actions.draft(rootId);
   const { text: draft, replyTo, uploads, mentions } = sharedDraft;
@@ -501,10 +527,12 @@ export function GroupConversation({
     lock.current = true;
     setBusy(true);
     setError(false);
+    actions.patchDraft(rootId, value => ({ ...value, errorCode: undefined }));
     try {
       await work();
       await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
-    } catch {
+    } catch (error) {
+      actions.patchDraft(rootId, value => ({ ...value, errorCode: value.errorCode ?? (error instanceof GroupRouteUnavailable ? 'route-unavailable' : hasOperationCode(error, 'member-limit') ? 'member-limit' : hasOperationCode(error, 'group-data-blocked') ? 'group-data-blocked' : hasOperationCode(error, 'conflict') ? 'conflict' : 'send-failed') }));
       setError(true);
     } finally {
       lock.current = false;
@@ -519,7 +547,8 @@ export function GroupConversation({
       name: bots.find((b) => b.id === m.bot.botId && b.createdAt === m.bot.botCreatedAt)?.name ?? m.bot.botId,
     }));
   const resolveMentions = (text: string) => resolveGroupMentions(text, mentionTargets, mentions, sharedDraft.mentionBindings ?? []);
-  const canSend = Boolean(view && !busy && !view.group.archived && !view.reason && view.group.state === 'ready' &&
+  const overMemberLimit = (view?.members.filter(member => member.removedAt === undefined).length ?? 0) > GROUP_MEMBER_LIMIT;
+  const canSend = Boolean(view && !overMemberLimit && !busy && !view.group.archived && !view.reason && view.group.state === 'ready' &&
     (draft.trim() || uploads.length) && uploads.every(row => row.state === 'uploaded'));
   const [modelOpen, setModelOpen] = useState(0), [permissionOpen, setPermissionOpen] = useState(0);
   const commandLauncher = useRef<() => void>();
@@ -527,11 +556,16 @@ export function GroupConversation({
     () => { const value = permissionState?.rootSessionId === rootId ? permissionState.store.getSnapshot() : undefined; return Boolean(value && value.currentValue !== undefined && value.catalog); });
   const usable = Boolean(view && !view.group.archived && view.group.state === 'ready');
   const local = { file: workspace && usable && !busy && !automaticGroup, model: Boolean(models) && usable && !localBusy && !sharedDraft.sending && !permissionSaving,
+    memory: usable && !busy && !automaticGroup && !replyTo && !sharedDraft.followup && !sharedDraft.memoryStatusOnly,
     permission: permissionReady && usable && !busy };
   const commandState = useRef({ local }); commandState.current.local = local;
   const commandLabel = (name: GroupCommandName) => t(COMMAND_FACE[name].label);
   const runCommand = (name: GroupCommandName) => {
     if (name === 'file') { if (!automaticGroup) attachmentInput.current?.click(); }
+    else if (name === 'memory') {
+      if (commandState.current.local.memory) actions.patchDraft(rootId, value => ({ ...value, memoryStatusOnly: true }));
+      composer.current?.focus({ preventScroll: true });
+    }
     else if (name === 'model') setModelOpen(value => value + 1);
     else if (name === 'permission') setPermissionOpen(value => value + 1);
     else if (name === 'export') commandServices?.exportLog(rootId);
@@ -540,27 +574,27 @@ export function GroupConversation({
   const runRef = useRef(runCommand); runRef.current = runCommand;
   const rootRef = useRef(rootId); rootRef.current = rootId;
   const tRef = useRef(t); tRef.current = t;
-  const [commands] = useState<GroupCommandSource | undefined>(() => commandServices && {
+  const [commands] = useState<GroupCommandSource>(() => ({
     async rows() {
-      const host = await commandServices.hostCommands(rootRef.current);
-      const offered = availableGroupCommands(host, commandState.current.local, commandServices.installed);
+      const host = await commandServices?.hostCommands(rootRef.current) ?? new Set<string>();
+      const offered = availableGroupCommands(host, commandState.current.local, commandServices?.installed ?? (() => false));
       const translate = tRef.current;
       return offered.map(name => ({ name, label: translate(COMMAND_FACE[name].label), description: translate(COMMAND_FACE[name].hint), icon: COMMAND_FACE[name].icon,
-        section: translate(name === 'file' ? 'groups.commandsAdd' : 'groups.commands') }));
+        section: translate(name === 'file' || name === 'memory' ? 'groups.commandsAdd' : 'groups.commands') }));
     },
     run(name) { if ((GROUP_COMMANDS as readonly string[]).includes(name)) runRef.current(name as GroupCommandName); },
-  });
+  }));
   const submit = (round: boolean) => {
     // A bare command typed as the whole draft runs as the command, never as a message, as in the
     // native composer. Like its Enter path, wait for the root's catalog rather than guess from the menu.
     const services = commandServices;
-    const bare = services && !round && uploads.length === 0 ? bareGroupCommand(draft, GROUP_COMMANDS, commandLabel) : undefined;
-    if (services && bare) {
+    const bare = !round && uploads.length === 0 ? bareGroupCommand(draft, GROUP_COMMANDS, commandLabel) : undefined;
+    if (bare) {
       if (lock.current) return;
       const typed = draft;
-      void services.hostCommands(rootId).then(host => {
+      void (services?.hostCommands(rootId) ?? Promise.resolve(new Set<string>())).then(host => {
         const current = actions.draft(rootId);
-        if (!alive.current || current.text !== typed || !availableGroupCommands(host, commandState.current.local, services.installed).includes(bare)) return;
+        if (!alive.current || current.text !== typed || !availableGroupCommands(host, commandState.current.local, services?.installed ?? (() => false)).includes(bare)) return;
         actions.patchDraft(rootId, value => ({ ...value, text: '', mentionBindings: [], mentions: [] }));
         runRef.current(bare);
       });
@@ -573,6 +607,7 @@ export function GroupConversation({
     const base = {
       expectedMembershipRevision: view.group.membershipRevision,
       ...(sharedDraft.followup ? { followup: sharedDraft.followup } : {}),
+      ...(!automaticGroup && !replyTo && !sharedDraft.followup && sharedDraft.memoryStatusOnly ? { memoryStatusOnly: true as const } : {}),
       text: draft,
       memberIds: round ? [] : resolved.memberIds,
       round,
@@ -581,6 +616,7 @@ export function GroupConversation({
     };
     const signature = JSON.stringify({
       followup: base.followup,
+      memoryStatusOnly: base.memoryStatusOnly,
       text: base.text,
       memberIds: base.memberIds,
       round: base.round,
@@ -596,9 +632,13 @@ export function GroupConversation({
     const selectedAtSend = [...mentions];
     actions.patchDraft(rootId, value => ({ ...value, sending: true }));
     void perform(async () => {
-      const sent = actions.send ? await actions.send(groupKey(view.group), pending.request) : { turnId: unwrapGroup(await actions.remote().send(groupKey(view.group), pending.request)).id };
-      if (sent.turnId) setStatisticsSent(previous => ({ turnId: sent.turnId!, followup: Boolean(pending.request.followup), sequence: (previous?.sequence ?? 0) + 1 }));
-      actions.patchDraft(rootId, value => ({ ...value, mentionBindings: value.text === pending.request.text ? [] : value.mentionBindings, followup: value.followup?.deliveryId === pending.request.followup?.deliveryId ? undefined : value.followup }));
+      if (typeof actions.send !== 'function') throw new GroupRouteUnavailable();
+      const sent = await actions.send(groupKey(view.group), pending.request, dispatchLifetime.current.signal);
+      const turnId = sent.turnId;
+      if (turnId) setStatisticsSent(previous => ({ turnId, followup: Boolean(pending.request.followup), sequence: (previous?.sequence ?? 0) + 1 }));
+      actions.patchDraft(rootId, value => ({ ...value, mentionBindings: value.text === pending.request.text ? [] : value.mentionBindings,
+        memoryStatusOnly: value.text === pending.request.text && value.memoryStatusOnly === pending.request.memoryStatusOnly ? undefined : value.memoryStatusOnly,
+        followup: value.followup?.deliveryId === pending.request.followup?.deliveryId ? undefined : value.followup }));
       setDraft((current) => (current === pending.request.text ? '' : current));
         setMentions((current) => (JSON.stringify(current) === JSON.stringify(selectedAtSend) ? [] : current));
         setReplyTo(current => current?.id === pending.request.replyTo ? undefined : current);
@@ -623,7 +663,9 @@ export function GroupConversation({
   return (
     <article className={`${styles.conversation} ${workspace ? `${styles.panel} ${styles.workspace}` : ''}`} aria-label={view.group.name} data-workspace-group-composer={workspace ? view.group.rootSessionId : undefined}>
       <style>{css}</style>
-      {(error || snapshot.error) && <p role="alert">{t(error ? sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : 'groups.conflict' : 'groups.disconnected')}</p>}
+      {view.group.state === 'ready' && !view.group.archived && !view.hasEarlier && !view.messages.length && !view.turns.length && <p role="status" data-group-empty-conversation="">{t('groups.emptyConversation')}</p>}
+      {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit: GROUP_MEMBER_LIMIT })}</p>}
+      {(error || snapshot.error) && <p role="alert">{t(error ? sharedDraft.errorCode === 'route-unavailable' ? 'groups.routeUnavailable' : sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : sharedDraft.errorCode === 'group-data-blocked' ? 'groups.export.dataBlocked' : sharedDraft.errorCode === 'member-limit' ? 'groups.memberLimitFailed' : sharedDraft.errorCode === 'send-failed' ? 'groups.export.sendFailed' : 'groups.conflict' : 'groups.disconnected', { limit: GROUP_MEMBER_LIMIT })}</p>}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       {!workspace && <>
       <h3>{view.group.name}</h3>
@@ -645,7 +687,7 @@ export function GroupConversation({
         </button>
       </div>
       {(error || snapshot.error) && (
-        <p role="alert">{t(error ? sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : 'groups.conflict' : 'groups.disconnected')}</p>
+        <p role="alert">{t(error ? sharedDraft.errorCode === 'route-unavailable' ? 'groups.routeUnavailable' : sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : sharedDraft.errorCode === 'group-data-blocked' ? 'groups.export.dataBlocked' : sharedDraft.errorCode === 'member-limit' ? 'groups.memberLimitFailed' : sharedDraft.errorCode === 'send-failed' ? 'groups.export.sendFailed' : 'groups.conflict' : 'groups.disconnected', { limit: GROUP_MEMBER_LIMIT })}</p>
       )}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       <section className={styles.members} aria-label={t('groups.members')}>
@@ -700,6 +742,7 @@ export function GroupConversation({
         </button>
       )}
       <GroupTimeline
+        actions={actions}
         view={view}
         messages={messages}
         lookup={lookup}
@@ -730,6 +773,12 @@ export function GroupConversation({
           submit(false);
         }}
       >
+        <GroupExportQueue view={view} bots={bots} actions={actions} t={t} />
+        {!automaticGroup && sharedDraft.memoryStatusOnly && !replyTo && !sharedDraft.followup && <div className={styles.memoryStatusTag} data-group-memory-status="" role="status" title={t('groups.memoryStatus.hint')}>
+          <IconDataOutlineRegular size={16} /><span>{t('groups.memoryStatus.toggle')}</span>
+          <Button variant="ghost" size="sm" type="button" data-group-memory-cancel="" aria-label={t('groups.memoryStatus.cancel')} title={t('groups.memoryStatus.cancel')}
+            disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => { actions.patchDraft(rootId, value => ({ ...value, memoryStatusOnly: undefined })); composer.current?.focus({ preventScroll: true }); }}>×</Button>
+        </div>}
         {replyTo && <div className={styles.replyPreview} role="status">
           <strong>{t('groups.replying', { name: replyTo.speaker?.name ?? t('groups.you') })}</strong>
           <span>{groupMessagePreview(replyTo.text)}</span>
@@ -740,7 +789,7 @@ export function GroupConversation({
         {sharedDraft.followup && <div className={styles.replyPreview} role="status">{t('groups.supplement')} · {lookup(view.deliveries.find(row => row.id === sharedDraft.followup?.deliveryId)?.memberId ?? '')?.name ?? t('groups.unavailable')}
           <button type="button" onClick={() => actions.patchDraft(rootId, value => ({ ...value, followup: undefined }))}>{t('groups.close')}</button></div>}
         <GroupComposerInput sessionId={rootId} text={draft} bindings={sharedDraft.mentionBindings ?? []} targets={mentionTargets} inputRef={composer} t={t}
-          commands={commands} commandLauncher={commands ? commandLauncher : undefined}
+          commands={commands} commandLauncher={commandLauncher}
           onChange={(text, mentionBindings) => { actions.patchDraft(rootId, value => ({ ...value, text, mentionBindings, mentions: [] })); setMentionIssues([]); }} onSubmit={() => submit(false)} />
         <label hidden={workspace} style={workspace ? { display: 'none' } : undefined}>
           {t('groups.attach')}
@@ -766,10 +815,8 @@ export function GroupConversation({
         ))}
         {!workspace && <p>{t('groups.routingHint')}</p>}
         <div className={`${styles.bar} ${styles.composerFooter}`} title={t('groups.keyboardHint')}>
-          {workspace && (commands
-            ? <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} title={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} aria-haspopup="listbox"
-              data-group-command-launcher="" disabled={view.group.archived} onMouseDown={event => event.preventDefault()} onClick={() => commandLauncher.current?.()}><IconPlusOutlineRegular size={18} /></Button>
-            : !automaticGroup && <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t('groups.attach')} title={t('groups.attach')} disabled={busy || view.group.archived} onClick={() => attachmentInput.current?.click()}><IconPaperclipOutlineRegular size={18} /></Button>)}
+          <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} title={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} aria-haspopup="listbox"
+            data-group-command-launcher="" disabled={view.group.archived} onMouseDown={event => event.preventDefault()} onClick={() => commandLauncher.current?.()}><IconPlusOutlineRegular size={18} /></Button>
           {models && <GroupModelControl group={view.group} members={view.members} bots={bots} actions={actions} models={models} disabled={localBusy || sharedDraft.sending || permissionSaving || view.group.archived || view.group.state !== 'ready'} openRequest={modelOpen || undefined} onBusyChange={setModelBusy} onSaved={() => catalog.refresh()} t={t} />}
           {permissionState && permissionState.rootSessionId === rootId && <GroupPermissionControl state={permissionState} cwd={view.group.cwd} disabled={busy || view.group.archived || view.group.state !== 'ready'} openRequest={permissionOpen || undefined} t={t} />}
           <span className={styles.keyboardHint}>{t('groups.keyboardHint')}</span>
