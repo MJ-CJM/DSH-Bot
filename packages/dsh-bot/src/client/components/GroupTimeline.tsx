@@ -3,10 +3,15 @@ import { useMemo, useState } from 'react';
 import { ImageLightbox, MarkdownText, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupAttachment, GroupMember, GroupView } from '../../shared/groups.js';
+import { groupExportReviewStatus } from '../../shared/group-export-review.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from './BotAvatar.js';
 import { groupFailureCode, groupStopText } from '../group-failure.js';
+import { groupMemoryWriteCounts } from '../group-management.js';
 import styles from '../styles/groups.module.css';
+import type { GroupActions } from '../groups-state.js';
+import { exportStatusKey, turnExportStatus } from './GroupExportReview.js';
+import { GroupExportQueueLink } from './GroupExportQueue.js';
 type Message = GroupView['messages'][number];
 type Turn = GroupView['turns'][number];
 /** Compact plaintext context, never a second Markdown rendering surface. */
@@ -92,6 +97,7 @@ export function GroupMessageCard({ message: m, quoted, quotedLoading = false, so
         <p role="status" className={styles.stopStatus} data-group-stop={m.stopReason}>
           {t('groups.partial')} · {groupStopText(m.stopReason, m.failure, t)}
           {m.failure && groupFailureCode(m.failure) && <span className={styles.failureCode}>{groupFailureCode(m.failure)}</span>}
+          {m.failure?.requestId && <span>{t('groups.failureRequestId')} <code className={styles.failureRequestId}>{m.failure.requestId}</code></span>}
         </p>}
       </div>
       {preview && <ImageLightbox src={preview.src} alt={preview.alt}
@@ -101,7 +107,8 @@ export function GroupMessageCard({ message: m, quoted, quotedLoading = false, so
 }
 /** Messages are always flat and visible. Execution diagnostics have their own collapsed area;
  * expansion remains keyed by immutable turn id and is retained by the parent across polling. */
-export function GroupTimeline({ view, messages, lookup, expanded, onExpand, busy, onCancel, onReply, onOpenSession, onOpenAttachment, onPreviewAttachment, t }: {
+export function GroupTimeline({ view, messages, lookup, expanded, onExpand, busy, onCancel, onReply, onOpenSession, onOpenAttachment, onPreviewAttachment, actions, t }: {
+  actions?: GroupActions;
   view: GroupView; messages: Message[]; lookup(id: string): BotRecord | undefined;
   expanded: Record<string, boolean>; onExpand(id: string, open: boolean): void; busy: boolean;
   onCancel(turn: Turn): void; onReply(message: Message): void; onOpenSession(id: string): Promise<void>;
@@ -135,18 +142,28 @@ export function GroupTimeline({ view, messages, lookup, expanded, onExpand, busy
       <h4>{t('groups.executionDetails')}</h4>
       {view.turns.map(turn => {
         const open = expanded[turn.id] ?? false;
+        const deliveries = view.deliveries.filter(delivery => delivery.turnId === turn.id);
+        const exportState = turnExportStatus(view.group, turn, deliveries);
         return <section key={turn.id} className={styles.turn} data-group-turn={turn.id} aria-label={t('groups.turns')}>
           <button type="button" className={styles.turnSummary} aria-expanded={open} onClick={() => onExpand(turn.id, !open)}>
             <span aria-hidden="true">{open ? '▾' : '▸'}</span>
-            {t('groups.turnSummary', { count: turn.orderedMemberIds.length, state: t(`groups.${turn.state}`) })}
+            {t('groups.turnSummary', { count: turn.orderedMemberIds.length, state: t(exportState ?? `groups.${turn.state}`) })}
           </button>
+          {turn.memoryStatusOnly && <p role="status">{t('groups.memoryStatus.summary', groupMemoryWriteCounts(deliveries))}</p>}
           <div hidden={!open}>
-            {view.deliveries.filter(delivery => delivery.turnId === turn.id).map(delivery => <div key={delivery.id} className={styles.delivery}>
-              <span>{lookup(delivery.memberId)?.name ?? delivery.bot.botId} · {t(`groups.${delivery.state}`)}{' '}
-                {delivery.reasonCode ? t('groups.failureHint') : ''}</span>
+            {deliveries.map(delivery => {
+              const exportStatus = exportStatusKey(view.group, turn, delivery);
+              const review = groupExportReviewStatus(view.group, turn, delivery);
+              return <div key={delivery.id} className={styles.delivery}>
+              <span>{lookup(delivery.memberId)?.name ?? delivery.bot.botId} · {t(exportStatus ?? `groups.${delivery.state}`)}{' '}
+                {delivery.reasonCode && !exportStatus ? t('groups.failureHint') : ''}</span>
+              {turn.memoryStatusOnly && <span>{t(`groups.memoryStatus.${delivery.memoryWriteStatus ?? 'unverified'}`)}</span>}
+              {delivery.failure?.requestId && <span>{t('groups.failureRequestId')} <code className={styles.failureRequestId}>{delivery.failure.requestId}</code></span>}
+              {actions && review === 'pending' && <GroupExportQueueLink view={view} actions={actions} t={t} />}
               {delivery.contextTruncated && <span>{t('groups.truncated')}</span>}
               {delivery.childSessionId && <button type="button" onClick={() => { void onOpenSession(delivery.childSessionId ?? ''); }}>{t('groups.child')}</button>}
-            </div>)}
+            </div>})}
+            {actions && exportState === 'groups.export.expiredStatus' && <GroupExportQueueLink view={view} actions={actions} stale t={t} />}
           </div>
         </section>;
       })}

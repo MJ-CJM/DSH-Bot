@@ -78,6 +78,10 @@ describe('group command availability', () => {
     expect(bareGroupCommand('/export', ['file'], label)).toBeUndefined();
     expect(bareGroupCommand('export', ['export'], label)).toBeUndefined();
   });
+  it('offers memory as a local action without a native command catalog', () => {
+    expect(availableGroupCommands(new Set(), { file: false, memory: true, model: false, permission: false }, () => false)).toEqual(['memory']);
+    expect(availableGroupCommands(new Set(), { file: false, memory: false, model: false, permission: false }, () => false)).toEqual([]);
+  });
   it('reads the root catalog through the public commands Remote, refreshes on change, and calls native browser services', async () => {
     let names = ['export', 'permission'];
     const list = vi.fn(async (_root: string) => ({ ok: true as const, value: names.map(name => ({ name, description: name })) }));
@@ -142,7 +146,7 @@ describe('group composer / menu', () => {
     const menu = f.listbox(); if (!menu) throw new Error('Missing command menu');
     expect(menu.getAttribute('role')).toBe('listbox'); expect(menu.getAttribute('aria-label')).toBe(f.labels['groups.commands']);
     expect([...menu.querySelectorAll('[role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual([f.labels['groups.commandsAdd'], f.labels['groups.commands']]);
-    expect([...menu.querySelectorAll('[role="option"]')].map(row => row.getAttribute('data-group-command'))).toEqual(['file', 'model', 'permission', 'export', 'feedback']);
+    expect([...menu.querySelectorAll('[role="option"]')].map(row => row.getAttribute('data-group-command'))).toEqual(['file', 'memory', 'model', 'permission', 'export', 'feedback']);
     const exportRow = menu.querySelector('[data-group-command="export"]');
     expect(exportRow?.textContent).toContain(f.labels['groups.commandExport']); expect(exportRow?.textContent).toContain(f.labels['groups.commandExportHint']);
     expect(menu.textContent).not.toMatch(/goal|plan|compact/);
@@ -151,7 +155,7 @@ describe('group composer / menu', () => {
   it('hides native rows the group root does not offer, and never sends their bare command as a message', async () => {
     const f = await composer('en', ['permission']);
     await f.type('/');
-    expect([...(f.listbox()?.querySelectorAll('[role="option"]') ?? [])].map(row => row.getAttribute('data-group-command'))).toEqual(['file', 'model', 'permission']);
+    expect([...(f.listbox()?.querySelectorAll('[role="option"]') ?? [])].map(row => row.getAttribute('data-group-command'))).toEqual(['file', 'memory', 'model', 'permission']);
     await fill(f.input, '/export'); await f.key('Escape'); await f.key('Enter');
     await act(async () => {});
     expect(f.services.exportLog).not.toHaveBeenCalled(); expect(f.send).not.toHaveBeenCalled(); expect(f.input.value).toBe('/export');
@@ -180,12 +184,25 @@ describe('group composer / menu', () => {
   it('opens the menu from the add button, and runs a bare command typed with the menu dismissed', async () => {
     const f = await composer('zh');
     await click(button(f.element, f.labels['groups.addOrCommand']));
-    await vi.waitFor(() => expect(f.listbox()?.querySelectorAll('[role="option"]').length).toBe(5));
+    await vi.waitFor(() => expect(f.listbox()?.querySelectorAll('[role="option"]').length).toBe(6));
     expect(document.activeElement).toBe(f.input);
     await f.key('Escape'); expect(f.listbox()).toBeNull();
     await f.type('/下载日志'); await f.key('Escape');
     await f.key('Enter');
     expect(f.services.exportLog).toHaveBeenCalledExactlyOnceWith(f.data.group.rootSessionId);
     expect(f.send).not.toHaveBeenCalled(); expect(f.input.value).toBe('');
+  });
+  it.each(['en', 'zh'] as const)('arms memory from the keyboard without sending the command (%s)', async language => {
+    const f = await composer(language);
+    await f.type('/memory');
+    await f.key('Enter');
+    expect(f.input.value).toBe('');
+    expect(f.element.querySelector('[data-group-memory-status]')?.textContent).toContain(f.labels['groups.memoryStatus.toggle']);
+    expect(f.send).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(f.input);
+    await click(button(f.element, f.labels['groups.memoryStatus.cancel']));
+    await fill(f.input, '/memory'); await f.key('Escape'); await f.key('Enter');
+    await vi.waitFor(() => expect(f.element.querySelector('[data-group-memory-status]')).not.toBeNull());
+    expect(f.send).not.toHaveBeenCalled();
   });
 });

@@ -144,8 +144,8 @@ export function apply(ctx, config) {
       await save('client-provenance', resources); await save('calls', calls);
       await save('fixture', { sessions, supergroupEnabled: ctx.dshBots.supergroup.settings().enabled, synthetic: true, realModelRequests: 0, createdBots: bots.map(([id, name]) => ({ id, name })) });
       recordWorks();
-      if (!disposed) console.log('BOT_MODE_APPROVAL_READY');
-    })().catch(async error => { await save('fixture-error', { error: String(error), stack: error.stack }); console.log('BOT_MODE_APPROVAL_FAILED'); });
+      if (!disposed) console.log(config.suite === 'native-bots-workspace' ? 'B4_WEB_READY' : 'BOT_MODE_APPROVAL_READY');
+    })().catch(async error => { await save('fixture-error', { error: String(error), stack: error.stack }); console.log(config.suite === 'native-bots-workspace' ? 'B4_WEB_FAILED' : 'BOT_MODE_APPROVAL_FAILED'); });
     return async () => { disposed = true; offRecords(); await running; release?.(); };
   }, 'independent bot-mode approval fixture');
 }

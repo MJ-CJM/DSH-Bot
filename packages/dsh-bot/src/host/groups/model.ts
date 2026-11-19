@@ -1,6 +1,7 @@
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain';
 import { z } from 'zod';
 import { savedTeamRecipeSchema } from '../../shared/team-recipes.js';
+import { resourceId } from '../../shared/identity.js';
 import {
   groupRecordSchema,
   groupMemberSchema,
@@ -58,7 +59,21 @@ export const groupsDomain = defineDomain({
     supergroup_requests: domainTable(z.strictObject({ group: groupKeySchema, count: z.number().int().nonnegative() })),
   },
 });
+// Store closure receipts separately so both old and new Hosts can read historical deliveries.
+export const groupExportReviewsDomain = defineDomain({
+  name: 'dsh_bot_group_export_reviews',
+  version: 1,
+  tables: {
+    closures: domainTable(z.strictObject({ closedAtByDeliveryId: z.record(resourceId, z.number().int().nonnegative()) })),
+  },
+});
 export const sameBot = (a: BotKey, b: BotKey) => a.botId === b.botId && a.botCreatedAt === b.botCreatedAt;
+export function sameGroupReaders(left: readonly BotKey[], right: readonly BotKey[]) {
+  const key = (bot: BotKey) => JSON.stringify([bot.botId, bot.botCreatedAt]);
+  const readers = new Set(right.map(key));
+  return readers.size === right.length && new Set(left.map(key)).size === left.length &&
+    left.length === right.length && left.every(bot => readers.has(key(bot)));
+}
 export const blocks = (text: string) => [{ type: 'text' as const, text }];
 export const textOf = (content: readonly { type: string; text?: unknown }[]) =>
   content

@@ -9,6 +9,30 @@ import { Config, } from '../lib/host/registry.js';
 import { withFacility, } from './fixtures/registry.js';
 
 describe('DshBotRegistry with JSON storage and a preset service double', () => {
+  it('reports unavailable main identity per Bot while preserving the exact stored pointer and other directory rows', async () => withFacility(async ({ start }) => {
+    const { registry } = await start();
+    const alpha = await registry.create({ id: 'alpha', name: 'Alpha' });
+    const beta = await registry.create({ id: 'beta', name: 'Beta' });
+    registry.mainSessions = {
+      boundSessionId: (id: string, birthday: number) => id === 'alpha' && birthday === alpha.createdAt ? 'kept-alpha-main'
+        : id === 'beta' && birthday === beta.createdAt ? 'beta-main' : undefined,
+      find: async (id: string) => { if (id === 'alpha') throw Error('Synthetic cold identity read failed'); return { sessionId: 'beta-main' }; },
+    } as unknown as NonNullable<typeof registry.mainSessions>;
+    const status = await registry.status();
+    expect(status.find(row => row.id === 'alpha')).toMatchObject({ boundMainSessionId: 'kept-alpha-main', mainSessionState: 'unavailable' });
+    expect(status.find(row => row.id === 'alpha')?.mainSessionId).toBeUndefined();
+    expect(status.find(row => row.id === 'beta')).toMatchObject({ boundMainSessionId: 'beta-main', mainSessionId: 'beta-main', mainSessionState: 'ready' });
+  }));
+  it('passes exact-generation opens to the Host guard while legacy opens keep their original single argument', async () => withFacility(async ({ start }) => {
+    const { registry } = await start();
+    const bot = await registry.create({ id: 'alpha', name: 'Alpha' });
+    const open = vi.fn(async () => ({ sessionId: 'main' }));
+    registry.mainSessions = { open } as unknown as NonNullable<typeof registry.mainSessions>;
+    await registry.openConversation('alpha');
+    expect(open).toHaveBeenLastCalledWith('alpha');
+    await registry.openConversationExact({ botId: 'alpha', botCreatedAt: bot.createdAt });
+    expect(open).toHaveBeenLastCalledWith('alpha', bot.createdAt);
+  }));
   it('keeps historical avatar identities while the inbox summary includes only the main conversation', async () => withFacility(async ({ start }) => {
     const { registry } = await start();
     const bot = await registry.create({ id: 'alpha', name: 'Alpha' });

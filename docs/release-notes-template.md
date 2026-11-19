@@ -18,15 +18,15 @@ Verify `{{ASSET}}` using `SHA256SUMS`, then use DSH's native plugin manager. The
 
 SHA-256: `{{SHA256}}`
 
-The product package does not contain the native Client adapters required for full Bot mode. The reviewed official DSH `0.2.2-rc.3` route uses a separate, exact-hash `dsh-bot-web-app` profile bundle. Never install both the official web-app and the replacement as selected bundles. The official app and signature stay unchanged. Host updates require another compatibility review; neither automatic fallback nor arbitrary newer versions are promised.
+The native Bots workspace uses the official web-app and one product package; no replacement Client adapters or Bot-mode switch are required. The current acceptance target is official DSH `0.2.2-rc.5`, with stock rc.3 as an upgrade regression baseline. Record the actual same-package results below before publishing support. Old active `dsh-bot-web-app` selections require a staged migration to the official composition; dormant dependencies may remain until separately reviewed cleanup. Never select both web-app bundles or change the official application signature.
 
-完整 Bot 模式另需精确宿主适配，普通产品 tgz 不包含这层。适配包的版本、宿主 ASAR SHA 和安装／恢复说明必须与本版附件一起审阅；兼容范围声明不是全版本运行证明。
+原生 Bots 工作区只需官方 web-app 和产品包。旧活动适配组合先在副本迁移，最新设置和历史保留；同包验收须记录官方宿主版本、实际加载字节及升级路径，兼容范围声明不是全版本运行证明。
 
 ## Upgrade / 升级
 
 Back up the complete original profile and data while the Host is stopped. Existing `dsh-botgroup` installations upgrade in place. For old `dsh-bot` installations, remove the old package before adding the new one; change only a qualified override's `name: dsh-bot` to `name: dsh-botgroup`, preserving `id: dsh-bot`, configuration and data paths. Keep only one product bundle. Review custom module references separately.
 
-升级前正常停止 Host 并完整备份；不删除 Bot 或重置存储。同名包原位升级，旧包名按上述移除／安装和具名配置迁移流程操作。迁移后回退使用独立升级前备份，不让旧版本直接写新数据；旧备份可能恢复已遗忘内容。
+升级前正常停止 Host 并完整备份；不删除 Bot 或重置存储。同名包原位升级，旧包名按上述移除／安装和具名配置迁移流程操作。回退只使用本次精确核验的目标官方组合和兼容产品，保留后来新增的历史及设置。快照回滚若发现 profile 已变化则拒绝，改做定向反向迁移；不整库覆盖历史备份，也不重新启用目标宿主不支持的旧适配。
 
 ## Exact-artifact validation / 同包验收
 

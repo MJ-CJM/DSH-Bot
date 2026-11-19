@@ -1,3 +1,4 @@
+import { assertEvaluationHistory, evaluationEvents } from './session-history.js';
 import { withProactiveBinding } from "./setup.js";
 import { reconcilePendingWorkContinuation, runWorkContinuation } from './work-continuation.js';
 import { prepareGroupFollowUp, acceptGroupFollowUp, abandonGroupFollowUp } from './group-follow-up.js';
@@ -784,6 +785,7 @@ export class ProactiveService {
     return reply.page;
   }
   async runMethodEvaluation(candidate: FeedbackCandidate): Promise<MethodRunReceipt[]> {
+    assertEvaluationHistory(this.ctx.sessionController);
     const evaluation = candidate.methodEvaluation, proposal = candidate.proposal;
     if (evaluation?.state !== 'running' || proposal.kind !== 'skill' || !evaluation.operationId) throw new Error('Evaluation is not claimed');
     const bot = await this.ctx.dshBots.get(proposal.origin.bot.botId);
@@ -791,6 +793,7 @@ export class ProactiveService {
     const target = { bot: proposal.origin.bot, botUpdatedAt: bot.updatedAt, provider: evaluation.plan.provider, model: evaluation.plan.model };
     await this.validateTarget(target);
     const receipts: MethodRunReceipt[] = [];
+    try {
     for (const sample of evaluation.plan.cases) for (const arm of ['parent', 'candidate', 'noop', 'negative'] as const) {
       this.#feedStop.signal.throwIfAborted();
       await this.validateTarget(target);
@@ -800,9 +803,11 @@ export class ProactiveService {
       const result = await this.change(randomUUID(), { kind: 'submit-document', document, target, approved: true,
         methodTrial: { planDigest: evaluation.digest, caseId: sample.id, arm, name: proposal.name, content, methodHash: digest(content), inputHash: digest(sample.input) },
         taskLimits: { maxAttempts: 1, maxTokens: evaluation.plan.maxTokensPerCall, deadlineAt: new Date(Date.now() + this.executionTimeoutMs).toISOString() } });
-      if (result.kind !== 'receipt') break;
+      if (result.kind !== 'receipt') throw new Error('Method work admission unconfirmed');
       const work = (await this.workList(target.bot)).find(row => row.sourceDigest === digest(document));
-      if (!work) break;
+      if (!work) throw new Error('Method work receipt unavailable');
+      const receipt: MethodRunReceipt = { caseId: sample.id, arm, ticketId: work.ticketId, assignmentId: work.assignmentId, state: 'inconclusive' };
+      receipts.push(receipt);
       this.execution.enqueue(work);
       let settled = work;
       while (['pending', 'claimed', 'sent'].includes(settled.state) && Date.now() < Date.parse(work.expiresAt)) {
@@ -811,19 +816,22 @@ export class ProactiveService {
         if (reply.kind !== 'work' || !reply.work || reply.work.assignmentId !== work.assignmentId) break;
         settled = reply.work;
       }
-      const receipt: MethodRunReceipt = { caseId: sample.id, arm, ticketId: work.ticketId, assignmentId: work.assignmentId, state: 'inconclusive' };
       if (settled.state === 'delivered' && settled.methodEvidence && settled.evidence && settled.sessionId) {
-        const session = await this.ctx.sessionController.inspect(SessionId(settled.sessionId));
-        const answer = session.events.find(event => event.type === 'assistant/message' && event.data.message.id === settled.evidence?.assistantId);
-        if (answer?.type === 'assistant/message' && digest(answer.data.message.content) === settled.evidence.outputDigest) {
+        const events = await evaluationEvents(this.ctx.sessionController, settled.sessionId, this.#feedStop.signal);
+        const input = events.find(event => event.type === 'user/message' && event.data.id === settled.evidence?.inputId);
+        const ended = events.some(event => event.type === 'turn/end' && Number(event.data.turn) === settled.evidence?.turn && event.data.reason.kind === 'completed');
+        const answer = events.find(event => event.type === 'assistant/message' && event.data.message.id === settled.evidence?.assistantId);
+        if (input?.type === 'user/message' && ended && answer?.type === 'assistant/message' && !answer.data.interrupted &&
+          Number(answer.data.turn) === settled.evidence.turn && answer.data.message.source.provider === target.provider && answer.data.message.source.model === target.model &&
+          digest(answer.data.message.content) === settled.evidence.outputDigest) {
           const text = answer.data.message.content.filter(block => block.type === 'text').map(block => block.text).join('');
           Object.assign(receipt, { state: 'completed', passed: judgeMethodAnswer(text, sample.expected), method: settled.methodEvidence, evidenceDigest: settled.evidenceDigest });
         }
       }
-      receipts.push(receipt);
-      if (receipt.state !== 'completed') return receipts;
+      if (receipt.state !== 'completed') throw new Error('Method execution or evidence unconfirmed');
     }
     return receipts;
+    } catch { throw Object.assign(new Error('evaluation-interrupted'), { receipts }); }
   }
   async submitDocument(raw: DocumentRequest): Promise<SuggestionActionReply> {
     const input = documentRequestSchema.parse(raw);

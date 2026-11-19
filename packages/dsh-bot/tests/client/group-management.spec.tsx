@@ -22,6 +22,15 @@ import en from '../../locale/en.json';
 
 const t = ((key: keyof typeof en.ui, params?: Record<string, unknown>) => en.ui[key]
   .replace(/\{(\w+)\}/g, (_match, name) => String(params?.[name] ?? `{${name}}`))) as PropsLocale<'dsh-bot'>['t'];
+const exportSettings = (data: ReturnType<typeof view>) => ({
+  ok: true as const,
+  value: {
+    groupRevision: data.group.revision, membershipRevision: data.group.membershipRevision,
+    readers: data.members.filter(member => member.enabled).map(({ bot }) => ({ bot, name: bot.botId })),
+    eligibleBots: data.members.filter(member => member.enabled).map(({ bot }) => bot),
+    enabledBots: [], canEnable: !data.group.archived,
+  },
+});
 
 describe('group directory', () => {
   it('filters and searches without fetching group views', () => {
@@ -112,7 +121,8 @@ describe('group overview', () => {
       state: 'failed', childSessionId: 'child:one', failure: { code: 'QUOTA', message: 'quota exhausted' } }];
     data.messages = [{ id: 'question:one', seq: 1, at: 1, text: 'Compare the options', turnId: turn.id, authorKind: 'user' }];
     data.group.memberModelSelections = [{ memberId: 'member:alpha', modelSelection: { provider: 'member-provider', model: 'member-model' } }];
-    const remote = { view: async () => ({ ok: true, value: data }), list: async () => ({ ok: true, value: [summary()] }) } as unknown as GroupMethods;
+    const remote = { view: async () => ({ ok: true, value: data }), list: async () => ({ ok: true, value: [summary()] }),
+      getExportApprovalSettings: async () => exportSettings(data) } as unknown as GroupMethods;
     const ctx = new Context(); ctx.provide('remote.dshBot.groups', remote);
     const actions = createGroupActions(ctx, {}), onOpenRun = vi.fn();
     const element = document.createElement('div'), root = createRoot(element);
@@ -221,7 +231,8 @@ it('focuses older runs and their statistics, respects manual scopes, and release
 it('offers editing in headerless settings and prevents editing archived groups', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const data = managementData(), onEdit = vi.fn(), ctx = new Context();
-  ctx.provide('remote.dshBot.groups', { view: async () => ({ ok: true, value: data }) } as unknown as GroupMethods);
+  ctx.provide('remote.dshBot.groups', { view: async () => ({ ok: true, value: data }),
+    getExportApprovalSettings: async () => exportSettings(data) } as unknown as GroupMethods);
   const actions = createGroupActions(ctx, {}), element = document.createElement('div'), root = createRoot(element);
   try {
     await act(async () => root.render(<GroupOverview summary={summary()} actions={actions} bots={bots}

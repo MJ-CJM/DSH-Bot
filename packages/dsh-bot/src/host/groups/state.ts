@@ -17,10 +17,11 @@ import {
   type GroupSummary,
 } from '../../shared/groups.js';
 import type { BotKey } from '../../shared/integrations.js';
+import { effectiveGroupMemberLimit } from '../../shared/group-limits.js';
 import type { DshBotRegistry } from '../registry.js';
 import { OperationError, Serial, need, parse } from '../common/operations.js';
 
-import type { groupsDomain } from './model.js';
+import type { groupExportReviewsDomain, groupsDomain } from './model.js';
 type RecordIndex = { byOwner: Map<string, Set<string>>; ownerById: Map<string, string> };
 const groupOwner = (key: GroupKey) => JSON.stringify([key.groupId, key.groupCreatedAt]);
 
@@ -74,6 +75,7 @@ export class GroupState {
   public naming = new Set<string>();
   public titles = new Map<string, string>();
   public startup = new AbortController();
+  public exportReviews?: Domain<typeof groupExportReviewsDomain>;
   private deliveryWrites = new Map<string, Promise<void>>();
   private turnIndex: RecordIndex = { byOwner: new Map(), ownerById: new Map() };
   private deliveryIndex: RecordIndex = { byOwner: new Map(), ownerById: new Map() };
@@ -168,6 +170,13 @@ export class GroupState {
       .filter(row => row !== undefined)
       .sort((a, b) => a.ordinal - b.ordinal);
   }
+  closedExportReviews(key: GroupKey) {
+    return new Map(Object.entries(this.exportReviews?.table('closures').get(groupOwner(key))?.closedAtByDeliveryId ?? {}));
+  }
+  async storeClosedExportReviews(key: GroupKey, closed: ReadonlyMap<string, number>) {
+    await need(this.exportReviews).table('closures').put(groupOwner(key), { closedAtByDeliveryId: Object.fromEntries(closed) });
+    this.changed();
+  }
   turns(g: GroupRecord) {
     const table = this.table('turns');
     return Array.from(this.turnIndex.byOwner.get(groupOwner({ groupId: g.id, groupCreatedAt: g.createdAt })) ?? [], id => table.get(id))
@@ -221,8 +230,24 @@ export class GroupState {
     this.check();
     return b;
   }
+  memberLimit(supergroup = false) {
+    return effectiveGroupMemberLimit(supergroup
+      ? Math.min(this.registry.config.groupMaxMembers, this.registry.config.supergroup.maxMembers)
+      : this.registry.config.groupMaxMembers);
+  }
+  /** All unremoved members occupy a place, including disabled Bots. */
+  checkMemberLimit(keys: readonly BotKey[], supergroup = false, previous?: readonly BotKey[]) {
+    const limit = this.memberLimit(supergroup);
+    if (previous && previous.length > limit) {
+      if (keys.length >= previous.length || keys.some(key => !previous.some(old => old.botId === key.botId && old.botCreatedAt === key.botCreatedAt)))
+        throw new OperationError('member-limit');
+    } else if (keys.length > limit) throw new OperationError('member-limit');
+  }
+  checkNewWorkMembers(g: GroupRecord) {
+    this.checkMemberLimit(this.members(g).filter(member => member.removedAt === undefined).map(member => member.bot), Boolean(g.supergroup));
+  }
   async validateMembers(keys: BotKey[]) {
-    if (keys.length > this.registry.config.groupMaxMembers || new Set(keys.map((k) => k.botId)).size !== keys.length)
+    if (new Set(keys.map((k) => k.botId)).size !== keys.length)
       throw new OperationError('invalid');
     const statuses = await this.registry.status();
     for (const key of keys) {

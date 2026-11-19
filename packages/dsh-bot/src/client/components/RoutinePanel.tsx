@@ -4,7 +4,7 @@ import type { ScheduleTimingChange } from '@deepseek-ai/dsh-schedule/client';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { BotRecord } from '../../shared/schema.js';
 import type { LegacyEntry } from '../../shared/native-schedule.js';
-import type { RoutineActions, NativeTask } from '../automation-state.js';
+import type { RoutineActions, NativeTask, LegacyNativeTask } from '../automation-state.js';
 import { Modal } from './Modal.js';
 import styles from '../styles/routines.module.css';
 import css from '../styles/routines.module.css?inline';
@@ -15,6 +15,7 @@ function formatTime(at: string | undefined, t: T) {
     : t('routine.none');
 }
 export function nativeRuleLabel(r: NativeTask, t: T) {
+  if (r.kind === 'rrule') return `${t('native.rrule')} · ${r.rrule}`;
   if (r.kind === 'every') {
     const seconds = r.everySeconds;
     const unit =
@@ -166,7 +167,9 @@ export function RoutinePanel({
           ))}
         </section>
       )}
-      {dialog?.kind === 'edit' && (
+      {dialog?.kind === 'edit' && 'target' in dialog.record && <TargetNativeEditor record={dialog.record} busy={busy} error={error} t={t}
+        onClose={() => setDialog(undefined)} onSave={patch => perform(() => actions.update(dialog.record, patch))} />}
+      {dialog?.kind === 'edit' && !('target' in dialog.record) && (
         <NativeEditor
           record={dialog.record}
           busy={busy}
@@ -266,7 +269,7 @@ function NativeEditor({
   onClose,
   onSave,
 }: {
-  record: NativeTask;
+  record: LegacyNativeTask;
   busy: boolean;
   error: string;
   t: T;
@@ -373,4 +376,24 @@ function NativeEditor({
       </form>
     </Modal>
   );
+}
+
+function TargetNativeEditor({ record, busy, error, t, onClose, onSave }: {
+  record: NativeTask & { kind: 'rrule' }; busy: boolean; error: string; t: T;
+  onClose(): void; onSave(patch: Parameters<RoutineActions['update']>[1]): Promise<void>;
+}) {
+  const uid = useId();
+  const [title, setTitle] = useState(record.title), [prompt, setPrompt] = useState(record.prompt);
+  const [rrule, setRule] = useState(record.rrule), [timing, setTiming] = useState(false);
+  return <Modal title={t('routine.edit')} busy={busy} onClose={onClose} t={t}>
+    <form className={styles.form} onSubmit={event => { event.preventDefault(); void onSave({ title, prompt, ...(timing ? { rrule } : {}) }); }}>
+      <fieldset disabled={busy}>
+        <div className={styles.field}><label htmlFor={`${uid}-title`}>{t('routine.name')}</label><input id={`${uid}-title`} required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} /></div>
+        <div className={styles.field}><label htmlFor={`${uid}-prompt`}>{t('routine.prompt')}</label><textarea id={`${uid}-prompt`} required value={prompt} onChange={event => setPrompt(event.target.value)} /></div>
+        <label><input type="checkbox" checked={timing} onChange={event => setTiming(event.target.checked)} />{t('native.editTiming')}</label>
+        {timing && <div className={styles.field}><label htmlFor={`${uid}-rule`}>{t('native.rrule')}</label><textarea id={`${uid}-rule`} required value={rrule} onChange={event => setRule(event.target.value)} /></div>}
+        {error && <p role="alert">{error}</p>}<button type="submit" disabled={busy}>{t('integrations.save')}</button>
+      </fieldset>
+    </form>
+  </Modal>;
 }

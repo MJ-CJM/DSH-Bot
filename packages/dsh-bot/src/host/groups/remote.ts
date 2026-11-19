@@ -25,6 +25,27 @@ export class GroupsRemote extends TypertRemoteService {
   private owner() {
     if (this.ctx.invocation?.peer.principal.kind !== 'owner') throw new Error('Owner access required');
   }
+  @Remote async getExportApprovalSettings(group: GroupKey) {
+    this.owner(); return this.groups.exportSettings.get(group, this.ctx.invocation?.signal);
+  }
+  @Remote async setExportApproval(group: GroupKey, bot: BotKey, enabled: boolean, expectedRevision: number, expectedMembershipRevision: number) {
+    this.owner(); return this.groups.exportSettings.set(group, bot, enabled, expectedRevision, expectedMembershipRevision, this.ctx.invocation?.signal);
+  }
+  @Remote async reviewExport(group: GroupKey, deliveryId: string) {
+    this.owner(); return this.groups.exportReview.review(group, deliveryId, this.ctx.invocation?.signal);
+  }
+  @Remote async decideExport(group: GroupKey, deliveryId: string, token: string, allow: boolean | 'always') {
+    this.owner(); return this.groups.exportReview.decide(group, deliveryId, token, allow, this.ctx.invocation?.signal);
+  }
+  @Remote async revokeExport(group: GroupKey, bot: BotKey) {
+    this.owner(); return this.groups.exportReview.revoke(group, bot);
+  }
+  @Remote async discardExport(group: GroupKey, deliveryId: string, expectedRevision: number) {
+    this.owner(); return this.groups.exportReview.discard(group, deliveryId, expectedRevision, this.ctx.invocation?.signal);
+  }
+  @Remote async closeStaleExports(group: GroupKey, expectedMembershipRevision: number) {
+    this.owner(); return this.groups.exportReview.closeStale(group, expectedMembershipRevision, this.ctx.invocation?.signal);
+  }
   @Remote async teamList() { this.owner(); return this.groups.teamRecipes.list(); }
   @Remote async teamCapture(group: GroupKey, name: string) { this.owner(); return this.groups.teamRecipes.capture(group, name); }
   @Remote async teamSave(recipe: unknown) { this.owner(); return this.groups.teamRecipes.save(recipe); }

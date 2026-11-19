@@ -291,3 +291,28 @@ describe('read-only group recall', () => {
     expect(f.close).toHaveBeenCalledTimes(3);
   });
 });
+
+it('recalls exact managed publications without a root label, and revokes a forgotten copy without widening the root', async () => {
+  const { flowFixture, alpha } = await import('./deepening/managed-flow-fixture.js');
+  const x = await flowFixture(), f = fixture();
+  try {
+    x.current.set(bot.botId, bot.botCreatedAt); x.current.set(other.botId, other.botCreatedAt);
+    Object.assign(f.state.registry, x.registry());
+    const row = f.add('published', 10, { rootText: 'PUBLIC_QUESTION', answer: 'APPROVED_PRIVATE_ANSWER' });
+    const target = { kind: 'group' as const, ...group, members: [bot, other] };
+    await x.flow.inherit('fresh', { readers: [bot, other], originTrust: 'candidate', sourceVersions: [], restrictions: [], grants: [] });
+    const inputId = await x.flow.admit(x.flow.draft('group-input', bot, 'fresh', row.turn.id, target, JSON.stringify(row.question.data)));
+    await x.flow.dispatch(inputId, async () => true);
+    row.turn.inputFlowId = inputId;
+    const held = await x.flow.holdForReview(x.flow.draft('group-result', alpha, 'private', 'result', target, JSON.stringify(need(row.answer).data)));
+    const answerId = await x.flow.approveReview(held, x.flow.review(held).digest); await x.flow.dispatch(answerId, async () => true);
+    expect(x.f.kernel.domain.table('flow_sessions').get(rootId)).toBeUndefined();
+    const page = await f.recall.query(bot, {});
+    expect(page.items[0]?.sources.map(source => source.text)).toEqual(['PUBLIC_QUESTION', 'APPROVED_PRIVATE_ANSWER']);
+    expect(await f.recall.validate(bot, page.items)).toBe(true);
+    await x.f.kernel.commit({ opId: crypto.randomUUID(), kind: 'forget', subjectIds: [x.privateId], expectedRevision: x.f.kernel.seq, forgetEpoch: x.f.kernel.epoch + 1 });
+    expect(await f.recall.validate(bot, page.items)).toBe(false);
+    expect(JSON.stringify(await f.recall.query(bot, {}))).not.toContain('APPROVED_PRIVATE_ANSWER');
+    expect(x.f.kernel.domain.table('flow_sessions').get(rootId)).toBeUndefined();
+  } finally { await x.close(); }
+});

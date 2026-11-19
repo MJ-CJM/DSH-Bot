@@ -26,7 +26,10 @@ describe('single main conversation launch', () => {
         : button(container, surface === 'page' ? 'Alpha Bot' : t['sidebar.newSession'].replace('{name}', 'Alpha Bot'));
       if (surface === 'right') await doubleClick(start);
       else await click(start);
-      expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+      if (surface === 'page') {
+        expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: 'alpha-bot', botCreatedAt: 1 });
+        expect(app.remote.methods.openConversation).not.toHaveBeenCalled();
+      } else expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
       expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
       expect(app.createSession).not.toHaveBeenCalled(); expect(app.createWorkspace).not.toHaveBeenCalled(); expect(app.openWorkspace).not.toHaveBeenCalled();
       expect(container.querySelector('select')).toBeNull();
@@ -34,7 +37,7 @@ describe('single main conversation launch', () => {
   }
   it('reports Host refusal and retries the same main endpoint', async () => {
     const app = await mount('en');
-    app.remote.methods.openConversation.mockResolvedValueOnce({ ok: false, error: new RemoteError('bot/unavailable', 'Main unavailable', {}) });
+    app.remote.methods.openConversationExact.mockResolvedValueOnce({ ok: false, error: new RemoteError('bot/unavailable', 'Main unavailable', {}) });
     await click(button(app.container, 'Alpha Bot'));
     expect(app.openSession).not.toHaveBeenCalled(); expect(app.container.querySelector('[role="alert"]')).not.toBeNull();
     await click(button(app.container, 'Alpha Bot'));
@@ -42,17 +45,28 @@ describe('single main conversation launch', () => {
   });
   it('ignores late open completion after the page unmounts', async () => {
     const app = await mount('en'); let finish!: () => void;
-    app.remote.methods.openConversation.mockImplementationOnce(() => new Promise(resolve => {
+    app.remote.methods.openConversationExact.mockImplementationOnce(() => new Promise(resolve => {
       finish = () => resolve({ ok: true, value: { sessionId: 'late' } });
     }));
     await click(button(app.container, 'Alpha Bot'));
     await app.unmountPage(); await act(async () => finish());
     expect(app.openSession).not.toHaveBeenCalled();
   });
+  it('keeps an explicitly opened profile when a prior main-session request completes late', async () => {
+    const app = await mount('en'); let finish!: () => void;
+    app.remote.methods.openConversationExact.mockImplementationOnce(() => new Promise(resolve => {
+      finish = () => resolve({ ok: true, value: { sessionId: 'late-main' } });
+    }));
+    await click(button(app.container, 'Alpha Bot'));
+    await openProfile(app);
+    await act(async () => finish());
+    expect(app.openSession).not.toHaveBeenCalled();
+    expect(app.container.querySelector('[data-bot-detail="alpha-bot"]')).not.toBeNull();
+  });
   it.each(['success', 'failure'] as const)('allows editing during main-session loading and ignores late %s', async (outcome) => {
     const app = await mount('en');
     let finish!: () => void;
-    app.remote.methods.openConversation.mockImplementationOnce(() => new Promise((resolve, reject) => {
+    app.remote.methods.openConversationExact.mockImplementationOnce(() => new Promise((resolve, reject) => {
       finish = () => outcome === 'success'
         ? resolve({ ok: true, value: { sessionId: 'late-main' } })
         : reject(new Error('Late migration failure'));
@@ -80,7 +94,7 @@ describe('single main conversation launch', () => {
   it('does not let cancelled navigation completion unlock an in-flight save', async () => {
     const app = await mount('en');
     let finishOpen!: () => void;
-    app.remote.methods.openConversation.mockImplementationOnce(() => new Promise(resolve => {
+    app.remote.methods.openConversationExact.mockImplementationOnce(() => new Promise(resolve => {
       finishOpen = () => resolve({ ok: true, value: { sessionId: 'late-main' } });
     }));
     await click(button(app.container, 'Alpha Bot'));
@@ -132,13 +146,14 @@ describe('single main conversation launch', () => {
     await click(button(row, zh.ui['chat.profile']));
     expect(app.container.querySelector('[data-bot-detail="alpha-bot"]')).not.toBeNull();
     expect(app.remote.methods.openConversation).not.toHaveBeenCalled();
+    expect(app.remote.methods.openConversationExact).not.toHaveBeenCalled();
     await click(button(app.container, zh.ui['card.edit']));
     expect(app.container.querySelector('[data-bot-detail] form')).not.toBeNull();
     expect(app.openSession).not.toHaveBeenCalled();
   });
   it('clicking a Bot row opens its existing main conversation directly', async () => {
     const app = await mount('en'); await click(button(app.container, 'Alpha Bot'));
-    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
+    expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: 'alpha-bot', botCreatedAt: 1 });
     expect(app.container.querySelector('[data-bot-detail="alpha-bot"]')).toBeNull();
   });
 });

@@ -44,3 +44,24 @@ it('captures, previews and explicitly applies a mapped recipe, and rejects unsup
     expect(element.querySelector('[data-team-preview]')).toBeNull();
   } finally { await act(async () => root.unmount()); }
 });
+
+it('rejects oversized recipe imports locally, retains the JSON draft and still exposes saved recipes after a capture refusal', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const data = view();
+  const recipe: TeamRecipe = { format: 'dsh-bot-team', version: 1, name: 'Saved team', mode: 'natural', onDemand: false,
+    roles: data.members.map((member, index) => ({ id: `role-${index}`, role: member.bot.botId, preferredBotId: member.bot.botId, template: 'standard' })) };
+  const remote = { teamList: vi.fn(async () => ({ ok: true, value: [{ id: 'saved', recipe }] })),
+    teamCapture: vi.fn(async () => ({ ok: false, error: { code: 'dsh-bot/member-limit' } })), teamPreview: vi.fn() };
+  const actions = { remote: () => remote } as unknown as GroupActions;
+  const element = document.createElement('div'), root = createRoot(element);
+  const large = JSON.stringify({ ...recipe, roles: Array.from({ length: 7 }, (_, index) => ({ ...recipe.roles[0], id: `role-${index}` })) });
+  try {
+    await act(async () => root.render(<TeamRecipes view={data} actions={actions} onSaved={async () => {}} onClose={() => {}} t={t} />));
+    expect(element.textContent).toContain('Saved team');
+    await fill(element.querySelector('textarea') as HTMLTextAreaElement, large);
+    await click(button(element, en.ui['teams.preview']));
+    expect(element.querySelector('[role="alert"]')?.textContent).toBe(t('groups.memberLimitFailed', { limit: 6 }));
+    expect((element.querySelector('textarea') as HTMLTextAreaElement).value).toBe(large);
+    expect(remote.teamPreview).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); }
+});

@@ -1,6 +1,6 @@
 # 社区发布与候选准备
 
-当前公开稳定版是 [v0.6.7](releases/v0.6.7.md)，npm 包名 `dsh-botgroup`；当前工作树准备 0.7.0。DSH-Bot 品牌、内部 `dsh-bot` ID 和数据目录保留。候选实际结果以[0.7.0 准备记录](releases/v0.7.0.md)为准。
+当前公开稳定版为 [v0.7.0](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.0)。当前工作树准备 [0.7.1 候选](releases/v0.7.1.md)，npm 包名为 `dsh-botgroup`。
 
 ## 本地检查与唯一候选
 
@@ -17,9 +17,10 @@ scripts/pnpm check
 随后选择一个尚不存在的候选目录打包；不要覆盖已有包：
 
 ```sh
-scripts/pnpm -C packages/dsh-bot pack --pack-destination ../../.dsh-dev/release-0.7.0/product
-node scripts/verify-package.mjs .dsh-dev/release-0.7.0/product/dsh-botgroup-0.7.0.tgz
-scripts/pnpm release:prepare .dsh-dev/release-0.7.0/product/dsh-botgroup-0.7.0.tgz
+release_candidate_dir=$(mktemp -d "$PWD/.dsh-dev/release-0.7.1-XXXXXX")
+scripts/pnpm -C packages/dsh-bot pack --pack-destination "$release_candidate_dir"
+node scripts/verify-package.mjs "$release_candidate_dir/dsh-botgroup-0.7.1.tgz"
+scripts/pnpm release:prepare "$release_candidate_dir/dsh-botgroup-0.7.1.tgz"
 ```
 
 生成的 `dist/release-candidates/v<version>-<hash>/` 包含版本包、同字节 `dsh-bot.tgz`、两份单文件校验和、`release.json`、发布说明、审核清单和社区目录 YAML。该命令拒绝重复覆盖，不创建标签或发布；`runtimeAcceptance` 默认未运行，必须补上本次同包证据。不要在验收后重新构建再上传。
@@ -30,7 +31,9 @@ MIT 许可证及第三方告知须保留。包内只包含 files 白名单；不
 
 开发依赖参考锁定 DSH `0.2.1-rc.2`。使用仓库隔离 `DSH_HOME="$PWD/.dsh-dev"` 和 `scripts/dsh`；各实际运行器进一步隔离 profile／存储，完整 Host 串行运行。源码检查、真实 Host＋合成模型、Browser、桌面及真实模型质量分别报告。
 
-0.7.0 使用 `scripts/openmaus-regression.mjs --include-review` 验证精确产品／适配 tgz；通过明确的 `--artifact`、`--compat`、`--app` 及两个 SHA 参数输入。官方 rc.3 适配使用独立 `dsh-bot-web-app`；普通产品包不替代原生 Client。新适配构建使用下列完整命令（先将官方应用放入仓库隔离目录，output 必须是新目录），记录精确 ASAR SHA，保留原生许可证及完整文件清单。
+当前原生工作区候选只打包 `dsh-botgroup` 产品，目标为官方 rc.5 + 官方 web-app；用同一冻结包验证 Host、浏览器、冷启动和旧组合迁移。隔离 profile 安装/定向回退工具见[迁移说明](verification/native-workspace-migration.md)。缺少最终同包证据时保持未验收，不因打包成功公布支持。
+
+以下是 11 月 16 日 0.7.0 旧候选的历史复现流程，保留旧适配构建工具以便核查，不作为新候选的安装前提。该候选使用 `scripts/openmaus-regression.mjs --include-review` 验证精确产品／适配 tgz；通过明确的 `--artifact`、`--compat`、`--app` 及两个 SHA 参数输入。官方 rc.3 适配使用独立 `dsh-bot-web-app`；普通产品包不替代原生 Client。新适配构建使用下列完整命令（先将官方应用放入仓库隔离目录，output 必须是新目录），记录精确 ASAR SHA，保留原生许可证及完整文件清单。
 
 ```sh
 node scripts/build-bot-mode-profile-compat.mjs \
@@ -51,7 +54,7 @@ scripts/pnpm -C .dsh-dev/release-0.7.0/compat-package pack --pack-destination ..
 
 正常停止 Host、完整备份 profile 与数据。`dsh-botgroup` 用户可同名升级；旧 `dsh-bot` 用户移除旧包后装新包，将原 `id: dsh-bot` 覆盖行存在的 `name: dsh-bot` 改为 `name: dsh-botgroup`，保留其余配置。不能同时启用两份产品或两份 web-app。
 
-完整 Bot 模式的适配只对记录的精确宿主版本／字节有效。宿主升级需重新审阅，不能承诺自动原生回退。现有旧名专用桌面更新脚本不用于跨包名安装。适配安装／恢复是单独的 profile 变更，不修改官方应用或签名。迁移后的数据回退依赖升级前备份，不能直接降级写入。
+新候选保持官方 web-app。旧替代包按原顺序恢复官方选择；当前 profile 的暂存副本是迁移基线，保留最新通用 ID 配置。回退须保留新增数据及设置，不能恢复历史整库备份或重新选择目标版本不支持的适配。旧名专用桌面更新脚本不用于跨包名安装；原生迁移工具当前只开放仓库隔离演练，日常切换需另行审阅。
 
 ## 正式发布时执行
 
@@ -61,4 +64,4 @@ scripts/pnpm -C .dsh-dev/release-0.7.0/compat-package pack --pack-destination ..
 4. 核对所有附件后才公开；预发布不接管 latest。分别从 npm、固定 tag 和 latest 匿名回下载，核对字节及标签，再更新公开状态。
 5. GitHub topic、社区目录与原生 Discover 是不同入口。现有社区条目使用 `latest/download/dsh-bot.tgz`；保留固定文件名后常规版本不需提交目录变更。目录 YAML 仍指向仓库的 `packages/dsh-bot` 位置；新 npm 包名不改变源码目录。规则变化时查目录当前说明，不修改其生成的 README。
 
-本轮用户已授权提交、推送并创建本仓库 PR，由用户合并。准备流程仍不执行 tag、npm publish、GitHub Release、社区 PR 或日常部署；公开发布需要另行授权。
+本地候选准备完成后，先交付冻结包、校验和与验收结果供维护者确认。公开操作以该版的明确授权为准。

@@ -24,10 +24,14 @@ export const unwrapGroup = <T>(r: RemoteResult<T>): T => {
   return r.value;
 };
 export interface GroupDraft {
+  memoryStatusOnly?: true;
   text: string; mentions: string[]; mentionBindings?: MentionBinding[]; followup?: { turnId: string; deliveryId: string }; replyTo?: GroupView['messages'][number];
   uploads: Array<{ id: string; name: string; bytes: number; state: 'uploading' | 'uploaded' | 'uploadFailed'; receiptId?: string }>;
   operation?: { signature: string; request: GroupSend };
-  sending: boolean; error: boolean; errorCode?: 'supergroup-conflict' | 'supergroup-unsupported';
+  sending: boolean; error: boolean; errorCode?: 'supergroup-conflict' | 'supergroup-unsupported' | 'group-data-blocked' | 'member-limit' | 'send-failed' | 'conflict' | 'route-unavailable';
+}
+export class GroupRouteUnavailable extends Error {
+  constructor() { super('Current group route is unconfirmed'); }
 }
 type GroupRunSource = { messageId: string; seq: number };
 export interface GroupRunRequest { sessionId: string; turnId: string; requestId: number; source?: GroupRunSource }
@@ -47,7 +51,7 @@ export interface GroupActions {
   upload(sessionId: string, file: File, signal: AbortSignal): Promise<{ receiptId: string; name: string; bytes: number }>;
   imageUrl(sessionId: string, attachment: GroupAttachment['attachment']): Promise<string>;
   remote(): GroupMethods;
-  send?(key: GroupKey, request: GroupSend): Promise<{ turnId?: string }>;
+  send(key: GroupKey, request: GroupSend, signal?: AbortSignal): Promise<{ turnId?: string }>;
   catalog: PollingCatalog<{ groups: GroupSummary[] }>;
   quotedMessage(key: GroupKey, id: string, signal?: AbortSignal): Promise<GroupView['messages'][number] | undefined>;
   loadThrough(key: GroupKey, seq: number): Promise<void>;
@@ -127,20 +131,39 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
     },
     turnExpansion, modelMetadata,
     remote,
-    async send(key, request) {
-      const group = result.catalog.getSnapshot().groups.find(row => row.group.id === key.groupId && row.group.createdAt === key.groupCreatedAt);
-      if (!group?.group.supergroup) return { turnId: unwrapGroup(await remote().send(key, request)).id };
-      const rootId = group.group.rootSessionId;
-      if (request.fileReceiptIds?.length || request.round || request.followup || !request.text?.trim()) {
+    async send(key, request, signal) {
+      // Directory entries are display caches. Missing/stale entries must never
+      // choose the ordinary route for an automatic collaboration group.
+      const check = () => { if (!live || signal?.aborted) throw new GroupRouteUnavailable(); };
+      check();
+      let fresh: GroupView;
+      try { fresh = groupViewSchema.parse(unwrapGroup(await remote().view(key, {}))); }
+      catch { throw new GroupRouteUnavailable(); }
+      check();
+      const group = fresh.group;
+      if (group.id !== key.groupId || group.createdAt !== key.groupCreatedAt) throw new GroupRouteUnavailable();
+      const cached = result.catalog.getSnapshot().groups.find(row => row.group.id === key.groupId && row.group.createdAt === key.groupCreatedAt)?.group;
+      if (cached && (cached.rootSessionId !== group.rootSessionId || Boolean(cached.supergroup) !== Boolean(group.supergroup) ||
+        cached.supergroup?.workId !== group.supergroup?.workId)) throw new GroupRouteUnavailable();
+      if (!group.supergroup) return { turnId: unwrapGroup(await remote().send(key, request)).id };
+      const rootId = group.rootSessionId;
+      if (request.fileReceiptIds?.length || request.round || request.followup || request.memoryStatusOnly || !request.text?.trim()) {
         patchDraft(rootId, value => ({ ...value, errorCode: 'supergroup-unsupported' }));
         throw new Error('Supergroup input unsupported');
       }
       const service = ctx.get('remote.dshBotSupergroup');
-      if (!service) throw new Error('Supergroup unavailable');
-      const current = supergroupViewSchema.nullable().parse(unwrapGroup(await service.byGroup({ group: key })));
-      if (!current || current.work.id !== group.group.supergroup.workId) throw new Error('Supergroup identity changed');
+      if (!service) throw new GroupRouteUnavailable();
+      let current: ReturnType<typeof supergroupViewSchema.parse> | null;
+      try { current = supergroupViewSchema.nullable().parse(unwrapGroup(await service.byGroup({ group: key }))); }
+      catch { throw new GroupRouteUnavailable(); }
+      check();
+      if (!current || current.work.id !== group.supergroup.workId || current.work.group?.groupId !== key.groupId ||
+        current.work.group.groupCreatedAt !== key.groupCreatedAt || current.group?.group.rootSessionId !== rootId ||
+        current.group.group.id !== key.groupId || current.group.group.createdAt !== key.groupCreatedAt)
+        throw new GroupRouteUnavailable();
       const operationKey = JSON.stringify([key, request.operationId]);
       const original = supergroupOperations.get(operationKey) ?? { workId: current.work.id, revision: current.work.revision };
+      if (original.workId !== current.work.id) throw new GroupRouteUnavailable();
       supergroupOperations.set(operationKey, original);
       const sent = supergroupSendGroupResultSchema.parse(unwrapGroup(await service.sendGroupInput({ group: key, workId: original.workId,
         expectedRevision: original.revision, operationId: request.operationId, text: request.text,

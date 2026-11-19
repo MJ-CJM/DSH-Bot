@@ -8,6 +8,7 @@ import NATIVE_SUBAGENTS_REMOTE from '@deepseek-ai/dsh-subagent/remote';
 import NATIVE_PERMISSION_REMOTE from '@deepseek-ai/dsh-permission-presets/remote';
 import { MESSAGING_REMOTE, messageOverviewSchema } from '../shared/messaging-contract.js';
 import { registerMessaging } from './messaging.js';
+import { registerBotMainGuard } from './bot-main-guard.js';
 import { registerBotPanel } from './bot-panel.js';
 import type { BotPanelSection } from './components/BotRightPanel.js';
 import { createProactiveWorkSource } from './proactive/work-state.js';
@@ -16,15 +17,18 @@ import type { BotRecord } from '../shared/schema.js';
 import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
 import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
 import { createWorkspaceActions } from './workspace-state.js';
+import type { GroupSummary } from '../shared/groups.js';
 import { GROUPS_REMOTE } from '../shared/groups-contract.js';
 import { createGroupActions } from './groups-state.js';
 import { createGroupRecallBinding } from './group-recall.js';
 import { GroupSessionBadge } from './components/GroupSessionBadge.js';
 import { registerWorkspaceGroups } from './workspace-group.js';
-import { registerBotMode } from './bot-mode/index.js';
-import { ModeSwitcher } from './bot-mode/ModeSwitcher.js';
-import { createTaskSupportActions } from './task-support.js';
+import { createTaskOriginFocus, createTaskSupportActions, type TaskOrigin } from './task-support.js';
 import { registerSupergroup } from './supergroup.js';
+import { stopGroupWork } from './stop-group.js';
+import { registerGroupDetails } from './group-details.js';
+import { supergroupViewSchema } from '../shared/supergroup.js';
+import type { WorkMaterialsActions } from './work-materials.js';
 import { COLLABORATION_REMOTE } from '../shared/collaboration-contract.js';
 import { createCollaborationActions } from './collaboration-state.js';
 import { INTEGRATIONS_REMOTE } from '../shared/integrations-contract.js';
@@ -199,10 +203,23 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const executionBridge = registerWorkspaceGroups(ctx, groups, catalog, openSession, models,
     bot => openBot(bot.id), (bot, prompt, signal) => askBot(bot, prompt, signal));
   registerOnboardingNotice(ctx);
-  const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void, operationId?: string) => {
+  const openExactMain = async (id: string, createdAt: number) => {
+    const main = unwrap(await remote().openConversationExact({ botId: id, botCreatedAt: createdAt }));
+    // The Host may have restored this exact blank from the native default
+    // preset. Refresh the two identity reads used by the composer guard.
+    const sessionId = main.sessionId as SessionId;
+    if (active && !sessions.list.getSnapshot().byId[sessionId]) await sessions.refresh();
+    const cached = sessions.list.getSnapshot().byId[sessionId]?.projectionValues?.agentPreset;
+    const status = catalog.getSnapshot().entries.find(({ bot }) => bot.id === id && bot.createdAt === createdAt)?.status;
+    if (active && (status?.mainSessionState === 'unavailable' || cached && cached !== status?.presetId)) {
+      await Promise.all([sessions.refreshProjections(sessionId), catalog.refresh()]);
+    }
+    return main;
+  };
+  const startBot = async (id: string, signal?: AbortSignal, beforeOpen?: (id: SessionId) => void, operationId?: string, expectedBotCreatedAt?: number) => {
     if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
-    const { sessionId } = unwrap(await remote().openConversation(id));
+    const { sessionId } = expectedBotCreatedAt === undefined ? unwrap(await remote().openConversation(id)) : await openExactMain(id, expectedBotCreatedAt);
     if (!active || signal?.aborted || navigation.aborted) return;
     beforeOpen?.(sessionId as SessionId);
     ctx.uiWorkspace.openSession(sessionId as SessionId);
@@ -216,6 +233,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     }
     if (active) await refresh();
   };
+  const startExact = (bot: Pick<BotRecord, 'id' | 'createdAt'>, signal?: AbortSignal) => startBot(bot.id, signal, undefined, undefined, bot.createdAt);
   // Compatibility for existing injected callers: every launch resolves the same Host-owned main.
   const startBotInWorkspace = (
     id: string,
@@ -236,8 +254,23 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     work: async owner => unwrap(await proactiveRemote().botWork(owner)),
   }, config);
   const taskSupport = createTaskSupportActions(ctx, listener => groups.catalog.watch?.(listener) ?? (() => {}));
+  const taskFocus = createTaskOriginFocus();
+  ctx.effect(() => () => taskFocus.set(), 'dsh-bot: task navigation lifetime');
+  const openPendingTask = async (target: TaskOrigin) => {
+    if (!active) return;
+    const navigation = ctx.layout.beginNavigation();
+    const pending = await taskSupport.pending();
+    const match = pending.find(row => row.workId === target.workId && row.originSessionId === target.originSessionId
+      && row.inputMessageId === target.inputMessageId && row.owner.botId === target.owner.botId
+      && row.owner.botCreatedAt === target.owner.botCreatedAt);
+    const bot = match && unwrap(await remote().get(target.owner.botId));
+    if (!active || navigation.aborted) return;
+    if (!bot || bot.createdAt !== target.owner.botCreatedAt) throw new Error(t('taskSupport.failed'));
+    await openSession(target.originSessionId, () => taskFocus.set(target));
+  };
   const page: BotsPageInjected = {
     taskSupport,
+    openPendingTask,
     pendingWork: createPendingWorkSource(ctx, catalog, followUp, {
       work: async (owner, cursor) => unwrap(await proactiveRemote().activityPage({ owner, collection: 'work', ...(cursor ? { cursor } : {}) })),
       openSession: id => openSession(id),
@@ -287,6 +320,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     groups,
     management,
     pageNavigation: createPageNavigation(ctx),
+    onOpenAutomaticCollaboration: () => { if (active) ctx.layout.selectPanel('plugins' as MainPanelId); },
     hooks: {
       catalog,
       activity,
@@ -331,7 +365,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       const navigation = ctx.layout.beginNavigation();
       const current = unwrap(await remote().get(bot.id));
       if (current.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
-      const { sessionId } = unwrap(await remote().openConversation(bot.id));
+      const { sessionId } = await openExactMain(bot.id, bot.createdAt);
       const conversation = ctx.get('conversation');
       if (!active || navigation.aborted || !conversation) throw new Error(t('errors.unavailable'));
       await sessions.using(sessionId as SessionId, { source: 'dshBotPersona' }, async reference => {
@@ -354,6 +388,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     onPickDirectory:
       typeof ctx.uiWorkspace.pickDirectory === 'function' ? () => ctx.uiWorkspace.pickDirectory() : undefined,
     onStart: startBot,
+    onStartExact: startExact,
     onStartInWorkspace: startBotInWorkspace,
   };
   registerBotsRightTab(
@@ -376,14 +411,48 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     detail.open(id, destination);
     ctx.layout.selectPanel('dsh-bot' as MainPanelId);
   };
-  // Compact details preserve the chat width; native sidebar and full settings remain explicit actions.
+  const workMaterials: WorkMaterialsActions = {
+    async list(scope) {
+      const service = ctx.get('remote.dshBotSupergroup');
+      if (!active || !service) throw new Error(t('supergroup.unavailable'));
+      return supergroupViewSchema.array().parse(unwrap(await service.catalog(scope)));
+    },
+    tasks: taskSupport, integrations, openSession: page.onOpenSession,
+  };
+  const openGroupDetails = registerGroupDetails(ctx, {
+    actions: groups, bots: catalog, executionBridge, work: workMaterials, openBot: startExact,
+    async stopWork({ group }) {
+      const service = ctx.get('remote.dshBotSupergroup');
+      if (!active || !service) throw new Error(t('supergroup.unavailable'));
+      await stopGroupWork(group, {
+        read: async () => supergroupViewSchema.nullable().parse(unwrap(await service.byGroup({ group: { groupId: group.id, groupCreatedAt: group.createdAt } }))),
+        async cancel(work) {
+          if (!active) throw new Error(t('supergroup.unavailable'));
+          unwrap(await service.cancel({ workId: work.id, expectedRevision: work.revision }));
+        },
+        refresh: groups.catalog.refresh,
+      });
+    },
+    async openOrigin({ group }) {
+      if (!active || !group.supergroup) return;
+      const { owner, originSessionId } = group.supergroup;
+      const navigation = ctx.layout.beginNavigation();
+      const status = unwrap(await remote().status());
+      const bot = unwrap(await remote().get(owner.botId));
+      if (!active || navigation.aborted) return;
+      if (bot.createdAt !== owner.botCreatedAt || !status.some(row => row.id === owner.botId && row.mainSessionId === originSessionId))
+        throw new Error(t('errors.detailMissing'));
+      await openSession(originSessionId);
+    },
+  });
   const botPanel = registerBotPanel(ctx, {
     hooks: { catalog },
     proactiveWork,
     followUp,
+    workMaterials,
     messages: page.messages,
     onOpenSession: (id) => openSession(id),
-    onStart: (id) => startBot(id),
+    onStart: ({ botId, botCreatedAt }) => startExact({ id: botId, createdAt: botCreatedAt }),
     onOpenMemory: owner => showBotPage(owner.botId, { botCreatedAt: owner.botCreatedAt, section: 'memory' }),
     onOpenSettings: owner => showBotPage(owner.botId, { botCreatedAt: owner.botCreatedAt }),
     onOpenWork: (owner, target) => showBotPage(owner.botId, { botCreatedAt: owner.botCreatedAt, section: 'work', target }),
@@ -391,13 +460,14 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const openBot = (id: string, section?: BotPanelSection) => {
     if (active && !botPanel.open(id, section)) showBotPage(id);
   };
+  registerBotMainGuard(ctx, catalog, showBotPage);
   const askBot = async (bot: Pick<BotRecord, 'id' | 'createdAt'>, prompt: string, signal?: AbortSignal) => {
     if (!active || signal?.aborted) return;
     const navigation = ctx.layout.beginNavigation();
     const current = unwrap(await remote().get(bot.id));
     if (!active || navigation.aborted || signal?.aborted) return;
     if (current.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
-    const { sessionId } = unwrap(await remote().openConversation(bot.id));
+    const { sessionId } = await openExactMain(bot.id, bot.createdAt);
     const conversation = ctx.get('conversation');
     if (!active || navigation.aborted || signal?.aborted) return;
     if (!conversation && prompt) throw new Error(t('errors.unavailable'));
@@ -466,11 +536,10 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
             locale: namespace,
             inject: () => ({
               hooks: { groups: groups.catalog },
-              onOpenGroup: (id: string) => {
-                if (active) {
-                  groups.select(id);
-                  ctx.layout.selectPanel('dsh-bot' as MainPanelId);
-                }
+              onOpenGroup: (summary: GroupSummary) => {
+                if (!active || openGroupDetails(summary)) return;
+                groups.select(summary.group.id, summary.group.createdAt);
+                ctx.layout.selectPanel('dsh-bot' as MainPanelId);
               },
             }),
           },
@@ -492,7 +561,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
               id: 'dsh-bot-group',
               order: -1,
               locale: namespace,
-              inject: () => ({ hooks: { groups: groups.catalog } }),
+              inject: () => ({ hooks: { groups: groups.catalog, catalog } }),
             },
             component,
           ),
@@ -568,44 +637,22 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ),
     'dsh-bot: sidebar entry',
   );
-  await registerSupergroup(ctx, groups, catalog, executionBridge, settings => {
-    const modeActions = registerBotMode(ctx, { bots: catalog, groups, activity, page, executionBridge,
-      start: id => startBot(id), memory: bot => showBotPage(bot.id, { botCreatedAt: bot.createdAt, section: 'memory' }), settings });
-    // The native footer lays contributions out horizontally. Compose mode and
-    // the existing chats dialog behind one trigger after the owner is ready.
-    ctx.effect(
-      () =>
-        ctx.slots.inject('sidebar.footer.action', () =>
-          ctx.slots.register(
-            {
-              name: 'sidebar.footer.action',
-              id: 'dsh-bot-sessions',
-              order: 20,
-              locale: namespace,
-              inject: (): BotSessionsSidebarInjected => ({
-                renderTrigger: ({ openChats, unreadCount, wide }) => <ModeSwitcher actions={modeActions} t={t} onOpenChats={openChats} unreadCount={unreadCount} compact={!wide} />,
-                hooks: {
-                  catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe },
-                  activity,
-                  workspaceCatalog: ctx.workspaces.list,
-                },
-                sessionLimit: config.sidebarSessionLimit,
-                onStart: page.onStart,
-                onStartInWorkspace: page.onStartInWorkspace,
-                getPreferredWorkspace: page.getPreferredWorkspace,
-                onRefresh: refresh,
-                onOpenSession: openSession,
-                onManage: () => {
-                  if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId);
-                },
-              }),
-            },
-            BotSessionsSidebar,
-          ),
-        ),
-      'dsh-bot: sidebar conversations',
-    );
-    return modeActions;
-  }, { actions: taskSupport, integrations, openSession: page.onOpenSession });
-
+  ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+    name: 'sidebar.footer.action', id: 'dsh-bot-sessions', order: 20, locale: namespace,
+    inject: (): BotSessionsSidebarInjected => ({
+      hooks: {
+        catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe },
+        activity,
+        workspaceCatalog: ctx.workspaces.list,
+      },
+      sessionLimit: config.sidebarSessionLimit,
+      onStart: page.onStart,
+      onStartInWorkspace: page.onStartInWorkspace,
+      getPreferredWorkspace: page.getPreferredWorkspace,
+      onRefresh: refresh,
+      onOpenSession: openSession,
+      onManage: () => { if (active) ctx.layout.selectPanel('dsh-bot' as MainPanelId); },
+    }),
+  }, BotSessionsSidebar)), 'dsh-bot: sidebar conversations');
+  await registerSupergroup(ctx, groups, catalog, executionBridge, { actions: taskSupport, integrations, openSession: page.onOpenSession, focus: taskFocus });
 }

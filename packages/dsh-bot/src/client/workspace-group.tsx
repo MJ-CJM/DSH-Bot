@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { z } from 'zod';
 import type { Context } from '@deepseek-ai/cordis';
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { ComposerChainProps, ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { PropsLocale, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots';
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
-import { groupKeySchema, groupAttachmentSchema, groupFailureSchema, speakerSchema, type GroupMessage } from '../shared/groups.js';
+import { GROUP_ROOT_PRESET, groupKeySchema, groupMessageAttachment, groupFailureSchema, speakerSchema, type GroupMessage } from '../shared/groups.js';
 import type { GroupActions } from './groups-state.js';
 import type { BotCatalog } from './state.js';
 import type { ModelActions } from './model-catalog-state.js';
@@ -24,7 +25,7 @@ const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: grou
   // A malformed failure drops only the detail, never the claimed message.
   failure: groupFailureSchema.optional().catch(undefined),
   replyTo: z.string().optional(), causeId: z.string().optional() });
-const userSourceSchema = z.object({ kind: z.enum(['user', 'dsh-bot-group-user', 'dsh-bot-group-followup', 'dsh-bot-group-proactive']), group: groupKeySchema, turnId: z.string().min(1), replyTo: z.string().optional() });
+const userSourceSchema = z.object({ kind: z.enum(['user', 'dsh-bot-group-user', 'dsh-bot-group-followup', 'dsh-bot-group-proactive']), group: groupKeySchema, turnId: z.string().min(1), replyTo: z.string().optional(), rpcId: z.string().optional() });
 const sourceSchema = z.union([botSourceSchema, userSourceSchema]);
 export interface WorkspaceGroupMessage { group: z.output<typeof groupKeySchema>; message: GroupMessage }
 const noSubscription = () => () => {};
@@ -39,12 +40,16 @@ export const groupMessageDefinition: ConversationNodeDefinition<WorkspaceGroupMe
   start(_context, match) {
     const event = match.event; if (event.type !== 'user/message') throw new Error('Group message required');
     const source = sourceSchema.parse(event.data.source);
+    const legacyUpload = source.kind === 'user' && source.rpcId === source.turnId;
     return { group: source.group, message: { id: event.data.id, seq: Number(event.seq), at: event.time,
       text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
       turnId: source.turnId, authorKind: source.kind === 'dsh-bot-group' ? 'bot' : source.kind === 'dsh-bot-group-proactive' ? 'proactive' : 'user', replyTo: source.replyTo,
       ...(source.kind === 'dsh-bot-group' ? { speaker: source.speaker, causeId: source.causeId, childSessionId: source.childSessionId, stopReason: source.stopReason,
         ...(source.failure ? { failure: source.failure } : {}) } : {}),
-      attachments: event.data.content.flatMap(block => { const result = groupAttachmentSchema.safeParse(block); return result.success ? [result.data] : []; }) } };
+      attachments: event.data.content.flatMap(block => {
+        const attachment = groupMessageAttachment(block, legacyUpload);
+        return attachment ? [attachment] : [];
+      }) } };
   },
   update: context => context.state,
   buildViewNode(context): ChatNode<'dsh-bot-group'> | null {
@@ -53,14 +58,14 @@ export const groupMessageDefinition: ConversationNodeDefinition<WorkspaceGroupMe
       location: context.start?.location ?? { kind: 'unresolved' }, visibility: 'visible', data: context.state };
   },
 };
-export function selectGroupComposer(owner: Pick<ComposerChainProps, 'sessionId'> & Partial<Pick<ComposerChainProps, 'pendingInteraction'>>, actions: GroupActions) {
+export function selectGroupComposer(owner: Pick<ComposerChainProps, 'sessionId'> & Partial<Pick<ComposerChainProps, 'pendingInteraction'>>, actions: GroupActions, preset?: string) {
   // The public Conversation owner subscribes to pending interactions. A native
   // approval/question takeover must precede the group's ordinary input.
   if (owner.pendingInteraction != null) return null;
   const id = owner.sessionId;
   if (!id) return null;
   return actions.catalog.getSnapshot().groups.some(row => row.group.rootSessionId === id) ||
-    /^group-root-[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id) ? { sessionId: id } : null;
+    preset === GROUP_ROOT_PRESET ? { sessionId: id } : null;
 }
 export function WorkspaceGroupComposer({ matched, actions, bots, models, createPermissionState, commandServices, executionBridge, onOpenSession, t }: {
   executionBridge?: ExecutionBridge; commandServices?: GroupCommandServices;
@@ -78,11 +83,18 @@ export function WorkspaceGroupComposer({ matched, actions, bots, models, createP
     const bridge = createPermissionState(rootId); setPermissionState(bridge);
     return () => bridge.dispose();
   }, [createPermissionState, rootId]);
-  if (!group) return <section><p role="status">{t(state.error ? 'groups.disconnected' : 'groups.loading')}</p>
+  if (!group) return <section><p role="status">{t(state.error || state.loaded ? 'groups.routeUnavailable' : 'groups.loading')}</p>
     <textarea disabled aria-label={t('groups.message')} /><button type="button" disabled>{t('groups.send')}</button></section>;
-  return <GroupConversation key={matched.sessionId} workspace executionBridge={executionBridge} summary={group} actions={actions} models={models} commandServices={commandServices}
+  // Group roots run native setup with no model content. Hide only the empty
+  // process row in this conversation. Member/standard chats keep native details.
+  return <><style>{`
+    [data-conversation-content]:has([data-workspace-group-composer])
+    [data-chat-flow-kind="turn-process"]:has([data-turn-process-messages="0"][data-turn-process-tool-calls="0"][data-turn-process-subagents="0"]) {
+      display: none;
+    }
+  `}</style><GroupConversation key={matched.sessionId} workspace executionBridge={executionBridge} summary={group} actions={actions} models={models} commandServices={commandServices}
     permissionState={permissionState?.rootSessionId === matched.sessionId ? permissionState : undefined}
-    bots={botState.entries.map(row => row.bot)} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={onOpenSession} t={t} />;
+    bots={botState.entries.map(row => row.bot)} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={onOpenSession} t={t} /></>;
 }
 export function WorkspaceMessage({ node, actions, bots, executionBridge, renderFactorySlot, onOpenSession, t }: { node: ChatNode<'dsh-bot-group'>; actions: GroupActions;
   bots?: BotCatalog; executionBridge?: ExecutionBridge; onOpenSession(id: string): Promise<void> } & Partial<PropsRenderFactories> & PropsLocale<'dsh-bot'>) {
@@ -141,7 +153,11 @@ export function registerWorkspaceGroups(ctx: Context, actions: GroupActions, bot
   const commandServices = createGroupCommandServices(ctx);
   registerGroupViews(ctx, actions, bots, executionBridge, onOpenBot, onAskBot);
   ctx.effect(() => ctx.slots.inject('conversation.composer', () => ctx.slots.register({ name: 'conversation.composer',
-    priority: -20, locale: 'dsh-bot', select: owner => selectGroupComposer(owner, actions),
+    priority: -20, locale: 'dsh-bot', select: owner => {
+      const sessions = ctx.get('sessions') as unknown as ISessions | undefined;
+      const preset = owner.sessionId ? sessions?.list?.getSnapshot().byId[owner.sessionId]?.projectionValues?.agentPreset : undefined;
+      return selectGroupComposer(owner, actions, preset ?? undefined);
+    },
   }, (props: { matched: { sessionId: string } } & PropsLocale<'dsh-bot'>) => <WorkspaceGroupComposer {...props} executionBridge={executionBridge} actions={actions} bots={bots} models={models} createPermissionState={createPermissionState} commandServices={commandServices} onOpenSession={onOpenSession} />)), 'dsh-bot: group workspace composer');
   ctx.inject(['uiConversation'], scope => {
     if (typeof scope.uiConversation.events?.register !== 'function') return;

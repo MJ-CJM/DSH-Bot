@@ -157,6 +157,18 @@ test('task member budget limits expert chain depth without changing the ordinary
   await f.service.close();
 });
 
+test('a retained legacy member setting cannot advertise native collaboration depth beyond six participants', async () => {
+  const f = fixture();
+  try {
+    f.registry.config.supergroup.maxMembers = 16;
+    f.scope.readers = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta'].map(botId => ({ botId, botCreatedAt: botId === 'beta' ? 2 : 1 }));
+    const prepared = await f.service.prepare(f.owner, 'beta', 'legacy-depth', {}, f.controller.signal);
+    expect(prepared.maxDepth).toBe(5);
+    expect(f.registry.config.supergroup.maxMembers).toBe(16);
+    expect(f.registry.config.groupMaxDepth).toBe(1);
+  } finally { await f.service.close(); }
+});
+
 test('an independently approved ask cannot send a scoped child through legacy delegation', async () => {
   const ctx = new Context(), f = fixture();
   let service: ScopedCollaboration | undefined;

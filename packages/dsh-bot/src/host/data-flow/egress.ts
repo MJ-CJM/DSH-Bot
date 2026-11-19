@@ -9,12 +9,35 @@ import { MemoryLineage } from './lineage.js';
 
 export interface EgressEnvelope { binding: FlowBinding; content: string; label: DataLabel }
 export interface DispatchTicket { readonly id: string; state: 'admitted' | 'dispatching' | 'delivered' | 'unknown' | 'cancelled' }
+/** A known pre-dispatch refusal; never infer this from a transport exception. */
+export class ExportAuthorizationRequired extends Error {
+  constructor() { super('Egress requires exact-content user authorization'); }
+}
 /** Shared policy checker. ManagedOutlets persists actual outlet envelopes and checkpoints. */
 export class EgressChecker {
   private stopped = false;
   private readonly tickets = new Map<DispatchTicket, { envelope: EgressEnvelope; grant?: OnceGrant; opId: string }>();
   constructor(readonly kernel: MemoryKernel, readonly grants: OnceGrants,
     private readonly currentBot: (key: BotKey) => boolean) {}
+  /** Published copies retain destination and revocation provenance, not the source's private readers. */
+  checkGroupCopies(ids: readonly string[], target: FlowBinding['target']): void {
+    const visited = new Set<string>(), pending = [...ids];
+    while (pending.length) {
+      const id = pending.pop(); if (!id || visited.has(id)) continue; visited.add(id);
+      const row = this.kernel.domain.table('flows').get(id), e = row?.envelope;
+      if (!e || row?.state !== 'delivered' || !['group-input', 'group-result'].includes(e.outlet) ||
+        e.binding.userScope !== this.kernel.scope.scope.id || e.binding.epoch !== this.kernel.epoch ||
+        e.binding.policyRevision !== this.kernel.policyRevision || e.binding.target.kind !== 'group' ||
+        (row.grantUse && !this.kernel.snapshot.grantUses.has(row.grantUse))) throw new Error('Group copy unavailable');
+      const audience = e.binding.target;
+      const permitted = (bot: BotKey) => audience.members.some(m => isDeepStrictEqual(m, bot));
+      if (target.kind === 'group' ? target.groupId !== audience.groupId || target.groupCreatedAt !== audience.groupCreatedAt || !target.members.every(permitted)
+        : target.kind !== 'bot' || !permitted(target.bot)) throw new Error('Group copy audience changed');
+      // Epoch cleanup redacts the envelope. Ordinary source updates cannot revoke an already disclosed immutable copy.
+      if (e.label.restrictions.some(r => ['secret', 'revoked', 'pending-cleanup'].includes(r))) throw new Error('Restricted group copy');
+      pending.push(...e.label.groupCopies ?? []);
+    }
+  }
   check(envelope: EgressEnvelope, grant?: OnceGrant, admitted?: string, signal?: AbortSignal): void {
     if (this.stopped) throw new Error('Egress checker stopped');
     signal?.throwIfAborted(); this.kernel.assertReadable(); this.kernel.assertOwnership();
@@ -41,6 +64,7 @@ export class EgressChecker {
     const lineage = b.sourceVersions.length ? new MemoryLineage(this.kernel).label(b.sourceVersions) : sessionLabel;
     if (!lineage) throw new Error('Unknown egress lineage');
     const effective = mergeLabels(l, lineage, ...(sessionLabel ? [sessionLabel] : []));
+    this.checkGroupCopies(effective.groupCopies ?? [], b.target);
     if (lineage.sourceVersions.some(id => !b.sourceVersions.includes(id)) ||
       effective.sourceVersions.some(id => !b.sourceVersions.includes(id)) ||
       effective.restrictions.some(r => ['revoked', 'pending-cleanup', 'secret'].includes(r))) throw new Error('Restricted egress source');
@@ -49,7 +73,7 @@ export class EgressChecker {
     const readable = b.target.kind === 'bot' && canReadLabel(effective, b.target.bot);
     const group = b.target.kind === 'group' && b.target.members.every(key => canReadLabel(effective, key));
     const inDomain = b.target.kind === 'shared' && effective.readers === 'shared';
-    if (!readable && !group && !inDomain && !grant) throw new Error('Egress requires exact-content user authorization');
+    if (!readable && !group && !inDomain && !grant) throw new ExportAuthorizationRequired();
     // no-egress forbids external export unless this exact payload/destination was explicitly approved.
     if (b.target.kind === 'external' && !grant) throw new Error('Shared is not public');
   }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { botKeySchema } from './identity.js';
 import { groupModeSchema } from './groups.js';
+import { GROUP_MEMBER_LIMIT } from './group-limits.js';
 /** Portable preferences only. Strict objects reject history, credentials and authority. */
 export const teamRecipeSchema = z.strictObject({
   format: z.literal('dsh-bot-team'), version: z.literal(1),
@@ -11,6 +12,8 @@ export const teamRecipeSchema = z.strictObject({
     preferredBotId: z.string().min(1).max(64), template: z.enum(['standard', 'minimal']),
   })).min(2).max(16),
 }).refine(value => new Set(value.roles.map(role => role.id)).size === value.roles.length);
+/** New/imported preferences use the current ceiling; persisted recipes retain their original roles. */
+export const teamRecipeInputSchema = teamRecipeSchema.refine(value => value.roles.length <= GROUP_MEMBER_LIMIT);
 export const savedTeamRecipeSchema = z.strictObject({ id: z.string().min(1), savedAt: z.number(), recipe: teamRecipeSchema });
 export const teamPreviewMappingSchema = z.array(z.strictObject({ roleId: z.string().min(1), bot: botKeySchema })).max(16);
 export const teamMappingSchema = teamPreviewMappingSchema.min(2);

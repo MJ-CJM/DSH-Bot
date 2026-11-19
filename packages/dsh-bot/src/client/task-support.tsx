@@ -31,8 +31,23 @@ export function createTaskSupportActions(ctx: Context, subscribe?: TaskSupportAc
     pending: async () => taskSupportSchema.array().parse(unwrap(await remote().pendingTasks())),
   };
 }
+export type TaskOrigin = Pick<TaskSupport, 'workId' | 'owner' | 'originSessionId' | 'inputMessageId'>;
+
+export function createTaskOriginFocus() {
+  let target: TaskOrigin | undefined;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => target,
+    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    set(value?: TaskOrigin) {
+      target = value;
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
 export function PendingTaskSupport({ actions, open, t }: PropsLocale<'dsh-bot'> & {
-  actions: TaskSupportActions; open(id: string): Promise<void>;
+  actions: TaskSupportActions; open(origin: TaskOrigin): Promise<void>;
 }) {
   const [rows, setRows] = useState<TaskSupport[]>([]), [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -46,7 +61,8 @@ export function PendingTaskSupport({ actions, open, t }: PropsLocale<'dsh-bot'> 
   if (!rows.length && !failed) return null;
   return <section data-pending-task-support="" aria-label={t('taskSupport.pending')}>
     <h2>{t('taskSupport.pending')}</h2><p>{t('taskSupport.readReceipt')}</p>
-    {rows.map(row => <p key={row.workId} data-pending-task-work={row.workId} data-pending-task-session={row.originSessionId}><Button variant="ghost" onClick={() => { void open(row.originSessionId).catch(() => setFailed(true)); }}>
+    {rows.map(row => <p key={row.workId} data-pending-task-work={row.workId} data-pending-task-session={row.originSessionId}><Button variant="ghost" onClick={() => { const { workId, owner, originSessionId, inputMessageId } = row;
+      void open({ workId, owner, originSessionId, inputMessageId }).catch(() => setFailed(true)); }}>
       {row.ownerName || row.owner.botId} · {t('taskSupport.openOrigin')} ({row.blockers.filter(item => ['ready', 'waiting'].includes(item.state)).length})
     </Button></p>)}
     {failed && <p role="alert">{t('supergroup.unavailable')}</p>}

@@ -15,7 +15,7 @@ export interface Generation { text: string; inputTokens?: number; outputTokens?:
 export type Generator = (input: { run: ConsolidationRun; prompt: string; signal: AbortSignal; check(): void }) => Promise<Generation>;
 /** Existing memory domain/owner queue is the sole authority. The model cannot submit an op. */
 export class MemoryConsolidation {
-  private active?: { abort: AbortController; done: Promise<ConsolidationRun> };
+  private active?: { id: string; abort: AbortController; done: Promise<ConsolidationRun> };
   private stopped = false;
   constructor(readonly kernel: MemoryKernel, readonly config: Config, private readonly current: (key: BotKey) => boolean,
     private readonly generate: Generator, private readonly clock = Date.now) {}
@@ -47,11 +47,18 @@ export class MemoryConsolidation {
     if (!this.current(owner)) throw new Error('Bot changed');
     return [...this.kernel.domain.table('consolidation_runs').entries()].map(([, r]) => r).filter(r => sameBot(r.owner, owner)).map(row => {
       let state = row.state;
-      try { this.check(row, ['accepted', 'rejected', 'empty'].includes(row.state)); } catch { state = this.clock() >= row.expiresAt ? 'expired' : 'revoked'; }
+      const unresolved = ['reserved', 'unknown'].includes(row.state) && this.active?.id !== row.id;
+      const closedUnknown = row.state === 'rejected' && Boolean(row.decisionId) && !this.kernel.domain.table('ops').get(row.id);
+      if (!unresolved && !closedUnknown) {
+        try { this.check(row, ['accepted', 'rejected', 'empty'].includes(row.state)); } catch { state = this.clock() >= row.expiresAt ? 'expired' : 'revoked'; }
+      }
       // A reserved prior-process operation is unresolved; never start it again.
-      if (state === 'reserved' && !this.active) state = this.kernel.domain.table('ops').get(row.id) ? 'proposed' : 'unknown';
+      if (unresolved) state = this.kernel.domain.table('ops').get(row.id) ? 'proposed' : 'unknown';
+      if (unresolved && state === 'proposed') {
+        try { this.check(row); } catch { state = this.clock() >= row.expiresAt ? 'expired' : 'revoked'; }
+      }
       const v = this.kernel.snapshot.versions.get(row.candidateId), p = v && this.kernel.domain.table('payloads').get(v.contentRef);
-      return { ...row, state, ...(state === 'proposed' && v && p ? { content: p.content } : {}) };
+      return { ...row, state, unresolved: unresolved && state !== 'proposed', closedUnknown, ...(state === 'proposed' && v && p ? { content: p.content } : {}) };
     });
   }
   async start(raw: ConsolidationInput, owner: BotKey): Promise<ConsolidationRun> {
@@ -66,7 +73,7 @@ export class MemoryConsolidation {
     if (this.active) throw new Error('Consolidation Host concurrency exhausted');
     const abort = new AbortController();
     const done = this.run(input, owner, requestHash, abort.signal);
-    this.active = { abort, done };
+    this.active = { id: input.operationId, abort, done };
     try { return await done; } finally { if (this.active?.done === done) this.active = undefined; }
   }
   private async run(input: ConsolidationInput, owner: BotKey, requestHash: string, signal: AbortSignal) {
@@ -79,7 +86,12 @@ export class MemoryConsolidation {
       if (this.kernel.seq !== input.expectedRevision) throw new Error('Memory changed');
       const day = (at: number) => new Intl.DateTimeFormat('en-CA', { timeZone: this.kernel.scope.quotaTimeZone }).format(at);
       const runs = [...this.kernel.domain.table('consolidation_runs').entries()].map(([, r]) => r);
-      if (runs.some(r => sameBot(r.owner, owner) && (['reserved', 'unknown'].includes(r.state) || r.state === 'proposed' && r.expiresAt > this.clock())))
+      if (runs.some(r => {
+        if (!sameBot(r.owner, owner)) return false;
+        if (['reserved', 'unknown'].includes(r.state)) return true;
+        if (r.state !== 'proposed') return false;
+        try { this.check(r); return true; } catch { return false; }
+      }))
         throw new Error('Review or reconcile the previous operation first');
       const today = runs.filter(r => day(r.createdAt) === day(this.clock()));
       if (today.length >= this.config.hostDaily || today.filter(r => sameBot(r.owner, owner)).length >= this.config.botDaily)
@@ -136,6 +148,24 @@ export class MemoryConsolidation {
       if (found.decisionId !== input.operationId || found.decisionHash !== decisionHash) throw new Error('Decision conflict');
       return found;
     }
+    if (input.action === 'close') return this.kernel.serial(async () => {
+      this.kernel.assertReadable(); this.kernel.assertOwnership();
+      if (this.stopped || this.kernel.blocked || this.active?.id === found.id || input.editedContent !== undefined ||
+          this.kernel.seq !== input.expectedRevision || !this.current(owner)) throw new Error('Consolidation close unavailable');
+      const current = this.kernel.domain.table('consolidation_runs').get(found.id);
+      if (!current || !sameBot(current.owner, owner)) throw new Error('Candidate not found');
+      if (current.decisionId) {
+        if (current.decisionId !== input.operationId || current.decisionHash !== decisionHash) throw new Error('Decision conflict');
+        return current;
+      }
+      if (!['reserved', 'unknown'].includes(current.state)) throw new Error('Operation is not unresolved');
+      if (this.kernel.domain.table('ops').get(current.id)) {
+        // Exact committed proposal is evidence, even if acknowledgement was lost. Never discard it as unknown.
+        const reconciled = { ...current, state: 'proposed' as const }; await this.put(reconciled); return reconciled;
+      }
+      const closed = { ...current, state: 'rejected' as const, decisionId: input.operationId, decisionHash };
+      await this.put(closed); return closed;
+    });
     const committed = this.kernel.domain.table('ops').get(input.operationId);
     if (committed) {
       const proof = committed.versions.find(v => v.memoryId === found.candidateId)?.consolidation;
@@ -146,7 +176,8 @@ export class MemoryConsolidation {
     }
     const old = this.kernel.snapshot.versions.get(found.candidateId);
     const oldPayload = old && this.kernel.domain.table('payloads').get(old.contentRef);
-    if (!old || !oldPayload || old.status !== 'proposed' || !['proposed', 'reserved'].includes(found.state)) throw new Error('Candidate unavailable');
+    if (!old || !oldPayload || old.status !== 'proposed' || !['proposed', 'reserved', 'unknown'].includes(found.state) ||
+        found.state === 'unknown' && !this.kernel.domain.table('ops').get(found.id)) throw new Error('Candidate unavailable');
     await this.kernel.transact(() => {
       this.check(found);
       if (this.kernel.seq !== input.expectedRevision) throw new Error('Compare the new memory revision before adopting');

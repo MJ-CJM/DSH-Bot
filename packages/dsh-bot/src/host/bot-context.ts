@@ -1,6 +1,6 @@
 import { protectOnboarding } from './onboarding/guard.js';
 import { protectDelegateContinuation } from './delegate/continuation.js';
-import { protectDataFlow } from './data-flow/tool-guard.js';
+import { outlets, protectDataFlow } from './data-flow/tool-guard.js';
 import { getGroupWorkerBinding, isSupergroupWorker } from './groups/worker-tool.js';
 import { getScopedCollaborationBinding, protectScopedCollaboration } from './supergroup/collaboration.js';
 import { BOT_GROUP_RECALL_TOOL_NAME, installLiveGroupRecall, protectGroupRecall } from './groups/recall-tool.js';
@@ -10,7 +10,8 @@ import { BOT_FOLLOW_UP_TOOL_NAME, registerFollowUpTool } from './proactive/follo
 import type {} from './connectors/service.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { dirname } from 'node:path';
-import type { Agent } from '@deepseek-ai/dsh-agent';
+import type { Agent, SessionStartSource } from '@deepseek-ai/dsh-agent';
+import { scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope';
 import type {} from '@deepseek-ai/dsh-api-session-controller';
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import type {} from '@deepseek-ai/dsh-session-projection';
@@ -53,7 +54,15 @@ export const Config: Schema<Config> = Schema.object({
 });
 
 export { getBotBinding, type BotBinding } from './data-flow/agent-binding.js';
-import { bindings } from './data-flow/agent-binding.js';
+import { bindings, type BotBinding } from './data-flow/agent-binding.js';
+
+const blankPreparations = new WeakMap<object, (agent: Agent, expected: BotBinding) => Promise<void>>();
+export function blankBotPreparation(agent: Agent) {
+  for (const scope of scopeChainOf(scopeOf(agent.ctx))) {
+    const prepare = blankPreparations.get(scope);
+    if (prepare) return prepare;
+  }
+}
 
 /** Mounted inside a preset; its closure is retained with that preset generation. */
 export function apply(ctx: Context, config: Config): void {
@@ -118,9 +127,12 @@ export function apply(ctx: Context, config: Config): void {
   // A retained preset generation owns this map. Retiring a generation does not
   // unload it while Agents still reference it; explicit plugin unload does.
   ctx.effect(() => {
-    const agents = new Map<Agent, () => void | Promise<void>>();
+    const agents = new Map<Agent, (leavingBlank?: boolean) => Promise<void>>();
+    const presetScope = scopeOf(ctx);
+    if (!presetScope) throw new Error('Bot context requires a preset scope');
+    const ownsPreset = (agent: Agent) => scopeChainOf(scopeOf(agent.ctx)).includes(presetScope);
     let stopped = false;
-    const offCreated = ctx.on('agent/created', async ({ agent, source }) => {
+    const prepare = async (agent: Agent, source: SessionStartSource) => {
       if (bindings.has(agent)) throw new Error(`Agent ${agent.id} already has a Bot binding`);
       const readOnlyGroupFollowUp = Boolean(getGroupWorkerBinding(agent)?.restrictedInputId);
       const scoped = getScopedCollaborationBinding(agent);
@@ -149,7 +161,8 @@ export function apply(ctx: Context, config: Config): void {
         // Do not expose a guessed or unverified private path in the fallback.
         if (!cleanTask) ctx.logger.warn(`[dsh-bot] private home prompt unavailable bot=${botId}`);
       }
-      if (stopped) throw new DshBotError('bot/unavailable', `Bot '${botId}' context is unloading`);
+      if (stopped || !ownsPreset(agent)) throw new DshBotError('bot/unavailable', `Bot '${botId}' context is unavailable`);
+      const retainedGuards: Array<() => void> = [];
       const dispose = agent.ctx.effect(() => {
         const releases: Array<() => void> = [];
         const cleanup = () => {
@@ -223,10 +236,11 @@ export function apply(ctx: Context, config: Config): void {
             releases.push(agent.ctx.systemPrompt.section({ name: 'dsh-bot:follow-up', order: memorySectionOrder,
               interpolate: false, text: en.tools['bot_follow_up.guidance'] }));
           }
-          protectDelegateContinuation(agent, binding, source);
+          retainedGuards.push(protectDelegateContinuation(agent, binding, source));
           releases.push(protectScopedCollaboration(agent, binding, source) ?? (() => {}));
-          protectOnboarding(agent, binding, ctx.dshBots);
-          protectDataFlow(agent, binding, ctx.dshBots);
+          retainedGuards.push(protectOnboarding(agent, binding, ctx.dshBots));
+          const releaseDataFlow = protectDataFlow(agent, binding, ctx.dshBots);
+          if (releaseDataFlow) retainedGuards.push(releaseDataFlow);
           const safety = agent.ctx.get('dshBotMessagingSafety');
           if (safety) safety.protect(agent);
           if (safety && ctx.dshBots.config.messagingEnabled) {
@@ -317,10 +331,11 @@ export function apply(ctx: Context, config: Config): void {
       const connectors = agent.ctx.get('dshBotConnectors');
       let starting: Promise<(() => Promise<void>) | undefined> | undefined;
       let closing: Promise<void> | undefined;
-      const cleanup = () => {
+      const cleanup = (leavingBlank = false) => {
         closing ??= (async () => {
           dispose();
           releaseNotify?.();
+          if (leavingBlank) for (const release of retainedGuards.reverse()) release();
           const releaseConnector = await starting;
           await releaseConnector?.();
         })();
@@ -337,10 +352,35 @@ export function apply(ctx: Context, config: Config): void {
         await cleanup();
         throw error;
       }
+    };
+    const offCreated = ctx.on('agent/created', async ({ agent, source }) => { await prepare(agent, source); return undefined; });
+    const offSelected = ctx.on('agent-preset/selected', (sessionId) => {
+      const agent = ctx.agents.get(sessionId);
+      const cleanup = agent && agents.get(agent);
+      if (!agent || !cleanup || ownsPreset(agent)) return;
+      // Retain egress and onboarding guards when a turnless record still
+      // carries business content, pending input, or prior data-flow facts.
+      let disposable = false;
+      try {
+        const flow = outlets(ctx.dshBots);
+        disposable = !flow?.kernel.domain.table('flow_sessions').get(sessionId) &&
+          !agent.inbox.nextTurn.length && !agent.inbox.nextStep.length &&
+          !agent.session.snapshotEvents().some(event => event.type === 'turn/start' || event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result');
+      } catch { /* Keep Agent-owned guards if data-flow state is ambiguous. */ }
+      void cleanup(disposable).catch(() => ctx.logger.warn('[dsh-bot] blank Bot context cleanup failed'));
+    });
+    // Native blank preset selection does not replay agent/created. Recover
+    // against this exact preset generation without registering a service.
+    blankPreparations.set(presetScope, async (agent, expected) => {
+      if (!ownsPreset(agent) || expected.botId !== botId || expected.botCreatedAt !== binding.botCreatedAt)
+        throw new DshBotError('bot/conflict', 'Bot preset scope changed');
+      if (!agents.has(agent)) await prepare(agent, 'resume');
     });
     return async () => {
       stopped = true;
       offCreated();
+      offSelected();
+      blankPreparations.delete(presetScope);
       const errors: unknown[] = [];
       for (const dispose of [...agents.values()]) {
         try {

@@ -13,7 +13,7 @@ import { mountClient, button, click, fill, field } from './helpers.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
-async function composer(language: 'en' | 'zh' = 'en') {
+async function composer(language: 'en' | 'zh' = 'en', workspace = true) {
   const ctx = new Context(); const data = view(); data.group.mode = 'natural';
   const send = vi.fn<GroupMethods['send']>(async () => { throw new Error('uncertain'); });
   const cancel = vi.fn<GroupMethods['cancel']>();
@@ -22,7 +22,7 @@ async function composer(language: 'en' | 'zh' = 'en') {
   const actions = createGroupActions(ctx, {}), element = document.createElement('div'); document.body.append(element);
   let root = createRoot(element); const t = ((key: keyof typeof en.ui, params?: Record<string, unknown>) =>
     (language === 'en' ? en : zh).ui[key].replace(/\{(\w+)\}/g, (_match, k) => String(params?.[k] ?? k))) as PropsLocale<'dsh-bot'>['t'];
-  const render = async () => { await act(async () => root.render(<GroupConversation workspace summary={summary()} actions={actions} bots={bots}
+  const render = async () => { await act(async () => root.render(<GroupConversation workspace={workspace} summary={summary()} actions={actions} bots={bots}
     expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={async () => {}} t={t} />));
     await vi.waitFor(() => expect(element.querySelector('textarea')).toBeTruthy()); };
   await render();
@@ -41,12 +41,23 @@ describe('workspace group composer and management', () => {
       await fill(draft, 'ordinary message'); draft.focus(); draft.setSelectionRange(2, 4);
       expect(document.activeElement).toBe(draft);
       await click(button(f.element, f.t('groups.send')));
-      expect(f.element.textContent).toContain(f.t('groups.conflict')); expect(draft.value).toBe('ordinary message');
+      expect(f.element.textContent).toContain(f.t('groups.export.sendFailed')); expect(draft.value).toBe('ordinary message');
       const first = f.send.mock.calls[0]?.[1];
       await f.remount();
       expect((field(f.element, f.t('groups.message')) as HTMLTextAreaElement).value).toBe('ordinary message');
       await click(button(f.element, f.t('groups.send')));
       expect(f.send.mock.calls[1]?.[1].operationId).toBe(first?.operationId);
+    } finally { await f.close(); }
+  });
+  it.each(['group-data-blocked', 'conflict', 'member-limit'] as const)('shows a specific %s refusal and retains the draft', async code => {
+    const f = await composer();
+    try {
+      f.send.mockRejectedValueOnce({ code: `dsh-bot/${code}` });
+      await fill(field(f.element, f.t('groups.message')), 'keep this draft');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.element.textContent).toContain(f.t(code === 'group-data-blocked' ? 'groups.export.dataBlocked' : code === 'member-limit' ? 'groups.memberLimitFailed' : 'groups.conflict', { limit: 6 }));
+      expect(field(f.element, f.t('groups.message')).value).toBe('keep this draft');
+      expect(f.send).toHaveBeenCalledTimes(1);
     } finally { await f.close(); }
   });
   it('cleared reply does not resurrect after switch and staged receipts persist', async () => {
@@ -97,7 +108,7 @@ describe('workspace group composer and management', () => {
     const app = await mountClient(bots, 'en', configure);
     try {
       await click(button(app.container, en.ui['groups.title']));
-      await click([...app.container.querySelectorAll('nav button')].find(node => node.textContent?.includes('Synthetic group')) as HTMLButtonElement);
+      await click([...app.container.querySelectorAll('nav button')].find(node => node.getAttribute('aria-label') === en.ui['chat.profile'] + ' · Synthetic group') as HTMLButtonElement);
       await vi.waitFor(() => expect(app.container.textContent).toContain('Synthetic group'));
       expect(app.container.querySelector('[role="log"]')).toBeNull();
       expect(app.container.querySelector('textarea')).toBeNull();
@@ -172,7 +183,7 @@ describe('caret group mention UI', () => {
       await click(button(f.element, f.t('groups.send')));
       expect(f.send.mock.calls[0]?.[1].memberIds).toEqual(['member:alpha']);
       expect(f.element.querySelector('select')).toBeNull();
-      expect(f.element.querySelector('input[type="checkbox"]')).toBeNull();
+      expect(f.element.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
     } finally { await f.close(); }
   });
   it('composition closing Enter cannot select or send; next ordinary Enter can select', async () => {
@@ -196,6 +207,15 @@ it('public conversation projection keeps user authorship and explicit reply meta
     const result = groupMessageDefinition.start({} as never, { event } as never, {} as never);
     expect(result.message.authorKind).toBe('user'); expect(result.message.speaker).toBeUndefined(); expect(result.message.replyTo).toBe('original');
   }
+});
+
+it('projects a legacy wrapped upload only when its native receipt belongs to that input', () => {
+  const attachment = { type: 'file', attachment: { attachmentId: 'known-file', name: 'from-history.txt', bytes: 5 } };
+  const project = (rpcId: string) => groupMessageDefinition.start({} as never, { event: { type: 'user/message', time: 1, seq: 2,
+    data: { id: 'original-input', content: [{ type: 'file', attachment }],
+      source: { kind: 'user', group: { groupId: 'g', groupCreatedAt: 1 }, turnId: 'turn', rpcId } } } } as never, {} as never).message;
+  expect(project('turn')).toMatchObject({ id: 'original-input', text: '', attachments: [attachment] });
+  expect(project('other').attachments).toEqual([]);
 });
 
 it('sent quotes render real authors, invoke original jump, and show unavailable explicitly', async () => {
@@ -266,4 +286,79 @@ it('native quote lookup reports loading until async resolution, and unavailable 
     await act(async () => settle(undefined));
     expect(element.textContent).toContain(en.ui['groups.quoteUnavailable']); expect(element.textContent).not.toContain(en.ui['groups.quoteLoading']);
   } finally { await act(async () => root.unmount()); }
+});
+
+async function armMemory(f: Awaited<ReturnType<typeof composer>>) {
+  await click(f.element.querySelector('[data-group-command-launcher]') as HTMLElement);
+  await vi.waitFor(() => expect(f.element.querySelector('[data-group-command="memory"]')).not.toBeNull());
+  await click(f.element.querySelector('[data-group-command="memory"]') as HTMLElement);
+}
+
+it.each(['en', 'zh'] as const)('opts into memory from +, retains failure/remount and clears the successful draft (%s)', async language => {
+  const f = await composer(language);
+  try {
+    await fill(field(f.element, f.t('groups.message')), 'Remember my preferred review format');
+    expect(f.element.querySelector('[data-group-memory-status]')).toBeNull();
+    expect(f.element.querySelector('input[type="checkbox"]')).toBeNull();
+    await armMemory(f);
+    expect(f.element.querySelector('[data-group-memory-status]')?.textContent).toContain(f.t('groups.memoryStatus.toggle'));
+    expect(document.activeElement).toBe(field(f.element, f.t('groups.message')));
+    expect(field(f.element, f.t('groups.message')).value).toBe('Remember my preferred review format');
+    await click(button(f.element, f.t('groups.send')));
+    expect(f.send.mock.calls[0]?.[1].memoryStatusOnly).toBe(true);
+    expect(f.element.querySelector('[data-group-memory-status]')).not.toBeNull();
+    expect(f.actions.draft(f.data.group.rootSessionId).memoryStatusOnly).toBe(true);
+    await f.remount();
+    expect(f.element.querySelector('[data-group-memory-status]')).not.toBeNull();
+    expect(field(f.element, f.t('groups.message')).value).toBe('Remember my preferred review format');
+    f.send.mockResolvedValueOnce({ ok: true, value: { id: 'turn:status-only' } as never });
+    await click(button(f.element, f.t('groups.send')));
+    expect(f.send.mock.calls[1]?.[1].operationId).toBe(f.send.mock.calls[0]?.[1].operationId);
+    expect(f.element.querySelector('[data-group-memory-status]')).toBeNull();
+    expect(field(f.element, f.t('groups.message')).value).toBe('');
+  } finally { await f.close(); }
+});
+
+it.each([true, false])('cancels memory mode without losing text or focus (workspace=%s)', async workspace => {
+  const f = await composer('en', workspace);
+  try {
+    await fill(field(f.element, f.t('groups.message')), 'Keep this draft');
+    await armMemory(f);
+    await click(button(f.element, f.t('groups.memoryStatus.cancel')));
+    expect(f.element.querySelector('[data-group-memory-status]')).toBeNull();
+    expect(field(f.element, f.t('groups.message')).value).toBe('Keep this draft');
+    expect(document.activeElement).toBe(field(f.element, f.t('groups.message')));
+    await click(button(f.element, f.t('groups.send')));
+    expect(f.send.mock.calls[0]?.[1]).not.toHaveProperty('memoryStatusOnly');
+  } finally { await f.close(); }
+});
+
+it('does not treat an IME confirmation as a send or cancel the armed memory mode', async () => {
+  const f = await composer('zh');
+  try {
+    await armMemory(f);
+    const input = field(f.element, f.t('groups.message')) as HTMLTextAreaElement;
+    await fill(input, '记住评审格式');
+    await act(async () => { input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    expect(f.send).not.toHaveBeenCalled();
+    expect(input.value).toBe('记住评审格式');
+    expect(f.element.querySelector('[data-group-memory-status]')).not.toBeNull();
+  } finally { await f.close(); }
+});
+
+it('suppresses the status-only choice for replies and keeps ordinary sends unchanged', async () => {
+  const f = await composer();
+  try {
+    await armMemory(f);
+    await act(async () => f.actions.reply(f.data.group.rootSessionId, view().messages[0] as NonNullable<ReturnType<typeof view>['messages'][0]>));
+    expect(f.element.querySelector('[data-group-memory-status]')).toBeNull();
+    expect(f.actions.draft(f.data.group.rootSessionId).memoryStatusOnly).toBe(true);
+    await fill(field(f.element, f.t('groups.message')), 'Reply to the prior message');
+    await click(button(f.element, f.t('groups.send')));
+    expect(f.send.mock.calls[0]?.[1]).not.toHaveProperty('memoryStatusOnly');
+    expect(f.send.mock.calls[0]?.[1].replyTo).toBe(view().messages[0]?.id);
+    await click(button(f.element, f.t('groups.clearReply')));
+    expect(f.element.querySelector('[data-group-memory-status]')).not.toBeNull();
+    expect(field(f.element, f.t('groups.message')).value).toBe('Reply to the prior message');
+  } finally { await f.close(); }
 });

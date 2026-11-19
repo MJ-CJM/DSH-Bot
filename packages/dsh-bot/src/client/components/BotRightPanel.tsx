@@ -8,13 +8,14 @@ import { useProactiveWork, type ProactiveWorkSource, type ProactiveWorkSnapshot 
 import { FollowUpPanel, type FollowUpNavigation } from '../proactive/FollowUpPanel.js';
 import { followUpSessionTarget, type FollowUpSource } from '../proactive/follow-up-state.js';
 import type { BotCatalog, BotCatalogEntry } from '../state.js';
+import { WorkMaterials, type WorkMaterialsActions } from '../work-materials.js';
 import { BotAvatar } from './BotAvatar.js';
 import { MessageOverviewPanel, type MessageActions } from './MessageOverview.js';
 import { RetainedPanel } from './RetainedPanel.js';
 import styles from '../styles/bot-panel.module.css';
 import css from '../styles/bot-panel.module.css?inline';
 
-export const BOT_PANEL_SECTIONS = ['overview', 'tasks', 'messages'] as const;
+export const BOT_PANEL_SECTIONS = ['overview', 'tasks', 'materials', 'messages'] as const;
 export type BotPanelSection = (typeof BOT_PANEL_SECTIONS)[number];
 export interface BotPanelParams { botId: string; botCreatedAt?: number; section?: BotPanelSection }
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
@@ -28,9 +29,10 @@ export interface BotRightPanelInjected {
   proactiveWork?: ProactiveWorkSource;
   followUp?: FollowUpSource;
   messages?: MessageActions;
+  workMaterials?: WorkMaterialsActions;
   onOpenSession(id: string): Promise<void>;
   /** Open the Bot's main conversation in the main view. */
-  onStart(botId: string): Promise<void>;
+  onStart(owner: BotKey): Promise<void>;
   /** Full settings remain on the Bots page. */
   onOpenSettings(owner: BotKey): void;
   onOpenMemory?(owner: BotKey): void;
@@ -88,7 +90,7 @@ type BotPanelContentProps = Omit<BotRightPanelProps, 'useTabInfo'> & {
   compact?: boolean;
   onOpenInSidebar?(section: BotPanelSection): void;
 };
-function BotPanelContent({ sessionId, navigation, visible, compact, onOpenInSidebar, useCatalog, proactiveWork, followUp, messages, onOpenSession, onStart, onOpenSettings, onOpenMemory, onOpenWork, t }: BotPanelContentProps) {
+function BotPanelContent({ sessionId, navigation, visible, compact, onOpenInSidebar, useCatalog, proactiveWork, followUp, workMaterials, messages, onOpenSession, onStart, onOpenSettings, onOpenMemory, onOpenWork, t }: BotPanelContentProps) {
   const snapshot = useCatalog(value => value);
   const entry = panelEntry(snapshot.entries, sessionId, navigation.params);
   const [section, setSection] = useState<BotPanelSection>(() => requestedSection(navigation.params) ?? 'overview');
@@ -116,9 +118,9 @@ function BotPanelContent({ sessionId, navigation, visible, compact, onOpenInSide
   const current = status?.mainSessionId === sessionId;
   const open = async () => {
     setBusy(true); setError(false);
-    try { await onStart(bot.id); } catch { if (alive.current) setError(true); } finally { if (alive.current) setBusy(false); }
+    try { await onStart(owner); } catch { if (alive.current) setError(true); } finally { if (alive.current) setBusy(false); }
   };
-  const tabs = BOT_PANEL_SECTIONS.map(value => ({ value, label: t(`botPanel.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel` })) as [SegmentedTab<BotPanelSection>, ...SegmentedTab<BotPanelSection>[]];
+  const tabs = BOT_PANEL_SECTIONS.filter(value => value !== 'materials' || workMaterials).map(value => ({ value, label: t(value === 'materials' ? 'botMode.materials' : `botPanel.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel` })) as [SegmentedTab<BotPanelSection>, ...SegmentedTab<BotPanelSection>[]];
   const state = status?.preset.state;
   const tasks = summarizeWork(work, t);
   const categories = taskGroups.filter(kind => tasks[kind].length > 0);
@@ -195,6 +197,10 @@ function BotPanelContent({ sessionId, navigation, visible, compact, onOpenInSide
         active={visible && section === 'tasks'} navigation={openFollowUp} t={t} /></div>}
       <BotTaskSummary snapshot={work} hasSource={!!proactiveWork} groups={tasks} onOpen={target => onOpenWork(owner, target)} t={t} />
     </RetainedPanel>
+    {workMaterials && visible && section === 'materials' && <RetainedPanel active id={`${uid}-materials-panel`} labelledBy={`${uid}-materials`}>
+      {status?.mainSessionId && <WorkMaterials key={JSON.stringify([owner, status.mainSessionId])} scope={{ bot: owner }}
+        sessionId={status.mainSessionId} actions={workMaterials} bots={[bot]} t={t} />}
+    </RetainedPanel>}
     <RetainedPanel active={section === 'messages'} id={`${uid}-messages-panel`} labelledBy={`${uid}-messages`}>
       <div className={styles.section}>
         {messages && visible && section === 'messages' &&

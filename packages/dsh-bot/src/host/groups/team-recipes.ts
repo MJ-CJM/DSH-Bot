@@ -16,6 +16,7 @@ export class TeamRecipes {
   capture(key: GroupKey, name: string) { return this.state.queue.run(async () => {
     const group = this.state.record(key);
     const members = this.state.members(group).filter(row => row.enabled && row.removedAt === undefined).sort((a, b) => a.order - b.order);
+    this.state.checkNewWorkMembers(group);
     const roles = await Promise.all(members.map(async (member, index) => {
       const bot = await this.state.bot(member.bot);
       return { id: `role-${index}`, role: group.memberRoles?.find(row => sameBot(row.bot, member.bot))?.role ?? bot.name,
@@ -25,6 +26,7 @@ export class TeamRecipes {
   }); }
   async save(value: unknown) {
     const recipe = parse(teamRecipeSchema, value);
+    if (recipe.roles.length > this.state.memberLimit()) throw new OperationError('member-limit');
     return this.state.queue.run(async () => {
       this.state.check();
       const row = { id: `team:${randomUUID()}`, savedAt: Date.now(), recipe };
@@ -40,6 +42,7 @@ export class TeamRecipes {
   async preview(value: unknown, mappings: unknown = []): Promise<TeamPreview> {
     this.state.check();
     const recipe = parse(teamRecipeSchema, value);
+    if (recipe.roles.length > this.state.memberLimit()) throw new OperationError('member-limit');
     // Empty mappings request automatic suggestions. Partial manual maps are also useful for previews.
     const manual = parse(teamPreviewMappingSchema, mappings);
     if (new Set(manual.map(row => row.roleId)).size !== manual.length || manual.some(row => !recipe.roles.some(role => role.id === row.roleId))) throw new OperationError('invalid');
@@ -63,7 +66,9 @@ export class TeamRecipes {
     return { recipe, roles };
   }
   async apply(key: GroupKey, value: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number) {
-    const recipe = parse(teamRecipeSchema, value), mapping = parse(teamMappingSchema, mappings);
+    const recipe = parse(teamRecipeSchema, value);
+    if (recipe.roles.length > this.state.memberLimit()) throw new OperationError('member-limit');
+    const mapping = parse(teamMappingSchema, mappings);
     if (mapping.length !== recipe.roles.length || new Set(mapping.map(row => row.roleId)).size !== recipe.roles.length ||
         mapping.some(row => !recipe.roles.some(role => role.id === row.roleId)) ||
         new Set(mapping.map(row => JSON.stringify(row.bot))).size !== mapping.length) throw new OperationError('invalid');

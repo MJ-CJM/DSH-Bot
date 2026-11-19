@@ -13,6 +13,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type {} from '@deepseek-ai/dsh-workspace';
 import { Remote } from '@deepseek-ai/dsh-typert-protocol';
 import { botIdSchema } from '../shared/ids.js';
+import { botKeySchema, type BotKey } from '../shared/identity.js';
 import {
   botChangeSchema, botsWorkspaceSchema,
   type CatalogInfo, type BotStatus, type BotChange, type BotHome, type BotsWorkspace, type DshBotMethods,
@@ -287,17 +288,40 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
     if (!mainSessions) return rows;
     return Promise.all(
       rows.map(async (row) => {
-        const main = await mainSessions.find(row.id);
-        return { ...row, ...(main ? { mainSessionId: main.sessionId } : {}) };
+        let boundMainSessionId: string | undefined;
+        try {
+          const bot = await this.get(row.id);
+          boundMainSessionId = mainSessions.boundSessionId?.(row.id, bot.createdAt);
+          const main = await mainSessions.find(row.id);
+          if ((await this.get(row.id)).createdAt !== bot.createdAt) return { ...row, mainSessionState: 'unavailable' as const };
+          return { ...row, ...(boundMainSessionId ? { boundMainSessionId } : {}),
+            ...(main ? { mainSessionId: main.sessionId, mainSessionState: 'ready' as const }
+              : boundMainSessionId ? { mainSessionState: 'unavailable' as const } : {}) };
+        } catch {
+          // One cold/unavailable main cannot erase the rest of the directory.
+          return { ...row, ...(boundMainSessionId ? { boundMainSessionId } : {}), mainSessionState: 'unavailable' as const };
+        }
       }),
     );
   }
 
   @Remote
   async openConversation(botId: string) {
+    return this.openMainConversation(botId);
+  }
+
+  @Remote
+  async openConversationExact(bot: BotKey) {
+    const key = parseInput(botKeySchema, bot);
+    return this.openMainConversation(key.botId, key.botCreatedAt);
+  }
+
+  private async openMainConversation(botId: string, expectedBotCreatedAt?: number) {
     await this.waitUntilReady();
     if (!this.mainSessions) throw new DshBotError('bot/unavailable', 'Main sessions are starting');
-    const result = await this.mainSessions.open(parseInput(botIdSchema, botId));
+    const id = parseInput(botIdSchema, botId);
+    const result = expectedBotCreatedAt === undefined
+      ? await this.mainSessions.open(id) : await this.mainSessions.open(id, expectedBotCreatedAt);
     const graph = this.ctx.get('dshBotReferenceMemory');
     if (graph) {
       const bot = await this.get(botId);
@@ -307,6 +331,8 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
         this.ctx.logger.warn('[dsh-bot] reference graph unavailable; internal memory remains active');
       }
     }
+    if (expectedBotCreatedAt !== undefined && (await this.get(botId)).createdAt !== expectedBotCreatedAt)
+      throw new DshBotError('bot/conflict', 'Bot identity changed');
     this.invalidate();
     return result;
   }

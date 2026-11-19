@@ -34,7 +34,13 @@ const open = async (language, theme) => {
   await page.getByRole('navigation').getByRole('button', { name: language === 'en' ? 'Plugins' : '插件', exact: true }).click();
   await page.getByText(dictionaries[language].meta.title, { exact: true }).last().click();
   await page.locator('[data-plugin-name]').filter({ hasText: 'dsh-bot' }).waitFor();
-  const panel = page.locator('[data-supergroup-settings]'); await panel.waitFor();
+  const panel = page.locator('[data-supergroup-settings]');
+  try { await panel.waitFor(); }
+  catch (error) {
+    await writeFile(resolve(dir, `plugin-${language}-last-snapshot.txt`), await page.locator('body').ariaSnapshot()).catch(() => {});
+    await page.screenshot({ path: resolve(dir, `plugin-${language}-failure.png`) }).catch(() => {});
+    throw error;
+  }
   const toggle = panel.getByRole('switch', { name: dictionaries[language].ui['supergroup.settingsTitle'], exact: true });
   await toggle.waitFor(); await page.waitForFunction(() => document.querySelector('[data-supergroup-settings] [role="switch"]')?.disabled === false);
   return { context, page, panel, toggle };

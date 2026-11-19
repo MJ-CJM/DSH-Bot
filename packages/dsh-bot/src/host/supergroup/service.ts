@@ -9,6 +9,7 @@ import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { groupKey, type GroupKey, type GroupView } from '../../shared/groups.js';
+import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotKey } from '../../shared/identity.js';
 import { supergroupSendGroupInputSchema, supergroupWorkSchema, type SupergroupGroupInputReceipt, type SupergroupSendGroupInput, type SupergroupWork, type SupergroupWorkView } from '../../shared/supergroup.js';
 import type { DshBotRegistry } from '../registry.js';
@@ -48,6 +49,8 @@ interface Runtime {
   revisions: Map<string, number>;
   inputOperationId?: string;
   memberIds?: string[];
+  /** Last roster observed before dispatch, including disabled, unremoved members. */
+  roster?: BotKey[];
   replyTo?: string;
   turnIds: string[];
   task?: Promise<unknown>;
@@ -156,6 +159,7 @@ export class Supergroup {
     return this.settings();
   }
   private config() { return Config(this.registry.config.supergroup); }
+  private groupMemberLimit() { return Math.min(this.config().maxMembers, this.registry.config.groupMaxMembers ?? GROUP_MEMBER_LIMIT); }
   private configDigest() { return hash(this.config()); }
   private read(id: string) {
     const row = this.domain.table('works').get(id);
@@ -400,6 +404,11 @@ export class Supergroup {
     const resumed = [...this.domain.table('works').entries()].map(([, work]) => work).find(work => work.originSessionId === agent.id
       && this.support.continuation(work, agent, human.messageId));
     if (resumed && input.action === 'start' && resumed.group) input = { action: 'continue', workId: resumed.id };
+    if (input.action === 'continue') {
+      const group = this.chosen(agent, input.workId).group;
+      if (group && (await this.groups.view(group)).members.filter(member => member.removedAt === undefined).length > this.groupMemberLimit())
+        throw new OperationError('member-limit');
+    }
     let runtime: Runtime | undefined, work!: SupergroupWork;
     await this.serial.run(async () => {
       if (input.action === 'start') {
@@ -409,7 +418,8 @@ export class Supergroup {
         if (prior?.group || prior && ['cancelled', 'unknown'].includes(prior.state)) { work = prior; runtime = this.active.get(prior.id); return; }
         if (prior?.collaboration?.operations.some(row => row.state === 'prepared')) throw new OperationError('conflict');
         const config = this.config(), pool = await this.pool(human.owner);
-        if (input.memberIds.length > config.maxMembers || new Set(input.memberIds).size !== input.memberIds.length ||
+        if (input.memberIds.length > this.groupMemberLimit()) throw new OperationError('member-limit');
+        if (new Set(input.memberIds).size !== input.memberIds.length ||
           input.memberIds.some(id => !pool.some(bot => bot.id === id))) throw new OperationError('approval-denied');
         if (prior && input.memberIds.some(id => !prior.readers.some(reader => reader.botId === id))) throw new OperationError('approval-denied');
         const now = Date.now();
@@ -457,6 +467,8 @@ export class Supergroup {
       } else await this.groups.refreshSupergroupAuthority(work.group, runtime.authority);
       const key = work.group!;
       let view = await this.groups.view(key);
+      runtime.roster = view.members.filter(member => member.removedAt === undefined).map(member => member.bot);
+      if (runtime.roster.length > this.groupMemberLimit()) throw new OperationError('member-limit');
       let selected = runtime.memberIds?.length ? runtime.memberIds : view.members.filter(member => member.enabled && member.removedAt === undefined && (!memberIds || memberIds.includes(member.bot.botId))).map(member => member.id);
       for (;;) {
         await runtime.authority.check();
@@ -470,14 +482,16 @@ export class Supergroup {
         view = await this.groups.view(key);
         const pending = this.read(work.id).experts.find(expert => expert.state === 'pending');
         if (!pending) break;
-        const existing = view.members.filter(member => member.enabled && member.removedAt === undefined);
+        const existing = view.members.filter(member => member.removedAt === undefined);
         const target = work.readers.find(bot => bot.botId === pending.botId);
         const alreadyMember = target && existing.find(member => same(member.bot, target));
-        if (!target || !alreadyMember && existing.length >= this.config().maxMembers) throw new OperationError('approval-denied');
+        if (!target) throw new OperationError('approval-denied');
+        if (!alreadyMember && existing.length >= this.groupMemberLimit()) throw new OperationError('member-limit');
         if (!alreadyMember) {
           await this.groups.editSupergroup(key, { expectedRevision: view.group.revision, expectedMembershipRevision: view.group.membershipRevision,
             name: view.group.name, mode: view.group.mode, members: [...existing.map(member => member.bot), target], historyConfirmed: true }, runtime.authority);
           view = await this.groups.view(key);
+          runtime.roster = view.members.filter(member => member.removedAt === undefined).map(member => member.bot);
         }
         const expert = view.members.find(member => same(member.bot, target) && member.enabled && member.removedAt === undefined);
         if (!expert) throw new OperationError('recovery-needed');
@@ -538,6 +552,12 @@ export class Supergroup {
       }
       if (!work.readers.some(reader => reader.botId === request.botId) || work.experts.length >= this.config().maxExperts)
         throw new OperationError('approval-denied');
+      const roster = runtime.roster;
+      if (!roster) throw new OperationError('unavailable');
+      const reserved = new Set([...roster.map(bot => bot.botId),
+        ...work.experts.filter(expert => expert.state === 'pending').map(expert => expert.botId), request.botId]);
+      if (!roster.some(bot => bot.botId === request.botId) && reserved.size > this.groupMemberLimit())
+        throw new OperationError('member-limit');
       await this.put({ ...work, experts: [...work.experts, { id, digest, botId: request.botId,
         memberId: '', turnId: request.binding.turnId, childSessionId: request.agent.id, state: 'pending' }] });
       return { status: 'accepted', requestId: id };
@@ -617,6 +637,8 @@ export class Supergroup {
         if (prior.digest !== digest) throw new OperationError('conflict');
         receipt = prior; return;
       }
+      if (view.members.filter(member => member.removedAt === undefined).length > this.groupMemberLimit())
+        throw new OperationError('member-limit');
       if (view.group.archived || view.group.state !== 'ready' || view.group.supergroup?.workId !== work.id)
         throw new OperationError('approval-denied');
       if (input.memberIds && (new Set(input.memberIds).size !== input.memberIds.length || input.memberIds.some(id =>

@@ -1,9 +1,30 @@
 import { Session, SessionId, SessionSeq, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session';
 import type { Context } from '@deepseek-ai/cordis';
 import { GROUP_ROOT_PRESET } from '../../shared/groups.js';
+import { isNativeAmbientSource } from '../common/native-ambient-source.js';
 
 export type UserEvent = Extract<SessionEvent, { type: 'user/message' }>;
 type ReadBudget = { maxSessionBytes: number; maxSessionEvents: number };
+
+/** Owner-requested reconciliation only: no Agent activation, tool replay or model call. */
+export async function readCompletedChild(ctx: Context, binding: {
+  childSessionId: string; rootSessionId: string; presetId: string; childMessageId: string; startedAt: number;
+}, budget: ReadBudget, signal: AbortSignal) {
+  const id = SessionId(binding.childSessionId);
+  const accepts = (h: SessionHeader) => h.id === id && h.parentSession === binding.rootSessionId && h.agentPreset === binding.presetId && h.origin === 'subagent' && !h.isSeeded;
+  await preflight(ctx, id, budget, signal, accepts);
+  return inspect(ctx, id, signal, accepts, session => {
+    const events = session.snapshotEvents();
+    if (events.length > budget.maxSessionEvents) throw new Error('Group history exceeds read budget');
+    const input = events.find(e => e.type === 'user/message' && e.data.id === binding.childMessageId);
+    const end = events.findLast(e => e.type === 'turn/end'), answer = events.findLast(e => e.type === 'assistant/message');
+    if (!input || !end || end.type !== 'turn/end' || end.time < binding.startedAt || end.data.reason.kind !== 'completed' ||
+      !answer || answer.type !== 'assistant/message' || answer.data.interrupted || answer.data.turn !== end.data.turn ||
+      events.some(e => e.seq > input.seq && e.type === 'user/message' && !isNativeAmbientSource(e.data.source.kind)) || input.seq > answer.seq)
+      throw new Error('No exact completed child reply');
+    return answer.data.message.content.filter(block => block.type === 'text');
+  });
+}
 
 /** Some public exact reads have no abort argument. Stop waiting and do not start another read. */
 export async function untilAbort<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {

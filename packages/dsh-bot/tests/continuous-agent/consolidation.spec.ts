@@ -94,3 +94,27 @@ it('a late generation receipt cannot restore lineage cleared by a concurrent for
     spy.mockRestore(); vi.restoreAllMocks();
   } finally { await x.close(); }
 });
+it('keeps an expired unknown visible until the owner closes it without another request or budget refund', async () => {
+  const x = await fixture(async () => { throw new Error('uncertain native dispatch'); });
+  try {
+    const input = x.request(), run = await x.service.start(input, botKey()); x.advance();
+    expect(x.service.list(botKey())[0]).toMatchObject({ state: 'unknown', unresolved: true, modelRequests: 1 });
+    const decision = { operationId: randomUUID(), runId: run.id, botId: 'alpha', expectedRevision: x.f.kernel.seq, action: 'close' as const };
+    expect(await x.service.decide(decision, botKey())).toMatchObject({ state: 'rejected', modelRequests: 1, decisionId: decision.operationId });
+    await x.service.decide(decision, botKey());
+    expect(x.service.list(botKey())[0]).toMatchObject({ closedUnknown: true, unresolved: false });
+    expect((await x.service.start(input, botKey())).state).toBe('rejected'); expect(x.model).toHaveBeenCalledTimes(1);
+    expect((await x.service.start(x.request(), botKey())).state).toBe('unknown'); expect(x.model).toHaveBeenCalledTimes(2);
+  } finally { await x.close(); }
+});
+it('reconciles an exact committed proposal instead of closing it as an unknown execution', async () => {
+  const x = await fixture();
+  try {
+    const row = await x.service.start(x.request(), botKey());
+    await x.f.kernel.domain.table('consolidation_runs').put(row.id, { ...row, state: 'unknown' });
+    const result = await x.service.decide({ operationId: randomUUID(), runId: row.id, botId: 'alpha', expectedRevision: x.f.kernel.seq, action: 'close' }, botKey());
+    expect(result.state).toBe('proposed'); expect(result.decisionId).toBeUndefined();
+    expect(x.service.list(botKey())[0]).toMatchObject({ state: 'proposed', content: 'CANDIDATE location North' });
+    expect(x.model).toHaveBeenCalledTimes(1);
+  } finally { await x.close(); }
+});

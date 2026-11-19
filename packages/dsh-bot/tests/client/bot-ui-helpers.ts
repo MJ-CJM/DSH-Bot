@@ -35,9 +35,6 @@ export async function openEditor(app: App, language: 'en' | 'zh' = 'en') {
   await click(button(app.container, copy['card.edit']));
 }
 
-/** Use the one footer menu to reach the unchanged Bot chats dialog. */
 export async function openBotChats(container: ParentNode, language: 'en' | 'zh' = 'en') {
-  const trigger = requireValue(container.querySelector<HTMLButtonElement>('[data-bot-mode-switch-button]'));
-  if (trigger.getAttribute('aria-expanded') !== 'true') await click(trigger);
   await click(button(container, (language === 'zh' ? zh.ui : en.ui)['sidebar.sessions']));
 }

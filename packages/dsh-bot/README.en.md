@@ -8,7 +8,7 @@ English · [中文](README.md)
 
 **Your personal agent workspace.** Create Bots with their own roles, memory and tools in DeepSeek Harness. Keep working in ongoing conversations, collaborate, and receive results in the original chat.
 
-**Current source: 0.7.0 release candidate, not published (npm package: `dsh-botgroup`).** This page describes the candidate's Bot mode, Supergroup and simpler workflows. For the published **[stable 0.6.7](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7)**, use its own release notes and assets. [Changelog](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md).
+**Current source: 0.7.1 candidate (npm package: `dsh-botgroup`).** See the [0.7.1 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.1.md) for candidate features. The published stable release is [0.7.0](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.0). [Changelog](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md).
 
 ![Personal Bot workspace example](https://raw.githubusercontent.com/MJ-CJM/DSH-Bot/main/packages/dsh-bot/assets/showcase/en-bots.png)
 
@@ -16,25 +16,25 @@ Screenshots show basic workflows from an earlier version in a real, isolated DSH
 
 ## Start with one Bot
 
-Once installed in an environment **with the matching host adapters**, everyday use does not require creating a project or assembling a team first:
+The 0.7.1 candidate puts Bots in DSH’s native sidebar. After installing the matching candidate:
 
-1. Choose **Bot mode** from the mode menu at the bottom left, select or create a Bot, and describe your task. For example: “Compare these two proposals. Ask the researcher and reviewer to help if needed.”
-2. The Bot can ask teammates, delegate or form a team for the current task, inviting existing experts when needed. You can inspect collaboration, while the initiating Bot delivers the result in the **original conversation**.
-3. To add a file, open **Materials and details → Materials** at the top right, choose a text file for this task, and continue the original work. Add requirements or stop through the existing work controls.
-4. Open **Work & manage** at the bottom left for the Bot/group directory and tasks needing your attention. You can reach these without switching to Standard mode.
+1. Open **Bots** in the native sidebar, select or create a Bot, then open its native chat. For example: “Compare these two proposals. Ask the researcher and reviewer to help if needed.”
+2. Use the Bot/group directory for roles, memory, tasks and materials. Conversation details link back to the corresponding directory. New, search, branch and archive remain native DSH commands.
+3. Explicitly enable **Supergroup collaboration** in settings when needed. Bots can ask teammates, delegate or form teams for the task; the initiating Bot delivers results in the **original conversation**.
+4. Add materials, continue or stop through the existing work controls. Navigation and closing details do not enable or stop collaboration. File permissions, tool approvals and model configuration remain those of the host.
 
-Bot mode enables collaboration within tasks. Switching to Standard mode stops collaboration and keeps records; the mode applies across all windows. File permissions, tool approvals and model configuration remain those of the host. Chat requires an available DSH model, and model services may charge for usage.
+Chat requires an available DSH model, and model services may charge for usage. Follow-up and collaboration have separate settings; opening Bots enables neither.
 
 ## Find everyday features
 
 | What you want to do | Where and what happens |
 | --- | --- |
-| View tasks and follow-up | Bot or group conversation → Materials and details → Tasks. Explicitly enable follow-up for that Bot/group. |
-| Add materials and continue | Materials and details → Materials. Select the exact task and text file; the original question is kept by default, with optional additional requirements. |
-| Find pending work | Work & manage → Tasks needing your attention. Return to the original conversation to provide input, verify results or use native questions/approvals. |
-| Manage roles and memory | Bot → Materials and details → Details, then full settings or Manage saved memories. |
-| Change group preferences and reuse teams | Group → Materials and details → Settings, including Team recipes. |
-| Configure optional services | Advanced settings in Work & manage. Continue everyday tasks in the Bot/group conversation. |
+| View tasks and follow-up | Bots → the Bot/group → Tasks. Explicitly enable follow-up for that Bot/group. |
+| Add materials and continue | The Bot/group → Materials. Select the exact task and text file; the original question is kept by default, with optional additional requirements. |
+| Find pending work | Bots → Tasks needing your attention. Return to the original conversation to provide input, verify results or use native questions/approvals. |
+| Manage roles and memory | Bots → the Bot’s details, then full settings or Manage saved memories. |
+| Change group preferences and reuse teams | Bots → the group’s settings, including Team recipes. |
+| Configure optional services | Advanced settings in Bots. Continue everyday tasks in the Bot/group conversation. |
 
 ### Automatic collaboration, results in the original chat
 
@@ -50,7 +50,7 @@ The work directory collects items needing input or review, unknown outcomes and 
 
 ### Optional, unscheduled follow-up
 
-Use **Materials and details → Tasks → Turn on follow-up** for the current Bot or group. Viewing and refreshing locally makes no model requests and requires no GitHub account or external credentials. Following and executing work are separately authorized.
+Use **Bots → the Bot/group → Tasks → Turn on follow-up** for the current Bot or group. Viewing and refreshing locally makes no model requests and requires no GitHub account or external credentials. Following and executing work are separately authorized.
 
 Supported task cards offer **Follow this task**, prefilling the name, available condition and an editable deadline. Observe completion of a native subtask or the next GitHub CI result from an already configured source, or register an item with a manual completion condition. **Edit or cancel before saving; opening the form creates no watch.** A matching result becomes a review card without automatically starting a model or repeating the task.
 
@@ -64,7 +64,7 @@ With the Bot's memory enabled, use **Memory → Group work this Bot joined** to 
 
 ### Save team preferences and use ordinary groups on demand
 
-**Team recipes** in group settings previews the current team automatically and lets you save it directly. Import and JSON editing are under advanced controls; export remains available in the preview. Preview role mappings and explicitly confirm membership changes before applying. Recipes contain team preferences without chats, memories, credentials or execution authorization. **New members can read that group's shared history.**
+**Team recipes** in group settings previews the current team automatically and lets you save it directly. Import and JSON editing are under advanced controls; export remains available in the preview. Preview role mappings and explicitly confirm membership changes before applying. Recipes contain team preferences without chats, memories, credentials or execution authorization. **New members may read only records explicitly authorized for the current audience; joining does not grant all earlier history.**
 
 New manually created ordinary groups select relevant speakers locally for each question by default; turn this off in settings if preferred. Explicit mentions, replies and rounds take priority. Unmatched questions use the existing route. Selection makes no decider-model call; member answers still use models. Existing groups keep their preferences. Automatic Supergroup teams collaborate around the task without ordinary-group routing configuration.
 
@@ -76,16 +76,16 @@ Native background tasks, result review, ordinary schedules, Bot messages, and op
 
 | Scope | Current status |
 | --- | --- |
-| Published stable release | [0.6.7 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7). Do not assume this page's candidate features are included in that package. |
-| Current candidate | 0.7.0, not publicly released. Product archive: `dsh-botgroup-0.7.0.tgz`. Use the prepared, verified candidate package with its matching compatibility artifacts. |
-| Full Bot mode | Requires command routing, chat-action and blank-session preset adapters. The verified official desktop combination is **macOS arm64 DSH 0.2.2-rc.3 + its independent dsh-bot-web-app adapter + DSH-Bot**. |
-| Other hosts | Declared range: `>=0.2.1-rc.2 <0.3.0`; development dependencies are pinned to `0.2.1-rc.2`. This does not establish testing on every version/platform. A stock host missing the required capabilities rejects full Bot mode. |
+| Published stable release | [0.7.0 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.0), with its own release notes and assets. |
+| Development candidate | `dsh-botgroup-0.7.1.tgz`. Use the acceptance record for the exact frozen package. |
+| Recommended target | Official macOS arm64 **DSH 0.2.2-rc.5 + official web-app + one dsh-botgroup product package**. Stock rc.3 is the upgrade regression baseline; support depends on this iteration's same-package acceptance. |
+| Other hosts | Declared range: `>=0.2.1-rc.2 <0.3.0`; development dependencies remain pinned to `0.2.1-rc.2`. This does not establish testing on every version or platform. |
 
-**Installing the DSH-Bot tgz alone does not supply the host adapters.** Cross-version automatic fallback is not implemented. Check and migrate the compatibility composition when upgrading DSH. Compatibility artifacts target an exact host version; do not reuse the rc.3 composition on another version. Modifying the official application signature is not required.
+The native design needs no replacement web-app, three-Client adapter package or Bot-mode switch. The previous rc.3-specific `dsh-bot-web-app` belongs to the older delivery. Active legacy installations must be migrated to the official composition in a staged copy, retaining current settings and data. Never select both web-app bundles or exempt the old adapter for an unreviewed host version.
 
 ### Published releases
 
-The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The stable versioned archive is `dsh-botgroup-0.6.7.tgz`; the fixed download name `dsh-bot.tgz` is an alias for the same package.
+The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The stable versioned archive is `dsh-botgroup-0.7.0.tgz`. The fixed download name `dsh-bot.tgz` is an alias for the same package.
 
 Open the relevant [Release](https://github.com/MJ-CJM/DSH-Bot/releases), read its compatibility notes, and download the plugin tgz and checksum file from that same release. On macOS, for example:
 
@@ -93,19 +93,19 @@ Open the relevant [Release](https://github.com/MJ-CJM/DSH-Bot/releases), read it
 shasum -a 256 -c dsh-bot.tgz.sha256
 ```
 
-In DSH, use **Plugins → Add plugin → Install third-party plugin**, select the tgz, enable it as instructed, then fully quit and reopen DSH. Source-code archives are not prebuilt plugins. Community markets or `latest` URLs may still point to the stable release; they do not provide an unpublished candidate or prove Bot-mode compatibility.
+In DSH, use **Plugins → Add plugin → Install third-party plugin**, select the tgz, enable it as instructed, then fully quit and reopen DSH. Source-code archives are not prebuilt plugins. Community markets or `latest` URLs may still point to the stable release; they do not provide an unpublished candidate or prove current candidate compatibility.
 
 ### Current candidate
 
-Maintainers should prepare, verify and install the candidate into the matching environment using the [candidate delivery notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.0.md). A stable download URL does not mean the candidate is live. Verification and deployment of full Bot mode must check the product package, adapter and exact host version together.
+See the [0.7.1 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.1.md) for installation and migration requirements. Verify the download using the matching checksum and install in the validated host configuration.
 
 To migrate from the old `dsh-bot` package, stop the Host and back up the complete profile and data. Remove the old package through native plugin management, then install `dsh-botgroup`. Before restarting, inspect the profile's `cordis.patch.yml`: if the original `id: dsh-bot` override has `name: dsh-bot`, change only that name to `dsh-botgroup`. Keep its ID, config and dataDir; do not add a name where none exists. Keep only one package dependency/bundle selected, and review old references in custom includes/templates separately. See the [migration notes](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7).
 
-Before upgrading, back up the original profile and complete data and keep the storage location. Do not delete Bots or reset data as an upgrade step. Rolling back migrated data requires the pre-upgrade backup. Upgrading does not automatically authorize external connections, paid execution or sharing.
+Before upgrading, back up the original profile and complete data and keep the storage location. Do not delete Bots or reset data as an upgrade step. Keep history and settings written after upgrading. Restore this transaction’s profile snapshot only if its installed state is unchanged; otherwise use a targeted reverse migration, never overwrite current data with an old full backup. Upgrading does not automatically authorize external connections, paid execution or sharing.
 
 ## Validation and limits
 
-Candidate features have been tested with real Hosts, persistence and browsers, including light Chinese, dark English, narrow layouts, delivery to the original chat and data preservation, using deterministic local model fixtures. Local development packages previously labeled 0.6.6 were the inputs to those historical checks; **they are not validation receipts for this 0.7.0 release package**. See the [candidate delivery notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.0.md) for the exact current artifact and checks. Feature workflows and historical evidence are recorded in [simpler workflows](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/verification/simple-bot-workflow.md), [incremental acceptance](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/verification/openmaus-improvements.md), and [host composition verification](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/verification/official-signed-desktop-update.md).
+See the [0.7.1 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.1.md) for the exact candidate, isolated Host and browser checks, and upgrade validation.
 
 These checks do not establish real paid-model quality, external account authentication, external IM messaging or automatic compatibility with future hosts. Tasks need a running local Host. Cloud hosting, execution after system exit, and system/mobile push are not provided. Uncertain execution outcomes are not automatically replayed.
 

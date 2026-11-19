@@ -3,14 +3,15 @@ import { executeRootSetup } from '../src/host/groups/root-guard.js';
 import { describe, expect, it, vi } from 'vitest';
 import { Session, type SessionId } from '@deepseek-ai/dsh-session';
 import { scopeTarget } from '@deepseek-ai/dsh-scope';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent';
 import { withIntegrations, alpha, beta } from './integration-support.js';
 import { Config } from '../lib/host/registry.js';
 import { Groups, groupsDomain } from '../src/host/groups/service.js';
 import { groupContext, routeMembers, selectOnDemand } from '../src/host/groups/routing.js';
-import { groupKey, GROUP_ROOT_PRESET, type GroupMessage, type GroupRecord } from '../src/shared/groups.js';
+import { groupDeliverySchema, groupKey, groupViewSchema, GROUP_ROOT_PRESET, type GroupMessage, type GroupRecord } from '../src/shared/groups.js';
+import { groupExportReviewStatus } from '../src/shared/group-export-review.js';
 import { groupsSpec } from '../src/shared/groups-contract.js';
 import { flowFixture } from './deepening/managed-flow-fixture.js';
 async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0]) {
@@ -37,7 +38,12 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
           const turn = session.snapshotEvents().filter(event => event.type === 'turn/start').length + 1;
           session.append('turn/start', { turn });
           try {
-            expect(await executeRootSetup(agent, [message], turn)).toBe(true);
+            if (meta?.agentPreset !== GROUP_ROOT_PRESET) {
+              session.append('user/message', message, { surfaceOp: 'append' });
+              session.append('assistant/message', { turn, step: 1, stream: [], message: createAssistantMessage({
+                source: { provider: 'synthetic', model: 'loopback' }, content: [{ type: 'text', text: 'PROACTIVE_RESULT' }],
+              }) }, { surfaceOp: 'append' });
+            } else expect(await executeRootSetup(agent, [message], turn)).toBe(true);
             session.append('turn/end', { turn, reason: { kind: 'completed' } });
           } catch { session.append('turn/end', { turn, reason: { kind: 'blocked' } }); }
         })();
@@ -84,6 +90,105 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
     },
     async reopen() { await groups.close(); domain = await f.ctx.storageDomain.open(groupsDomain); groups = new Groups(f.ctx, f.registry, domain, () => {}); await groups.start(); }, close: () => groups.close() };
 }
+it('persists exact group export settings across restart and explicitly disables without changing membership or history', async () => {
+  await withIntegrations(async f => {
+    const s = await fixture(f);
+    try {
+      const g = await s.createGroup(), key = groupKey(g);
+      const before = await s.groups.view(key);
+      const settings = await s.groups.exportSettings.get(key);
+      expect(settings.readers.map(row => row.bot)).toEqual([alpha, beta]);
+      expect(settings.canEnable).toBe(true);
+      const enabled = await s.groups.exportSettings.set(key, alpha, true, settings.groupRevision, settings.membershipRevision);
+      expect(enabled.membershipRevision).toBe(g.membershipRevision);
+      await s.reopen();
+      const restored = await s.groups.exportSettings.get(key);
+      expect(restored.enabledBots).toEqual([alpha]);
+      await s.groups.exportSettings.set(key, alpha, false, restored.groupRevision, restored.membershipRevision);
+      await s.reopen();
+      expect((await s.groups.exportSettings.get(key)).enabledBots).toEqual([]);
+      const after = await s.groups.view(key);
+      expect(after.members).toEqual(before.members);
+      expect(after.turns).toEqual(before.turns);
+      expect(after.messages).toEqual(before.messages);
+      expect(s.calls).toHaveLength(0);
+    } finally { await s.close(); }
+  });
+});
+it('closes only same-group obsolete review work once and persists receipts outside group history', () => withIntegrations(async f => {
+  const s = await fixture(f);
+  try {
+    const outsider = { ...need(f.bots.get('alpha')), id: 'outsider', name: 'outsider' };
+    f.bots.set(outsider.id, outsider);
+    const original = await s.createGroup();
+    const other = await s.createGroup('other');
+    const key = groupKey(original);
+    const groupView = (group: GroupRecord) => s.groups.view(groupKey(group));
+    const send = async (group: GroupRecord, operationId: string) => {
+      const view = await groupView(group);
+      const turn = await s.groups.send(groupKey(group), { operationId, text: operationId,
+        expectedMembershipRevision: group.membershipRevision, memberIds: view.members.filter(member => member.enabled).map(member => member.id) });
+      return (await s.settle(group)).deliveries.filter(delivery => delivery.turnId === turn.id);
+    };
+    const edit = async (group: GroupRecord) => {
+      const { group: live } = await groupView(group);
+      return s.groups.edit(groupKey(live), { expectedRevision: live.revision,
+        expectedMembershipRevision: live.membershipRevision, name: live.name, mode: live.mode, historyConfirmed: true,
+        members: [alpha, { botId: outsider.id, botCreatedAt: outsider.createdAt }] });
+    };
+    const sent = need((await send(original, 'already-sent'))[0]);
+    s.setBehavior('throw');
+    const stale = await send(original, 'old-review');
+    const held = need(stale[0]), legacy = need(stale[1]);
+    const otherHeld = need((await send(other, 'other-review'))[0]);
+    const table = s.domain.table('deliveries');
+    const hold = (delivery: typeof sent) => table.put(delivery.id, { ...delivery, state: 'failed',
+      reasonCode: 'export-approval-required', exportFlowId: crypto.randomUUID() });
+    await hold(held);
+    await table.put(legacy.id, { ...legacy, state: 'unknown', reasonCode: 'native-failure', exportFlowId: undefined });
+    await hold(otherHeld);
+    await hold(sent); // A persisted output receipt still excludes it from review work.
+    const group = await edit(original);
+    const changedOther = await edit(other);
+    const current = need((await send(group, 'current-review'))[0]);
+    await hold(current);
+    const before = await groupView(group);
+    const originalRows = [...table.entries()];
+    const oldTurn = (delivery: typeof sent) => before.turns.find(turn => turn.id === delivery.turnId);
+    expect(groupExportReviewStatus(group, oldTurn(held), need(table.get(held.id)))).toBe('stale');
+    expect(groupExportReviewStatus(group, oldTurn(current), need(table.get(current.id)))).toBe('pending');
+    expect(groupExportReviewStatus(group, oldTurn(sent), need(table.get(sent.id)))).toBeUndefined();
+
+    const review = s.groups.exportReview;
+    await expect(review.closeStale(key, original.membershipRevision)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    await expect(review.closeStale({ ...key, groupCreatedAt: key.groupCreatedAt + 1 }, group.membershipRevision))
+      .rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    const cancelled = new AbortController(); cancelled.abort();
+    await expect(review.closeStale(key, group.membershipRevision, cancelled.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    const rev = group.membershipRevision;
+    await expect(Promise.all([review.closeStale(key, rev), review.closeStale(key, rev)])).resolves.toEqual([{ closed: 2 }, { closed: 0 }]);
+    await expect(review.review(key, legacy.id)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    await expect(review.decide(key, held.id, '0'.repeat(64), true)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    await expect(review.discard(key, held.id, need(held.revision))).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    expect([...table.entries()]).toEqual(originalRows);
+
+    const assertView = async () => {
+      const view = groupViewSchema.parse(await groupView(group));
+      expect(view.group).toEqual(before.group);
+      expect(view.turns).toEqual(before.turns);
+      expect(view.messages).toEqual(before.messages);
+      expect(view.deliveries.filter(delivery => delivery.staleExportClosedAt !== undefined).map(delivery => delivery.id))
+        .toEqual([held.id, legacy.id]);
+      expect((await groupView(changedOther)).deliveries.every(delivery => delivery.staleExportClosedAt === undefined)).toBe(true);
+    };
+    await assertView();
+    await s.reopen();
+    await assertView();
+    expect([...s.domain.table('deliveries').entries()]).toEqual(originalRows);
+    expect(originalRows.every(([, row]) => groupDeliverySchema.safeParse(row).success)).toBe(true);
+    await expect(s.groups.exportReview.closeStale(key, rev)).resolves.toEqual({ closed: 0 });
+  } finally { await s.close(); }
+}));
 it('clears exact proactive group input and result copies while preserving the native root and ordinary flows', async () => {
   const x = await flowFixture();
   try {
@@ -156,6 +261,81 @@ it('clears exact proactive group input and result copies while preserving the na
   } finally { await x.close(); }
 });
 describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
+  it('enforces the full roster ceiling on direct create and keeps a smaller owner limit', () => withIntegrations(async f => {
+    const s = await fixture(f);
+    try {
+      for (const id of ['gamma', 'delta', 'epsilon', 'zeta', 'eta']) f.bots.set(id, { ...need(f.bots.get('alpha')), id, name: id });
+      const members = [...f.bots.values()].map(bot => ({ botId: bot.id, botCreatedAt: bot.createdAt }));
+      // Defense in depth: even a caller retaining a raw historical Config cannot raise the hard ceiling.
+      f.registry.config.groupMaxMembers = 16;
+      const six = await s.groups.create({ operationId: 'six', name: 'Six Bots', members: members.slice(0, 6), mode: 'mention', historyConfirmed: true });
+      expect((await s.groups.view(groupKey(six))).members).toHaveLength(6);
+      const before = s.create.mock.calls.length;
+      await expect(s.groups.create({ operationId: 'seven', name: 'Seven Bots', members, mode: 'mention', historyConfirmed: true }))
+        .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      expect(s.create).toHaveBeenCalledTimes(before);
+      f.registry.config.groupMaxMembers = 3;
+      await expect(s.groups.create({ operationId: 'four', name: 'Four Bots', members: members.slice(0, 4), mode: 'mention', historyConfirmed: true }))
+        .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+    } finally { await s.close(); }
+  }));
+  it('reopens all legacy members intact, blocks new work even for one selected Bot, and permits only staged subset reductions', () => withIntegrations(async f => {
+    const s = await fixture(f);
+    try {
+      for (const id of ['gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'outsider']) f.bots.set(id, { ...need(f.bots.get('alpha')), id, name: id });
+      const original = await s.createGroup('legacy-eight'), key = groupKey(original);
+      const initialTurn = await s.groups.send(key, { operationId: 'before-upgrade', expectedMembershipRevision: 1, text: 'Existing work', memberIds: [], round: true });
+      await s.settle(original);
+      const botKeys = [...f.bots.values()].filter(bot => bot.id !== 'outsider').map(bot => ({ botId: bot.id, botCreatedAt: bot.createdAt }));
+      for (const [index, bot] of botKeys.slice(2).entries()) await s.domain.table('members').put(`legacy-${index}`, {
+        id: `legacy-${index}`, group: key, bot, order: index + 2, joinedAt: 1, enabled: index !== 0,
+      });
+      await s.reopen();
+      let view = await s.groups.view(key);
+      expect(view.members.filter(member => member.removedAt === undefined)).toHaveLength(8);
+      expect(view.members.filter(member => member.removedAt === undefined && !member.enabled)).toHaveLength(1);
+      const snapshot = [...s.domain.table('members').entries()];
+      await expect(s.groups.send(key, { operationId: 'over-roster', expectedMembershipRevision: 1, text: '@alpha one Bot only', memberIds: [need(view.members[0]).id] }))
+        .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      expect([...s.domain.table('members').entries()]).toEqual(snapshot);
+      const paused = need(s.domain.table('turns').get(initialTurn.id));
+      await s.domain.table('turns').put(paused.id, { ...paused, protocol: 2, state: 'paused' });
+      await expect(s.groups.continueTurn(key, paused.id, paused.revision)).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      const edit = (members: typeof botKeys) => s.groups.edit(key, { expectedRevision: view.group.revision,
+        expectedMembershipRevision: view.group.membershipRevision, name: view.group.name, mode: view.group.mode, historyConfirmed: true, members });
+      await expect(edit(botKeys)).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      await expect(edit([...botKeys.slice(0, 5), { botId: 'outsider', botCreatedAt: 1 }])).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      await edit(botKeys.slice(0, 7));
+      view = await s.groups.view(key);
+      expect(view.members.filter(member => member.removedAt === undefined)).toHaveLength(7);
+      await expect(edit([...botKeys.slice(0, 6), { botId: 'outsider', botCreatedAt: 1 }])).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      await edit(botKeys.slice(0, 6));
+      view = await s.groups.view(key);
+      expect(view.members.filter(member => member.removedAt === undefined)).toHaveLength(6);
+      expect(view.members).toHaveLength(8);
+      await expect(edit(botKeys.slice(0, 7))).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      const turn = await s.groups.send(key, { operationId: 'after-reduction', expectedMembershipRevision: view.group.membershipRevision, text: 'One Bot after reduction', memberIds: [need(view.members[0]).id] });
+      expect(turn.orderedMemberIds).toHaveLength(1);
+      await s.settle(view.group);
+    } finally { await s.close(); }
+  }));
+  it('retains legacy oversized recipes for reading but rejects importing, previewing or applying a seventh role', () => withIntegrations(async f => {
+    const s = await fixture(f);
+    try {
+      const group = await s.createGroup('recipe-ceiling'), key = groupKey(group);
+      const recipe = await s.groups.teamRecipes.capture(key, 'Recipe');
+      const base = need(recipe.roles[0]);
+      const legacy = { ...recipe, roles: Array.from({ length: 7 }, (_, index) => ({ ...base, id: `role-${index}` })) };
+      await s.domain.table('team_recipes').put('legacy-recipe', { id: 'legacy-recipe', savedAt: 1, recipe: legacy });
+      await s.reopen();
+      expect(need((await s.groups.teamRecipes.list())[0]).recipe.roles).toHaveLength(7);
+      await expect(s.groups.teamRecipes.save(legacy)).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      await expect(s.groups.teamRecipes.preview(legacy)).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      await expect(s.groups.teamRecipes.apply(key, legacy, [], group.revision, group.membershipRevision)).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+      expect((await s.groups.view(key)).members).toHaveLength(2);
+      expect(need((await s.groups.teamRecipes.list())[0]).recipe.roles).toHaveLength(7);
+    } finally { await s.close(); }
+  }));
   it('binds follow-up only to the exact human group input of a live owned worker', () => withIntegrations(async f => {
     const s = await fixture(f);
     let worker: Agent | undefined;
@@ -221,7 +401,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       await expect(s.groups.create({ operationId: 'create-1', name: 'changed', mode: 'mention', members: [alpha,beta], historyConfirmed: true })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       await expect(s.groups.create({ operationId: 'bad', name: 'bad', mode: 'mention', members: [alpha,{ ...beta, botCreatedAt: 2 }], historyConfirmed: true })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       const edit = { name: 'Renamed', members: [beta,alpha], mode: 'round-robin', expectedRevision: 1, expectedMembershipRevision: 1, historyConfirmed: true };
-      const changed = await s.groups.edit(groupKey(g), edit); expect(changed.membershipRevision).toBe(2); await expect(s.groups.edit(groupKey(g), edit)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      const changed = await s.groups.edit(groupKey(g), edit); expect(changed.membershipRevision).toBe(1); await expect(s.groups.edit(groupKey(g), edit)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
       expect(s.rename).toHaveBeenCalledWith({ sessionId: g.rootSessionId, title: 'Renamed' });
       expect((await s.groups.view(groupKey(g))).members.filter(m => m.enabled).map(m => m.bot.botId)).toEqual(['beta','alpha']);
     } finally { await s.close(); }
@@ -284,7 +464,7 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
     const s = await fixture(f); try {
       const g = await s.createGroup(); s.setBehavior(behavior); const m = (await s.groups.view(groupKey(g))).members[0];
       await s.groups.send(groupKey(g), { operationId: 'one', text: 'first', memberIds: [m?.id], expectedMembershipRevision: 1 });
-      const v = await s.settle(g), failure = { code: 'QUOTA', status: 402, message: 'Insufficient Balance (request_id: r-1)' };
+      const v = await s.settle(g), failure = { code: 'QUOTA', status: 402, requestId: 'r-1', message: 'Insufficient Balance (request_id: r-1)' };
       expect(v.deliveries[0]).toMatchObject({ state: 'failed', stopReason: 'error', failure });
       const replies = v.messages.filter(message => message.authorKind === 'bot');
       if (behavior === 'quota') expect(replies).toEqual([expect.objectContaining({ text: 'checked 4 files, continuing:', stopReason: 'error', failure })]);
@@ -460,3 +640,67 @@ describe('OpenMaus reusable team preferences and local routing', () => {
     });
   });
 });
+
+
+it.each([false, true])('purges production proactive projected inputs, including legacy records without stored identity: %s', async legacy => {
+  const x = await flowFixture(); x.current.set('beta', beta.botCreatedAt);
+  try {
+    await withIntegrations(async f => {
+      const s = await fixture(f);
+      try {
+        Object.assign(f.registry, x.registry());
+        f.registry.config.groupRoundTimeoutMs = 10000;
+        const g = await s.createGroup('production-cleanup'), key = groupKey(g);
+        const members = (await s.groups.view(key)).members;
+        const t = await s.groups.startProactiveReview(key, { operationId: 'production-review',
+          expectedMembershipRevision: g.membershipRevision, memberIds: members.map(m => m.id), text: 'PROACTIVE_INPUT' },
+          { ticketId: 'ticket', assignmentId: 'assignment', provider: 'synthetic', model: 'loopback',
+            botRevisions: [need(f.bots.get('alpha')).updatedAt, need(f.bots.get('beta')).updatedAt] }, async () => {});
+        await vi.waitFor(async () => expect((await s.groups.view(key)).turns.find(row => row.id === t.id)?.state).toBe('completed'), { timeout: 10000 });
+        const view = await s.groups.view(key), turn = need(view.turns.find(row => row.id === t.id));
+        expect(turn.state).toBe('completed');
+        const deliveries = view.deliveries.filter(row => row.turnId === t.id);
+        expect(deliveries).toHaveLength(2);
+        expect(deliveries.every(row => row.state === 'completed' && row.inputFlowId && row.inputFlowSessionId?.startsWith('group-context-'))).toBe(true);
+        expect(turn.inputFlowSessionId).toMatch(/^group-context-/);
+        if (legacy) {
+          const { inputFlowId: _turnFlow, inputFlowSessionId: _turnSession, ...oldTurn } = turn;
+          await s.domain.table('turns').put(turn.id, oldTurn);
+          for (const delivery of deliveries) {
+            const { inputFlowId: _flow, inputFlowSessionId: _session, ...oldDelivery } = delivery;
+            await s.domain.table('deliveries').put(delivery.id, oldDelivery);
+          }
+        }
+        const copies = [...x.f.kernel.domain.table('flows').entries()].filter(([, row]) => row.envelope);
+        expect(copies).toHaveLength(5);
+        const root = need(s.roots.get(g.rootSessionId)).agent.session, native = root.snapshotEvents();
+        expect(x.f.kernel.domain.table('flow_sessions').get(g.rootSessionId)).toBeUndefined();
+        expect(await s.groups.purgeProactiveCopies(['assignment'])).toBe(true);
+        expect(copies.every(([id]) => !x.flow.get(id).envelope)).toBe(true);
+        expect(root.snapshotEvents()).toEqual(native);
+        expect(await s.groups.purgeProactiveCopies(['assignment'])).toBe(true);
+      } finally { await s.close(); }
+    });
+  } finally { await x.close(); }
+});
+
+it('runs status-only memory recording for the full group, shares no narrative and cannot be continued or followed up', () => withIntegrations(async f => {
+  const s = await fixture(f);
+  try {
+    const g = await s.createGroup('memory-status'), key = groupKey(g);
+    const input = { operationId: 'record-memory', expectedMembershipRevision: g.membershipRevision,
+      text: 'Remember my preference', memoryStatusOnly: true as const };
+    const turn = await s.groups.send(key, input);
+    const view = await s.settle(g), settled = need(view.turns.find(row => row.id === turn.id));
+    expect(s.calls).toHaveLength(2);
+    expect(s.calls.every(call => call.prompt.includes('bot_memory_save'))).toBe(true);
+    expect(view.deliveries.map(row => row.memoryWriteStatus)).toEqual(['unverified', 'unverified']);
+    expect(view.deliveries.every(row => !row.outputMessageId && !row.failure && !row.exportFlowId)).toBe(true);
+    expect(view.messages.filter(row => row.authorKind === 'bot')).toEqual([]);
+    expect(await s.groups.send(key, input)).toMatchObject({ id: turn.id, memoryStatusOnly: true });
+    expect(s.calls).toHaveLength(2);
+    await expect(s.groups.continueTurn(key, turn.id, settled.revision)).rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+    await expect(s.groups.send(key, { operationId: 'unsafe-followup', expectedMembershipRevision: g.membershipRevision, text: 'Show private contents',
+      followup: { turnId: turn.id, deliveryId: need(view.deliveries[0]).id } })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+  } finally { await s.close(); }
+}));

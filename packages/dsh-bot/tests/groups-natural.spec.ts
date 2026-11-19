@@ -9,7 +9,7 @@ import { scopeTarget } from '@deepseek-ai/dsh-scope';
 import type { AgentOptions } from '@deepseek-ai/dsh-agent';
 import { groupMemberModelSelectionsSchema, groupTurnSchema, groupRecordSchema, groupSetModelSchema } from '../src/shared/groups.js';
 import { groupsSpec } from '../src/shared/groups-contract.js';
-import { ToolCallId } from '@deepseek-ai/dsh-llm';
+import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { withIntegrations, alpha, beta } from './integration-support.js';
 import { Config } from '../lib/host/registry.js';
 import { Groups, groupsDomain } from '../src/host/groups/service.js';
@@ -268,23 +268,60 @@ describe('native group attachment references', () => {
       expect(native?.type === 'user/message' ? native.data.content : undefined).toEqual(attachments);
     } finally { await s.close(); }
   }));
-  it('accepts only the exact root-scoped uploaded file receipt and keeps file-only input', () => withIntegrations(async f => {
+  const file = { attachmentId: 'c'.repeat(64), name: 'input.txt', bytes: 9 };
+  const fileBlock = { type: 'file', attachment: file };
+  const imageBlock = { type: 'image', attachment: { attachmentId: 'b'.repeat(64), mediaType: 'image/png', width: 1, height: 1, bytes: 68, name: 'input.png' } };
+  it.each([
+    { format: 'rc.2 file ref', staged: file, block: fileBlock },
+    { format: 'rc.5 file block', staged: fileBlock, block: fileBlock },
+    { format: 'rc.5 image receipt', staged: { ...imageBlock, encodedBytes: 68 }, block: imageBlock },
+  ])('keeps exact root-scoped attachment-only input and deduplicates $format', ({ staged, block }) => withIntegrations(async f => {
     const s = await fixture(f); const bindingDispose = vi.fn(), commit = vi.fn();
-    const file = { attachmentId: 'c'.repeat(64), name: 'input.txt', bytes: 9 };
     try {
       const g = await s.createGroup();
-      const resolve = vi.fn((agent: Agent, receipt: string) => agent.session.id === g.rootSessionId && receipt === 'staged-root' ? file : undefined);
+      const resolve = vi.fn((agent: Agent, receipt: string) => agent.session.id === g.rootSessionId && receipt === 'staged-root' ? staged : undefined);
       const bindPrompt = vi.fn(() => ({ commit, [Symbol.dispose]: bindingDispose }));
       f.ctx.provide('fileUploads', { resolve, bindPrompt } as never);
       await expect(s.groups.send(groupKey(g), { operationId: 'foreign-receipt', text: '', fileReceiptIds: ['other-session'], expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
       expect(s.start).not.toHaveBeenCalled();
-      s.setOnStart(async input => { expect(input.request.prompt.slice(1)).toEqual([{ type: 'file', attachment: file }]); return answer('read input'); });
-      await s.groups.send(groupKey(g), { operationId: 'file-input', text: '', fileReceiptIds: ['staged-root'], expectedMembershipRevision: 1 });
+      s.setOnStart(async input => { expect(input.request.prompt.slice(1)).toEqual([block]); return answer('read input'); });
+      const request = { operationId: 'file-input', text: '', fileReceiptIds: ['staged-root'], expectedMembershipRevision: 1 };
+      const accepted = await s.groups.send(groupKey(g), request);
       const v = await s.settle(g);
-      const nativeInput = need(s.roots.get(g.rootSessionId)).agent.session.snapshotEvents().find(e => e.type === 'user/message' && e.data.id === v.messages[0]?.id);
-      expect(nativeInput?.type === 'user/message' ? nativeInput.data.source : undefined).toMatchObject({kind:'user',group:groupKey(g)});
-      expect(v.messages[0]?.text).toBe(''); expect(v.messages[0]?.attachments).toEqual([{ type: 'file', attachment: file }]);
+      expect((await s.groups.send(groupKey(g), request)).id).toBe(accepted.id);
+      const nativeInputs = need(s.roots.get(g.rootSessionId)).agent.session.snapshotEvents().filter(e => e.type === 'user/message' && e.data.id === accepted.inputMessageId);
+      expect(nativeInputs).toHaveLength(1);
+      const nativeInput = need(nativeInputs[0]);
+      expect(nativeInput.type === 'user/message' ? nativeInput.data : undefined)
+        .toMatchObject({ source: { kind: 'user', group: groupKey(g), rpcId: accepted.id }, content: [{ type: 'text', text: '' }, block] });
+      expect(v.messages[0]?.text).toBe(''); expect(v.messages[0]?.attachments).toEqual([block]);
       expect(bindPrompt).toHaveBeenCalledTimes(1); expect(commit).toHaveBeenCalledTimes(1); expect(bindingDispose).toHaveBeenCalledTimes(1);
+    } finally { await s.close(); }
+  }));
+  it('projects the known malformed attachment history after restart without rewriting it', () => withIntegrations(async f => {
+    const s = await fixture(f);
+    try {
+      const g = await s.createGroup(), key = groupKey(g);
+      const accepted = await s.groups.send(key, { operationId: 'template', text: 'initial', expectedMembershipRevision: 1 });
+      await s.settle(g);
+      const session = need(s.roots.get(g.rootSessionId)).agent.session;
+      const seed = async (id: string, receipt: string) => {
+        const message = createUserMessage({ source: { kind: 'user', group: key, turnId: id, rpcId: receipt } as never,
+          content: [{ type: 'file', attachment: fileBlock }] as never });
+        const event = session.append('user/message', message, { surfaceOp: 'append' });
+        await s.domain.table('turns').put(id, { ...accepted, id, operationId: id, inputMessageId: message.id, inputSeq: Number(event.seq), state: 'completed' });
+        return message.id;
+      };
+      const legacy = await seed('turn:legacy', 'turn:legacy');
+      const unbound = await seed('turn:unbound', 'turn:other');
+      const prior = session.snapshotEvents().filter(e => e.type === 'user/message').map(e => JSON.stringify(e.data));
+      const calls = s.calls.length;
+      await s.reopen();
+      const v = await s.groups.view(key);
+      expect(v.messages.find(m => m.id === legacy)?.attachments).toEqual([fileBlock]);
+      expect(v.messages.find(m => m.id === unbound)?.attachments).toBeUndefined();
+      expect(session.snapshotEvents().filter(e => e.type === 'user/message').map(e => JSON.stringify(e.data))).toEqual(prior);
+      expect(s.calls).toHaveLength(calls);
     } finally { await s.close(); }
   }));
 });

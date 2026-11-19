@@ -419,7 +419,8 @@ function openWorkflow(db: DatabaseSync) {
             save({ ...next, methodEvaluation: { ...row.methodEvaluation, state: 'running', operationId: randomUUID() } });
           } else if (input.action === 'settle-method-evaluation') {
             if (row.methodEvaluation?.state !== 'running' || row.methodEvaluation.operationId !== input.operationId) throw new Rejection('stale');
-            save({ ...next, methodEvaluation: { ...row.methodEvaluation, receipts: input.receipts, state: 'completed', outcome: compareMethods(row.methodEvaluation, input.receipts) } });
+            save({ ...next, methodEvaluation: { ...row.methodEvaluation, receipts: input.receipts,
+              state: input.failureCode ? 'unknown' : 'completed', ...(input.failureCode ? { failureCode: input.failureCode } : {}), outcome: compareMethods(row.methodEvaluation, input.receipts) } });
           } else if (input.action === "evaluate-candidate") {
 						if (row.state !== "candidate" || row.evaluation) throw new Rejection("forbidden");
 						const dataset = datasets().find(item => item.id === input.datasetId && item.version === input.datasetVersion);

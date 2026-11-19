@@ -164,6 +164,8 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['status']>().toEqualTypeOf<() => Promise<RemoteResult<BotStatus[]>>>();
     expectTypeOf<DshBotRegistry['list']>().toEqualTypeOf<DshBotMethods['list']>();
     expectTypeOf<DshBotRegistry['get']>().toEqualTypeOf<DshBotMethods['get']>();
+    expectTypeOf<DshBotRegistry['openConversation']>().toEqualTypeOf<DshBotMethods['openConversation']>();
+    expectTypeOf<DshBotRegistry['openConversationExact']>().toEqualTypeOf<DshBotMethods['openConversationExact']>();
     expectTypeOf<DshBotRegistry['ensureHome']>().toEqualTypeOf<DshBotMethods['ensureHome']>();
     expectTypeOf<DshBotRemoteMethods['ensureHome']>().toEqualTypeOf<(botId: string) => Promise<RemoteResult<{ path: string }>>>();
     expectTypeOf<DshBotRegistry['ensureBotsWorkspace']>().toEqualTypeOf<DshBotMethods['ensureBotsWorkspace']>();
@@ -185,7 +187,7 @@ describe('single-source Remote contract', () => {
     expectTypeOf<DshBotRemoteMethods['delete']>()
       .toEqualTypeOf<(id: string, options: BotRemoveOptions | undefined) => Promise<RemoteResult<void>>>();
     expectTypeOf<keyof DshBotRemoteMethods>()
-      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'ensureHome' | 'ensureBotsWorkspace'
+      .toEqualTypeOf<'watch' | 'list' | 'status' | 'catalogInfo' | 'get' | 'openConversation' | 'openConversationExact' | 'ensureHome' | 'ensureBotsWorkspace'
         | 'create' | 'createForChat' | 'startOnboarding' | 'retryOnboarding' | 'onboardingStatus' | 'update' | 'duplicate' | 'delete' | 'memory' | 'activity'>();
     expectTypeOf<keyof DshBotMemoryRemoteMethods>().toEqualTypeOf<'list' | 'search' | 'save' | 'update' | 'delete' | 'count'
       | 'consolidationStatus' | 'consolidate' | 'decideConsolidation' | 'autoShareStatus' | 'setAutoShare' | 'query' | 'changes' | 'restore' | 'createManaged' | 'revise' | 'confirm' | 'resolve' | 'previewContribution' | 'previewShared'
@@ -198,7 +200,7 @@ describe('single-source Remote contract', () => {
     expect(() => require.resolve('dsh-botgroup/typert')).toThrow();
     expect(require.resolve('dsh-botgroup/remote')).toMatch(/lib\/typert\.remote-client\.js$/);
     expect(TYPERT.invocations).toBe(TYPERT_REMOTE.descriptors);
-    expect(TYPERT.invocations).toHaveLength(44);
+    expect(TYPERT.invocations).toHaveLength(45);
     expect(TYPERT.invocations.map((entry) => `${entry.namespace}/${entry.method}`))
       .toEqual(Object.keys(dshBotRemoteSpec.methods));
     for (const descriptor of TYPERT.invocations) {
@@ -347,7 +349,7 @@ describe('single-source Remote contract', () => {
       } else if (descriptor.method === 'watch') {
         expect(codec.parse({ revision: 0 })).toEqual({ revision: 0 });
         expect(() => codec.parse({ revision: -1 })).toThrow();
-      } else if (descriptor.method === 'openConversation') {
+      } else if (descriptor.method === 'openConversation' || descriptor.method === 'openConversationExact') {
         expect(codec.parse({ sessionId: 'main' })).toEqual({ sessionId: 'main' });
         expect(() => codec.parse({ sessionId: '' })).toThrow();
       } else if (descriptor.method === 'ensureHome') {
@@ -396,6 +398,10 @@ describe('Groups portable recipe Remote contract', () => {
   const mappings = bots.map((bot, index) => ({ roleId: `role-${index}`, bot }));
   const saved = { id: 'team:test', savedAt: 1, recipe };
   const cases: Record<string, { args: Record<string, unknown>; valid: unknown; invalid: unknown }> = {
+    getExportApprovalSettings: { args: { group: key }, valid: { groupRevision: 1, membershipRevision: 1,
+      readers: bots.map(bot => ({ bot, name: bot.botId })), eligibleBots: bots, enabledBots: [], canEnable: true }, invalid: { canEnable: true } },
+    setExportApproval: { args: { group: key, bot: bots[0], enabled: true, expectedRevision: 1, expectedMembershipRevision: 1 }, valid: group, invalid: { ...group, authority: {} } },
+    closeStaleExports: { args: { group: key, expectedMembershipRevision: 1 }, valid: { closed: 2 }, invalid: { closed: -1 } },
     teamList: { args: {}, valid: [saved], invalid: [{ ...saved, authority: {} }] },
     teamCapture: { args: { group: key, name: 'Portable' }, valid: recipe, invalid: { ...recipe, version: 2 } },
     teamSave: { args: { recipe }, valid: saved, invalid: { ...saved, history: [] } },
@@ -408,7 +414,7 @@ describe('Groups portable recipe Remote contract', () => {
     expect(GROUPS_REMOTE.descriptors.map(row => `${row.namespace}/${row.method}`)).toEqual(Object.keys(groupsSpec.methods));
     expect(GROUPS_REMOTE.descriptors.map(row => row.method).sort()).toEqual(['archive', 'cancel', 'continueTurn', 'create', 'edit', 'list', 'markRead',
       'open', 'openAttachment', 'recallForBot', 'send', 'setModel', 'stopMember', 'view',
-      'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].sort());
+      'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].sort());
     for (const [name, value] of Object.entries(cases)) {
       const method = GROUPS_REMOTE.methods[`dshBot.groups/${name}`];
       if (!method) throw new Error(`Missing Groups method ${name}`);
@@ -431,5 +437,7 @@ describe('Groups portable recipe Remote contract', () => {
     expect(() => input('teamApply', { group: key, recipe, mappings })).toThrow();
     expect(() => input('teamApply', { ...cases.teamApply?.args, mappings: [] })).toThrow();
     expect(() => input('teamApply', { ...cases.teamApply?.args, expectedRevision: 0 })).toThrow();
+    expect(() => input('closeStaleExports', { group: key })).toThrow();
+    expect(() => input('closeStaleExports', { group: key, expectedMembershipRevision: 0 })).toThrow();
   });
 });

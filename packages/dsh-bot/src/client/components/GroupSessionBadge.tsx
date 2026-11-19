@@ -1,11 +1,12 @@
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
+import type { GroupSummary } from '../../shared/groups.js';
 import type { GroupActions } from '../groups-state.js';
 import { GroupAvatar } from './GroupAvatar.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
 export interface GroupSessionBadgeInjected {
   hooks: { groups: GroupActions['catalog'] };
-  onOpenGroup(id: string): void;
+  onOpenGroup(summary: GroupSummary): void;
 }
 export function GroupSessionBadge({
   sessionId,
@@ -19,9 +20,10 @@ export function GroupSessionBadge({
   return group ? (
     <button
       type="button"
-      onClick={() => onOpenGroup(group.group.id)}
-      title={`${t('groups.manage')} · ${group.group.name}`}
-      aria-label={`${t('groups.manage')} · ${group.group.name}`}
+      data-group-details-opener={group.group.id}
+      onClick={() => onOpenGroup(group)}
+      title={`${t('botMode.detailsAndMaterials')} · ${group.group.name}`}
+      aria-label={`${t('botMode.detailsAndMaterials')} · ${group.group.name}`}
       className={styles.sessionBadge}
     >
       <style>{css}</style><GroupAvatar size={20} />

@@ -1,3 +1,4 @@
+import { publishedGroupCopy, groupPublicationIndex, indexedGroupMessages, type GroupPublicationIndex } from './context-flow.js';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
@@ -184,7 +185,45 @@ export class GroupRecall {
     return context;
   }
 
-  private async snapshots(bot: BotKey, rows: readonly { row: Candidate; ids: Iterable<string> }[], signal: AbortSignal) {
+  private candidateReadable(bot: BotKey, row: Candidate, publications: GroupPublicationIndex) {
+    const flow = this.state.registry.memoryOutlets;
+    if (flow?.checker && flow.kernel && !row.group.supergroup) {
+      for (const message of indexedGroupMessages(publications, row.group, [questionId(row), ...(row.delivery.outputMessageId ? [row.delivery.outputMessageId] : []), ...row.delivery.contextOutputMessageIds])) {
+        try {
+          if (Array.isArray(message.content) && [questionId(row), row.delivery.outputMessageId, ...row.delivery.contextOutputMessageIds].includes(message.id) &&
+            publishedGroupCopy(this.state.registry, row.group, message, { kind: 'bot', bot }, publications).id) return true;
+        } catch { /* Only a readable published native message authorizes a native read. */ }
+      }
+    }
+    return (Boolean(row.group.supergroup) || !row.turn.inputFlowId && !row.delivery.inputFlowId) && groupRecallLabel(this.state.registry, bot, row.group.rootSessionId) !== undefined;
+  }
+
+  private readableMessage(bot: BotKey, group: GroupRecord, event: UserEvent, publications: GroupPublicationIndex) {
+    if (group.supergroup) return groupRecallLabel(this.state.registry, bot, group.rootSessionId) !== undefined;
+    const proof = publishedGroupCopy(this.state.registry, group, event.data, { kind: 'bot', bot }, publications);
+    return Boolean(proof.id) || !proof.managed && groupRecallLabel(this.state.registry, bot, group.rootSessionId) !== undefined;
+  }
+
+  private referencesReadable(bot: BotKey, row: Candidate, ref: GroupRecallReference, publications: GroupPublicationIndex) {
+    if (row.group.supergroup) return groupRecallLabel(this.state.registry, bot, row.group.rootSessionId) !== undefined;
+    const flow = this.state.registry.memoryOutlets;
+    if (!flow || !flow.checker) return groupRecallLabel(this.state.registry, bot, row.group.rootSessionId) !== undefined;
+    return ref.sources.every(source => {
+      let managed = false;
+      for (const message of indexedGroupMessages(publications, row.group, [source.messageId])) {
+        try {
+          if (message.id === source.messageId) managed = true;
+          if (message.id === source.messageId && Array.isArray(message.content) &&
+            this.sourceMatches(row, source, { data: message, seq: source.seq } as UserEvent) &&
+            publishedGroupCopy(this.state.registry, row.group, message, { kind: 'bot', bot }, publications).id) return true;
+        } catch { /* Not a native message envelope. */ }
+      }
+      return !managed && !row.turn.inputFlowId && !row.delivery.inputFlowId &&
+        groupRecallLabel(this.state.registry, bot, row.group.rootSessionId) !== undefined;
+    });
+  }
+
+  private async snapshots(bot: BotKey, rows: readonly { row: Candidate; ids: Iterable<string> }[], signal: AbortSignal, publications: GroupPublicationIndex) {
     const wanted = new Map<string, Set<string>>();
     for (const { row, ids } of rows) {
       const id = row.group.rootSessionId;
@@ -194,15 +233,19 @@ export class GroupRecall {
     }
     const snapshots = new Map<string, Map<string, UserEvent>>();
     for (const [id, ids] of wanted) {
-      if (!groupRecallLabel(this.state.registry, bot, id)) continue;
-      try { snapshots.set(id, await readRootMessages(this.state.ctx, id, ids, this.state.registry.config.groupRecall, signal)); }
+      const group = rows.find(value => value.row.group.rootSessionId === id)?.row.group;
+      if (!group) continue;
+      try {
+        const messages = await readRootMessages(this.state.ctx, id, ids, this.state.registry.config.groupRecall, signal);
+        snapshots.set(id, new Map([...messages].filter(([, event]) => this.readableMessage(bot, group, event, publications))));
+      }
       catch { signal.throwIfAborted(); }
     }
     return snapshots;
   }
 
-  private async verifySources<T extends { row: Candidate; ref: GroupRecallReference }>(bot: BotKey, rows: readonly T[], signal: AbortSignal) {
-    const snapshots = await this.snapshots(bot, rows.map(({ row, ref }) => ({ row, ids: ref.sources.map(source => source.messageId) })), signal);
+  private async verifySources<T extends { row: Candidate; ref: GroupRecallReference }>(bot: BotKey, rows: readonly T[], signal: AbortSignal, publications: GroupPublicationIndex) {
+    const snapshots = await this.snapshots(bot, rows.map(({ row, ref }) => ({ row, ids: ref.sources.map(source => source.messageId) })), signal, publications);
     return rows.filter(({ row, ref }) => ref.sources.every(source =>
       this.sourceMatches(row, source, snapshots.get(row.group.rootSessionId)?.get(source.messageId))));
   }
@@ -215,9 +258,9 @@ export class GroupRecall {
     return text.length === source.chars && hashText(text) === source.sha256;
   }
 
-  private stillCurrent(bot: BotKey, row: Candidate, ref: GroupRecallReference) {
+  private stillCurrent(bot: BotKey, row: Candidate, ref: GroupRecallReference, publications: GroupPublicationIndex) {
     return isDeepStrictEqual(this.latest(bot, ref.group, ref.turnId, ref.deliveryId, ref.memberId), row) &&
-      groupRecallLabel(this.state.registry, bot, row.group.rootSessionId) !== undefined &&
+      this.referencesReadable(bot, row, ref, publications) &&
       checkLiveRoot(this.state.ctx, row.group.rootSessionId, read => ref.sources.every(source => this.sourceMatches(row, source, read(source.seq))));
   }
 
@@ -238,18 +281,18 @@ export class GroupRecall {
       if (!record) return unavailable();
       const batch = await untilAbort(() => this.state.queue.run(async () => this.candidates(bot, input, cursor, config.maxCandidates + 1)), signal);
       const rows = batch.slice(0, config.maxCandidates);
+      const publications = groupPublicationIndex(this.state.registry);
       const candidates = [];
       for (const row of rows) {
         signal.throwIfAborted();
         if (!this.admitted(bot, record.updatedAt)) return unavailable();
-        const context = this.latest(bot, row.turn.group, row.turn.id, row.delivery.id, row.delivery.memberId) &&
-          groupRecallLabel(this.state.registry, bot, row.group.rootSessionId)
+        const context = this.candidateReadable(bot, row, publications) && this.latest(bot, row.turn.group, row.turn.id, row.delivery.id, row.delivery.memberId)
           ? await this.child(row, signal).catch(() => { signal.throwIfAborted(); return undefined; }) : undefined;
         const ids = [...new Set(row.delivery.contextOutputMessageIds)];
         candidates.push({ row, context, contextIds: ids.filter(id => context?.has(id)).slice(-GROUP_RECALL_CONTEXT_MAX), contextCount: ids.length });
       }
       const roots = await this.snapshots(bot, candidates.flatMap(({ row, context, contextIds }) => context ? [{ row,
-        ids: [questionId(row), ...(row.delivery.outputMessageId ? [row.delivery.outputMessageId] : []), ...contextIds] }] : []), signal);
+        ids: [questionId(row), ...(row.delivery.outputMessageId ? [row.delivery.outputMessageId] : []), ...contextIds] }] : []), signal, publications);
       const query = input.query?.trim();
       const literal = query ? new RegExp(query.split(/\s+/u).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'iu') : undefined;
       let remaining = config.maxOutputChars;
@@ -296,8 +339,8 @@ export class GroupRecall {
           else incomplete = true;
         }
       }
-      const verified = await this.verifySources(bot, selected, signal);
-      const current = await untilAbort(() => this.state.queue.run(async () => verified.filter(({ row, ref }) => this.stillCurrent(bot, row, ref))), signal);
+      const verified = await this.verifySources(bot, selected, signal, publications);
+      const current = await untilAbort(() => this.state.queue.run(async () => verified.filter(({ row, ref }) => this.stillCurrent(bot, row, ref, publications))), signal);
       kernel.assertReadable();
       signal.throwIfAborted();
       if (kernel.epoch !== epoch || kernel.blocked || !this.admitted(bot, record.updatedAt)) return unavailable();
@@ -330,10 +373,11 @@ export class GroupRecall {
       const record = this.admitted(bot, undefined, options?.retainedRead);
       const parsed = z.array(groupRecallReferenceSchema).min(1).max(config.maxTrackedReads).safeParse(raw);
       if (!record || !parsed.success) return false;
+      const publications = groupPublicationIndex(this.state.registry);
       const rows = await untilAbort(() => this.state.queue.run(async () => parsed.data.flatMap(ref => {
         const row = this.latest(bot, ref.group, ref.turnId, ref.deliveryId, ref.memberId);
         return row && row.delivery.childSessionId === ref.childSessionId && row.delivery.startedAt === ref.at &&
-          (row.delivery.revision ?? 0) >= (ref.deliveryRevision ?? 0) && groupRecallLabel(this.state.registry, bot, row.group.rootSessionId)
+          (row.delivery.revision ?? 0) >= (ref.deliveryRevision ?? 0) && this.referencesReadable(bot, row, ref, publications)
           ? [{ row: structuredClone(row), ref }] : [];
       })), signal);
       if (rows.length !== parsed.data.length) return false;
@@ -343,8 +387,8 @@ export class GroupRecall {
         if (!context || ref.sources.some(source => source.role === 'context' && !context.has(source.messageId))) return false;
         checked.set(row.delivery.id, context);
       }
-      if ((await this.verifySources(bot, rows, signal)).length !== rows.length) return false;
-      const current = await untilAbort(() => this.state.queue.run(async () => rows.every(({ row, ref }) => this.stillCurrent(bot, row, ref))), signal);
+      if ((await this.verifySources(bot, rows, signal, publications)).length !== rows.length) return false;
+      const current = await untilAbort(() => this.state.queue.run(async () => rows.every(({ row, ref }) => this.stillCurrent(bot, row, ref, publications))), signal);
       kernel.assertReadable();
       signal.throwIfAborted();
       return current && kernel.epoch === epoch && !kernel.blocked && this.admitted(bot, record.updatedAt, options?.retainedRead) !== undefined;

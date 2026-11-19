@@ -2,8 +2,9 @@ import type { SessionId } from '@deepseek-ai/dsh-session';
 import {
   GROUP_ROOT_PRESET,
   groupPageSchema,
-  groupAttachmentSchema,
+  groupMessageAttachment,
   groupFailureSchema,
+  groupKey,
   type GroupKey,
   type GroupRecord,
   type GroupMessage,
@@ -15,6 +16,7 @@ import { OperationError, parse } from '../common/operations.js';
 import { textOf, terminal } from './model.js';
 import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
+import { countPendingGroupExports } from './export-pending.js';
 export class GroupMessages {
   constructor(
     private state: GroupState,
@@ -26,13 +28,16 @@ export class GroupMessages {
     const inputs = new Map(this.state.turns(g).map((t) => [t.inputMessageId, t.id]));
     return agent.session.snapshotEvents().flatMap<GroupMessage>((e) => {
       if (e.type !== 'user/message') return [];
-      const attachments = e.data.content.flatMap(block => {
-        if (block.type !== 'image' && block.type !== 'file') return [];
-        const ref = groupAttachmentSchema.safeParse(block);
-        return ref.success ? [ref.data] : [];
-      });
       const s = e.data.source;
       const turnId = inputs.get(e.data.id);
+      const uploadSource = s.kind === 'user' ? s as typeof s & { group?: GroupKey; turnId?: string; rpcId?: string } : undefined;
+      const legacyUpload = turnId !== undefined && uploadSource?.rpcId === turnId && uploadSource.turnId === turnId &&
+        uploadSource.group?.groupId === g.id && uploadSource.group.groupCreatedAt === g.createdAt;
+      const attachments = e.data.content.flatMap(block => {
+        if (block.type !== 'image' && block.type !== 'file') return [];
+        const attachment = groupMessageAttachment(block, legacyUpload);
+        return attachment ? [attachment] : [];
+      });
       if (s.kind === 'dsh-bot-group' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
         return [
           {
@@ -98,6 +103,7 @@ export class GroupMessages {
     const latest = this.messages(g).at(-1),
       read = this.state.table('read_state').get(g.id);
     return {
+      exportPendingCount: countPendingGroupExports(this.state, g),
       group: g,
       members,
       unread: Boolean(latest && latest.seq > (read?.throughSeq ?? -1)),
@@ -145,10 +151,14 @@ export class GroupMessages {
       await this.roots.restore(g).catch(() => {});
       const rows = this.messages(g).filter((m) => p.beforeSeq === undefined || m.seq < p.beforeSeq);
       const turns = this.state.turns(g);
+      const closed = this.state.closedExportReviews(groupKey(g));
       return {
         ...(await this.summary(g)),
         turns,
-        deliveries: turns.flatMap((t) => this.state.deliveries(t.id)),
+        deliveries: turns.flatMap(t => this.state.deliveries(t.id).map(delivery => {
+          const staleExportClosedAt = closed.get(delivery.id);
+          return staleExportClosedAt === undefined ? delivery : { ...delivery, staleExportClosedAt };
+        })),
         messages: rows.slice(-p.limit),
         hasEarlier: rows.length > p.limit,
       };

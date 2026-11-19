@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { BotsPageInjected } from '../../src/client/pages/bots-page-types.js';
 import { BotComposerIdentity } from '../../src/client/components/BotComposerIdentity.js';
 import { FirstChatHint, type FirstChatActions } from '../../src/client/components/FirstChatHint.js';
@@ -53,6 +54,32 @@ it('uses the manual-create command and starts only after successful native navig
   expect(app.remote.methods.startOnboarding).toHaveBeenCalledExactlyOnceWith({ botId: 'new-bot', operationId, sessionId: 'test-created-session' });
   await act(async () => { await page.onStart('new-bot'); });
   expect(app.remote.methods.startOnboarding).toHaveBeenCalledTimes(1);
+});
+it.each([true, false])('refreshes a stale native preset and opens the confirmed Bot main (listed: %s)', async listed => {
+  const app = await mountClient([record]); disposers.push(app.dispose);
+  const id = 'test-created-session' as Parameters<ISessions['refreshProjections']>[0];
+  const load = async () => app.setSessions({ ids: [id], byId: { [id]: { id, displayTitle: 'Migration helper', blank: true,
+    updatedAt: 1, running: false, retainedBy: {}, projectionValues: { agentPreset: 'standard' } } } });
+  const sessions = app.ctx.sessions as unknown as ISessions;
+  const refreshList = vi.mocked(sessions.refresh).mockImplementation(load);
+  const refresh = vi.mocked(sessions.refreshProjections).mockImplementation(async () => {
+    expect(sessions.list.getSnapshot().byId[id]).toBeDefined();
+  });
+  if (listed) await load();
+  const page = app.main.inject?.() as unknown as BotsPageInjected;
+  if (!listed) {
+    app.remote.data.statuses = [{ id: record.id, presetId: 'bot-new-bot', preset: { state: 'ok' },
+      boundMainSessionId: id, mainSessionState: 'unavailable' }];
+    await act(async () => page.onRefresh());
+  }
+  await act(async () => page.onStartExact?.(record));
+  expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: record.id, botCreatedAt: record.createdAt });
+  expect(refresh).toHaveBeenCalledExactlyOnceWith(id);
+  if (listed) expect(refreshList).not.toHaveBeenCalled();
+  else expect(refreshList).toHaveBeenCalledBefore(refresh);
+  expect(refresh).toHaveBeenCalledBefore(app.openSession);
+  expect(app.openSession).toHaveBeenCalledExactlyOnceWith(id);
+  expect(app.remote.methods.startOnboarding).not.toHaveBeenCalled();
 });
 it.each(['en', 'zh'] as const)('keeps a readable failure fallback and only offers the Host-approved retry in %s', async language => {
   const { root, container } = await surface();

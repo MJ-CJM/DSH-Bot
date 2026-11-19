@@ -22,7 +22,7 @@ const completedCollaboration = (scope: CollaborationScope, childId = 'clean-beta
   workId: scope.workId, operationId: scope.operationId, childId, status: 'completed', result: 'Clean task result',
 });
 
-async function fixture(options: { expert?: boolean; expertBot?: string; held?: boolean; rejectResult?: boolean; recovered?: SupergroupWork[]; directory?: string[]; observeDuringExpert?: boolean } = {}) {
+async function fixture(options: { expert?: boolean; expertBot?: string; held?: boolean; rejectResult?: boolean; recovered?: SupergroupWork[]; directory?: string[]; observeDuringExpert?: boolean; disabledBot?: string } = {}) {
   const bots = (options.directory ?? ['alpha', 'beta', 'gamma']).map(id => ({ id, createdAt: 1, updatedAt: 1, name: id, tools: { deny: [] } }));
   const config = { supergroup: { enabled: true, maxMembers: 4, maxExperts: 16, maxRequests: 24, timeoutMs: 300000, allowedBotIds: [] as string[] } };
   let messages: unknown[] = [{ type: 'user/message', seq: 1, data: { id: 'human-one', source: { kind: 'user' }, content: [{ type: 'text', text: 'Exact human task' }] } }];
@@ -46,7 +46,7 @@ async function fixture(options: { expert?: boolean; expertBot?: string; held?: b
     createSupergroup: async (value: { members: typeof members[number]['bot'][] }, authority: SupergroupAuthority) => {
       authorities.push(authority);
       await authority.check(); createCalls++;
-      members = value.members.map((bot, index) => ({ bot, id: `member-${index}`, enabled: true })); return { ...group };
+      members = value.members.map((bot, index) => ({ bot, id: `member-${index}`, enabled: bot.botId !== options.disabledBot })); return { ...group };
     },
     refreshSupergroupAuthority: async (_key: unknown, authority: { check(): Promise<void> }) => { await authority.check(); refreshCalls++; },
     view: async () => { if (blockedView) { viewReached?.(); await blockedView; } return view(); },
@@ -96,6 +96,9 @@ async function fixture(options: { expert?: boolean; expertBot?: string; held?: b
   const ctx = { agents: { get: (id: string) => id === agent.id ? agent : undefined } } as unknown as Context;
   const service = new Supergroup(ctx, registry, groups, domain); await service.start();
   return { service, table, sent, flows, experts, agent, config, authorities, ctx, registry,
+    requestExpert: (botId: string, callId: string) => need(handler)({ workId: need([...table.values()][0]).id,
+      group: { groupId: group.id, groupCreatedAt: group.createdAt }, agent: { id: 'worker-alpha' },
+      binding: { turnId: need(turns[0]).id }, botId, callId, question: 'Review the current task' } as SupergroupExpertRequest),
     get counts() { return { createCalls, editCalls, refreshCalls, drains }; },
     human: (id: string, text: string, source = 'user', attachment = false) => { messages = [{ type: 'user/message', seq: 2,
       data: { id, source: { kind: source }, content: attachment ? [{ type: 'image' }] : [{ type: 'text', text }] } }]; },
@@ -103,6 +106,70 @@ async function fixture(options: { expert?: boolean; expertBot?: string; held?: b
     release: () => { released = true; unblock?.(); } };
 }
 const signal = () => new AbortController().signal;
+
+test('the six-member group roster includes only selected Bots and keeps the larger discovery pool', async () => {
+  const directory = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta'];
+  const f = await fixture({ directory });
+  try {
+    f.config.supergroup.maxMembers = 16;
+    await expect(f.service.invoke(f.agent, { action: 'start', memberIds: directory }, signal()))
+      .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+    expect(f.counts.createCalls).toBe(0);
+    // The initiating owner is a reader; it occupies a roster place only if selected.
+    const result = await f.service.invoke(f.agent, { action: 'start', memberIds: directory.slice(1) }, signal());
+    expect(result).toMatchObject({ state: 'completed' });
+    expect(f.sent[0]?.memberIds).toHaveLength(6);
+    expect(need([...f.table.values()][0]).readers).toHaveLength(7);
+    expect(f.counts.createCalls).toBe(1);
+  } finally { await f.service.close(); }
+});
+
+test('expert invitations reserve the last roster place and reject a seventh Bot before recording it', async () => {
+  const directory = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta'];
+  const f = await fixture({ directory, held: true });
+  try {
+    f.config.supergroup.maxMembers = 16;
+    const work = f.service.invoke(f.agent, { action: 'start', memberIds: directory.slice(0, 5) }, signal());
+    await vi.waitFor(() => expect(f.sent).toHaveLength(1));
+    expect(await f.requestExpert('zeta', 'last-place')).toMatchObject({ status: 'accepted' });
+    await expect(f.requestExpert('eta', 'seventh-place')).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+    expect(need([...f.table.values()][0]).experts.map(expert => expert.botId)).toEqual(['zeta']);
+    f.release();
+    expect(await work).toMatchObject({ state: 'completed' });
+    expect(f.counts.editCalls).toBe(1);
+    const view = await f.service.byGroup({ groupId: 'g', groupCreatedAt: 3 });
+    expect(view?.group?.members).toHaveLength(6);
+  } finally { f.release(); await f.service.close(); }
+});
+
+test('a smaller configured Supergroup member limit rejects admission without starting a group', async () => {
+  const f = await fixture();
+  try {
+    f.config.supergroup.maxMembers = 2;
+    await expect(f.service.invoke(f.agent, { action: 'start', memberIds: ['alpha', 'beta', 'gamma'] }, signal()))
+      .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+    expect(f.counts.createCalls).toBe(0);
+  } finally { await f.service.close(); }
+});
+
+test('a disabled but unremoved Bot still occupies its Supergroup roster place', async () => {
+  const directory = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta'];
+  const f = await fixture({ directory, held: true, disabledBot: 'beta' });
+  try {
+    f.config.supergroup.maxMembers = 16;
+    const work = f.service.invoke(f.agent, { action: 'start', memberIds: directory.slice(0, 6) }, signal());
+    await vi.waitFor(() => expect(f.sent).toHaveLength(1));
+    expect(f.sent[0]?.memberIds).toHaveLength(5);
+    await expect(f.requestExpert('eta', 'disabled-is-not-removed')).rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+    expect(need([...f.table.values()][0]).experts).toHaveLength(0);
+    f.release();
+    expect(await work).toMatchObject({ state: 'completed' });
+    expect(f.counts.editCalls).toBe(0);
+    const view = await f.service.byGroup({ groupId: 'g', groupCreatedAt: 3 });
+    expect(view?.group?.members).toHaveLength(6);
+    expect(view?.group?.members.filter(member => !member.enabled)).toHaveLength(1);
+  } finally { f.release(); await f.service.close(); }
+});
 
 test.each(['skill-catalog', 'user-approval'])('native %s after a real human does not replace Supergroup input authority', async kind => {
   const f = await fixture();

@@ -149,6 +149,7 @@ export function FeedbackPanel({ view, contexts, pending, onAction, onMore, onHis
           </>}
           {row.methodEvaluation && <><p>{t(`proactive.methodState.${row.methodEvaluation.state}`)} · {row.methodEvaluation.receipts.length}/{row.methodEvaluation.plan.cases.length * 4}</p>
             <code>{row.methodEvaluation.digest}</code>
+            {row.methodEvaluation.failureCode && <p role="alert">{t(`proactive.methodFailure.${row.methodEvaluation.failureCode}`)}</p>}
             {row.methodEvaluation.outcome && <p>{t(`proactive.methodOutcome.${row.methodEvaluation.outcome}`)}</p>}
             {row.methodEvaluation.state === 'registered' && row.state === 'candidate' && <Button variant="ghost" disabled={locked} onClick={() => { void run(() => onAction({ action: 'run-method-evaluation', candidateId: row.id, expectedRevision: row.revision })); }}>{t('proactive.methodRun', { calls: row.methodEvaluation.plan.cases.length * 4, tokens: row.methodEvaluation.plan.maxTokensPerCall })}</Button>}
           </>}

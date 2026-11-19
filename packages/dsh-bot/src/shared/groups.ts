@@ -22,6 +22,20 @@ export const groupSetModelSchema = z.strictObject({
   memberId: resourceId.optional(),
   modelSelection: groupModelSelectionSchema.nullable(),
 });
+export const groupExportApprovalInputSchema = z.strictObject({
+  bot: botKeySchema,
+  enabled: z.boolean(),
+  expectedRevision: rev,
+  expectedMembershipRevision: rev,
+});
+export const groupExportApprovalSettingsSchema = z.strictObject({
+  groupRevision: rev,
+  membershipRevision: rev,
+  readers: z.array(z.strictObject({ bot: botKeySchema, name: z.string() })),
+  eligibleBots: z.array(botKeySchema),
+  enabledBots: z.array(botKeySchema),
+  canEnable: z.boolean(),
+});
 const name = botRecordFields.shape.name;
 export const groupRoleSchema = z.array(z.strictObject({ bot: botKeySchema, role: z.string().trim().min(1).max(64) })).max(16);
 export const groupRoutingSchema = z.strictObject({
@@ -50,6 +64,8 @@ export const groupRecordSchema = z.strictObject({
   modelRevision: z.number().int().nonnegative().optional(),
   nextMemberId: resourceId.optional(),
   membershipRevision: rev,
+  exportApprovals: z.array(z.strictObject({ bot: botKeySchema, membershipRevision: rev,
+    members: z.array(botKeySchema).min(1), enabledAt: z.number().int().nonnegative() })).optional(),
   revision: rev,
   archived: z.boolean(),
   state: z.enum(['creating', 'ready', 'recovery_needed']),
@@ -85,6 +101,8 @@ export const groupTurnSchema = z.strictObject({
   operationId: resourceId,
   requestDigest: z.string(),
   inputMessageId: z.string(),
+  inputFlowId: z.uuid().optional(),
+  inputFlowSessionId: z.string().optional(),
   ownerFollowUp: ownerFollowUpBindingSchema.optional(),
   proactive: z.strictObject({
     ticketId: resourceId, assignmentId: resourceId,
@@ -116,6 +134,7 @@ export const groupTurnSchema = z.strictObject({
   })).optional(),
   replyTo: z.string().optional(),
   protocol: z.literal(2).optional(),
+  memoryStatusOnly: z.literal(true).optional(),
   automaticExecutions: z.number().int().nonnegative().optional(),
   continuationAllowance: z.number().int().nonnegative().optional(),
   stoppedMemberIds: z.array(resourceId).optional(),
@@ -125,6 +144,7 @@ export const GROUP_FAILURE_MESSAGE_MAX = 1000;
 /** Native `LlmFailure` facts from a member's own failed `turn/end`; never tool input or file content. */
 export const groupFailureSchema = z.strictObject({
   code: z.string().min(1).max(64).optional(),
+  requestId: z.string().min(1).max(128).optional(),
   status: z.number().int().optional(),
   message: z.string().max(GROUP_FAILURE_MESSAGE_MAX),
 });
@@ -149,6 +169,8 @@ export const groupDeliverySchema = z.strictObject({
   childMessageId: z.string().optional(),
   joinedDeliveryId: z.string().optional(),
   childSessionId: z.string().optional(),
+  inputFlowId: z.uuid().optional(),
+  inputFlowSessionId: z.string().optional(),
   triggerMessageId: z.string().optional(),
   returnMemberId: resourceId.optional(),
   requestDigest: z.string().optional(),
@@ -157,6 +179,9 @@ export const groupDeliverySchema = z.strictObject({
   outputSeq: z.number().int().optional(),
   stopReason: z.string().optional(),
   reasonCode: z.string().optional(),
+  /** Body stays in the memory domain so source revocation/forget also removes pending exports. */
+  exportFlowId: z.uuid().optional(),
+  memoryWriteStatus: z.enum(['saved', 'failed', 'unverified']).optional(),
   failure: groupFailureSchema.optional(),
 });
 export const groupCreateSchema = z.strictObject({
@@ -190,6 +215,7 @@ export const groupSendSchema = z.strictObject({
   fileReceiptIds: z.array(z.string().min(1)).max(16).default([]),
   memberIds: z.array(resourceId).max(16).default([]),
   round: z.boolean().default(false),
+  memoryStatusOnly: z.literal(true).optional(),
   followup: z.strictObject({ turnId: resourceId, deliveryId: resourceId }).optional(),
   replyTo: z.string().min(1).optional(),
 }).refine(input => Boolean(input.text) || input.fileReceiptIds.length > 0);
@@ -201,13 +227,25 @@ export const speakerSchema = z.strictObject({
   avatarVariant: botRecordFields.shape.avatarVariant,
 });
 const dimensions = z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive() });
-export const groupAttachmentSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('file'), attachment: z.strictObject({ attachmentId: z.string().min(1), name: z.string(), bytes: z.number().int().nonnegative() }) }),
-  z.strictObject({ type: z.literal('image'), attachment: z.strictObject({ attachmentId: z.string().min(1),
-    mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']), bytes: z.number().int().nonnegative(),
-    width: z.number().int().positive(), height: z.number().int().positive(), name: z.string().optional(), originalDimensions: dimensions.optional() }), offloaded: z.literal(true).optional() }),
-]);
+const groupFileBlock = z.strictObject({ type: z.literal('file'), attachment: z.strictObject({ attachmentId: z.string().min(1), name: z.string(), bytes: z.number().int().nonnegative() }) });
+const groupImageBlock = z.strictObject({ type: z.literal('image'), attachment: z.strictObject({ attachmentId: z.string().min(1),
+  mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']), bytes: z.number().int().nonnegative(),
+  width: z.number().int().positive(), height: z.number().int().positive(), name: z.string().optional(), originalDimensions: dimensions.optional() }), offloaded: z.literal(true).optional() });
+export const groupAttachmentSchema = z.discriminatedUnion('type', [groupFileBlock, groupImageBlock]);
 export type GroupAttachment = z.output<typeof groupAttachmentSchema>;
+// rc.5 resolves a complete staged block. Image receipts also include the
+// encoded byte count for prompt admission, which is not part of a stored image.
+const stagedAttachment = z.union([groupAttachmentSchema, groupImageBlock.extend({ encodedBytes: z.number().int().nonnegative() })
+  .transform(({ attachment, offloaded }): GroupAttachment => ({ type: 'image', attachment, ...(offloaded ? { offloaded } : {}) }))]);
+const legacyWrappedUpload = z.strictObject({ type: z.literal('file'), attachment: stagedAttachment });
+export function groupUploadedAttachment(value: unknown): GroupAttachment | undefined {
+  // The pinned rc.2 Host resolves a bare file reference instead.
+  return stagedAttachment.safeParse(value).data ?? groupFileBlock.safeParse({ type: 'file', attachment: value }).data;
+}
+export function groupMessageAttachment(value: unknown, recoverLegacyUpload: boolean): GroupAttachment | undefined {
+  const canonical = groupAttachmentSchema.safeParse(value).data;
+  return canonical ?? (recoverLegacyUpload ? legacyWrappedUpload.safeParse(value).data?.attachment : undefined);
+}
 export const groupMessageSchema = z.strictObject({
   id: z.string(),
   seq: z.number().int(),
@@ -234,6 +272,8 @@ export const groupReadSchema = z.strictObject({
   schemaVersion: z.literal(1),
 });
 export const groupSummarySchema = z.strictObject({
+  /** Owner-actionable held replies only; no preview text or content digest. */
+  exportPendingCount: z.number().int().nonnegative().optional(),
   latest: z.strictObject({ seq: z.number().int(), at: z.number(), speaker: speakerSchema.optional() }).optional(),
   unread: z.boolean().default(false),
   readRevision: z.number().int().nonnegative().default(0),
@@ -243,9 +283,13 @@ export const groupSummarySchema = z.strictObject({
   running: z.boolean(),
   reason: z.enum(['root-owned-elsewhere', 'root-unavailable', 'recovery-needed']).optional(),
 });
+const groupViewDeliverySchema = groupDeliverySchema.extend({
+  /** Projected from review receipts. Historical delivery records retain their original shape. */
+  staleExportClosedAt: z.number().int().nonnegative().optional(),
+});
 export const groupViewSchema = groupSummarySchema.extend({
   turns: z.array(groupTurnSchema),
-  deliveries: z.array(groupDeliverySchema),
+  deliveries: z.array(groupViewDeliverySchema),
   messages: z.array(groupMessageSchema),
   hasEarlier: z.boolean(),
 });
@@ -262,6 +306,7 @@ export type GroupRecord = z.output<typeof groupRecordSchema>;
 export type GroupMember = z.output<typeof groupMemberSchema>;
 export type GroupTurn = z.output<typeof groupTurnSchema>;
 export type GroupDelivery = z.output<typeof groupDeliverySchema>;
+export type GroupViewDelivery = z.output<typeof groupViewDeliverySchema>;
 export type GroupFailure = z.output<typeof groupFailureSchema>;
 export type GroupMessage = z.output<typeof groupMessageSchema>;
 export type GroupView = z.output<typeof groupViewSchema>;

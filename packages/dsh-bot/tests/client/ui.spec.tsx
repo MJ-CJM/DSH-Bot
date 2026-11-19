@@ -31,7 +31,7 @@ function session(id: string, botId: string, updatedAt: number, extra: Partial<Se
     retainedBy: {}, projectionValues: { agentPreset: `host-selected/${botId}` }, ...extra };
 }
 function activity(sessionId: string, botId: string, updatedAt: number, preview = 'Assistant answer'): ActivitySession {
-  return { sessionId, botId, updatedAt, unread: true, lastMessage: { role: 'assistant', preview, at: updatedAt } };
+  return { sessionId, botId, botCreatedAt: 1, updatedAt, unread: true, lastMessage: { role: 'assistant', preview, at: updatedAt } };
 }
 async function setSessions(app: Awaited<ReturnType<typeof mount>>, rows: SessionSummary[]) {
   await app.setSessions({ ids: rows.map((row) => row.id), byId: Object.fromEntries(rows.map((row) => [row.id, row])) });
@@ -73,7 +73,7 @@ describe('Bots main page through the public Cordis and Slot registration contrac
     expect(rows[0]?.querySelector('[data-unread]')).not.toBeNull();
     expect(rows[0]?.querySelector('time')?.textContent).toBe(new Intl.RelativeTimeFormat(language, { numeric: 'auto', style: 'short' }).format(-1, 'minute'));
     const option = app.container.querySelector('li > button[data-bot-id]');
-    expect(option?.querySelector('[data-unread]')?.getAttribute('aria-label')).toBe(dictionary['activity.unreadCount'].replace('{count}', '2'));
+    expect(option?.querySelector('[data-unread]')?.getAttribute('aria-label')).toBe(dictionary['activity.unreadCount'].replace('{count}', '1'));
     expect(option?.querySelector('[data-activity-preview]')?.textContent).toBe(dictionary['activity.hidden']);
     expect(app.container.querySelector('[data-session-id="older"]')).toBeNull();
     // jsdom cannot measure ellipsis; verify the CSS contract without claiming a screenshot.

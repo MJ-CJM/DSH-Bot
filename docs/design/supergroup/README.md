@@ -1,5 +1,7 @@
 # Supergroup 整体方案
 
+2026-11-18 起的界面设计见[取消独立 Bot 模式，回归 DSH 原生工作区](native-bots-workspace.md)。新方案将 Bot 和群入口放回原生桌面，沿用现有自动协作授权；下文的旧模式方案供迁移时对照。
+
 > 2026-11-13 自动协作授权 P0 已完成仓库实现及[日常部署](../../verification/supergroup-collaboration-desktop-deploy.md)：一次开启后，任务内私信、委派、群协作与专家接续共用工作授权，文件模式保持原设置。双版本真实 Host 同包验收通过。见[授权方案](collaboration-authorization-proposal.md)与[最终验收](../../verification/supergroup-collaboration-authorization.md)。下方为此前设计与阶段记录。
 
 > 交互升级：用户已批准[Bot 中心交互方案](bot-mode-proposal.md)及[B00–B04 开发计划](../../../tasks/supergroup/BOT-MODE.md)，并授权完成后的本地服务部署。B00 真实实验已发现原生命令逃逸，[前置门槛未通过](../../verification/bot-mode-b00.md)，后续实现等待最小宿主适配裁决。下方保留已实现 P0 的来源与协作约束。

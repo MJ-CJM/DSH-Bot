@@ -14,12 +14,17 @@ export function GroupAvatar({ size = 24, label, members, bots = [] }: {
     return bot ? [{ key: member.id, bot }] : [];
   }).slice(0, 4);
   if (faces.length) {
-    const cell = Math.max(8, Math.floor((size - 3) / 2));
+    const compact = size < 20;
+    const columns = Math.min(2, faces.length);
+    const cell = compact ? Math.floor((size - columns + 1) / columns) : Math.max(8, Math.floor((size - 3) / 2));
+    const layout = compact
+      ? { display: 'inline-flex', flexWrap: 'wrap' as const }
+      : { display: 'inline-grid', gridTemplateColumns: `repeat(2, ${cell}px)` };
     return <figure role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}
       data-group-avatar="members" data-group-avatar-count={faces.length}
-      style={{ display: 'inline-grid', gridTemplateColumns: `repeat(2, ${cell}px)`, gap: 1, flexShrink: 0, margin: 0,
+      style={{ ...layout, gap: 1, flexShrink: 0, margin: 0,
         width: size, height: size, alignContent: 'center', justifyContent: 'center', verticalAlign: 'middle' }}>
-      {faces.map(({ key, bot }, index) => <BotAvatar key={key} bot={bot} size={cell} className={faces.length === 1 && index === 0 ? 'group-avatar-single' : undefined} />)}
+      {faces.map(({ key, bot }) => <BotAvatar key={key} bot={bot} size={cell} className={faces.length === 1 ? 'group-avatar-single' : undefined} />)}
     </figure>;
   }
   return <span

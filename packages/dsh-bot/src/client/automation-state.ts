@@ -12,9 +12,11 @@ import type {
 } from '@deepseek-ai/dsh-schedule/client';
 import type {} from '@deepseek-ai/dsh-schedule/remote';
 import type { AutomationRemoteMethods } from '../shared/automation-contract.js';
-import type { ScheduleBinding, LegacyEntry } from '../shared/native-schedule.js';
+import { nativeScheduleSession, type TargetScheduleEntry, type ScheduleBinding, type LegacyEntry } from '../shared/native-schedule.js';
 import { createPollingCatalog, type BotCatalogOptions, type PollingCatalog } from './state.js';
-export type NativeTask = ScheduleCatalogEntry & ScheduleBinding;
+export type LegacyNativeTask = ScheduleCatalogEntry & ScheduleBinding;
+export type NativeTask = (ScheduleCatalogEntry | TargetScheduleEntry) & ScheduleBinding & { sessionId: ScheduleCatalogEntry['sessionId'] };
+type TargetRemote = { edit(input: unknown): Promise<RemoteResult<TargetScheduleEntry | { deleted?: boolean; code?: string }>> };
 export interface AutomationData {
   routines: NativeTask[];
   legacy: LegacyEntry[];
@@ -24,7 +26,7 @@ export interface AutomationData {
 }
 export interface RoutineActions {
   catalog: PollingCatalog<AutomationData>;
-  update(record: NativeTask, patch: Pick<ScheduleUpdateRequest, 'title' | 'prompt' | 'change'>): Promise<void>;
+  update(record: NativeTask, patch: Pick<ScheduleUpdateRequest, 'title' | 'prompt' | 'change'> & { rrule?: string }): Promise<void>;
   remove(record: NativeTask): Promise<void>;
   deleteLegacy(id: string): Promise<void>;
   runNow(record: NativeTask, operationId: string): Promise<void>;
@@ -41,6 +43,7 @@ const unwrap = <T>(result: RemoteResult<T>): T => {
   return result.value;
 };
 export function expectedRecord(task: NativeTask): ScheduleRecord {
+  if ('target' in task) throw new Error('Target-based schedules use native updatedAt compare-and-swap');
   const {
     sessionId: _s,
     status: _t,
@@ -67,12 +70,12 @@ export function createRoutineActions(
     async () => {
       // Reconcile first so task creation and its sidecar cannot race this catalog read.
       const aggregate = unwrap(await own().aggregate());
-      const tasks = aggregate.nativeAvailable ? unwrap(await native().catalog()) : [];
+      const tasks: (ScheduleCatalogEntry | TargetScheduleEntry)[] = aggregate.nativeAvailable ? unwrap(await native().catalog()) : [];
       const routines = tasks.flatMap((task) => {
         const binding = aggregate.bindings.find(
-          (row) => row.nativeScheduleId === task.id && row.sessionId === task.sessionId,
+          (row) => row.nativeScheduleId === task.id && row.sessionId === nativeScheduleSession(task),
         );
-        return binding ? [{ ...binding, ...task }] : [];
+        return binding ? [{ ...task, ...binding, sessionId: binding.sessionId as ScheduleCatalogEntry['sessionId'] }] : [];
       });
       return {
         routines,
@@ -102,7 +105,12 @@ export function createRoutineActions(
   };
   return {
     catalog,
-    update: (record, patch) =>
+    update: (record, patch) => 'target' in record ? write(
+      () => (native() as unknown as TargetRemote).edit({ id: record.id, action: 'update', expectedUpdatedAt: record.updatedAt ?? null,
+        patch: { ...(patch.title !== undefined ? { title: patch.title } : {}), ...(patch.prompt !== undefined ? { prompt: patch.prompt } : {}),
+          ...(patch.rrule !== undefined ? { timing: { kind: 'rrule', rrule: patch.rrule } } : {}) } }),
+      value => { if (!('kind' in value)) throw value; },
+    ) :
       write(
         () =>
           native().update({ id: record.id, sessionId: record.sessionId, expected: expectedRecord(record), ...patch }),
@@ -110,7 +118,10 @@ export function createRoutineActions(
           if (!('record' in value)) throw value;
         },
       ),
-    remove: (record) =>
+    remove: (record) => 'target' in record ? write(
+      () => (native() as unknown as TargetRemote).edit({ id: record.id, action: 'delete', expectedUpdatedAt: record.updatedAt ?? null }),
+      value => { if (!('deleted' in value) || !value.deleted) throw value; },
+    ) :
       write(
         () => native().delete({ id: record.id, sessionId: record.sessionId }),
         (value) => {
@@ -143,14 +154,13 @@ export function createRoutineActions(
           let more = false;
           let unavailable = false;
           for (let page = 0; page < pages; page++) {
-            const value = unwrap(
-              await native().history({
+            const request = {
                 id: record.id,
-                sessionId: record.sessionId,
+                ...('target' in record ? {} : { sessionId: record.sessionId }),
                 limit: pageSize,
                 ...(before ? { before } : {}),
-              }),
-            );
+              };
+            const value = unwrap(await native().history(request as Parameters<ReturnType<typeof native>['history']>[0]));
             if ('code' in value) {
               if (value.code === 'delivery_cursor_not_found') pages = 1;
               throw value;

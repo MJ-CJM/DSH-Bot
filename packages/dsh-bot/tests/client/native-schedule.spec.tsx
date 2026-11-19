@@ -11,6 +11,27 @@ const task = (id = 'schedule-test'): NativeTask => ({ id: id as NativeTask['id']
   botId: 'alpha', botCreatedAt: 1, kind: 'every', title: 'Native example', prompt: 'Full native instruction', everySeconds: 3600,
   status: 'active', scheduledAt: '2027-01-01T00:00:00.000Z' });
 describe('R02 shipped native task Client', () => {
+  it('reads current target-based schedules and uses native edit CAS, deletion and history without legacy request fields', async () => {
+    const app = await mountClient();
+    const current: NativeTask = { id: task().id, nativeScheduleId: 'schedule-test', sessionId: task().sessionId,
+      botId: 'alpha', botCreatedAt: 1, kind: 'rrule', title: 'RRULE task', prompt: 'Current prompt', rrule: 'DTSTART:20270101T000000Z\nRRULE:FREQ=DAILY;COUNT=1',
+      scheduledAt: '2027-01-01T00:00:00.000Z', status: 'active', target: { kind: 'session', sessionId: 'session-test' }, updatedAt: '2026-01-01T00:00:00.000Z' };
+    const edit = vi.fn(async (request: { action: string; patch?: { title?: string }; expectedUpdatedAt: string }) => {
+      if (request.action === 'delete') { app.remote.data.routines = []; return { ok: true, value: { id: current.id, deleted: true } }; }
+      return { ok: true, value: { ...current, ...request.patch } };
+    });
+    Object.assign(app.remote.schedule, { edit }); app.remote.data.routines = [current];
+    const actions = createRoutineActions(app.ctx, { pollIntervalMs: 60000 }); const off = actions.catalog.subscribe(() => {});
+    try {
+      await actions.catalog.refresh(); expect(actions.catalog.getSnapshot().routines[0]).toEqual(current);
+      await actions.update(current, { title: 'Edited current task' });
+      expect(edit).toHaveBeenLastCalledWith({ action: 'update', id: current.id, expectedUpdatedAt: current.updatedAt, patch: { title: 'Edited current task' } });
+      const history = actions.history(current); const release = history.subscribe(() => {});
+      try { await history.refresh(); expect(app.remote.schedule.history.mock.calls.at(-1)?.[0]).toEqual({ id: current.id, limit: 50 }); }
+      finally { release(); history.dispose(); }
+      await actions.remove(current); expect(edit).toHaveBeenLastCalledWith({ action: 'delete', id: current.id, expectedUpdatedAt: current.updatedAt });
+    } finally { off(); actions.catalog.dispose(); await app.dispose(); }
+  });
   it('keeps identical snapshots and refreshes on native changed/reset; forwards complete native expected and deletion', async () => {
     const app = await mountClient();
     const actions = createRoutineActions(app.ctx, { pollIntervalMs: 60000 });

@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { auditArtifact, auditInstalled, sha256 } from '../p34-artifact.mjs';
 
 /** Real DSH Web profile and shipped Client; all data and credentials paths are isolated under .dsh-dev. */
-export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig = [], { offline = true, mockRoute, mockModel = true, artifactAudit, preserveProfile = false } = {}) {
+export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig = [], { offline = true, mockRoute, mockModel = true, artifactAudit, preserveProfile = false, compatArtifact } = {}) {
   const root = process.cwd(), commands = [], children = new Set(), profile = 'b4-browser';
   const env = { PATH: process.env.PATH, USER: 'synthetic', SHELL: process.env.SHELL,
     ...(process.env.DSH_BOT_DSH_BIN ? { DSH_BOT_DSH_BIN: process.env.DSH_BOT_DSH_BIN } : {}),
@@ -67,6 +67,15 @@ export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig =
     if (!preserveProfile) {
       await command(['--profile', profile, '--from-default-profile', 'web', '--dump-config'], 'initialize');
       await command(['plugin', '--profile', profile, 'add', artifact ?? resolve(root, 'packages/dsh-bot')], 'install');
+      if (compatArtifact) {
+        await command(['plugin', '--profile', profile, 'add', resolve(compatArtifact)], 'install-compat');
+        const path = resolve(env.DSH_HOME, 'profiles', profile, 'package.json');
+        const manifest = JSON.parse(await readFile(path, 'utf8'));
+        const bundles = ['@deepseek-ai/dsh-base', 'dsh-bot-web-app', 'dsh-botgroup'];
+        assert.deepEqual(manifest.dsh.profile.bundles.filter(name => name !== '@deepseek-ai/dsh-web-app').sort(), [...bundles].sort());
+        manifest.dsh.profile.bundles = bundles;
+        await writeFile(path, JSON.stringify(manifest, null, 2) + '\n');
+      }
     }
     if (artifact) {
       if (artifactAudit) assert.equal(sha256(await readFile(artifact)), artifactAudit.sha256, 'The frozen package changed');

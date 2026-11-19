@@ -8,7 +8,7 @@ import type { GroupDelivery, GroupTurn } from '../../shared/groups.js';
 import { OperationError, digest, need } from '../common/operations.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { blocks } from './model.js';
-import { followupInput, groupChild, groupResult } from './data-flow.js';
+import { followupInput, groupChild, groupResult, GroupExportError, checkGroupDispatch } from './data-flow.js';
 import { workerReservations, admitGroupInput, type WorkerBinding, type groupToolInput } from './worker-tool.js';
 import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
@@ -45,19 +45,21 @@ export class ConcurrentGroups {
       const old = this.state.table('deliveries').get(id);
       if (old) {
         if (old.requestDigest !== hash) throw new OperationError('conflict');
+        if (old.state === 'failed') throw new GroupExportError(old.reasonCode === 'export-approval-required' ? 'export-approval-required' : 'export-blocked', old.exportFlowId);
         return { status: old.state === 'unknown' ? 'unknown' : 'accepted', messageId: old.triggerMessageId };
       }
       const message = createUserMessage({ source: { kind: 'dsh-bot-group', group: t.group, turnId: t.id, memberId: d.memberId,
         speaker: { bot: d.bot, name: bot.name, ...(bot.avatar ? { avatar: bot.avatar } : {}), ...(bot.avatarColor ? { avatarColor: bot.avatarColor } : {}), ...(bot.avatarVariant ? { avatarVariant: bot.avatarVariant } : {}) },
         childSessionId: binding.childId, stopReason: progress ? 'group-progress' : 'group-request', replyTo: input.replyTo ?? d.triggerMessageId ?? t.inputMessageId, causeId: t.id }, content: blocks(input.text) });
-      const receipt: GroupDelivery = { ...d, id, ordinal: this.state.deliveries(t.id).length, state: 'skipped',
-        reasonCode: 'message-published', requestDigest: hash, triggerMessageId: message.id, returnMemberId: undefined,
+      const receipt: GroupDelivery = { ...d, id, ordinal: this.state.deliveries(t.id).length, state: 'unknown',
+        reasonCode: 'message-dispatch-unknown', requestDigest: hash, triggerMessageId: message.id, returnMemberId: undefined,
         outputMessageId: undefined, outputSeq: undefined, joinedDeliveryId: undefined };
       await this.state.putDelivery(receipt);
       try {
         await groupResult(this.state, g, d.bot, binding.childId, root.agent, JSON.stringify(message), id,
           () => root.agent.session.append('user/message', message, { surfaceOp: 'append' }), signal);
         await this.roots.flush(root);
+        await this.state.putDelivery({ ...receipt, state: 'skipped', reasonCode: 'message-published' });
         for (const memberId of recipients) {
           if (t.stoppedMemberIds?.includes(memberId)) continue;
           const active = this.active(t.id, memberId);
@@ -69,8 +71,10 @@ export class ConcurrentGroups {
         this.state.wakeTurns.get(t.id)?.();
         return { status: 'accepted', messageId: message.id };
       } catch (error) {
-        await this.state.putDelivery({ ...receipt, state: 'unknown', reasonCode: 'message-dispatch-unknown' });
+        await this.state.putDelivery({ ...receipt, state: error instanceof GroupExportError ? 'failed' : 'unknown',
+          reasonCode: error instanceof GroupExportError ? error.reasonCode : 'message-dispatch-unknown' });
         this.state.wakeTurns.get(t.id)?.();
+        if (error instanceof GroupExportError) throw error;
         throw error instanceof OperationError ? error : new OperationError('recovery-needed');
       }
     });
@@ -95,8 +99,8 @@ export class ConcurrentGroups {
     const content = JSON.stringify({ taskId: t.id, messageId: receipt.triggerMessageId, authorMemberId: author, text });
     try {
       const childMessageId = await followupInput(this.state, g, root.agent, active.bot, need(active.childSessionId), content, receipt.id, acceptedSignal,
-        () => { admitGroupInput(need(this.state.workers.get(need(active.childSessionId))), blocks(content), root.agent); return this.state.ctx.subagents.sendMessage(root.agent, SessionId(need(active.childSessionId)), blocks(content), { signal: acceptedSignal }); });
-      await this.state.putDelivery({ ...joined, childMessageId, state: 'skipped', reasonCode: 'inbox-accepted' });
+        () => { admitGroupInput(need(this.state.workers.get(need(active.childSessionId))), blocks(content), root.agent); return this.state.ctx.subagents.sendMessage(root.agent, SessionId(need(active.childSessionId)), blocks(content), { signal: acceptedSignal }); }, [need(receipt.triggerMessageId)]);
+      await this.state.putDelivery({ ...need(this.state.table('deliveries').get(receipt.id)), childMessageId, state: 'skipped', reasonCode: 'inbox-accepted' });
       return true;
     } catch { throw new OperationError('recovery-needed'); }
   }
@@ -168,10 +172,10 @@ export class ConcurrentGroups {
         this.state.registry.config.groupMemberTimeoutMs ? Date.now() + this.state.registry.config.groupMemberTimeoutMs : Infinity];
       const deadline = Math.min(...limits);
       if (Number.isFinite(deadline)) timer = setTimeout(() => controller.abort('configured-timeout'), Math.max(1, deadline - Date.now()));
-      const g = this.state.record(t.group);
+      const g = prepared.group;
       const prior = this.state.deliveries(t.id).find(d => d.memberId === d0.memberId && d.childSessionId && !d.joinedDeliveryId && ['completed', 'skipped'].includes(d.state));
       const flow = outlets(this.state.registry);
-      const input = prior ? undefined : await groupChild(this.state, g, prepared.root.agent, prepared.d.bot, prepared.context.text, d0.id, controller.signal);
+      const input = prior ? undefined : await groupChild(this.state, g, prepared.root.agent, prepared.d.bot, prepared.context.text, d0.id, controller.signal, prepared.context.messageIds, prepared.messageDigests);
       childId = prior?.childSessionId ?? input?.childId ?? SessionId(randomUUID());
       const previous = this.state.workers.get(childId);
       const binding: WorkerBinding = previous ?? { turnId: t.id, deliveryId: d0.id, childId, rootId: g.rootSessionId, presetId: prepared.d.presetId, audience: [] };
@@ -193,12 +197,12 @@ export class ConcurrentGroups {
       await this.state.queue.run(async () => this.state.putDelivery({ ...need(this.state.table('deliveries').get(d0.id)), childSessionId: childId }));
       if (prior) {
         acceptedMessageId = await followupInput(this.state, g, prepared.root.agent, prepared.d.bot, childId, prepared.context.text, d0.id, controller.signal,
-          () => { const content = [...blocks(prepared.context.text), ...prepared.attachmentBlocks]; admitGroupInput(binding, content, prepared.root.agent); nativeDispatchStarted = true; return this.state.ctx.subagents.sendMessage(prepared.root.agent, SessionId(need(childId)), content, { signal: controller.signal }); });
+          () => { const content = [...blocks(prepared.context.text), ...prepared.attachmentBlocks]; admitGroupInput(binding, content, prepared.root.agent); nativeDispatchStarted = true; return this.state.ctx.subagents.sendMessage(prepared.root.agent, SessionId(need(childId)), content, { signal: controller.signal }); }, prepared.context.messageIds, prepared.messageDigests, false);
       } else {
         const start = (signal = controller.signal) => { nativeDispatchStarted = true; return this.state.ctx.subagents.startActivation(compatibleActivationSpec({ childId: SessionId(need(childId)), provider: 'spawn', delivery: 'caller', label: prepared.bot.name, signal,
           request: { parent: prepared.root.agent, agentPreset: prepared.d.presetId, agentOptions: prepared.route, prompt: [...blocks(prepared.context.text), ...prepared.attachmentBlocks], maxDepth: this.state.registry.config.groupMaxDepth } })); };
         activation = input ? await need(flow).dispatch(input.id, (_e, signal) => start(signal), controller.signal,
-          () => checkSupergroup(this.state, g).then(() => {})) : await start();
+          () => checkGroupDispatch(this.state, g)) : await start();
         acceptedMessageId = activation.messageId;
         this.state.activations.set(d0.id, activation);
         void activation.result.then(() => admission.abort(), () => admission.abort());

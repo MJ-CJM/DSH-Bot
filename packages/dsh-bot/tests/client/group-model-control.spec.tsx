@@ -257,7 +257,7 @@ describe('group model control', () => {
       await act(async () => f.root.render(<GroupConversation workspace summary={summary()} actions={actions} models={f.models} bots={bots} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={async () => {}} t={t} />));
       await vi.waitFor(() => expect(f.element.querySelector('textarea')).toBeTruthy());
       const footer = f.trigger().closest('form')?.lastElementChild;
-      expect(footer?.querySelector('button')?.getAttribute('aria-label')).toBe(en.ui['groups.attach']);
+      expect(footer?.querySelector('button')?.getAttribute('aria-label')).toBe(en.ui['groups.addOrCommand']);
       expect(footer?.querySelector('[aria-haspopup="menu"]')).toBe(f.trigger());
       expect(footer?.querySelector('button[type="submit"]')?.getAttribute('aria-label')).toBe(en.ui['groups.send']);
       let finishRefresh!: () => void;

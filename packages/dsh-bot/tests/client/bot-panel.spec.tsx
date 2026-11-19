@@ -51,33 +51,21 @@ afterEach(async () => {
 });
 
 describe('Compact Bot details preview', () => {
-  it.each(['en', 'zh'] as const)('opens the correct Bot from the header and empty composer identity (%s)', async (language) => {
+  it.each(['en', 'zh'] as const)('opens native details for its own Bot from history and the blank composer (%s)', async language => {
     const dictionary = language === 'zh' ? zh.ui : en.ui;
     const app = await mount(language);
     const preview = await mountPreview(app);
-    expect(preview.querySelector('dialog')).toBeNull();
-
     await app.setRightSession('alpha-main');
     const header = await mountIdentity(app, 'alpha-main');
     await click(button(header, dictionary['badge.open'].replace('{name}', 'Alpha Bot')));
-    const dialog = preview.querySelector('dialog');
-    expect(dialog?.getAttribute('aria-label')).toBe(dictionary['botPanel.title']);
-    expect(dialog?.querySelector('[data-bot-panel]')?.getAttribute('data-bot-panel')).toBe('alpha-bot');
-    expect(dialog?.querySelector('[data-bot-panel-current]')?.textContent).toBe(dictionary['botPanel.current']);
-    expect(selectedTab(preview)).toBe(dictionary['botPanel.overview']);
-    expect(() => button(preview, dictionary['chat.openChat'])).toThrow();
-    expect(app.rightSession()).toBe('alpha-main');
-
-    // Simulate the platform Modal requesting close. Escape and focus are verified in the browser.
-    await act(async () => { dialog?.dispatchEvent(new Event('cancel', { bubbles: true, cancelable: true })); });
+    expect(app.openRightTab).toHaveBeenLastCalledWith(BOT_PANEL_KIND, { params: { botId: 'alpha-bot', botCreatedAt, section: undefined } });
     expect(preview.querySelector('dialog')).toBeNull();
     await app.setRightSession('beta-main');
     const dock = await mountIdentity(app, 'beta-main', true);
     await click(button(dock, dictionary['badge.open'].replace('{name}', 'Beta')));
-    expect(preview.querySelector('[data-bot-panel]')?.getAttribute('data-bot-panel')).toBe('beta-bot');
-    expect(preview.textContent).toContain('Reviews notes');
-    expect(app.rightSession()).toBe('beta-main');
-    expect(app.openRightTab).not.toHaveBeenCalled();
+    expect(app.openRightTab).toHaveBeenLastCalledWith(BOT_PANEL_KIND, { params: { botId: 'beta-bot', botCreatedAt, section: undefined } });
+    expect(app.openRightTab).toHaveBeenCalledTimes(2);
+    expect(preview.querySelector('dialog')).toBeNull();
     expect(app.selectPanel).not.toHaveBeenCalled();
     expect(app.openSession).not.toHaveBeenCalled();
   });
@@ -85,7 +73,7 @@ describe('Compact Bot details preview', () => {
   it('transfers the selected Bot and section only on explicit sidebar open', async () => {
     const app = await mount();
     const preview = await mountPreview(app);
-    await app.setRightSession('beta-main');
+    await app.setRightSession('other-main');
     const header = await mountIdentity(app, 'beta-main');
     await click(button(header, en.ui['badge.open'].replace('{name}', 'Beta')));
     await click(button(preview, en.ui['botPanel.messages']));
@@ -94,7 +82,7 @@ describe('Compact Bot details preview', () => {
     await click(button(preview, en.ui['botPanel.openSidebar']));
     expect(app.openRightTab).toHaveBeenCalledExactlyOnceWith(BOT_PANEL_KIND, { params: { botId: 'beta-bot', botCreatedAt, section: 'messages' } });
     expect(preview.querySelector('dialog')).toBeNull();
-    expect(app.rightSession()).toBe('beta-main');
+    expect(app.rightSession()).toBe('other-main');
     expect(app.selectPanel).not.toHaveBeenCalled();
   });
 
@@ -103,12 +91,12 @@ describe('Compact Bot details preview', () => {
     const preview = await mountPreview(app);
     const header = await mountIdentity(app, 'beta-main');
     const badge = button(header, en.ui['badge.open'].replace('{name}', 'Beta'));
-    await app.setRightSession('beta-main');
+    await app.setRightSession('other-main');
     await click(badge);
     await click(button(preview, en.ui['botPanel.messages']));
     await app.setRightSession('alpha-main');
     expect(preview.querySelector('dialog')).toBeNull();
-    await app.setRightSession('beta-main');
+    await app.setRightSession('other-main');
     expect(preview.querySelector('dialog')).toBeNull();
     await click(badge);
     expect(selectedTab(preview)).toBe(en.ui['botPanel.overview']);
@@ -118,7 +106,7 @@ describe('Compact Bot details preview', () => {
     await app.remountPage();
     expect(app.container.querySelector('[data-bot-detail]')?.getAttribute('data-bot-detail')).toBe('beta-bot');
 
-    await app.setRightSession('beta-main');
+    await app.setRightSession('other-main');
     await click(badge);
     expect(preview.querySelector('dialog')).not.toBeNull();
     await app.unloadPlugin();
@@ -135,22 +123,22 @@ describe('Compact Bot details preview', () => {
     const badge = button(header, en.ui['badge.open'].replace('{name}', 'Alpha Bot'));
     const actions = app.core.entries('conversation.session.header.utilities').find(entry => entry.options.id === 'dsh-bot')?.inject?.() as
       { onOpenBot(id: string): void } | undefined;
-    type Result = Awaited<ReturnType<typeof app.remote.methods.openConversation>>;
+    type Result = Awaited<ReturnType<typeof app.remote.methods.openConversationExact>>;
     let finishChat!: (result: Result) => void;
     const pending = new Promise<Result>(resolve => { finishChat = resolve; });
-    app.remote.methods.openConversation.mockReturnValueOnce(pending);
+    app.remote.methods.openConversationExact.mockReturnValueOnce(pending);
     await app.setRightSession('alpha-main');
 
     await act(async () => { actions?.onOpenBot('beta-bot'); });
     await click(button(preview, en.ui['chat.openChat']));
-    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('beta-bot');
+    expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: 'beta-bot', botCreatedAt });
     // A subsequent navigation supersedes the pending request before a new preview opens.
     app.ctx.layout.beginNavigation();
     await click(badge);
     await act(async () => { finishChat({ ok: true, value: { sessionId: 'beta-main' } }); });
-    expect(preview.querySelector('[data-bot-panel]')?.getAttribute('data-bot-panel')).toBe('alpha-bot');
+    expect(preview.querySelector('dialog')).toBeNull();
     expect(app.openSession).not.toHaveBeenCalled();
-    expect(app.openRightTab).not.toHaveBeenCalled();
+    expect(app.openRightTab).toHaveBeenCalledWith(BOT_PANEL_KIND, { params: { botId: 'alpha-bot', botCreatedAt, section: undefined } });
   });
 
   it.each([true, false])('falls back to the Bots page without a mounted conversation (sidebar installed: %s)', async (rightSidebar) => {
@@ -196,7 +184,7 @@ describe('Bot details in the native right sidebar', () => {
     expect(root.textContent).toContain('Reviews notes');
     expect(selectedTab(root)).toBe(dictionary['botPanel.overview']);
     await click(button(root, dictionary['chat.openChat']));
-    expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('beta-bot');
+    expect(app.remote.methods.openConversationExact).toHaveBeenCalledExactlyOnceWith({ botId: 'beta-bot', botCreatedAt });
     expect(app.openSession).toHaveBeenCalledWith('test-created-session');
     await click(button(root, dictionary['botPanel.settings']));
     expect(app.selectPanel).toHaveBeenCalledWith('dsh-bot');

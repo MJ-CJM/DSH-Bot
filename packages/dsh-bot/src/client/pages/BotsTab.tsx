@@ -57,7 +57,9 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
   const { selected, showDetail, tab, busy } = model;
   if (tab === 'management' || !showDetail || !selected) return null;
   const bot = selected.bot, bots = [bot];
-  const start = () => navigation.leave(() => { void model.navigate(signal => page.onStart(bot.id, signal), 'errors.start'); });
+  const start = () => navigation.leave(() => {
+    void model.navigate(signal => page.onStartExact ? page.onStartExact(bot, signal) : page.onStart(bot.id, signal), 'errors.start');
+  });
   const back = () => navigation.leave(model.returnFromDetail);
   const sections = ['overview', 'work', 'memory', 'settings', 'history'] as const;
   const settingsSections: SettingsSection[] = ['profile', ...(page.models ? ['capabilities' as const] : []), ...(page.integrations ? ['connectors' as const, 'notifications' as const] : [])];

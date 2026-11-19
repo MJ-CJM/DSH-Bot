@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Button, Menu, IconEllipsisOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { BotCatalog, BotCatalogEntry } from '../state.js';
 import type { ActivityCatalog } from '../activity-state.js';
@@ -19,8 +19,6 @@ import css from '../styles/sidebar.module.css?inline';
 import modalCss from '../styles/bots.module.css?inline';
 
 export interface BotSessionsSidebarInjected extends ChatLauncherActions {
-  /** Compose this existing dialog behind the shell's one footer trigger. */
-  renderTrigger?(props: { openChats(): void; unreadCount: number; wide: boolean }): ReactNode;
   hooks: {
     catalog: Pick<BotCatalog, 'getSnapshot' | 'subscribe'>;
     activity: Pick<ActivityCatalog, 'getSnapshot' | 'subscribe'>;
@@ -60,7 +58,6 @@ export function groupBotSessions(
 /** rc.2 exposes footer actions, but no additive workspace section slot. */
 export function BotSessionsSidebar({
   wide,
-  renderTrigger,
   useSessions,
   useCatalog,
   useActivity,
@@ -130,7 +127,7 @@ export function BotSessionsSidebar({
   return (
     <>
       <style data-dsh-bot-sidebar-styles="">{css + identityCss}</style>
-      {renderTrigger ? renderTrigger({ openChats: () => { setError(undefined); setOpen(true); }, unreadCount, wide }) : <button
+      <button
         type="button"
         className={styles.trigger}
         aria-label={t('sidebar.sessions')}
@@ -169,7 +166,7 @@ export function BotSessionsSidebar({
             aria-label={t('activity.unreadCount', { count: unreadCount })}
           />
         )}
-      </button>}
+      </button>
       {(open || chat.dialog) && <style data-dsh-bot-sidebar-dialog-styles="">{modalCss}</style>}
       {open && !chat.dialog && (
         <Modal

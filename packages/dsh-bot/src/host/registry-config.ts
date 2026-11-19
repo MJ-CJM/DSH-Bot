@@ -5,6 +5,7 @@ import { messagingConfigFields, validateMessagingConfig, type MessagingConfig } 
 import Schema from '@deepseek-ai/schemastery';
 import { shadowConfigFields, type ShadowConfig } from './shadow/config.js';
 import { MEMORY_LIST_MAX_LIMIT } from '../shared/schema.js';
+import { effectiveGroupMemberLimit, GROUP_MEMBER_LIMIT } from '../shared/group-limits.js';
 import { Config as SupergroupSettings, type SupergroupConfig } from './supergroup/config.js';
 
 export interface Config extends MessagingConfig, ShadowConfig, ProactiveConfig {
@@ -116,7 +117,10 @@ const baseConfig = Schema.object({
   }),
   referenceMemoryTimeoutMs: Schema.number().min(1000).max(120000).step(1).default(30000),
   referenceMemoryMaxFileBytes: Schema.number().min(1024).max(67108864).step(1).default(8388608),
-  groupMaxMembers: Schema.number().min(2).max(16).step(1).default(8),
+  groupMaxMembers: Schema.transform(Schema.number().min(2).max(16).step(1), value => {
+    if (!Number.isSafeInteger(value)) throw new TypeError('groupMaxMembers must be an integer');
+    return effectiveGroupMemberLimit(value);
+  }).default(GROUP_MEMBER_LIMIT),
   groupMaxTurns: Schema.number().min(1).max(32).step(1).default(8),
   groupMaxDepth: Schema.number().min(1).max(8).step(1).default(1),
   groupContextMaxBytes: Schema.number().min(1024).max(262144).step(1).default(32768),

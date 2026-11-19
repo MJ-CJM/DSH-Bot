@@ -37,6 +37,14 @@ describe('native group statistics', () => {
     deliveries.push(row('conflict', { turnId: 't2' }));
     expect(statisticsDeliveries({ deliveries }, 't1').map(r => r.conflict)).toEqual([true, false]);
   });
+  it('keeps the final export review visible when an intermediate message has an uncertain receipt', () => {
+    const final = { id: 't1:m1', turnId: 't1', memberId: 'm1', childSessionId: 'c1', state: 'failed', reasonCode: 'export-approval-required' } as GroupDelivery;
+    const receipt = { ...final, id: `group-message:${'a'.repeat(64)}`, state: 'unknown', reasonCode: 'message-dispatch-unknown' } as GroupDelivery;
+    expect(statisticsDeliveries({ deliveries: [final, receipt] }, 't1').map(row => row.delivery)).toEqual([final]);
+    expect(groupStatisticsWorkers({ deliveries: [receipt, final], turns: [] }).map(row => row.delivery)).toEqual([final]);
+    const continuation = { ...final, id: `${receipt.id}:${'b'.repeat(64)}`, childSessionId: 'c2' };
+    expect(statisticsDeliveries({ deliveries: [final, receipt, continuation] }, 't1')).toHaveLength(2);
+  });
   it('defaults to recent active question, then recent question', () => {
     const turns = [{ id: 'old', createdAt: 1, state: 'running' }, { id: 'new', createdAt: 2, state: 'idle' }] as GroupTurn[];
     expect(defaultStatisticsTurn(turns)?.id).toBe('old'); assert.ok(turns[0]); turns[0].state = 'idle'; expect(defaultStatisticsTurn(turns)?.id).toBe('new');

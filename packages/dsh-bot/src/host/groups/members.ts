@@ -43,6 +43,7 @@ export class GroupMembers {
         await validateSupergroupAuthority(this.state, authority);
         if (input.members.some(key => !authority.readers.some(reader => sameBot(key, reader)))) throw new OperationError('approval-denied');
       }
+      this.state.checkMemberLimit(input.members, Boolean(authority));
       await this.state.validateMembers(input.members);
       this.state.route();
       if (!normalizeSessionTitle(input.name, Number.MAX_SAFE_INTEGER)) throw new OperationError('invalid');
@@ -175,6 +176,8 @@ export class GroupMembers {
       )
         throw new OperationError('conflict');
       if (!normalizeSessionTitle(input.name, Number.MAX_SAFE_INTEGER)) throw new OperationError('invalid');
+      this.state.checkMemberLimit(input.members, Boolean(g.supergroup),
+        this.state.members(g).filter(member => member.removedAt === undefined).map(member => member.bot));
       await this.state.validateMembers(input.members);
       await checkSupergroup(this.state, g);
       const old = this.state.members(g),
@@ -182,6 +185,8 @@ export class GroupMembers {
       const retainedMemberIds = new Set(old.filter(m => m.removedAt === undefined && input.members.some(b => sameBot(b, m.bot))).map(m => m.id));
       const memberSelections = g.memberModelSelections?.filter(row => retainedMemberIds.has(row.memberId));
       const removedMembers = old.some(m => m.removedAt === undefined && !retainedMemberIds.has(m.id));
+      const addedMembers = input.members.some(bot => !old.some(m => m.removedAt === undefined && sameBot(m.bot, bot)));
+      const membershipChanged = removedMembers || addedMembers;
       const removedSelections = (memberSelections?.length ?? 0) !== (g.memberModelSelections?.length ?? 0);
       const { memberModelSelections: _selections, ...record } = g;
       // Write intent revision first. A partial multi-table failure makes the group unavailable until reconciled.
@@ -194,7 +199,8 @@ export class GroupMembers {
         ...(input.onDemand !== undefined ? { onDemand: input.onDemand } : {}),
         memberRoles: (input.memberRoles ?? g.memberRoles ?? []).filter(row => input.members.some(bot => sameBot(bot, row.bot))),
         revision: g.revision + 1,
-        membershipRevision: g.membershipRevision + 1,
+        membershipRevision: g.membershipRevision + Number(membershipChanged),
+        ...(membershipChanged ? { exportApprovals: [] } : {}),
         updatedAt: at,
         state: 'recovery_needed' as const,
       };

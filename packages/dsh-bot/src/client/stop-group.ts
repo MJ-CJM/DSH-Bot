@@ -1,5 +1,5 @@
-import type { GroupSummary } from '../../shared/groups.js';
-import type { SupergroupWorkView } from '../../shared/supergroup.js';
+import type { GroupSummary } from '../shared/groups.js';
+import type { SupergroupWorkView } from '../shared/supergroup.js';
 
 /** Re-read exact authority before cancelling. A stale navigation projection
  * must not turn a delivered or uncertain work into a cancelled work. */

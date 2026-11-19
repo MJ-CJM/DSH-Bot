@@ -5,7 +5,7 @@ export const consolidationInputSchema = z.strictObject({ operationId: z.uuid(), 
   expectedRevision: z.number().int().nonnegative(), sourceIds: z.array(z.uuid()).min(1).max(8),
   provider: z.string().min(1).max(256), model: z.string().min(1).max(256) });
 export const consolidationDecisionSchema = z.strictObject({ operationId: z.uuid(), runId: z.uuid(), botId: z.string(),
-  expectedRevision: z.number().int().nonnegative(), action: z.enum(['accept', 'reject']),
+  expectedRevision: z.number().int().nonnegative(), action: z.enum(['accept', 'reject', 'close']),
   editedContent: z.string().trim().min(1).max(2048).optional() });
 export const consolidationRunSchema = z.strictObject({ id: z.uuid(), owner: botKeySchema, requestHash: hash,
   sourceIds: z.array(z.uuid()), epoch: z.number().int().nonnegative(), createdAt: z.number(), expiresAt: z.number(),
@@ -22,4 +22,4 @@ export type ConsolidationDecision = z.output<typeof consolidationDecisionSchema>
 export type ConsolidationRun = z.output<typeof consolidationRunSchema>;
 
 export const consolidationViewSchema = z.strictObject({ enabled: z.boolean(), revision: z.number().int().nonnegative(),
-  runs: z.array(consolidationRunSchema.extend({ content: z.string().optional() })) });
+  runs: z.array(consolidationRunSchema.extend({ content: z.string().optional(), unresolved: z.boolean().optional(), closedUnknown: z.boolean().optional() })) });

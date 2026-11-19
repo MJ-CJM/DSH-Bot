@@ -57,8 +57,9 @@ export function aggregateStatistics(rows: ChildStatistics[]) {
 }
 
 /** Receipts are not workers. Reject a child claimed by different questions/members. */
+const isMessageReceipt = (row: GroupDelivery) => row.reasonCode === 'message-published' || /^group-message:[a-f0-9]{64}$/.test(row.id);
 export function statisticsDeliveries(view: Pick<GroupView, 'deliveries'>, turnId: string) {
-  const workers = view.deliveries.filter(row => row.reasonCode !== 'message-published' && !row.joinedDeliveryId);
+  const workers = view.deliveries.filter(row => !isMessageReceipt(row) && !row.joinedDeliveryId);
   const owners = new Map<string, Set<string>>();
   for (const row of workers) if (row.childSessionId) {
     const set = owners.get(row.childSessionId) ?? new Set<string>();
@@ -79,7 +80,7 @@ export function groupStatisticsWorkers(view: Pick<GroupView, 'deliveries' | 'tur
   const rows = new Map<string, { delivery: GroupDelivery; childId: string; live: boolean }>();
   for (const delivery of view.deliveries) {
     const childId = delivery.childSessionId;
-    if (!childId || delivery.reasonCode === 'message-published' || delivery.joinedDeliveryId || ['pending', 'starting'].includes(delivery.state) || rows.has(childId)) continue;
+    if (!childId || isMessageReceipt(delivery) || delivery.joinedDeliveryId || ['pending', 'starting'].includes(delivery.state) || rows.has(childId)) continue;
     rows.set(childId, { delivery, childId, live: active.has(delivery.turnId) || ['running', 'unknown'].includes(delivery.state) });
   }
   return [...rows.values()];

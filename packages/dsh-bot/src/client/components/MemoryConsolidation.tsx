@@ -6,11 +6,15 @@ import type { SharedMemoryBinding } from './SharedMemoryPanel.js';
 import type { MemoryPanelProps } from './MemoryPanel.js';
 import styles from '../styles/bots.module.css';
 
-export function MemoryConsolidation({ binding, botId, t }: { binding: SharedMemoryBinding; botId: string; t: MemoryPanelProps['t'] }) {
+export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { binding: SharedMemoryBinding; botId: string; defaultRoute?: { provider: string; model: string }; t: MemoryPanelProps['t'] }) {
   const [view, setView] = useState<z.output<typeof consolidationViewSchema>>(), [sources, setSources] = useState<ManagedMemoryPage>();
-  const [selected, setSelected] = useState<string[]>([]), [provider, setProvider] = useState(''), [model, setModel] = useState('');
+  const [selected, setSelected] = useState<string[]>([]), [provider, setProvider] = useState(defaultRoute?.provider ?? ''), [model, setModel] = useState(defaultRoute?.model ?? '');
+  const [routeEdited, setRouteEdited] = useState(false);
+  useEffect(() => { if (!routeEdited) { setProvider(defaultRoute?.provider ?? ''); setModel(defaultRoute?.model ?? ''); } }, [defaultRoute?.provider, defaultRoute?.model, routeEdited]);
   const [edits, setEdits] = useState<Record<string, string>>({}), [busy, setBusy] = useState(false), [error, setError] = useState(false);
   const pending = useRef<ConsolidationInput | ConsolidationDecision>(), alive = useRef(true), locked = useRef(false);
+  const routeFields = <><label>{t('memory.consolidation.provider')}<input value={provider} onChange={e => { setRouteEdited(true); setProvider(e.target.value); }} /></label>
+    <label>{t('memory.consolidation.model')}<input value={model} onChange={e => { setRouteEdited(true); setModel(e.target.value); }} /></label></>;
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const load = async () => {
     const [status, rows] = await Promise.all([binding.remote().consolidationStatus(botId),
@@ -42,13 +46,16 @@ export function MemoryConsolidation({ binding, botId, t }: { binding: SharedMemo
       {sources?.rows.map(row => <label key={row.version.versionId}><input type="checkbox" checked={selected.includes(row.version.versionId)}
         disabled={!selected.includes(row.version.versionId) && selected.length >= 8}
         onChange={e => setSelected(e.target.checked ? [...selected, row.version.versionId] : selected.filter(id => id !== row.version.versionId))} />{row.payload.content}</label>)}
-      <label>{t('memory.consolidation.provider')}<input value={provider} onChange={e => setProvider(e.target.value)} /></label>
-      <label>{t('memory.consolidation.model')}<input value={model} onChange={e => setModel(e.target.value)} /></label>
+      {defaultRoute ? <><p>{t('memory.consolidation.botModel')}: {provider} / {model}</p><details><summary>{t('chat.advanced')}</summary>{routeFields}</details></> : routeFields}
       <button type="button" className={styles.button} disabled={!selected.length || !provider.trim() || !model.trim()} onClick={() => void run({ operationId: crypto.randomUUID(), botId,
         expectedRevision: view.revision, sourceIds: selected, provider: provider.trim(), model: model.trim() })}>{t('memory.consolidation.generate')}</button>
     </fieldset>}
     {view?.runs.map(row => <section key={row.id} data-consolidation-state={row.state}>
-      <p>{t(`memory.consolidation.state.${row.state}`)}</p>
+      <p>{row.closedUnknown ? t('memory.consolidation.closedUnknown') : t(`memory.consolidation.state.${row.state}`)}</p>
+      {row.unresolved && <><p>{t('memory.consolidation.unknownNotice')}</p>
+        <code>{row.id}</code><p>{t('memory.consolidation.provider')}: {row.provider} / {row.model} · {row.modelRequests}</p>
+        <button type="button" className={styles.button} disabled={busy} onClick={() => void run({ operationId: crypto.randomUUID(), runId: row.id,
+          botId, expectedRevision: view.revision, action: 'close' })}>{t('memory.consolidation.closeUnknown')}</button></>}
       {row.content && <><p>{t('memory.consolidation.candidateNotice')}</p>
         <textarea aria-label={t('memory.consolidation.candidate')} value={edits[row.id] ?? row.content} maxLength={2048}
           disabled={busy || !!pending.current} onChange={e => setEdits({ ...edits, [row.id]: e.target.value })} />

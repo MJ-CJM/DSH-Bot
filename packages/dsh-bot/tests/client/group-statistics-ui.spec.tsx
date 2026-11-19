@@ -9,7 +9,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { ExecutionBridge } from '../../src/client/group-execution.js';
 import { GroupStatsSource } from '../../src/client/group-statistics.js';
 import { GroupStatisticsBar, GroupMemberStatistics } from '../../src/client/components/GroupStatistics.js';
-import type { GroupDelivery, GroupTurn } from '../../src/shared/groups.js';
+import { groupKey, type GroupDelivery } from '../../src/shared/groups.js';
 import { view } from './group-fixture.js';
 import { click } from './helpers.js';
 import en from '../../locale/en.json';
@@ -33,7 +33,9 @@ async function fixture() {
   const bridge = { ctx: { get: (name: string) => name === 'configForms' ? { get: () => form } : undefined }, statistics } as unknown as ExecutionBridge;
   for (let n = 0; n < 100; n++) {
     const id = `t${n}`;
-    data.turns.push({ id, createdAt: n, state: 'idle', orderedMemberIds: Array.from({ length: 16 }, (_, m) => `m${m}`), inputMessageId: `q${n}` } as GroupTurn);
+    data.turns.push({ id, group: groupKey(data.group), operationId: `op${n}`, requestDigest: id, inputMessageId: `q${n}`,
+      createdAt: n, updatedAt: n, revision: 1, schemaVersion: 1, membershipRevision: data.group.membershipRevision,
+      orderedMemberIds: Array.from({ length: 16 }, (_, m) => `m${m}`), mode: 'natural', contextThroughSeq: n, state: 'idle' });
     data.messages.push({ id: `q${n}`, seq: n, at: n, text: `Question ${n}`, turnId: id, authorKind: 'user' });
     for (let m = 0; m < 16; m++) data.deliveries.push({ id: `${id}-d${m}`, turnId: id, memberId: `m${m}`, childSessionId: `${id}-c${m}`, state: 'completed', bot: { botId: 'alpha', botCreatedAt: 1 } } as GroupDelivery);
   }

@@ -20,6 +20,7 @@ export function mergeLabels(...inputs: DataLabel[]): DataLabel {
   const ranks = ['candidate', 'user_stated', 'user_confirmed'] as const;
   return { readers, originTrust: ranks[Math.min(...labels.map(l => ranks.indexOf(l.originTrust)))] ?? 'candidate',
     sourceVersions: unique(labels.flatMap(l => l.sourceVersions)), restrictions: unique(labels.flatMap(l => l.restrictions)),
-    grants: first.grants.filter(id => labels.every(l => l.grants.includes(id))) };
+    grants: first.grants.filter(id => labels.every(l => l.grants.includes(id))),
+    ...(labels.some(l => l.groupCopies?.length) ? { groupCopies: unique(labels.flatMap(l => l.groupCopies ?? [])) } : {}) };
 }
 export const canReadLabel = (label: DataLabel, bot: BotKey) => label.readers === 'shared' || label.readers.some(key => sameBot(key, bot));

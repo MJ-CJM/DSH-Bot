@@ -20,3 +20,17 @@ it('distinguishes a live approval from an unrecoverable audit tail and never pro
   expect(recoveryView(work(), events, false).nativeApprovalCount).toBe(0);
   expect(continuousCapabilities).toMatchObject({ timerWakeup: false, durableToolResume: false });
 });
+it('does not attribute another question in the same Bot main to the old work', () => {
+  const events = [{ type: 'user/message', data: { id: 'unrelated', source: { kind: 'user' } } }] as unknown as SessionEvent[];
+  expect(recoveryView(work(), events, true).state).toBe('waiting-input');
+  const done = { ...work(), state: 'completed' as const };
+  expect(recoveryView(done, events, true).state).toBe('closed');
+});
+it('shows a newly queued exact resume before an older completed or delivered state', () => {
+  const w = { ...work(), state: 'completed' as const, resumes: [{ messageId: 'resume', state: 'queued' }] } as SupergroupWork;
+  expect(recoveryView(w, [], false).state).toBe('queued');
+  const running = [{ type: 'turn/start', data: { turn: 2 } }, { type: 'user/message', data: { id: 'resume', source: { kind: 'user' } } }] as unknown as SessionEvent[];
+  expect(recoveryView(w, running, true).state).toBe('running');
+  running.push({ type: 'turn/end', data: { turn: 2 } } as SessionEvent);
+  expect(recoveryView(w, running, false).state).toBe('closed');
+});

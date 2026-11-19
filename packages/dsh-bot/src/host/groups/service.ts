@@ -1,3 +1,4 @@
+import { digest } from '../common/operations.js';
 import { getGroupWorkerBinding, installWorkerTools, isLiveGroupWorker } from './worker-tool.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { SessionSeq } from '@deepseek-ai/dsh-session';
@@ -6,7 +7,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { Domain } from '@deepseek-ai/dsh-storage-domain';
 import type { DshBotRegistry } from '../registry.js';
 
-import type { groupsDomain } from './model.js';
+import { groupExportReviewsDomain, type groupsDomain } from './model.js';
 import { GroupState } from './state.js';
 import { GroupRoots } from './roots.js';
 import { TeamRecipes } from './team-recipes.js';
@@ -15,8 +16,10 @@ import { GroupMessages } from './messages.js';
 import { GroupTurnRunner } from './turn-runner.js';
 import { GroupTurns } from './turns.js';
 import { GroupRecall } from './recall.js';
+import { GroupExportReview } from './export-review.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import type { ProactiveGroupCopyRef } from '../data-flow/outlets.js';
+import { GroupExportSettings } from './export-settings.js';
 import type { GroupDelivery, GroupKey, GroupRecord, GroupTurn } from '../../shared/groups.js';
 import { supergroupMetadata, validateSupergroupAuthority, type SupergroupAuthority, type SupergroupExpertHandler } from './supergroup-admission.js';
 export { groupsDomain } from './model.js';
@@ -32,12 +35,16 @@ export class Groups {
   private roots: GroupRoots;
   private membership: GroupMembers;
   readonly teamRecipes: TeamRecipes;
+  readonly exportReview: GroupExportReview;
+  readonly exportSettings: GroupExportSettings;
   private messages: GroupMessages;
   private turns: GroupTurns;
   private recallReader: GroupRecall;
   constructor(ctx: Context, registry: DshBotRegistry, domain: Domain<typeof groupsDomain>, changed: () => void) {
     this.state = new GroupState(ctx, registry, domain, changed);
     this.roots = new GroupRoots(this.state);
+    this.exportReview = new GroupExportReview(this.state, this.roots);
+    this.exportSettings = new GroupExportSettings(this.state);
     this.membership = new GroupMembers(this.state, this.roots);
     this.teamRecipes = new TeamRecipes(this.state, this.membership);
     this.messages = new GroupMessages(this.state, this.roots);
@@ -54,8 +61,9 @@ export class Groups {
       activations: this.state.activations.size,
     };
   }
-  start(...args: Parameters<GroupRoots['start']>) {
-    return this.roots.start(...args);
+  async start() {
+    this.state.exportReviews = await this.state.ctx.storageDomain.open(groupExportReviewsDomain);
+    await this.roots.start();
   }
   open(...args: Parameters<GroupRoots['open']>) { return this.roots.open(...args); }
   create(value: unknown) { return this.membership.create(value); }
@@ -211,19 +219,48 @@ export class Groups {
         if (this.state.chains.has(turn.id) || !['completed', 'partial', 'cancelled'].includes(turn.state)) return false;
         const group = this.state.table('groups').get(turn.group.groupId);
         if (group?.createdAt !== turn.group.groupCreatedAt) return false;
-        refs.set(turn.id, { sessionId: group.rootSessionId, outlet: 'group-input' });
+        refs.set(turn.id, this.proactiveInputRef(turn, group, turn.id, turn.inputFlowId, turn.inputFlowSessionId));
         const deliveries = this.state.deliveries(turn.id);
         if (deliveries.length !== turn.orderedMemberIds.length ||
             deliveries.some((delivery, index) => delivery.memberId !== turn.orderedMemberIds[index])) return false;
         for (const delivery of deliveries) {
           if (['pending', 'starting', 'running', 'unknown'].includes(delivery.state) ||
               this.state.proactiveDrains.get(delivery.id) === false) return false;
-          refs.set(delivery.id, { sessionId: group.rootSessionId, outlet: 'group-input' });
+          refs.set(delivery.id, this.proactiveInputRef(turn, group, delivery.id, delivery.inputFlowId, delivery.inputFlowSessionId, delivery.bot));
           refs.set(`${delivery.id}:result`, { sessionId: delivery.childSessionId, outlet: 'group-result' });
         }
       }
       return flow.purgeProactiveGroupCopies(selected, refs);
     });
+  }
+  private proactiveInputRef(turn: import('../../shared/groups.js').GroupTurn, group: import('../../shared/groups.js').GroupRecord,
+    call: string, flowId?: string, sessionId?: string, bot?: import('../../shared/identity.js').BotKey): ProactiveGroupCopyRef {
+    if (flowId) return { flowId, sessionId, outlet: 'group-input' };
+    const flow = outlets(this.state.registry);
+    const matches = [...flow?.kernel.domain.table('flows').entries() ?? []].flatMap(([id, row]) => {
+      const e = row.envelope;
+      if (!e || e.outlet !== 'group-input' || e.binding.invocation.split('/').at(-1) !== call) return [];
+      const session = e.binding.invocation.split('/')[0];
+      if (session === group.rootSessionId) return [{ flowId: id, sessionId: session, outlet: 'group-input' as const }];
+      // Old projected records predate stored flow IDs. Reconstruct the exact context identity and bind the original input.
+      if (session !== `group-context-${digest([group.id, group.createdAt, turn.membershipRevision, e.label.groupCopies ?? []])}`) return [];
+      try {
+        if (bot) {
+          if (e.binding.target.kind !== 'bot' || JSON.stringify(e.binding.target.bot) !== JSON.stringify(bot) || !e.content.startsWith('Group: ')) return [];
+          const content = JSON.parse(e.content.slice(e.content.lastIndexOf('\n') + 1));
+          if (content.questionSource?.id !== turn.inputMessageId) return [];
+        } else {
+          const message = JSON.parse(e.content);
+          if (e.binding.target.kind !== 'group' || e.binding.target.groupId !== group.id || e.binding.target.groupCreatedAt !== group.createdAt ||
+            message.id !== turn.inputMessageId || message.source?.kind !== 'dsh-bot-group-proactive' ||
+            message.source.assignmentId !== turn.proactive?.assignmentId || message.source.turnId !== turn.id ||
+            message.source.group?.groupId !== group.id || message.source.group?.groupCreatedAt !== group.createdAt) return [];
+        }
+        return [{ flowId: id, sessionId: session, outlet: 'group-input' as const }];
+      } catch { return []; }
+    });
+    // Multiple or unverified projected records remain blocked by exact invocation checks in the outlet.
+    return matches.length === 1 ? matches[0]! : { sessionId: group.rootSessionId, outlet: 'group-input' };
   }
   proactiveRequestAllowance(turnId: string) {
     const deliveries = this.state.deliveries(turnId);
@@ -304,6 +341,7 @@ export class Groups {
       this.state.shutdownPhase = 'unregistering-preset';
       await attempt(() => this.state.unregister?.());
       this.state.shutdownPhase = 'closing-domain';
+      await attempt(() => this.state.exportReviews?.close());
       await attempt(() => this.state.domain.close());
       this.state.shutdownPhase = errors.length ? 'failed' : 'closed';
       if (errors.length) throw new AggregateError(errors, 'Group shutdown failed');
