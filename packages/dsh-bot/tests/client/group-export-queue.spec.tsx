@@ -235,3 +235,37 @@ it('clears selections from a different round so one batch can never span two que
     expect(f.row(0).querySelector('pre')).toBeTruthy();
   } finally { await f.close(); }
 });
+
+it('reconciles an uncertain decision from the exact published or rejected delivery without dispatching', async () => {
+  const f = await mount();
+  try {
+    for (const index of [0, 1]) {
+      await f.preview(index);
+      f.decideExport.mockRejectedValueOnce(new Error('Response lost'));
+      await click(button(f.row(index), f.t('groups.export.allow')));
+    }
+    f.data.deliveries = f.data.deliveries.map((row, i) => i > 1 ? row : { ...row, revision: 2, exportFlowId: undefined,
+      ...(i === 0 ? { state: 'completed', outputMessageId: 'published', outputSeq: 99, reasonCode: undefined }
+        : { state: 'failed', reasonCode: 'export-rejected' }) });
+    await f.render();
+    expect(f.row(0).textContent).toContain(f.t('groups.export.receipt.sent'));
+    expect(f.row(1).textContent).toContain(f.t('groups.export.receipt.rejected'));
+    await click(button(f.element, f.t('groups.export.clearReceipts')));
+    expect(f.row(0)).toBeNull(); expect(f.row(1)).toBeNull();
+    expect(f.decideExport).toHaveBeenCalledTimes(2);
+  } finally { await f.close(); }
+});
+
+it('rechecks an unchanged pending decision with a fresh Host preview and no selection', async () => {
+  const f = await mount();
+  try {
+    await f.preview(0);
+    f.decideExport.mockRejectedValueOnce(new Error('Response lost'));
+    await click(button(f.row(0), f.t('groups.export.allow')));
+    await click(button(f.row(0), f.t('groups.export.checkReceipt')));
+    expect(f.reviewExport).toHaveBeenCalledTimes(2);
+    expect(f.row(0).querySelector('pre')).not.toBeNull();
+    expect(f.row(0).querySelector<HTMLInputElement>('input')?.checked).toBe(false);
+    expect(f.decideExport).toHaveBeenCalledTimes(1);
+  } finally { await f.close(); }
+});

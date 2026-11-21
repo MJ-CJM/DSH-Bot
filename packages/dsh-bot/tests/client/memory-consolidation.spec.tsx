@@ -69,3 +69,45 @@ test.each([true, false])('uses an explicit Bot model by default and never guesse
     } else expect(consolidate).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test.each(['conflict', 'limit', 'lost'] as const)('recovers correctly when consolidation reports %s', async outcome => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const source = '22222222-2222-4222-8222-222222222222';
+  let revision = 4;
+  const consolidate = vi.fn(async (_input: { operationId: string; expectedRevision: number }) => {
+    if (revision === 4) {
+      revision = 5;
+      if (outcome === 'conflict') return { ok: false, error: { code: 'bot/conflict' } };
+      if (outcome === 'limit') return { ok: false, error: { code: 'memory/consolidation-limit' } };
+      throw Error('Lost response');
+    }
+    return { ok: true, value: {} };
+  });
+  const binding = { refresh: vi.fn(async () => {}), remote: () => ({ consolidate,
+    consolidationStatus: async () => ({ ok: true, value: { enabled: true, revision, runs: [] } }),
+    query: async () => ({ ok: true, value: { revision, rows: [{ version: { versionId: source }, payload: { content: 'Source' } }], total: 1 } }) }) } as unknown as SharedMemoryBinding;
+  const t = ((key: keyof typeof en.ui) => en.ui[key]) as PropsLocale<'dsh-bot'>['t'];
+  const host = document.createElement('main'), root = createRoot(host);
+  const button = (key: keyof typeof en.ui) => [...host.querySelectorAll('button')].find(b => b.textContent === t(key));
+  try {
+    await act(async () => root.render(<MemoryConsolidation binding={binding} botId="alpha" t={t} defaultRoute={{ provider: 'fixture', model: 'fixture' }} />));
+    await act(async () => { const details = host.querySelector('details')!; details.open = true; details.dispatchEvent(new Event('toggle', { bubbles: true })); });
+    await act(async () => host.querySelector<HTMLInputElement>('fieldset input[type=checkbox]')!.click());
+    await act(async () => button('memory.consolidation.generate')!.click());
+    expect(consolidate).toHaveBeenCalledTimes(1);
+    const original = consolidate.mock.calls[0]![0];
+    if (outcome !== 'lost') {
+      expect(host.querySelector('[role=alert]')?.textContent).toBe(t(outcome === 'limit' ? 'memory.consolidation.limit' : 'memory.consolidation.changed'));
+      expect(button('memory.consolidation.reconcile')).toBeUndefined();
+      await act(async () => button('memory.consolidation.generate')!.click());
+      const next = consolidate.mock.calls[1]![0];
+      expect(next.expectedRevision).toBe(5);
+      expect(next.operationId).not.toBe(original.operationId);
+    } else {
+      expect(host.querySelector('fieldset')?.disabled).toBe(true);
+      await act(async () => button('memory.consolidation.reconcile')!.click());
+      expect(consolidate.mock.calls[1]?.[0]).toEqual(original);
+    }
+    expect(consolidate).toHaveBeenCalledTimes(2);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

@@ -93,15 +93,34 @@ export class V2MemoryStore {
   private async put(record: MemoryRecord, owner: BotKey): Promise<void> {
     const previous = this.kernel.snapshot.versions.get(record.id);
     if (previous?.consolidation) throw new Error('Use consolidation review for derived memories');
-    const { version, payload } = privateVersion(this.kernel, record, owner, { memoryId: record.id,
+    const next = privateVersion(this.kernel, record, owner, { memoryId: record.id,
       versionId: randomUUID(), contentRef: randomUUID(), revision: (previous?.revision ?? 0) + 1 },
       record.source?.by === 'model' ? 'model' : 'management');
+    const { version } = next;
+    let payload = next.payload;
+    let applySource = true;
     if (previous) {
-      version.labels = mergeLabels(version.labels, previous.labels);
+      const stored = this.kernel.domain.table('payloads').get(previous.contentRef);
+      if (!stored || !stored.legacy) throw missingMemory();
+      // The legacy view edits only the fields it exposes. Keep the structured
+      // fact, including its effective interval and classification, in the same revision.
+      payload = { ...stored, content: record.content, legacy: { ...stored.legacy, ...next.payload.legacy, id: stored.legacy.id } };
+      const sameContent = stored.content === record.content;
+      version.kind = previous.kind;
+      version.recordedAt = Math.max(version.recordedAt, previous.recordedAt + 1);
+      if (sameContent) {
+        version.trust = previous.trust;
+        version.provenance = previous.provenance;
+      } else {
+        delete payload.confirmation;
+        delete payload.sourceExcerpt;
+      }
+      applySource = !sameContent || stored.legacy.source?.sessionId !== record.source?.sessionId || stored.legacy.source?.by !== record.source?.by;
+      version.labels = sameContent ? { ...previous.labels } : mergeLabels(version.labels, previous.labels);
       version.labels.sourceVersions = [...new Set([...version.labels.sourceVersions, previous.versionId])];
-      version.sourceRefs = [...previous.sourceRefs, ...version.sourceRefs, { parentVersionId: previous.versionId }];
+      version.sourceRefs = [...previous.sourceRefs, ...(applySource ? version.sourceRefs : []), { parentVersionId: previous.versionId }];
     }
-    if (record.source?.by === 'model' && record.source.sessionId) {
+    if (applySource && record.source?.by === 'model' && record.source.sessionId) {
       const lineage = new MemoryLineage(this.kernel), seen = lineage.seen(record.source.sessionId);
       if (seen.length) version.labels = mergeLabels(version.labels, lineage.label(seen));
       const session = this.kernel.domain.table('flow_sessions').get(record.source.sessionId);

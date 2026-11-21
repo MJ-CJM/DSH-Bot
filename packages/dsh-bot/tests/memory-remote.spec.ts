@@ -268,7 +268,7 @@ describe('memory Remote methods over the T06 registry queue and actual JSON doma
         createManaged: [{ botId: 'alpha', scope: 'shared', kind: 'user_fact', content: 'MANAGED', subject: 'user',
           factKey: 'preference', valid: { from: 1, to: null, basis: 'explicit' }, expectedRevision: kernel.seq }],
         revise: [{ id: managedId, expectedRevision: kernel.seq, patch: { content: 'MANAGED_EDIT' } }],
-        confirm: [{ id: target.id, botId: 'alpha', scope: 'shared', expectedRevision: kernel.seq }],
+        confirm: [{ id: target.id, versionId: kernel.snapshot.versions.get(target.id)?.versionId ?? consolidationSourceId, botId: 'alpha', scope: 'shared', expectedRevision: kernel.seq }],
         resolve: [{ ids: [managedId], selected: managedId, choice: 'select', expectedRevision: kernel.seq }],
         previewContribution: [publishedId], previewShared: [{ memoryId: publishedId, mode: 'related' }],
       });

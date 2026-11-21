@@ -15,7 +15,7 @@ export const memoryCreateSchema = fields.extend({
   kind: z.enum(['user_fact', 'user_event', 'bot_role', 'how_to_work']), expectedRevision: safeCounter,
 });
 export const memoryReviseSchema = z.strictObject({ id: randomId, expectedRevision: safeCounter, patch: fields.partial() });
-export const memoryConfirmSchema = z.strictObject({ id: randomId, expectedRevision: safeCounter,
+export const memoryConfirmSchema = z.strictObject({ id: randomId, versionId: randomId, expectedRevision: safeCounter,
   scope: z.enum(['private', 'shared']), botId: botIdSchema });
 export const memoryResolveSchema = z.strictObject({
   ids: z.array(randomId).min(1).max(50).refine(ids => new Set(ids).size === ids.length), expectedRevision: safeCounter,

@@ -75,9 +75,9 @@ export function BotList({
         if (id) onSelect(id);
       }}
     >
-      <style>{identityCss}</style>{entries.map(({ bot }) => {
+      <style>{identityCss}</style>{entries.map(({ bot, status }) => {
         const latest = activityByBot.get(bot.id);
-        const preview = latest?.latest
+        const preview = latest?.mainSessionState === 'unavailable' || status?.mainSessionState === 'unavailable' ? t('activity.mainUnavailable') : latest?.latest
           ? previewText(latest.latest.preview, t)
           : bot.description || t('bots.noSessions');
         return (

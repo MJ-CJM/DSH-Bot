@@ -1,4 +1,4 @@
-import type { SessionId } from '@deepseek-ai/dsh-session';
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session';
 import {
   GROUP_ROOT_PRESET,
   groupPageSchema,
@@ -22,14 +22,16 @@ export class GroupMessages {
     private state: GroupState,
     private roots: GroupRoots,
   ) {}
-  messages(g: GroupRecord): GroupMessage[] {
+  messages(g: GroupRecord, turns = this.state.turns(g), latestOnly = false): GroupMessage[] {
     const agent = this.state.roots.get(g.id)?.agent ?? this.state.ctx.agents.get(g.rootSessionId as SessionId);
     if (!agent || agent.session.header.agentPreset !== GROUP_ROOT_PRESET) return [];
-    const inputs = new Map(this.state.turns(g).map((t) => [t.inputMessageId, t.id]));
-    return agent.session.snapshotEvents().flatMap<GroupMessage>((e) => {
+    const inputs = new Map(turns.map(turn => [turn.inputMessageId, turn]));
+    const events = agent.session.snapshotEvents();
+    const project = (e: SessionEvent): GroupMessage[] => {
       if (e.type !== 'user/message') return [];
       const s = e.data.source;
-      const turnId = inputs.get(e.data.id);
+      const turn = inputs.get(e.data.id);
+      const turnId = turn?.id;
       const uploadSource = s.kind === 'user' ? s as typeof s & { group?: GroupKey; turnId?: string; rpcId?: string } : undefined;
       const legacyUpload = turnId !== undefined && uploadSource?.rpcId === turnId && uploadSource.turnId === turnId &&
         uploadSource.group?.groupId === g.id && uploadSource.group.groupCreatedAt === g.createdAt;
@@ -66,8 +68,16 @@ export class GroupMessages {
       if (g.supergroup && s.kind === 'user' && (s as { supergroupWorkId?: string }).supergroupWorkId === g.supergroup.workId &&
         (s as { group?: GroupKey }).group?.groupId === g.id && (s as { group?: GroupKey }).group?.groupCreatedAt === g.createdAt)
         return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: turnId ?? '', authorKind: 'user' as const }];
-      return turnId ? [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId, ...(attachments.length ? { attachments, hasNonText: true } : {}), authorKind: 'user' as const, replyTo: this.state.turns(g).find(t => t.id === turnId)?.replyTo }] : [];
-    });
+      return turnId ? [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId, ...(attachments.length ? { attachments, hasNonText: true } : {}), authorKind: 'user' as const, replyTo: turn?.replyTo }] : [];
+    };
+    if (latestOnly) {
+      for (let index = events.length - 1; index >= 0; index--) {
+        const row = project(events[index]!);
+        if (row.length) return row;
+      }
+      return [];
+    }
+    return events.flatMap(project);
   }
   async openAttachment(key: GroupKey, messageId: string, attachmentId: string, signal = this.state.startup.signal) {
     const path = await this.state.queue.run(async () => {
@@ -90,7 +100,7 @@ export class GroupMessages {
     if (!controller?.workspaceDesktop().available) throw new OperationError('unsupported');
     return controller.openWorkspacePath({ path }, signal);
   }
-  async summary(g: GroupRecord): Promise<GroupSummary> {
+  async summary(g: GroupRecord, turns = this.state.turns(g), messages?: GroupMessage[]): Promise<GroupSummary> {
     const members = this.state.members(g),
       unavailable: string[] = [];
     for (const m of members.filter((m) => m.enabled)) {
@@ -100,10 +110,10 @@ export class GroupMessages {
         unavailable.push(m.id);
       }
     }
-    const latest = this.messages(g).at(-1),
+    const latest = (messages ?? this.messages(g, turns, true)).at(-1),
       read = this.state.table('read_state').get(g.id);
     return {
-      exportPendingCount: countPendingGroupExports(this.state, g),
+      exportPendingCount: countPendingGroupExports(this.state, g, turns),
       group: g,
       members,
       unread: Boolean(latest && latest.seq > (read?.throughSeq ?? -1)),
@@ -112,7 +122,7 @@ export class GroupMessages {
         ? { latest: { seq: latest.seq, at: latest.at, ...(latest.speaker ? { speaker: latest.speaker } : {}) } }
         : {}),
       unavailableMemberIds: unavailable,
-      running: this.state.turns(g).some((t) => !terminal(t)),
+      running: turns.some((t) => !terminal(t)),
       ...(this.state.reasons.has(g.id) ? { reason: this.state.reasons.get(g.id) } : {}),
     };
   }
@@ -149,11 +159,12 @@ export class GroupMessages {
     return this.state.queue.run(async (): Promise<GroupView> => {
       const g = this.state.record(key);
       await this.roots.restore(g).catch(() => {});
-      const rows = this.messages(g).filter((m) => p.beforeSeq === undefined || m.seq < p.beforeSeq);
       const turns = this.state.turns(g);
+      const messages = this.messages(g, turns);
+      const rows = p.beforeSeq === undefined ? messages : messages.filter(m => m.seq < p.beforeSeq!);
       const closed = this.state.closedExportReviews(groupKey(g));
       return {
-        ...(await this.summary(g)),
+        ...(await this.summary(g, turns, messages)),
         turns,
         deliveries: turns.flatMap(t => this.state.deliveries(t.id).map(delivery => {
           const staleExportClosedAt = closed.get(delivery.id);

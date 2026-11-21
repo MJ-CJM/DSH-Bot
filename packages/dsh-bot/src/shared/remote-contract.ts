@@ -147,6 +147,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'memory/not-found': Record<string, never>;
     'memory/too-large': Record<string, never>;
     'memory/rejected': Record<string, never>;
+    'memory/consolidation-limit': Record<string, never>;
     'store/unavailable': Record<string, never>;
     'activity/not-found': Record<string, never>;
   }

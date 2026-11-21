@@ -10,8 +10,9 @@ import type {
 import { digest, OperationError, } from '../common/operations.js';
 import { messageEvidence } from './evidence.js';
 import { MessagingRecovery } from './recovery.js';
+import { appendDisplay } from './display-turn.js';
 export class MessagingDelivery extends MessagingRecovery {
-  protected async mirror(r: MessageRecord) {
+  protected async mirror(r: MessageRecord, signal?: AbortSignal) {
     if (r.outgoingRef) return;
     const source = await this.resolve(r.envelope.fromSessionId);
     await this.exact(source);
@@ -26,9 +27,9 @@ export class MessagingDelivery extends MessagingRecovery {
     let seq = existing?.seq;
     if (seq === undefined) {
       if (!r.outgoingInput) throw new OperationError('recovery-needed');
-      seq = source.session.append('user/message', r.outgoingInput as unknown as UserMessage, {
-        surfaceOp: 'append',
-      }).seq;
+      const message = r.outgoingInput as unknown as UserMessage;
+      seq = r.execution && signal ? await appendDisplay(source, message, signal)
+        : source.session.append('user/message', message, { surfaceOp: 'append' }).seq;
     }
     if (!(await this.ctx.sessions.flush(source.session))) throw new OperationError('recovery-needed');
     await this.store.update(r.envelope.id, {

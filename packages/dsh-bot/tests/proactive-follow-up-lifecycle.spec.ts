@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
 import { createScope, scopeTarget } from '@deepseek-ai/dsh-scope';
 import type { Context } from '@deepseek-ai/cordis';
@@ -9,7 +10,8 @@ import { alpha, withIntegrations } from './integration-support.js';
 import { proactiveWorker } from './proactive-worker-fixture.js';
 import type { FollowUpIngest } from '../src/shared/proactive/follow-up.js';
 
-it('owns main-scoped native callbacks, reads durable end after residency disappears and removes every listener', async () => {
+it.each(['completed', 'blocked', 'interrupted', 'max-tokens'] as const)(
+  'projects a durable %s end after eviction, including existing v1 tracking heads, and removes every listener', async reason => {
   const core = await proactiveWorker();
   try {
     await withIntegrations(async f => {
@@ -44,16 +46,33 @@ it('owns main-scoped native callbacks, reads durable end after residency disappe
         child.append('subagent/descriptor', { version: 3, mode: 'continuable', provider: 'spawn', label: 'Scoped native task' });
         child.append('turn/start', { turn: 1 });
         const info = { id: childId, runId: 'scoped-run' as SubagentRunId, provider: 'spawn', local: true };
-        owner.ctx.emit(scopeTarget(runtime, key), 'subagent/start', info);
-        await bridge.flush();
-        expect(await core.read({ kind: 'follow-up-page', input: { subject } })).toMatchObject({ page: { rows: [
-          { condition: { kind: 'tracking' }, origin: { sessionId: mainId, childSessionId: childId } },
-        ] } });
-        child.append('turn/end', { turn: 1, reason: { kind: 'completed' } }); resident = false;
+        if (reason === 'completed') {
+          owner.ctx.emit(scopeTarget(runtime, key), 'subagent/start', info);
+          await bridge.flush();
+          expect(await core.read({ kind: 'follow-up-page', input: { subject } })).toMatchObject({ page: { rows: [
+            { condition: { kind: 'tracking' }, origin: { sessionId: mainId, childSessionId: childId } },
+          ] } });
+        }
+        child.append('turn/end', { turn: 1, reason: { kind: reason } }); resident = false;
+        if (reason !== 'completed') {
+          const end = child.snapshotEvents().at(-1)!;
+          const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
+          const payload = { origin: { kind: 'native-subagent' as const, sessionId: mainId, childSessionId: childId, turn: 1 },
+            title: 'Scoped native task', condition: { kind: 'tracking' as const } };
+          const policy = await core.read({ kind: 'follow-up-subjects' });
+          if (policy.kind !== 'follow-up-subjects' || !policy.rows[0]) throw new Error('Policy unavailable');
+          await core.submit({ kind: 'follow-up-ingest', input: { kind: 'local-task-state/v1', subject,
+            sourceId: `child-v1:${hash([mainId, childId])}`, sourceGeneration: child.header.createdAt,
+            pauseEpoch: policy.rows[0].pauseEpoch, expectedCursor: null,
+            nextCursor: JSON.stringify({ offset: Number(end.seq) + 1, descriptor: 0 }),
+            facts: [{ ...payload, nativeId: childId, nativeRevision: Number(end.seq), occurredAt: new Date(end.time).toISOString(),
+              current: true, payloadDigest: hash(payload) }],
+          } });
+        }
         owner.ctx.emit(scopeTarget(runtime, key), 'subagent/end', { ...info, stopReason: 'completed' });
         await Promise.resolve(); await bridge.flush();
         expect(await core.read({ kind: 'follow-up-page', input: { subject } })).toMatchObject({ page: { rows: [
-          { condition: { kind: 'closed', reason: 'resolved' } },
+          { condition: reason === 'completed' ? { kind: 'closed', reason: 'resolved' } : { kind: 'failed', nativeEndReason: reason } },
         ] } });
         await bridge.close(); const before = reads.mock.calls.length, beforeStats = stats.mock.calls.length;
         owner.ctx.emit(scopeTarget(runtime, key), 'subagent/start', info);

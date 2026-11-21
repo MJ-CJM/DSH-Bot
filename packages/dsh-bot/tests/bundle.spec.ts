@@ -201,11 +201,11 @@ describe('built bundle contract', () => {
         'bot_manage.approval.combined', 'bot_manage.approval.create', 'bot_manage.approval.delete',
         'bot_manage.approval.deleteMemories', 'bot_manage.approval.keepMemories', 'bot_manage.approval.personaPreview',
         'bot_manage.approval.selfDelete', 'bot_manage.approval.selfUpdate', 'bot_manage.approval.update',
-        'bot_memory.confirm.approval', 'bot_message.approval', 'bot_message.description', 'bot_notify.approval', 'bot_notify.description',
+        'bot_memory.confirm.approval', 'bot_message.approval', 'bot_message.description', 'bot_message.interruptWarning', 'bot_message.peerGuidance', 'bot_message.queryProgress', 'bot_message.queryResult', 'bot_notify.approval', 'bot_notify.description',
         'bot_supergroup.collaborationGuidance', 'bot_supergroup.collaborationRevoked', 'bot_supergroup.description', 'bot_supergroup.identity', 'bot_supergroup.instructions',
         'bot_supergroup.messageDraftInstructions', 'bot_supergroup.messageEmptyReply', 'bot_supergroup.messageFailed', 'bot_supergroup.messageNotified', 'bot_supergroup.messageReceiverInstructions',
         'bot_supergroup.scope', 'bot_supergroup.taskQuestion', 'bot_supergroup.textToolBoundary', 'bot_supergroup.unadmittedInput',
-        'dataFlow.export.approval', 'group_message.description', 'group_message.expertGuidance', 'schedule.guidance',
+        'dataFlow.export.approval', 'dataFlow.message.approval', 'group_message.description', 'group_message.expertGuidance', 'schedule.guidance',
       ]);
       for (const value of Object.values(dictionary)) expect(value.trim()).not.toBe('');
     }

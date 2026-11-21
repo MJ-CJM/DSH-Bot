@@ -22,7 +22,7 @@ const completedCollaboration = (scope: CollaborationScope, childId = 'clean-beta
   workId: scope.workId, operationId: scope.operationId, childId, status: 'completed', result: 'Clean task result',
 });
 
-async function fixture(options: { expert?: boolean; expertBot?: string; held?: boolean; rejectResult?: boolean; recovered?: SupergroupWork[]; directory?: string[]; observeDuringExpert?: boolean; disabledBot?: string } = {}) {
+async function fixture(options: { expert?: boolean; expertBot?: string; held?: boolean; rejectResult?: boolean; recovered?: SupergroupWork[]; directory?: string[]; observeDuringExpert?: boolean; disabledBot?: string; peerMessaging?: boolean } = {}) {
   const bots = (options.directory ?? ['alpha', 'beta', 'gamma']).map(id => ({ id, createdAt: 1, updatedAt: 1, name: id, tools: { deny: [] } }));
   const config = { supergroup: { enabled: true, maxMembers: 4, maxExperts: 16, maxRequests: 24, timeoutMs: 300000, allowedBotIds: [] as string[] } };
   let messages: unknown[] = [{ type: 'user/message', seq: 1, data: { id: 'human-one', source: { kind: 'user' }, content: [{ type: 'text', text: 'Exact human task' }] } }];
@@ -94,6 +94,17 @@ async function fixture(options: { expert?: boolean; expertBot?: string; held?: b
       dispatch: async (_id: string, send: () => unknown, _signal: unknown, check: () => Promise<void>) => { await check(); flows.push('dispatch'); return send(); },
     } } as unknown as DshBotRegistry;
   const ctx = { agents: { get: (id: string) => id === agent.id ? agent : undefined } } as unknown as Context;
+  if (options.peerMessaging) {
+    Object.assign(config, { messagingEnabled: true });
+    const messaging = { provenance: () => ({ userMessageId: 'peer-input' }), isDisplayMessage: () => false,
+      store: { rows: () => [] }, projectScoped: vi.fn(), finishScoped: vi.fn() };
+    const services = new Map<string, unknown>([['dshBotMessaging', messaging]]);
+    Object.assign(ctx, { get: (name: string) => services.get(name),
+      provide: (name: string, value: unknown) => { services.set(name, value); return () => services.delete(name); },
+      subagents: { getProvider: () => ({ inheritsParentContext: false, prepareContinuable() {},
+        capabilities: { agentPreset: true, depthLimit: true } }) },
+    });
+  }
   const service = new Supergroup(ctx, registry, groups, domain); await service.start();
   return { service, table, sent, flows, experts, agent, config, authorities, ctx, registry,
     requestExpert: (botId: string, callId: string) => need(handler)({ workId: need([...table.values()][0]).id,
@@ -309,6 +320,44 @@ test('a large default directory freezes a bounded owner-first pool; outside sele
     f.config.supergroup.allowedBotIds = ['beta', 'gamma', 'expert-00'];
     await expect(f.service.invoke(f.agent, { action: 'start', memberIds: ['alpha', 'beta'] }, signal())).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
     expect(f.counts.createCalls).toBe(1);
+  } finally { await f.service.close(); }
+});
+
+test('a Supergroup setting cannot authorize a different named recipient or a private draft', async () => {
+  const f = await fixture({ peerMessaging: true }), channel = need(f.ctx.get('dshBotCollaboration'));
+  const args = { action: 'send', mode: 'ask', content: 'PRIVATE_MAIN_DRAFT' };
+  try {
+    f.human('peer-input', '问 beta：「检查构建」。另有 PRIVATE_DM_ONLY 只给 alpha。');
+    expect(await channel.preparePeer(f.agent, 'gamma', 'wrong-target', args, signal())).toBeUndefined();
+    expect(f.table.size).toBe(0);
+    f.human('peer-input', 'This is my unmarked private conversation.');
+    expect(await channel.preparePeer(f.agent, 'gamma', 'private-root', args, signal())).toBeUndefined();
+    expect(f.table.size).toBe(0);
+    f.human('peer-input', '问 beta：「检查构建」。另有 PRIVATE_DM_ONLY 只给 alpha。');
+    const prepared = need(await channel.preparePeer(f.agent, 'beta', 'addressed', args, signal()));
+    expect(prepared.promptText).toBe('检查构建');
+    expect(prepared.scope.readers.map(reader => reader.botId)).toEqual(['alpha', 'beta']);
+    await expect(prepared.scope.check()).resolves.toBeUndefined();
+    f.human('peer-input', '问 beta：「改发另一件事」。');
+    await expect(prepared.scope.check()).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    expect(f.flows).toEqual([]);
+  } finally { await f.service.close(); }
+});
+
+test('two concurrent calls for a single freely chosen teammate reserve exactly one audience', async () => {
+  const f = await fixture({ peerMessaging: true }), channel = need(f.ctx.get('dshBotCollaboration'));
+  try {
+    f.human('peer-input', '问一个 Bot：「检查构建」。这是另一个 PRIVATE_DM_ONLY。');
+    const attempts = await Promise.allSettled(['beta', 'gamma'].map(id =>
+      channel.preparePeer(f.agent, id, `choose-${id}`, { content: 'PRIVATE_DRAFT' }, signal())));
+    const success = attempts.filter(outcome => outcome.status === 'fulfilled');
+    expect(success).toHaveLength(1);
+    const prepared = need(need(success[0]).value);
+    expect(prepared.promptText).toBe('检查构建');
+    expect(attempts.filter(outcome => outcome.status === 'rejected')).toMatchObject([{ reason: { code: 'dsh-bot/approval-denied' } }]);
+    expect(f.table.size).toBe(1);
+    expect(need(f.table.get(prepared.scope.workId)).readers.map(reader => reader.botId)).toEqual(['alpha', prepared.target.botId]);
+    expect(f.flows).toEqual([]);
   } finally { await f.service.close(); }
 });
 

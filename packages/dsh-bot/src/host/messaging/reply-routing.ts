@@ -1,4 +1,5 @@
 
+import en from '../../../locale/en.json' with { type: 'json' };
 import { outlets } from '../data-flow/tool-guard.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type {} from '@deepseek-ai/dsh-api-session-controller';
@@ -9,7 +10,10 @@ import {
   type MessageRecord,
   type MessageEnvelope,
   type MessageReceipt,
+  envelopeSchema,
   messageInputSchema,
+  peerQueryInputSchema,
+  type MessageInput,
   nativeMessageSchema,
 } from '../../shared/messaging.js';
 import { hasCredential } from '../../shared/secrets.js';
@@ -26,18 +30,24 @@ const receipt = (r: MessageRecord): MessageReceipt => ({
 export class MessagingRouting extends MessagingDelivery {
   async send(agent: Agent, value: unknown, invocationKey: string, signal?: AbortSignal): Promise<MessageReceipt> {
     signal?.throwIfAborted();
-    const input = messageInputSchema.parse(value);
+    const query = peerQueryInputSchema.safeParse(value).data;
+    if (query?.topic === 'capabilities') throw new OperationError('invalid');
+    const topic = query?.topic;
+    const input: MessageInput = query && topic ? {
+      action: 'send', mode: 'ask', priority: 'normal', to: query.to,
+      content: en.tools[topic === 'progress' ? 'bot_message.queryProgress' : 'bot_message.queryResult'],
+    } : messageInputSchema.parse(value);
     if (input.action === 'list') throw new OperationError('invalid');
     if (!invocationKey || invocationKey.length > 512) throw new OperationError('invalid');
     if (!this.store.config.messagingEnabled || !this.capabilities.processing || this.stopped)
       throw new OperationError('unavailable');
     const invocation = digest([agent.session.id, invocationKey]),
-      invocationDigest = digest(input);
+      invocationDigest = digest(query ?? input);
     const r = await this.admission.run(async () => {
       signal?.throwIfAborted();
       const from = await this.exact(agent);
       const old = this.store.byInvocation(invocation, invocationDigest);
-      if (old) return old;
+      if (old && !query) return old;
       if (
         Buffer.byteLength(input.content) > this.store.config.messageMaxBytes ||
         hasCredential(input.content)
@@ -45,6 +55,7 @@ export class MessagingRouting extends MessagingDelivery {
         throw new OperationError('invalid');
       const provenance = this.provenance(agent),
         parent = provenance.parent;
+      if (query && (!provenance.userMessageId || parent)) throw new OperationError('approval-denied');
       if (parent) {
         const evidence = messageEvidence(parent, await this.logs(agent));
         if (evidence.seq === undefined || evidence.canceled) throw new OperationError('invalid');
@@ -84,7 +95,12 @@ export class MessagingRouting extends MessagingDelivery {
       if (sameBot(from, to)) throw new OperationError('invalid');
       if (input.action === 'send' && parent?.envelope.path.some((visited) => sameBot(visited, to)))
         throw new OperationError('invalid');
-      const authorizationId = await this.authorization.approve(agent, input, to, invocation);
+      const queryKey = query ? digest(['peer-query', from, to, agent.session.id, provenance.userMessageId, topic]) : invocation;
+      if (query) {
+        const prior = this.store.byInvocation(queryKey, invocationDigest);
+        if (prior) return prior;
+      }
+      const authorizationId = await this.authorization.approve(agent, query ?? input, to, invocation);
       const authorizedTargets = this.authorization.targets?.(authorizationId);
       if (!authorizationId) throw new OperationError('approval-denied');
       const toSessionId = ask
@@ -106,7 +122,7 @@ export class MessagingRouting extends MessagingDelivery {
       if (!forwardPath.length) throw new OperationError('invalid');
       const mode: MessageEnvelope['mode'] = input.action === 'reply' ? 'reply' : input.mode,
         priority = input.action === 'reply' ? 'normal' : input.priority;
-      const envelope: MessageEnvelope = {
+      const envelope = envelopeSchema.parse({
         schemaVersion: 1,
         id,
         from,
@@ -133,13 +149,14 @@ export class MessagingRouting extends MessagingDelivery {
             ? this.store.config.messageInterruptTtlMs
             : this.store.config.messageTtlMs),
         path: ask ? ask.envelope.path : [...forwardPath, to],
+        ...(topic ? { queryTopic: topic } : {}),
         content: input.content,
         contentDigest: digest(input.content),
         fromDisplay: snapshot(sourceBot),
         toDisplay: snapshot(targetBot),
         authorizationId,
         authorizedTargets,
-      };
+      });
       const source = {
         messageId: id,
         threadId: envelope.threadId,
@@ -185,27 +202,46 @@ export class MessagingRouting extends MessagingDelivery {
       signal?.throwIfAborted();
       const flow = outlets(this.registry);
       const data = JSON.stringify({ envelope, nativeInput, outgoingInput });
-      const draft = flow?.draft('message', from, agent.session.id, invocationKey, { kind: 'bot', bot: to }, data);
-      const grant = draft && await need(flow).request(agent, draft, signal ?? new AbortController().signal);
+      // Only this Host-built fixed question has an independent source. Human input, arbitrary arguments,
+      // private history and files never enter its payload. Its answer comes from the recipient's real main.
+      const sourceSession = query ? `peer-query-${id}` : agent.session.id;
+      if (query) {
+        const recheck = () => {
+          signal?.throwIfAborted();
+          if (this.stopped || !this.store.config.messagingEnabled || this.provenance(agent).userMessageId !== provenance.userMessageId ||
+              !this.registry.directorySnapshot().some(entry => entry.id === to.botId)) throw new OperationError('approval-denied');
+        };
+        if ((await this.registry.status()).find(row => row.id === to.botId)?.preset.state !== 'ok')
+          throw new OperationError('unavailable');
+        recheck();
+        await need(flow).inherit(sourceSession, { readers: [from, to], originTrust: 'candidate', sourceVersions: [], restrictions: [], grants: [] });
+        recheck();
+      }
+      const draft = flow?.draft('message', from, sourceSession, query ? id : invocationKey, { kind: 'bot', bot: to }, data);
+      const grant = draft && !query ? await need(flow).request(agent, draft, signal ?? new AbortController().signal,
+        input.action === 'send' && input.sharePrivate === true || Boolean(ask?.envelope.queryTopic)) : undefined;
       const flowId = draft && await need(flow).admit(draft, grant, signal);
-      const save = () => this.store.accept({
-        envelope,
-        nativeInput,
-        outgoingInput,
-        ...(flowId ? { flowId } : {}),
-        invocationKey: invocation,
-        invocationDigest,
-        revision: 1,
-        retryCount: 0,
-        delivery: 'queued',
-        processing: 'pending',
-        response: mode === 'ask' ? 'waiting' : 'not-required',
-        ...(priority === 'interrupt'
-          ? {
-              interrupt: this.capabilities.interrupt ? 'requested' : 'disabled',
-            }
-          : {}),
-      });
+      const save = () => {
+        if (query && this.provenance(agent).userMessageId !== provenance.userMessageId) throw new OperationError('approval-denied');
+        return this.store.accept({
+          envelope,
+          nativeInput,
+          outgoingInput,
+          ...(flowId ? { flowId } : {}),
+          invocationKey: queryKey,
+          invocationDigest,
+          revision: 1,
+          retryCount: 0,
+          delivery: 'queued',
+          processing: 'pending',
+          response: mode === 'ask' ? 'waiting' : 'not-required',
+          ...(priority === 'interrupt'
+            ? {
+                interrupt: this.capabilities.interrupt ? 'requested' : 'disabled',
+              }
+            : {}),
+        });
+      };
       const accepted = flowId ? await need(flow).persist(flowId, save, signal) : await save();
       if (ask) await this.store.update(ask.envelope.id, { response: 'reply-queued' });
       return accepted;

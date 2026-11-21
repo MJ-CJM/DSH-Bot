@@ -218,7 +218,8 @@ export class FollowUpEvents {
     if (this.boundParent(job.subject) !== job.parent) return;
     const bot = await this.registry.get(job.subject.bot.botId).catch(() => undefined);
     if (bot?.createdAt !== job.subject.bot.botCreatedAt) return;
-    const sourceId = `child-v1:${hash([job.parent, job.child])}`;
+    // Re-project the last durable turn once, including children checkpointed as tracking by v1.
+    const sourceId = `child-v2:${hash([job.parent, job.child])}`;
     const live = this.ctx.sessions.get(SessionId(job.child));
     if (live && !(await this.ctx.sessions.flush(live))) throw new Error('Native child durability unavailable');
     if (!await this.ctx.sessionPersistence.stat(SessionId(job.child), { signal: this.abort.signal })) return;
@@ -242,10 +243,12 @@ export class FollowUpEvents {
         const condition: FollowUpFact['condition'] = latest.type === 'turn/start' ? { kind: 'tracking' }
           : latest.data.reason.kind === 'error' ? { kind: 'failed', reason: latest.data.reason.error.message.slice(0, 500) || 'error' }
           : latest.data.reason.kind === 'completed' ? { kind: 'closed', reason: 'resolved' }
-          : latest.data.reason.kind === 'aborted' ? { kind: 'closed', reason: 'cancelled' } : { kind: 'tracking' };
+          : latest.data.reason.kind === 'aborted' ? { kind: 'closed', reason: 'cancelled' }
+          : { kind: 'failed', nativeEndReason: latest.data.reason.kind === 'interrupted' || latest.data.reason.kind === 'blocked' ||
+              latest.data.reason.kind === 'max-tokens' ? latest.data.reason.kind : 'other' };
         const payload = { origin: { kind: 'native-subagent' as const, sessionId: job.parent,
           childSessionId: job.child, turn: latest.data.turn }, title, condition };
-        fact = followUpFactSchema.parse({ ...payload, nativeId: job.child, nativeRevision: Number(latest.seq),
+        fact = followUpFactSchema.parse({ ...payload, nativeId: sourceId, nativeRevision: Number(latest.seq) + 1,
           occurredAt: new Date(latest.time).toISOString(), current: true, payloadDigest: hash(payload) });
       }
       const end = page.events.at(-1);

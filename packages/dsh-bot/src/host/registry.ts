@@ -164,25 +164,18 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
       const mainSessions = this.mainSessions;
       if (!mainSessions) return data;
       const bots = await this.list();
-      const mains = await Promise.all(bots.map(async (bot) => ({ bot, main: await mainSessions.find(bot.id) })));
-      const sessions = data.sessions.filter((row) =>
-        mains.some(({ bot, main }) => bot.id === row.botId && main?.sessionId === row.sessionId),
-      );
-      return {
-        // Sidebar/header identity also needs historical conversations. Keep
-        // their bounded, generation-checked rows; only the Bot inbox summary
-        // is restricted to its current main conversation.
-        sessions: data.sessions,
-        bots: bots.map((bot) => {
-          const latest = sessions.find((row) => row.botId === bot.id);
-          return {
-            botId: bot.id,
-            lastActivityAt: latest?.updatedAt ?? 0,
-            unreadCount: latest?.unread ? 1 : 0,
-            ...(latest ? { latest: { ...latest.lastMessage, sessionId: latest.sessionId } } : {}),
-          };
-        }),
-      };
+      const bySession = new Map(data.sessions.map(row => [row.sessionId, row]));
+      const summaries = await Promise.all(bots.map(async bot => {
+        let main: Awaited<ReturnType<typeof mainSessions.find>>;
+        try { main = await mainSessions.find(bot.id); }
+        catch { return { botId: bot.id, lastActivityAt: 0, unreadCount: 0, mainSessionState: 'unavailable' as const }; }
+        const row = main && bySession.get(main.sessionId);
+        const latest = row?.botId === bot.id && (row.botCreatedAt === undefined || row.botCreatedAt === bot.createdAt) ? row : undefined;
+        return { botId: bot.id, lastActivityAt: latest?.updatedAt ?? 0, unreadCount: latest?.unread ? 1 : 0,
+          ...(latest ? { latest: { ...latest.lastMessage, sessionId: latest.sessionId } } : {}) };
+      }));
+      // The generation-checked history also supplies identities for historical session rows.
+      return { sessions: data.sessions, bots: summaries };
     } catch (error) {
       if (error instanceof DshBotError && (error.code === 'store/unavailable' || error.code === 'bot/unavailable')) {
         return { sessions: [], bots: [] };

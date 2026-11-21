@@ -28,7 +28,7 @@ export interface GroupDraft {
   text: string; mentions: string[]; mentionBindings?: MentionBinding[]; followup?: { turnId: string; deliveryId: string }; replyTo?: GroupView['messages'][number];
   uploads: Array<{ id: string; name: string; bytes: number; state: 'uploading' | 'uploaded' | 'uploadFailed'; receiptId?: string }>;
   operation?: { signature: string; request: GroupSend };
-  sending: boolean; error: boolean; errorCode?: 'supergroup-conflict' | 'supergroup-unsupported' | 'group-data-blocked' | 'member-limit' | 'send-failed' | 'conflict' | 'route-unavailable';
+  sending: boolean; error: boolean; errorCode?: 'supergroup-conflict' | 'supergroup-unsupported' | 'group-data-blocked' | 'member-limit' | 'membership-changed' | 'send-failed' | 'conflict' | 'route-unavailable';
 }
 export class GroupRouteUnavailable extends Error {
   constructor() { super('Current group route is unconfirmed'); }

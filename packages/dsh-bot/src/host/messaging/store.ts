@@ -7,6 +7,7 @@ import {
   readStateSchema,
   type MessageRecord,
 } from '../../shared/messaging.js';
+import { sameBot, type BotKey } from '../../shared/identity.js';
 import { digest, OperationError } from '../common/operations.js';
 import type { MessagingConfig } from './config.js';
 export const messagingDomain = defineDomain({
@@ -48,6 +49,16 @@ export class MessageStore {
   }
   rows(): MessageRecord[] {
     return [...this.domain.table('messages').entries()].map(([, v]) => structuredClone(v));
+  }
+  peerRows(owner: BotKey, peer: BotKey, requestId?: string): MessageRecord[] {
+    const matches: MessageRecord[] = [];
+    for (const [, record] of this.domain.table('messages').entries()) {
+      const e = record.envelope;
+      if ((e.mode === 'ask' && (!requestId || e.id === requestId) && sameBot(e.from, owner) && sameBot(e.to, peer)) ||
+          (e.mode === 'reply' && (!requestId || e.replyTo === requestId) && sameBot(e.from, peer) && sameBot(e.to, owner)))
+        matches.push(structuredClone(record));
+    }
+    return matches;
   }
   get(id: string) {
     const value = this.domain.table('messages').get(id);

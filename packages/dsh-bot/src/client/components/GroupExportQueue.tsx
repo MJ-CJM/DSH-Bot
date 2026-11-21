@@ -65,7 +65,20 @@ export function GroupExportQueue({ view, bots, actions, t }: {
   const turnsById = new Map(view.turns.map(turn => [turn.id, turn]));
   const statuses = new Map(view.deliveries.map(delivery => [delivery.id, groupExportReviewStatus(view.group, turnsById.get(delivery.turnId), delivery)]));
   const pendingRows = view.deliveries.filter(delivery => statuses.get(delivery.id) === 'pending');
-  const receiptRows = Object.values(items).filter(item => statuses.get(item.delivery.id) !== 'pending'
+  const currentDeliveries = new Map(view.deliveries.map(delivery => [delivery.id, delivery]));
+  const reconciled = (item: Item) => {
+    if (item.receipt !== 'uncertain') return item;
+    const before = item.delivery, row = currentDeliveries.get(before.id);
+    if (!row || row.turnId !== before.turnId || row.memberId !== before.memberId ||
+        row.bot.botId !== before.bot.botId || row.bot.botCreatedAt !== before.bot.botCreatedAt ||
+        (row.revision ?? 0) <= (before.revision ?? 0)) return item;
+    if (row.outputMessageId && row.outputSeq !== undefined)
+      return { ...item, delivery: row, receipt: 'sent' as const };
+    if (!row.exportFlowId && row.reasonCode === 'export-rejected')
+      return { ...item, delivery: row, receipt: 'rejected' as const };
+    return item;
+  };
+  const receiptRows = Object.values(items).map(reconciled).filter(item => statuses.get(item.delivery.id) !== 'pending'
     && (finished(item.receipt) || item.receipt === 'uncertain'));
   const clearableReceipts = receiptRows.filter(item => finished(item.receipt));
   const rows = [...pendingRows, ...receiptRows.map(item => item.delivery)];
@@ -74,7 +87,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
     const item = items[delivery.id];
     // Confirmed and uncertain decisions are receipts, not reusable authority.
     // A later membership update must never turn them back into a send control.
-    if (item && (finished(item.receipt) || item.receipt === 'uncertain')) return item;
+    if (item && (finished(item.receipt) || item.receipt === 'uncertain')) return reconciled(item);
     return item?.identity === identity(delivery, view.group.membershipRevision) ? item : { identity: identity(delivery, view.group.membershipRevision), delivery };
   };
   const patch = (delivery: GroupDelivery, value: Partial<Item>) => setItems(previous => {
@@ -96,7 +109,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
     node?.focus({ preventScroll: true });
   };
   const refresh = async () => { await Promise.allSettled([actions.messageView(key).refresh(), actions.catalog.refresh()]); };
-  const review = async (delivery: GroupDelivery) => {
+  const review = async (delivery: GroupDelivery, checking = false) => {
     if (lock.current || view.group.archived || statuses.get(delivery.id) !== 'pending') return;
     const trigger = document.activeElement;
     lock.current = true; setBusy(true); patch(delivery, { processing: 'preview' });
@@ -113,7 +126,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
     } catch (error) {
       const conflict = hasOperationCode(error, 'conflict');
       if (alive.current) patch(delivery, { preview: undefined, selected: false,
-        processing: undefined, receipt: conflict ? 'changed' : hasOperationCode(error, 'group-data-blocked') ? 'unavailable' : 'previewFailed' });
+        processing: undefined, receipt: checking ? 'uncertain' : conflict ? 'changed' : hasOperationCode(error, 'group-data-blocked') ? 'unavailable' : 'previewFailed' });
       if (conflict) await refresh();
     }
     finally { lock.current = false; if (alive.current) setBusy(false); }
@@ -216,6 +229,13 @@ export function GroupExportQueue({ view, bots, actions, t }: {
                   onChange={event => select(delivery, event.currentTarget.checked)} />{t('groups.export.select')}</label>}
               </div>
               {receipt && <p tabIndex={-1} role="status" data-export-receipt={delivery.id}>{t(`groups.export.receipt.${receipt}`)}</p>}
+              {receipt === 'uncertain' && <button type="button" disabled={busy} onClick={() => {
+                // A read-only fresh preview may restore the controls for a still-held reply.
+                // Lost or already-dispatched operations never retry their old decision.
+                if (statuses.get(delivery.id) === 'pending' && delivery.exportFlowId &&
+                    item.identity === identity(delivery, view.group.membershipRevision)) void review(delivery, true);
+                else void refresh();
+              }}>{t('groups.export.checkReceipt')}</button>}
               {!receipt && item.processing && <p role="status">{t(item.processing === 'preview' ? 'groups.export.itemPreviewing' : 'groups.export.itemProcessing')}</p>}
               {!receipt && !preview && !item.processing && <button type="button" disabled={busy || view.group.archived} onClick={() => { void review(delivery); }}>{t('groups.export.review')}</button>}
               {!receipt && preview && <>

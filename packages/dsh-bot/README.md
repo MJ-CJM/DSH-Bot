@@ -8,7 +8,7 @@
 
 **你的个人智能体工作区。** 在 DeepSeek Harness 中创建各有职责、记忆与工具的 Bot，持续对话、分工协作，并在原对话中拿到结果。
 
-**当前源码：0.7.1 候选（npm 包名 `dsh-botgroup`）。** 候选功能见 [0.7.1 发布说明](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.1.md)。目前公开稳定版为 [0.7.0](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.0)。[更新记录](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md)。
+**当前源码：0.7.2 候选（npm 包名 `dsh-botgroup`）。** 候选功能见 [0.7.2 发布说明](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.2.md)。目前公开稳定版为 [0.7.1](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.1)。[更新记录](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md)。
 
 ![个人 Bot 工作区示例](https://raw.githubusercontent.com/MJ-CJM/DSH-Bot/main/packages/dsh-bot/assets/showcase/zh-bots.png)
 
@@ -16,11 +16,11 @@
 
 ## 从一个 Bot 开始
 
-在 0.7.1 候选中，可以从 DSH 原生侧栏进入 Bots。安装对应候选后：
+安装后，从 DSH 原生侧栏进入 Bots。
 
 1. 打开原生侧栏 **Bots**，选择或新建一个 Bot，再打开它的原生聊天。例如：“比较这两份方案，需要时请研究员和审阅助手一起检查。”
 2. 从 Bot／群目录查看职责、记忆、任务和资料；对话详情提供返回对应目录的入口。新建、搜索、分支和归档继续使用 DSH 原生命令。
-3. 需要协作时，在设置中明确开启 **Supergroup 自动协作**。Bot 可围绕当前任务互问、委派或自动组队，结果由发起 Bot 在**原对话**交付。
+3. 在对话里直接让 Bot 向另一只 Bot 提问或追问，回复会回到原对话。分享私有记忆或私聊内容时，会先请你确认。需要自动组队时，在设置中开启 **Supergroup 自动协作**。
 4. 在原任务添加资料、继续或停止。切换页面、查看目录和关闭详情不会开启或停止自动协作；文件权限、工具审批与模型配置沿用宿主。
 
 聊天需要 DSH 中可用的模型，模型服务可能产生费用。主动跟进和自动协作分别设置，不因打开 Bots 而自动开启。
@@ -76,8 +76,8 @@ Supergroup 复用 DSH 原生子任务、模型、工具和审批能力。已有 
 
 | 范围 | 当前说明 |
 | --- | --- |
-| 公开稳定版 | [0.7.0 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.0)，以该版本的发布说明与附件为准。 |
-| 当前开发候选 | `dsh-botgroup-0.7.1.tgz`，使用对应冻结包的验收记录。 |
+| 公开稳定版 | [0.7.1 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.1)，以该版本的发布说明与附件为准。 |
+| 当前开发候选 | `dsh-botgroup-0.7.2.tgz`，使用对应冻结包的验收记录。 |
 | 推荐目标 | 官方 macOS arm64 DSH **0.2.2-rc.5 + 官方 web-app + 一个 dsh-botgroup 产品包**。原版 rc.3 是升级回归基线，是否通过以本轮同包验收为准。 |
 | 其他宿主 | 声明范围为 `>=0.2.1-rc.2 <0.3.0`，开发依赖锁定 `0.2.1-rc.2`；范围不代表所有版本或平台实测。 |
 
@@ -85,7 +85,7 @@ Supergroup 复用 DSH 原生子任务、模型、工具和审批能力。已有 
 
 ### 已发布版本
 
-公开 npm 包名为 **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**；产品品牌、插件 ID 与数据目录仍为 DSH-Bot／`dsh-bot`。稳定版版本包为 `dsh-botgroup-0.7.0.tgz`，固定下载名 `dsh-bot.tgz` 是同包别名。
+公开 npm 包名为 **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**；产品品牌、插件 ID 与数据目录仍为 DSH-Bot／`dsh-bot`。稳定版版本包为 `dsh-botgroup-0.7.1.tgz`，固定下载名 `dsh-bot.tgz` 是同包别名。
 
 打开对应 [Release](https://github.com/MJ-CJM/DSH-Bot/releases)，阅读它自己的兼容说明，下载插件 tgz 和同一 Release 的校验文件。macOS 校验示例：
 
@@ -97,7 +97,7 @@ shasum -a 256 -c dsh-bot.tgz.sha256
 
 ### 当前候选
 
-候选安装和迁移条件见 [0.7.1 发布说明](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.1.md)。请用对应包的校验和验证下载，再在已验证的宿主组合中安装。
+候选安装和迁移条件见 [0.7.2 发布说明](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.2.md)。请用对应包的校验和验证下载，再在已验证的宿主组合中安装。
 
 从旧 `dsh-bot` 包迁移时，先停止 Host 并备份完整 profile 和数据，通过原生插件管理移除旧包，再安装 `dsh-botgroup`。启动前检查 profile 的 `cordis.patch.yml`：原 `id: dsh-bot` 覆盖行若带 `name: dsh-bot`，仅改成 `name: dsh-botgroup`，保留 id、config 与 dataDir；没有 name 的行无需新增。不要同时保留两个包依赖或 bundle；自定义包含层／模板中的旧包引用需另行核对。[迁移说明](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7)。
 
@@ -105,7 +105,7 @@ shasum -a 256 -c dsh-bot.tgz.sha256
 
 ## 验证与边界
 
-精确候选包、隔离 Host／浏览器验收及升级验证以 [0.7.1 发布说明](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.1.md) 为准。
+精确候选包、隔离 Host／浏览器验收及升级验证以 [0.7.2 发布说明](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.2.md) 为准。
 
 真实付费模型的专业质量、外部账号认证、外部 IM 收发及未来宿主自动适配未由这些检查证明。任务依赖本地 Host 运行；当前不提供云端常驻、系统退出后的持续执行或系统／手机推送。不确定的执行结果不会自动重放。
 

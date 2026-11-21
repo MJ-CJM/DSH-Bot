@@ -28,6 +28,14 @@ export interface CollaborationScope {
   signal: AbortSignal;
   check(): Promise<void>;
 }
+/** Selected by the work owner from the current human turn, bound to one Bot incarnation. */
+export interface PeerTask {
+  messageId: string;
+  inputDigest: string;
+  target: BotKey;
+  text: string;
+  validate?(): Promise<void>;
+}
 export interface CollaborationResult {
   workId: string;
   operationId: string;
@@ -44,7 +52,9 @@ export interface CollaborationResult {
   deliveryMode?: 'ask' | 'notify';
 }
 export interface CollaborationHooks {
-  authorize(agent: Agent, targetBotId: string, callId: string, signal: AbortSignal, argumentDigest: string): Promise<CollaborationScope>;
+  peerTask?(agent: Agent, targetBotId: string, args: unknown): Promise<PeerTask | undefined>;
+  hasSharedWork?(agent: Agent, targetBotId: string): Promise<boolean>;
+  authorize(agent: Agent, targetBotId: string, callId: string, signal: AbortSignal, argumentDigest: string, peer?: PeerTask): Promise<CollaborationScope>;
   reserve(scope: CollaborationScope): Promise<void>;
   finish(scope: CollaborationScope, result: CollaborationResult): Promise<void>;
 }
@@ -167,8 +177,19 @@ export class ScopedCollaboration {
       throw new OperationError('unavailable');
     return service;
   }
-  async prepare(agent: Agent, targetBotId: string, callId: string, args: unknown, signal: AbortSignal): Promise<CollaborationPrepared> {
-    if (!this.enabled()) throw new OperationError('approval-denied');
+  async preparePeer(agent: Agent, targetBotId: string, callId: string, args: unknown, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (getScopedCollaborationBinding(agent)) return this.prepare(agent, targetBotId, callId, args, signal);
+    const peer = await this.hooks.peerTask?.(agent, targetBotId, args);
+    if (peer) return this.prepare(agent, targetBotId, callId, args, signal, peer);
+    // Only an independently established work can authorize an unaddressed task.
+    // A global setting alone must never turn an unrelated DM into a shared prompt.
+    if (this.enabled() && await this.hooks.hasSharedWork?.(agent, targetBotId))
+      return this.prepare(agent, targetBotId, callId, args, signal);
+    return undefined;
+  }
+  async prepare(agent: Agent, targetBotId: string, callId: string, args: unknown, signal: AbortSignal, peer?: PeerTask): Promise<CollaborationPrepared> {
+    if (this.lifetime.signal.aborted || !(peer ? this.registry.config.messagingEnabled : this.enabled())) throw new OperationError('approval-denied');
     signal.throwIfAborted();
     let rows = this.preparations.get(agent);
     if (!rows) { rows = new Map(); this.preparations.set(agent, rows); }
@@ -179,11 +200,11 @@ export class ScopedCollaboration {
       await prepared.scope.check();
       return prepared;
     }
-    const task = this.prepareFresh(agent, targetBotId, callId, args, signal);
+    const task = this.prepareFresh(agent, targetBotId, callId, args, signal, peer);
     rows.set(callId, { target: targetBotId, digest: argumentDigest, task });
     try { return await task; } catch (error) { rows.delete(callId); throw error; }
   }
-  private async prepareFresh(agent: Agent, targetBotId: string, callId: string, args: unknown, signal: AbortSignal): Promise<CollaborationPrepared> {
+  private async prepareFresh(agent: Agent, targetBotId: string, callId: string, args: unknown, signal: AbortSignal, peer?: PeerTask): Promise<CollaborationPrepared> {
     this.messaging();
     const from = getBotBinding(agent), parent = getScopedCollaborationBinding(agent);
     if (!from || parent && (parent.agent !== agent || parent.phase === 'draft')) throw new OperationError('approval-denied');
@@ -196,7 +217,7 @@ export class ScopedCollaboration {
     const provider = this.ctx.subagents?.getProvider('spawn');
     if (status?.preset.state !== 'ok' || senderStatus?.preset.state !== 'ok' || !provider?.prepareContinuable || provider.inheritsParentContext ||
       !provider.capabilities.agentPreset || !provider.capabilities.depthLimit) throw new OperationError('unavailable');
-    const scope = await this.hooks.authorize(agent, targetBotId, callId, signal, digest(args));
+    const scope = await this.hooks.authorize(agent, targetBotId, callId, signal, digest(args), peer);
     try {
       await scope.check();
       if (!scope.readers.some(key => same(key, to))) throw new OperationError('approval-denied');
@@ -241,7 +262,7 @@ export class ScopedCollaboration {
     const workSignal = AbortSignal.any([signal, scope.signal, this.lifetime.signal]);
     const check = async () => {
       workSignal.throwIfAborted();
-      if (!this.enabled()) throw new OperationError('approval-denied');
+      if (!(scope.workId.startsWith('peer:') ? this.registry.config.messagingEnabled : this.enabled())) throw new OperationError('approval-denied');
       await scope.check();
       const current = await this.registry.get(target.botId);
       if (current.createdAt !== target.botCreatedAt || current.updatedAt !== prepared.revision) throw new OperationError('conflict');
@@ -315,7 +336,7 @@ export class ScopedCollaboration {
     const prompt = [{ type: 'text' as const, text: promptText }];
     const binding: ScopedCollaborationBinding = { scope, parent: agent, bot, presetId, phase,
       path: phase === 'draft' ? [scope.owner] : prepared.path, promptDigest: digest(prompt),
-      active: () => !signal.aborted && this.enabled() };
+      active: () => !signal.aborted && (scope.workId.startsWith('peer:') ? this.registry.config.messagingEnabled : this.enabled()) };
     const from = getBotBinding(agent); if (!from) throw new OperationError('approval-denied');
     const flow = outlets(this.registry); let inputId: string | undefined;
     if (flow) {

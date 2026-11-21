@@ -264,3 +264,32 @@ test('only real policy mutations invalidate enabled Subject pagination', async (
     expect(await core.read({ kind: 'follow-up-subjects', cursor: page.next })).toMatchObject({ kind: 'rejected', code: 'stale' });
   } finally { await core.close(); }
 });
+
+test('corrects only an existing tracking card for the exact pre-enable native end after restart', async () => {
+  const core = await proactiveWorker();
+  try {
+    await core.submit(enable(bot));
+    const occurredAt = new Date(Date.now() - 10000).toISOString();
+    const ingest = (child: string, version: 1 | 2, turn = 1) => {
+      const sourceId = `child-v${version}:${child}`;
+      const condition = version === 1 ? { kind: 'tracking' } as const : { kind: 'failed', nativeEndReason: 'interrupted' } as const;
+      return core.submit({ kind: 'follow-up-ingest', input: { kind: 'local-task-state/v1', subject: bot,
+        sourceId, sourceGeneration: 1, pauseEpoch: 0, expectedCursor: null, nextCursor: 'end', facts: [{
+          title: child, occurredAt, current: true, origin: { kind: 'native-subagent', sessionId: 'parent', childSessionId: child, turn },
+          nativeId: version === 1 ? child : sourceId, nativeRevision: version === 1 ? 2 : 3,
+          condition, payloadDigest: digest({ condition, turn }),
+        }] } });
+    };
+    await ingest('old', 1);
+    await ingest('different-turn', 1);
+    await core.restart();
+    await ingest('old', 2);
+    await ingest('untracked', 2);
+    await ingest('different-turn', 2, 2);
+    const current = await core.read({ kind: 'follow-up-page', input: { subject: bot } });
+    if (current.kind !== 'follow-up-page') throw new Error('Missing follow-up page');
+    expect(current.page.rows).toHaveLength(2);
+    expect(current.page.rows.find(row => row.title === 'old')?.condition).toEqual({ kind: 'failed', nativeEndReason: 'interrupted' });
+    expect(current.page.rows.find(row => row.title === 'different-turn')?.condition).toEqual({ kind: 'tracking' });
+  } finally { await core.close(); }
+});

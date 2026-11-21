@@ -11,7 +11,7 @@ export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { bindi
   const [selected, setSelected] = useState<string[]>([]), [provider, setProvider] = useState(defaultRoute?.provider ?? ''), [model, setModel] = useState(defaultRoute?.model ?? '');
   const [routeEdited, setRouteEdited] = useState(false);
   useEffect(() => { if (!routeEdited) { setProvider(defaultRoute?.provider ?? ''); setModel(defaultRoute?.model ?? ''); } }, [defaultRoute?.provider, defaultRoute?.model, routeEdited]);
-  const [edits, setEdits] = useState<Record<string, string>>({}), [busy, setBusy] = useState(false), [error, setError] = useState(false);
+  const [edits, setEdits] = useState<Record<string, string>>({}), [busy, setBusy] = useState(false), [error, setError] = useState<'changed' | 'limit' | 'unknown' | 'load'>();
   const pending = useRef<ConsolidationInput | ConsolidationDecision>(), alive = useRef(true), locked = useRef(false);
   const routeFields = <><label>{t('memory.consolidation.provider')}<input value={provider} onChange={e => { setRouteEdited(true); setProvider(e.target.value); }} /></label>
     <label>{t('memory.consolidation.model')}<input value={model} onChange={e => { setRouteEdited(true); setModel(e.target.value); }} /></label></>;
@@ -20,20 +20,33 @@ export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { bindi
     const [status, rows] = await Promise.all([binding.remote().consolidationStatus(botId),
       binding.remote().query({ botId, scope: 'private', view: 'facts', limit: 50 })]);
     if (!status.ok || !rows.ok) throw new Error('Unavailable');
-    if (alive.current) { setView(status.value); setSources(rows.value); }
+    if (alive.current) {
+      setView(status.value); setSources(rows.value);
+      const available = new Set(rows.value.rows.map(row => row.version.versionId));
+      setSelected(previous => previous.filter(id => available.has(id)));
+    }
   };
   const run = async (input?: ConsolidationInput | ConsolidationDecision) => {
     if (locked.current) return;
-    locked.current = true; setBusy(true); setError(false);
+    locked.current = true; setBusy(true); setError(undefined);
     try {
       if (input) {
         pending.current = input;
         const reply = 'runId' in input ? await binding.remote().decideConsolidation(input) : await binding.remote().consolidate(input);
-        if (!reply.ok) throw new Error('Unknown result');
+        if (!reply.ok) {
+          const code = reply.error.code;
+          if (code !== 'bot/conflict' && code !== 'memory/consolidation-limit') throw reply.error;
+          // The Host rejected the old revision before dispatch or commit.
+          pending.current = undefined;
+          if (alive.current) setView(undefined);
+          await load();
+          if (alive.current) setError(code === 'bot/conflict' ? 'changed' : 'limit');
+          return;
+        }
         pending.current = undefined; await binding.refresh();
       }
       await load();
-    } catch { if (alive.current) setError(true); }
+    } catch { if (alive.current) setError(pending.current ? 'unknown' : 'load'); }
     finally { locked.current = false; if (alive.current) setBusy(false); }
   };
   return <details data-memory-consolidation="" onToggle={e => { if (e.currentTarget.open && !view && !busy) void run(); }}>
@@ -54,7 +67,7 @@ export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { bindi
       <p>{row.closedUnknown ? t('memory.consolidation.closedUnknown') : t(`memory.consolidation.state.${row.state}`)}</p>
       {row.unresolved && <><p>{t('memory.consolidation.unknownNotice')}</p>
         <code>{row.id}</code><p>{t('memory.consolidation.provider')}: {row.provider} / {row.model} · {row.modelRequests}</p>
-        <button type="button" className={styles.button} disabled={busy} onClick={() => void run({ operationId: crypto.randomUUID(), runId: row.id,
+        <button type="button" className={styles.button} disabled={busy || !!pending.current} onClick={() => void run({ operationId: crypto.randomUUID(), runId: row.id,
           botId, expectedRevision: view.revision, action: 'close' })}>{t('memory.consolidation.closeUnknown')}</button></>}
       {row.content && <><p>{t('memory.consolidation.candidateNotice')}</p>
         <textarea aria-label={t('memory.consolidation.candidate')} value={edits[row.id] ?? row.content} maxLength={2048}
@@ -66,7 +79,7 @@ export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { bindi
           onClick={() => void run({ operationId: crypto.randomUUID(), runId: row.id, botId, expectedRevision: view.revision, action,
             ...(action === 'accept' && edits[row.id] !== undefined ? { editedContent: edits[row.id] } : {}) })}>{t(`memory.consolidation.${action}`)}</button>)}</>}
     </section>)}
-    {error && <p role="alert">{t('memory.consolidation.error')}</p>}
+    {error && <p role="alert">{t(error === 'changed' ? 'memory.consolidation.changed' : error === 'limit' ? 'memory.consolidation.limit' : error === 'load' ? 'memory.loadError' : 'memory.consolidation.error')}</p>}
     {pending.current && <button type="button" className={styles.button} disabled={busy} onClick={() => void run(pending.current)}>{t('memory.consolidation.reconcile')}</button>}
   </details>;
 }

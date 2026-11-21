@@ -220,7 +220,10 @@ export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots
   }, [requested, value, focus, sessionId, messageId]);
   if (!value) return snapshot.failed ? <p role="status">{t('supergroup.unavailable')}</p> : null;
   const { work, group } = value;
-  if (work.inputMessageId !== messageId) return null;
+  const directPeer = !work.group && work.id.startsWith('peer:');
+  // Direct messaging renders progress, receipts and the answer in the native conversation.
+  // Keep its separate diagnostic only when a work state needs attention.
+  if (work.inputMessageId !== messageId || (directPeer && work.state !== 'unknown' && work.state !== 'partial')) return null;
   const turns = group?.turns.filter(row => work.turnIds.includes(row.id)) ?? [];
   const members = group?.members.filter(row => row.enabled && row.removedAt === undefined).sort((a, b) => a.order - b.order) ?? [];
   const memberCount = group ? members.length : undefined;
@@ -252,7 +255,7 @@ export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots
         }}><span aria-hidden="true">□</span>{t('supergroup.stop')}</button>}
       </div>
     </div>
-    {bridge.support && <details onToggle={event => setSupportOpen(event.currentTarget.open)} data-task-support-entry="">
+    {!directPeer && bridge.support && <details onToggle={event => setSupportOpen(event.currentTarget.open)} data-task-support-entry="">
       <summary>{t('taskSupport.title')}</summary>
       {supportOpen && <TaskSupportPanel readOnly={['cancelled', 'unknown'].includes(work.state)} workId={work.id} actions={bridge.support.actions} integrations={bridge.support.integrations}
         bot={botState.entries.find(row => row.bot.id === work.owner.botId && row.bot.createdAt === work.owner.botCreatedAt)?.bot}

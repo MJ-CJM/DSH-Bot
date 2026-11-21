@@ -82,6 +82,7 @@ const activeCondition = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('failed'),
     reason: summary.optional(),
+    nativeEndReason: z.enum(['interrupted', 'blocked', 'max-tokens', 'other']).optional(),
     members: z.array(z.strictObject({ deliveryId: resourceId, memberId: resourceId, reason: summary })).max(16).optional(),
   }),
   z.strictObject({ kind: z.literal('waiting-input'), wait: followUpWaitSchema }),

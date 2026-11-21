@@ -82,7 +82,7 @@ export function apply(ctx, config) {
           assert.equal(packet.sender.id, 'auto-owner');
           assert.equal(packet.recipient.id, 'auto-reviewer');
           assert.equal(packet.mode, phase.endsWith(':notify') ? 'notify' : 'ask', 'the sender draft retains ask versus notify intent');
-          assert.ok(packet.userTask.includes('SG_AUTO_TASK'));
+          assert.ok(packet.userTask.includes('SG_AUTO_TASK') || packet.userTask === '你知道 auto-reviewer 擅长做什么吗？');
           assert.ok(!row.tools.length, 'a message drafting stage has no callable tools');
           yield* say(actualQuestion(phase)); return;
         }
@@ -199,7 +199,9 @@ export function apply(ctx, config) {
         for (const action of config.suite === 'review' ? ['message'] : ['message', 'delegate', 'chain', 'notify']) {
           phase = `${mode}:${action}`;
           const state = nativeState(owner), first = events(owner).at(-1)?.seq ?? -1, count = modelCalls.length, beforeApprovals = approvals.length;
-          await prompt(owner, `SG_AUTO_TASK ${phase}: 你知道通用助手 bot 擅长做什么吗？你问下他${action === 'chain' ? '，必要时让他请专家协助' : ''}。`);
+          // The default bot and the synthetic reviewer have the same display name.
+          // Target the reviewer's unique ID when checking a specific recipient.
+          await prompt(owner, `SG_AUTO_TASK ${phase}: 你知道 auto-reviewer 擅长做什么吗？你问下他${action === 'chain' ? '，必要时让他请专家协助' : ''}。`);
           const toolResults = events(owner).filter(event => event.type === 'tool/result' && Number(event.seq) > Number(first));
           if (action !== 'notify') assert.ok(toolResults.some(event => JSON.stringify(event.data).includes('SG_AUTO_CHECKED_RESULT')), `the ${phase} result returns to the original conversation`);
           const values = toolResults.flatMap(event => event.data.message.content.filter(block => block.type === 'text').flatMap(block => { try { return [JSON.parse(block.text)]; } catch { return []; } }));

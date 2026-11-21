@@ -6,6 +6,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session';
 import { randomUUID } from 'node:crypto';
 import {
   type MessageInput,
+  type PeerQueryInput,
   messageSourceSchema,
 } from '../../shared/messaging.js';
 import type { BotKey } from '../../shared/identity.js';
@@ -16,7 +17,7 @@ import { isNativeAmbientSource } from '../common/native-ambient-source.js';
 import type { MessageStore, } from './store.js';
 export interface MessagingAuthorization {
   /** Called after exact origin/target resolution and before any native delivery. B04 must implement concrete native approval. */
-  approve(agent: Agent, input: Exclude<MessageInput, { action: 'list' }>, target: BotKey, invocation?: string): Promise<string>;
+  approve(agent: Agent, input: Exclude<MessageInput, { action: 'list' }> | PeerQueryInput, target: BotKey, invocation?: string): Promise<string>;
   targets?(id: string): BotKey[] | undefined;
 }
 export interface MessagingCapabilities {

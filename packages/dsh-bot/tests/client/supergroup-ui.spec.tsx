@@ -122,6 +122,32 @@ it('rejects a mismatched session/group reply and never renders the previous work
   } finally { await f.close(); }
 });
 
+it('keeps native peer replies, hides their completed card, and preserves the controls for real group work', async () => {
+  const f = await fixture('zh');
+  try {
+    // A support service is mounted by the production client, including when Supergroup is disabled.
+    f.bridge.support = { actions: {} as NonNullable<typeof f.bridge.support>['actions'] };
+    const { work } = workView();
+    delete work.group;
+    work.id = 'peer:synthetic';
+    await f.update({ work });
+    await vi.waitFor(() => expect(f.remote.forSession).toHaveBeenCalled());
+    expect(f.element.querySelector('[data-supergroup-work]')).toBeNull();
+    expect(f.element.querySelector('[data-task-support-entry]')).toBeNull();
+    await f.update({ work: { ...work, state: 'completed' } });
+    await vi.waitFor(() => expect(f.element.querySelector('[data-supergroup-work]')).toBeNull());
+    expect(f.element.querySelector('[data-native-input]')).toBeTruthy();
+    expect(f.element.querySelector('textarea')?.value).toBe('Keep native draft');
+    await f.update({ work: { ...work, state: 'unknown', reason: 'receipt unavailable' } });
+    await vi.waitFor(() => expect(f.element.textContent).toContain('receipt unavailable'));
+    const group = workView();
+    group.work.state = 'completed';
+    await f.update(group);
+    await vi.waitFor(() => expect(f.element.querySelector('[data-task-support-entry]')).toBeTruthy());
+    expect(button(f.element, f.t('supergroup.viewDiscussion'))).toBeTruthy();
+  } finally { await f.close(); }
+});
+
 it('an unlinked ordinary input renders no collaboration and failed refresh retains a labelled prior result', async () => {
   const f = await fixture();
   try {

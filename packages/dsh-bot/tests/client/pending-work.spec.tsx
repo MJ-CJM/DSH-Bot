@@ -26,12 +26,15 @@ it('reads all pages of existing paused follow-ups and unknown work without mutat
       ? { kind, wait: { reason: 'Format needed', request: 'Confirm format' } } : { kind },
   });
   const mutation = vi.fn();
+  let betaUnavailable = false;
   const pages = vi.fn(async ({ subject, cursor }: { subject: Subject; cursor?: string }) => ({ ok: true, value:
     subject.kind === 'bot' && subject.bot.botId === 'alpha'
       ? cursor ? { rows: [row('review', 'needs-review')] } : { rows: [row('input', 'waiting-input')], next: 'next-page' } : { rows: [] } }));
   ctx.provide('remote.dshBot.proactive', { followUpPage: pages, followUpAction: mutation, followUpWatchCreate: mutation,
-    followUpSummary: async (subject: Subject) => ({ ok: true, value: { state: 'ready', configEpoch: '00000000-0000-4000-8000-000000000001', scopeOnly: true,
-      summary: { policy: { subject, revision: 2, pauseEpoch: 1, localEnabled: false, legacyCi: 'denied', observationStart: 1 }, legacyCiActive: false, rows: [] } } }),
+    followUpSummary: async (subject: Subject) => {
+      if (betaUnavailable && subject.kind === 'bot' && subject.bot.botId === 'beta') throw new Error('Offline');
+      return { ok: true, value: { state: 'ready', configEpoch: '00000000-0000-4000-8000-000000000001', scopeOnly: true,
+      summary: { policy: { subject, revision: 2, pauseEpoch: 1, localEnabled: false, legacyCi: 'denied', observationStart: 1 }, legacyCiActive: false, rows: [] } } }; },
   } as unknown as TypertRemoteNamespaceMap['dshBot.proactive']);
   const followUp = createFollowUpSource(ctx, {}), openSession = vi.fn(async (_id: string) => {}), openBot = vi.fn();
   const unknown = workSummarySchema.parse({ ticketId: 'unknown-ticket', assignmentId: 'unknown-assignment', decisionId: 'unknown-decision', triggerId: 'unknown-trigger',
@@ -46,7 +49,7 @@ it('reads all pages of existing paused follow-ups and unknown work without mutat
   const hook = ((selector: (value: typeof status) => unknown) => useSyncExternalStore(listener => {
     listeners.add(listener); return () => { listeners.delete(listener); };
   }, () => selector(status), () => selector(status))) as unknown as NativeStatusHook;
-  const t = ((key: string) => key) as PropsLocale<'dsh-bot'>['t'];
+  const t = ((key: string, params?: { name?: string }) => params?.name ? key + ' ' + params.name : key) as PropsLocale<'dsh-bot'>['t'];
   try {
     await source.catalog.refresh();
     expect(source.catalog.getSnapshot().rows.map(value => value.kind)).toEqual(['input', 'review', 'unknown']);
@@ -61,6 +64,15 @@ it('reads all pages of existing paused follow-ups and unknown work without mutat
     expect(container.querySelector('[data-pending-kind="native"]')).toBeNull();
     await click(button(container, 'Alpha Display · pendingWork.unknown · UNKNOWN_STATE'));
     expect(openBot).toHaveBeenCalledWith(owner, 'unknown-ticket');
+    betaUnavailable = true;
+    await act(async () => source.catalog.refresh());
+    expect(container.textContent).toContain('pendingWork.botUnavailable Beta Display');
+    expect(container.querySelectorAll('[data-pending-bot="alpha"]')).toHaveLength(3);
+    await click(button(container, 'Alpha Display · pendingWork.unknown · UNKNOWN_STATE'));
+    expect(openBot).toHaveBeenCalledTimes(2);
+    betaUnavailable = false;
+    await click(button(container, 'actions.retry'));
+    await vi.waitFor(() => expect(container.textContent).not.toContain('pendingWork.botUnavailable'));
     expect(mutation).not.toHaveBeenCalled();
     expect(source.catalog.getSnapshot().rows).toHaveLength(3);
   } finally { await act(async () => root.unmount()); await ctx.fiber.dispose(); container.remove(); }

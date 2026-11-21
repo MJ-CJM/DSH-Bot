@@ -7,7 +7,10 @@ import { Messaging, messagingDomain } from '../src/host/messaging/service.js';
 import { MessageStore } from '../src/host/messaging/store.js';
 import { MessagingConfig } from '../src/host/messaging/config.js';
 import { teammateTurn } from '../src/host/messaging/safety.js';
-import { need } from '../src/host/common/operations.js';
+import { digest, need } from '../src/host/common/operations.js';
+import { Supergroup, supergroupDomain } from '../src/host/supergroup/service.js';
+import type { Groups } from '../src/host/groups/service.js';
+import type { SupergroupWork } from '../src/shared/supergroup.js';
 import type { ScopedMessageProjection } from '../src/host/messaging/scoped-projection.js';
 
 async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0]) {
@@ -37,13 +40,28 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
     check: vi.fn(async () => { controller.signal.throwIfAborted(); }) };
   const displays = (agent: Agent) => agent.session.snapshotEvents().filter(event => event.type === 'user/message' &&
     ['dsh-bot-message', 'dsh-bot-message-sent'].includes(event.data.source.kind));
+  let workDomain = await f.ctx.storageDomain.open(supergroupDomain);
+  f.registry.supergroup = new Supergroup(f.ctx, f.registry, {} as Groups, workDomain);
+  async function settle(state: 'prepared' | 'completed' | 'failed' | 'unknown', result: string, diagnostic?: string) {
+    const op = { id: input.operationId, digest: 'arguments', target: beta, state,
+      ...(state === 'prepared' ? {} : { childId: 'clean-beta', status: state === 'failed' ? 'error' : state,
+        resultDigest: digest(result), ...(diagnostic ? { diagnostic, errorCode: 'subagent/empty-output' } : {}) }) };
+    const work: SupergroupWork = { id: input.workId, revision: 1, owner: alpha, originSessionId: a.session.id,
+      inputMessageId: human.id, inputMessageIds: [human.id], configDigest: 'test', readers: [alpha, beta], createdAt: 1,
+      updatedAt: 1, expiresAt: Date.now() + 60000, turnIds: [], state: state === 'prepared' ? 'running' : state === 'failed' ? 'partial' : state,
+      collaboration: { requests: 2, operations: [op] }, groupInputs: [], experts: [] };
+    await workDomain.table('works').put(work.id, work);
+  }
   return { a, b, human, input, followup, flush, displays, controller,
+    settle,
     get messaging() { return messaging; }, get store() { return store; },
     async reopen() { release(); await messaging.close();
+      await workDomain.close(); workDomain = await f.ctx.storageDomain.open(supergroupDomain);
+      f.registry.supergroup = new Supergroup(f.ctx, f.registry, {} as Groups, workDomain);
       store = new MessageStore(await f.ctx.storageDomain.open(messagingDomain), MessagingConfig({}));
       messaging = new Messaging(f.ctx, f.registry, store, undefined, { coldWake: true, interrupt: true, processing: true });
       release = f.ctx.provide('dshBotMessaging', messaging); await messaging.start(); await messaging.settled(); },
-    async close() { release(); await messaging.close(); bindings.delete(a); bindings.delete(b); left.scope.dispose(); right.scope.dispose(); } };
+    async close() { release(); await messaging.close(); await workDomain.close(); bindings.delete(a); bindings.delete(b); left.scope.dispose(); right.scope.dispose(); } };
 }
 
 test('actual request and answer are visible in both real main logs without waking either private main', () => withIntegrations(async f => {
@@ -145,5 +163,81 @@ test('revoked work, credentials and target mismatch cannot create correspondence
     await expect(s.messaging.projectScoped({ ...s.input, readers: [alpha] })).rejects.toThrow('approval-denied');
     s.controller.abort('stopped'); await expect(s.messaging.projectScoped(s.input)).rejects.toThrow('stopped');
     expect(s.store.rows()).toEqual([]); expect(s.displays(s.a)).toEqual([]); expect(s.displays(s.b)).toEqual([]);
+  } finally { await s.close(); }
+}));
+
+test('reads a confirmed answer only for its originating pair and exact request without touching a peer inbox', () => withIntegrations(async f => {
+  const s = await fixture(f);
+  try {
+    const ask = await s.messaging.projectScoped(s.input);
+    await s.settle('prepared', '');
+    expect(await s.messaging.peerResult(s.a, 'beta')).toEqual({ status: 'pending', requestId: ask.messageId });
+    const reply = await s.messaging.projectScoped({ ...s.input, kind: 'reply', from: beta, to: alpha, requestId: ask.messageId, content: 'A shared answer.' });
+    expect(await s.messaging.peerResult(s.a, 'beta')).toEqual({ status: 'pending', requestId: ask.messageId });
+    await s.settle('completed', 'A shared answer.');
+    const expected = { status: 'completed', requestId: ask.messageId, question: s.input.content, content: 'A shared answer.', scoped: true };
+    expect(await s.messaging.peerResult(s.a, 'beta')).toEqual(expected);
+    expect(await s.messaging.peerResult(s.b, 'alpha', ask.messageId)).toEqual({ status: 'missing' });
+    await s.messaging.projectScoped({ ...s.input, operationId: 'second-ask', content: 'Another subject.' });
+    expect(await s.messaging.peerResult(s.a, 'beta')).toMatchObject({ status: 'ambiguous' });
+    expect(await s.messaging.peerResult(s.a, 'beta', ask.messageId, true)).toEqual(expected);
+    await s.reopen();
+    expect(await s.messaging.peerResult(s.a, 'beta', ask.messageId)).toEqual(expected);
+    await s.store.domain.table('messages').put(reply.messageId, { ...need(s.store.get(reply.messageId)), delivery: 'unknown' });
+    expect(await s.messaging.peerResult(s.a, 'beta', ask.messageId)).toEqual({ status: 'unknown', requestId: ask.messageId });
+    expect(s.followup).not.toHaveBeenCalled();
+  } finally { await s.close(); }
+}));
+
+test('fresh result reuse rechecks both managed copies, live policy, grant status and cleanup before returning text', () => withIntegrations(async f => {
+  const s = await fixture(f), { flowFixture } = await import('./deepening/managed-flow-fixture.js');
+  const ledger = await flowFixture();
+  try {
+    ledger.current.set('beta', beta.botCreatedAt);
+    Object.assign(f.registry, ledger.registry());
+    const clean = { readers: [alpha, beta], originTrust: 'candidate' as const, sourceVersions: [], restrictions: [], grants: [] };
+    await ledger.flow.inherit(s.input.labelSessionId, clean);
+    await ledger.flow.inherit('answer-child', clean);
+    const ask = await s.messaging.projectScoped(s.input);
+    const answer = await s.messaging.projectScoped({ ...s.input, from: beta, to: alpha, kind: 'reply', labelSessionId: 'answer-child', requestId: ask.messageId, content: 'Approved shared result' });
+    await s.settle('completed', 'Approved shared result');
+    const lookup = () => s.messaging.peerResult(s.a, 'beta', ask.messageId, true);
+    expect(await lookup()).toMatchObject({ status: 'completed', content: 'Approved shared result' });
+    const flowId = need(s.store.get(answer.messageId)?.flowId), table = ledger.f.kernel.domain.table('flows');
+    const saved = need(table.get(flowId)), envelope = need(saved.envelope);
+    const withheld = { status: 'unknown', requestId: ask.messageId };
+    for (const patch of [
+      { binding: { ...envelope.binding, policyRevision: envelope.binding.policyRevision + 1 } },
+      { binding: { ...envelope.binding, epoch: envelope.binding.epoch + 1 } },
+      { label: { ...envelope.label, readers: [beta] } },
+      { label: { ...envelope.label, restrictions: ['no-egress' as const] } },
+      { label: { ...envelope.label, sourceVersions: [crypto.randomUUID()] } },
+    ]) {
+      await table.put(flowId, { ...saved, envelope: { ...envelope, ...patch } });
+      expect(await lookup()).toEqual(withheld);
+    }
+    await table.put(flowId, { ...saved, grantUse: crypto.randomUUID() }); expect(await lookup()).toEqual(withheld);
+    await table.put(flowId, { ...saved, envelope: undefined, redactedAt: Date.now() }); expect(await lookup()).toEqual(withheld);
+  } finally { await s.close(); await ledger.close(); }
+}));
+
+test('an already visible historical failure card is never returned as a result, including after restart', () => withIntegrations(async f => {
+  const s = await fixture(f);
+  try {
+    const ask = await s.messaging.projectScoped(s.input), diagnostic = 'Recipient produced no answer.';
+    await s.messaging.projectScoped({ ...s.input, kind: 'reply', from: beta, to: alpha, requestId: ask.messageId, content: diagnostic });
+    const read = () => s.messaging.peerResult(s.a, 'beta', ask.messageId);
+    expect(await read()).toEqual({ status: 'unknown', requestId: ask.messageId }); // legacy row, no work proof
+    await s.settle('prepared', '');
+    expect(await read()).toEqual({ status: 'pending', requestId: ask.messageId });
+    await s.settle('failed', '', diagnostic);
+    await s.reopen();
+    expect(await read()).toEqual({ status: 'closed', requestId: ask.messageId });
+    await s.settle('unknown', '');
+    expect(await read()).toEqual({ status: 'unknown', requestId: ask.messageId });
+    await s.settle('completed', 'different answer');
+    expect(await read()).toEqual({ status: 'unknown', requestId: ask.messageId });
+    expect(s.displays(s.a)).toHaveLength(2);
+    expect(s.followup).not.toHaveBeenCalled();
   } finally { await s.close(); }
 }));

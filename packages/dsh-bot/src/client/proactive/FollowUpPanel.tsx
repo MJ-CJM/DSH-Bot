@@ -197,7 +197,8 @@ function FollowUpRow({ row, detail, canChange, canForget, editCard, open, onWatc
         <p>{t('followUp.completionValue', { value: condition.completion })}</p>
         {condition.wait && <><p>{condition.wait.reason}</p><p>{condition.wait.request}</p></>}
       </>}
-      {detail && condition.kind === 'failed' && condition.reason && <p>{condition.reason}</p>}
+      {detail && condition.kind === 'failed' && (condition.nativeEndReason || condition.reason) &&
+        <p>{condition.nativeEndReason ? t(`followUp.nativeEnd.${condition.nativeEndReason}`) : condition.reason}</p>}
       {detail && condition.kind === 'failed' && !!condition.members?.length && <details>
         <summary>{t('followUp.failures', { count: condition.members.length })}</summary>
         <ul>{condition.members.map(member => <li key={member.deliveryId}>{member.reason}</li>)}</ul>

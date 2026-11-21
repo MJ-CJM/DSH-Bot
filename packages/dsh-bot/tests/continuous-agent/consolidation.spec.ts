@@ -24,7 +24,7 @@ it('hides proposed, adopts once, preserves candidate trust and rejects bypass or
     expect(await x.f.alpha.query({ query: 'CANDIDATE' })).toEqual([]);
     const context = memoryContext(x.f.kernel, botKey(), { maxInjectChars: 4000, privateShare: .6, journalShare: .3, journalDays: 30 }, 20);
     expect(context()).not.toContain('CANDIDATE');
-    await expect(management(x.f).confirm({ id: row.candidateId, botId: 'alpha', scope: 'shared', expectedRevision: x.f.kernel.seq })).rejects.toThrow();
+    await expect(management(x.f).confirm({ id: row.candidateId, versionId: x.f.kernel.snapshot.versions.get(row.candidateId)!.versionId, botId: 'alpha', scope: 'shared', expectedRevision: x.f.kernel.seq })).rejects.toThrow();
     await expect(management(x.f).resolve({ ids: [row.candidateId], choice: 'select', selected: row.candidateId, expectedRevision: x.f.kernel.seq })).rejects.toThrow('source-bound');
     const decision = { operationId: randomUUID(), runId: row.id, botId: 'alpha', expectedRevision: x.f.kernel.seq, action: 'accept' as const };
     await x.service.decide(decision, botKey()); const seq = x.f.kernel.seq; await x.service.decide(decision, botKey()); expect(x.f.kernel.seq).toBe(seq);
@@ -116,5 +116,41 @@ it('reconciles an exact committed proposal instead of closing it as an unknown e
     expect(result.state).toBe('proposed'); expect(result.decisionId).toBeUndefined();
     expect(x.service.list(botKey())[0]).toMatchObject({ state: 'proposed', content: 'CANDIDATE location North' });
     expect(x.model).toHaveBeenCalledTimes(1);
+  } finally { await x.close(); }
+});
+
+it('reports revision conflicts before model reservation or adoption and accepts an explicitly refreshed operation', async () => {
+  const x = await fixture();
+  try {
+    const old = x.request();
+    await x.f.alpha.save({ content: 'Other private note' });
+    await expect(x.service.start(old, botKey())).rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(x.model).not.toHaveBeenCalled();
+    expect(x.service.list(botKey())).toEqual([]);
+    const row = await x.service.start(x.request(), botKey());
+    const decide = { operationId: randomUUID(), runId: row.id, botId: 'alpha', expectedRevision: old.expectedRevision, action: 'accept' as const };
+    await expect(x.service.decide(decide, botKey())).rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(x.service.list(botKey())[0]?.state).toBe('proposed');
+    expect((await x.service.decide({ ...decide, operationId: randomUUID(), expectedRevision: x.f.kernel.seq }, botKey())).state).toBe('accepted');
+    expect(x.model).toHaveBeenCalledTimes(1);
+  } finally { await x.close(); }
+});
+
+it('distinguishes expired sources, concurrent owner decisions and pre-dispatch quotas from unknown execution', async () => {
+  const x = await fixture();
+  try {
+    const m = management(x.f), expiring = await m.create({ botId: 'alpha', scope: 'private', kind: 'user_fact', content: 'Short event',
+      expectedRevision: x.f.kernel.seq, valid: { from: 0, to: 100, basis: 'explicit' } });
+    const sourceId = x.f.kernel.snapshot.versions.get(expiring)!.versionId;
+    await expect(x.service.start({ ...x.request(), sourceIds: [sourceId] }, botKey())).rejects.toMatchObject({ code: 'bot/conflict' });
+    expect(x.model).not.toHaveBeenCalled();
+    const row = await x.service.start(x.request(), botKey());
+    const decision = { operationId: randomUUID(), runId: row.id, botId: 'alpha', expectedRevision: x.f.kernel.seq, action: 'accept' as const };
+    await x.service.decide(decision, botKey());
+    await expect(x.service.decide({ ...decision, operationId: randomUUID() }, botKey())).rejects.toMatchObject({ code: 'bot/conflict' });
+    x.service.config.botDaily = 1;
+    await expect(x.service.start(x.request(), botKey())).rejects.toMatchObject({ code: 'memory/consolidation-limit' });
+    expect(x.model).toHaveBeenCalledTimes(1);
+    expect(x.service.list(botKey())).toHaveLength(1);
   } finally { await x.close(); }
 });
