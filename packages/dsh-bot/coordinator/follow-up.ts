@@ -27,6 +27,7 @@ function validateFact(subject: Subject, fact: FollowUpFact) {
       (['delegate', 'team-task', 'native-subagent'].includes(fact.origin.kind) && subject.kind !== 'bot') ||
       (fact.condition.kind === 'needs-review' && fact.origin.kind !== 'work') ||
       (fact.condition.kind === 'tracking' && fact.condition.completion !== undefined) ||
+      (fact.condition.kind === 'failed' && fact.condition.nativeEndReason && fact.origin.kind !== 'native-subagent') ||
       (fact.condition.kind === 'failed' && fact.condition.members !== undefined &&
         (fact.origin.kind !== 'group-turn' || new Set(fact.condition.members.map(row => row.deliveryId)).size !== fact.condition.members.length)))
     throw new Rejection('invalid');
@@ -305,10 +306,20 @@ export function openFollowUp(db: DatabaseSync) {
         if (row.payload_digest !== eventDigest) throw new Rejection('conflict');
         continue;
       }
-      if (Date.parse(fact.occurredAt) < current.observationStart &&
-          (!fact.current || fact.condition.kind === 'failed')) continue;
-      const previous = row?.card && decodeCard({ card: row.card });
-      if (previous && previous.state === 'stopped') continue;
+      const previous = row?.card ? decodeCard({ card: row.card }) : undefined;
+      if (previous?.state === 'stopped') continue;
+      if (Date.parse(fact.occurredAt) < current.observationStart) {
+        if (!fact.current) continue;
+        if (fact.condition.kind === 'failed') {
+          // v1 recorded these exact native turn ends as tracking. Correct only an existing
+          // open head for that event; never create a new pre-enable failure or revive a dismissed card.
+          if (!fact.condition.nativeEndReason || fact.origin.kind !== 'native-subagent' ||
+              previous?.origin.kind !== 'native-subagent' || previous.origin.turn !== fact.origin.turn ||
+              previous.state !== 'open' || previous.condition.kind !== 'tracking' ||
+              row?.source_generation !== input.sourceGeneration || row.observed_at !== fact.occurredAt ||
+              Number(row.native_revision) + 1 !== fact.nativeRevision) continue;
+        }
+      }
       const card = !previous && fact.condition.kind === 'closed' ? null :
         project(engine, input.subject, { ...fact, ...(fact.condition.kind === 'tracking' ? {
           completionTarget: { kind: 'subtask-completed' as const, cardId: id, origin: fact.origin,

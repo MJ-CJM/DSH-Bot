@@ -1,3 +1,6 @@
+import type { CommandBody } from "../src/shared/proactive/protocol.js";
+import type { ProactiveService } from "../src/host/proactive/service.js";
+import { DeferredNoticePump } from "../src/host/proactive/notice-pump.js";
 import { DatabaseSync } from "node:sqlite";
 import type { Context } from "@deepseek-ai/cordis";
 import { afterEach, expect, test, vi } from "vitest";
@@ -370,4 +373,81 @@ test("a rule adopted during the final lineage await is checked before recording"
 	});
 	expect(await recordDeferredNoticeBatch(value.ctx, value.batch, value.resolve, new AbortController().signal, () => instant)).toMatchObject({ state: "suppressed" });
 	expect(value.record).not.toHaveBeenCalled();
+});
+
+test.each(["work", "claim-read", "permission-after-claim", "settle", "settle-ack"] as const)(
+  "a transient %s failure retains intent or claim ownership and records exactly once", async failure => {
+    const { core } = setup(0);
+    const item = core.schedule(schedule("one"));
+    const { ctx, record, resolve } = hostFixture();
+    const work = await resolve(item);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(instant);
+    let failed = false, claimed = false;
+    function interrupt(at: typeof failure) {
+      if (!failed && failure === at) { failed = true; throw new Error("Temporary read failure"); }
+    }
+    const port = {
+      read: async (input: Parameters<ProactiveService["read"]>[0]) => {
+        switch (input.kind) {
+          case "notice-candidates": return { kind: input.kind, work: [] };
+          case "notice-due": return { kind: input.kind, items: core.due() };
+          case "work-ticket": interrupt("work"); return { kind: "work", work };
+          case "checkpoint": return { kind: input.kind, source: { generation: 1 } };
+          case "dispatch-permitted":
+            if (claimed) interrupt("permission-after-claim");
+            return { kind: input.kind, permitted: true };
+          case "notice-batch": interrupt("claim-read"); return { kind: input.kind, batch: core.batch(input.id) };
+          default: throw new Error("Unexpected read");
+        }
+      },
+      validateTarget: () => {},
+      change: async (_id: string, body: CommandBody) => {
+        switch (body.kind) {
+          case "notice-claim": expect(core.claim(body.input).fresh).toBe(true); claimed = true; break;
+          case "notice-settle": interrupt("settle"); core.settle(body.input); interrupt("settle-ack"); break;
+          case "notice-cancel": throw new Error("Transient reads must not cancel");
+          default: throw new Error("Unexpected change");
+        }
+        return { kind: "receipt", receipt: { status: "committed" } };
+      },
+    };
+    const pump = new DeferredNoticePump(ctx, port as unknown as ProactiveService, { proactiveNotificationPolicy: policy.id });
+    try {
+      await pump.pump();
+      expect(failed).toBe(true);
+      expect(core.get(item.operationId)?.state).toBe(failure === "work" ? "intent" : failure === "settle-ack" ? "recorded" : "claimed");
+      expect(record).toHaveBeenCalledTimes(failure === "settle" || failure === "settle-ack" ? 1 : 0);
+      await pump.pump();
+      await pump.pump();
+      expect(core.get(item.operationId)?.state).toBe("recorded");
+      expect(record).toHaveBeenCalledTimes(1);
+    } finally { clock.mockRestore(); await pump.close(); }
+  },
+);
+
+test("authoritative source withdrawal cancels the due intent before any claim or record", async () => {
+  const { core } = setup(0);
+  const item = core.schedule(schedule("one"));
+  const { ctx, record, resolve } = hostFixture();
+  const work = await resolve(item);
+  const change = vi.fn(async (_id: string, body: CommandBody) => {
+    if (body.kind !== "notice-cancel") throw new Error("Unexpected write");
+    core.cancel(body.operationId, body.expectedRevision);
+  });
+  const pump = new DeferredNoticePump(ctx, {
+    validateTarget: () => {},
+    read: async ({ kind }: { kind: string }) => {
+      if (kind === "notice-candidates") return { kind, work: [] };
+      if (kind === "notice-due") return { kind, items: core.due() };
+      if (kind === "work-ticket") return { kind: "work", work };
+      if (kind === "checkpoint") return { kind, source: { generation: 1, revoked: true } };
+      throw new Error("Unexpected read");
+    }, change,
+  } as unknown as ProactiveService, { proactiveNotificationPolicy: policy.id });
+  try {
+    await pump.pump();
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(core.get(item.operationId)?.state).toBe("suppressed");
+    expect(record).not.toHaveBeenCalled();
+  } finally { await pump.close(); }
 });

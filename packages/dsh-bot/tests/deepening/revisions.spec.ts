@@ -38,9 +38,9 @@ describe('I26 durable revisions, manual sharing and shard lifecycle', () => {
       const m = management(f), { id } = await f.alpha.save({ content: 'EXACT_PRIVATE_FACT', tags: ['PRIVATE_TAG_CANARY'], pinned: true });
       expect(memoryContext(f.kernel, botKey('beta'), policy, 20)()).not.toContain('EXACT_PRIVATE_FACT');
       await f.bots.update('alpha', { avatar: '🐳', avatarColor: 'teal', avatarVariant: 'hat' });
-      const published = await m.confirm({ id, expectedRevision: f.kernel.seq, botId: 'alpha', scope: 'shared' });
+      const published = await m.confirm({ id, versionId: f.kernel.snapshot.versions.get(id)!.versionId, expectedRevision: f.kernel.seq, botId: 'alpha', scope: 'shared' });
       expect(published).not.toBe(id);
-      await m.confirm({ id: published, botId: 'beta', scope: 'shared', expectedRevision: f.kernel.seq });
+      await m.confirm({ id: published, versionId: f.kernel.snapshot.versions.get(published)!.versionId, botId: 'beta', scope: 'shared', expectedRevision: f.kernel.seq });
       expect(f.kernel.snapshot.versions.get(published)?.provenance.bot).toEqual(botKey());
       expect(f.kernel.snapshot.versions.get(published)?.sourceRefs.some(r => r.parentVersionId)).toBe(true);
       expect(memoryContext(f.kernel, botKey('new-bot'), policy, 20)()).toContain('EXACT_PRIVATE_FACT');
@@ -92,9 +92,9 @@ describe('I26 durable revisions, manual sharing and shard lifecycle', () => {
         versionId: v.versionId, opId: c.opId, contentRef: v.contentRef, quarantine: true });
       const m = management(f);
       expect(m.query({ botId: 'beta', scope: 'quarantine', view: 'all' }).rows).toHaveLength(1);
-      await expect(m.confirm({ id: v.memoryId, botId: 'beta', scope: 'shared', expectedRevision: f.kernel.seq }))
+      await expect(m.confirm({ id: v.memoryId, versionId: v.versionId, botId: 'beta', scope: 'shared', expectedRevision: f.kernel.seq }))
         .rejects.toThrow('privately first');
-      await m.confirm({ id: v.memoryId, botId: 'beta', scope: 'private', expectedRevision: f.kernel.seq });
+      await m.confirm({ id: v.memoryId, versionId: v.versionId, botId: 'beta', scope: 'private', expectedRevision: f.kernel.seq });
       expect(m.query({ botId: 'beta', scope: 'quarantine', view: 'all' }).rows).toHaveLength(0);
       expect(memoryContext(f.kernel, botKey('beta'), policy, 20)()).toContain('QUARANTINED_ITEM');
       expect(memoryContext(f.kernel, botKey(), policy, 20)()).not.toContain('QUARANTINED_ITEM');
@@ -105,4 +105,41 @@ describe('I26 durable revisions, manual sharing and shard lifecycle', () => {
       expect(temporalFacts(f.kernel, { at: 30, commitBefore: 1 })).toEqual([]);
     } finally { await f.close(); }
   });
+});
+
+it('rejects a changed version even if the caller has since refreshed its catalog revision', async () => {
+  const f = await v2Fixture();
+  try {
+    const m = management(f), { id } = await f.alpha.save({ content: 'First private statement' });
+    const preview = m.query({ botId: 'alpha', scope: 'private', view: 'facts' }).rows[0]!;
+    await m.revise({ id, expectedRevision: f.kernel.seq, patch: { content: 'Revised private statement' } });
+    const confirm = { id, versionId: preview.version.versionId, expectedRevision: f.kernel.seq, scope: 'shared' as const, botId: 'alpha' };
+    await expect(m.confirm(confirm)).rejects.toMatchObject({ code: 'bot/conflict' });
+    const current = m.query({ botId: 'alpha', scope: 'private', view: 'all' }).rows[0]!;
+    await expect(m.confirm({ ...confirm, versionId: current.version.versionId, botId: 'beta' })).rejects.toMatchObject({ code: 'memory/not-found' });
+    expect(m.query({ botId: 'beta', scope: 'shared', view: 'all' }).total).toBe(0);
+    expect(m.query({ botId: 'alpha', scope: 'private', view: 'all' }).rows[0]?.payload.content).toBe('Revised private statement');
+  } finally { await f.close(); }
+});
+it('retains structured and access metadata when pinning a private event and deduplicating its tags across reopen', async () => {
+  const f = await v2Fixture();
+  try {
+    const m = management(f), valid = { from: 1000, to: 2000, basis: 'explicit' as const };
+    const id = await m.create({ botId: 'alpha', scope: 'private', kind: 'user_event', content: 'Synthetic event',
+      subject: 'owner', factKey: 'event', qualifiers: { project: 'test' }, valid, expectedRevision: f.kernel.seq });
+    const old = f.kernel.snapshot.versions.get(id)!;
+    await f.store.update('alpha', id, { pinned: true });
+    expect(await f.alpha.save({ content: 'Synthetic event', tags: ['test'] })).toMatchObject({ id, deduplicated: true });
+    await f.reopen();
+    const row = management(f).query({ botId: 'alpha', scope: 'private', view: 'all' }).rows[0]!;
+    expect(row.version).toMatchObject({ kind: old.kind, trust: old.trust, provenance: old.provenance, scope: 'private',
+      labels: { readers: old.labels.readers, originTrust: old.labels.originTrust, restrictions: old.labels.restrictions } });
+    expect(row.payload).toMatchObject({ content: 'Synthetic event', valid, subject: 'owner', factKey: 'event', qualifiers: { project: 'test' },
+      legacy: { id, pinned: true, tags: ['test'] } });
+    expect(readableFacts(f.kernel, botKey(), { at: 1500 }).map(fact => fact.version.memoryId)).toContain(id);
+    expect(readableFacts(f.kernel, botKey(), { at: 2000 }).map(fact => fact.version.memoryId)).not.toContain(id);
+    expect(management(f).changes({ botId: 'alpha' }).rows.map(change => change.version.versionId)).toContain(old.versionId);
+    expect(management(f).query({ botId: 'beta', scope: 'private', view: 'all' }).total).toBe(0);
+    expect(management(f).query({ botId: 'alpha', scope: 'shared', view: 'all' }).total).toBe(0);
+  } finally { await f.close(); }
 });

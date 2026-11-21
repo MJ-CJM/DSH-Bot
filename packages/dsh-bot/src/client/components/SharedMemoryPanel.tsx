@@ -20,7 +20,9 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
 }) {
   const { catalog } = binding, snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
   const drafts = useRef(memoryDrafts()), [draft, setDraft] = useState<ManagedDraft>(), [query, setQuery] = useState('');
-  const [busy, setBusy] = useState(false), [error, setError] = useState(false), [confirming, setConfirming] = useState<ManagedMemoryRow>();
+  const [busy, setBusy] = useState(false), [error, setError] = useState(false), [preview, setPreview] = useState<{ row: ManagedMemoryRow; revision: number; scope: MemoryQuery['scope']; botId: string }>();
+  const confirming = preview?.botId === botId && preview.scope === scope && preview.revision === snapshot.revision &&
+    !snapshot.error && snapshot.loaded ? preview.row : undefined;
   const [forget, setForget] = useState<{ row: ManagedMemoryRow; contribution: boolean }>();
   const [cleanups, setCleanups] = useState<Parameters<typeof MemoryCleanupStatus>[0]['statuses']>([]);
   useSettingsDraft(busy || drafts.current.hasDrafts());
@@ -29,7 +31,7 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
   const life = useRef(0), active = useRef(false), currentScope = useRef(scope);
   useEffect(() => {
     life.current++; currentScope.current = scope;
-    setDraft(drafts.current.get(scope)); setConfirming(undefined); setForget(undefined); setError(false);
+    setDraft(drafts.current.get(scope)); setPreview(undefined); setForget(undefined); setError(false);
     active.current = false; setBusy(false);
     catalog.select({ scope, view: scope === 'quarantine' ? 'all' : 'facts', query: '', cursor: undefined, revision: undefined });
     setQuery('');
@@ -112,7 +114,8 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
       <button type="button" className={styles.button} onClick={() => change({ ...draft, revision: comparison.revision })}>
         {t('shared.adoptRevision')}</button>
     </fieldset>}
-    {confirming && <fieldset aria-label={t('shared.confirm')} disabled={busy}>
+    {preview && !confirming && <p role="status">{t('shared.previewChanged')}</p>}
+    {confirming && preview && <fieldset aria-label={t('shared.confirm')} disabled={busy}>
       <legend>{t(scope === 'quarantine' ? 'shared.assign' : 'shared.confirm')}</legend>
       <p>{confirming.payload.content}</p>
       <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({
@@ -121,11 +124,11 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
       }, null, 2)}</pre>
       <p>{t(scope === 'quarantine' ? 'shared.assignNotice' : 'shared.confirmNotice')}</p>
       <button type="button" className={styles.primaryButton} onClick={() => { void perform(async () => {
-        const result = await binding.remote().confirm({ id: confirming.version.memoryId, expectedRevision: snapshot.revision,
-          scope: scope === 'quarantine' ? 'private' : 'shared', botId });
+        const result = await binding.remote().confirm({ id: confirming.version.memoryId, versionId: confirming.version.versionId, expectedRevision: preview.revision,
+          scope: preview.scope === 'quarantine' ? 'private' : 'shared', botId: preview.botId });
         if (!result.ok) throw result.error;
-      }, () => setConfirming(undefined)); }}>{t(scope === 'quarantine' ? 'shared.assign' : 'shared.confirm')}</button>
-      <button type="button" className={styles.button} onClick={() => setConfirming(undefined)}>{t('actions.cancel')}</button>
+      }, () => setPreview(undefined)); }}>{t(scope === 'quarantine' ? 'shared.assign' : 'shared.confirm')}</button>
+      <button type="button" className={styles.button} onClick={() => setPreview(undefined)}>{t('actions.cancel')}</button>
     </fieldset>}
     {snapshot.input.view === 'conflicts' && <MemoryConflicts rows={snapshot.rows} revision={snapshot.revision}
       resolve={resolve} busy={busy} t={t} />}
@@ -133,7 +136,7 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
       actions={forgetting} contribution={forget.contribution} close={() => setForget(undefined)} t={t} />}
     <MemoryCleanupStatus statuses={cleanups} retry={id => perform(() => forgetting.retry(id))} t={t} />
     <SharedMemoryList rows={snapshot.rows} busy={busy} edit={row => change(memoryDraft(snapshot.revision, row))}
-      confirm={setConfirming} forget={row => setForget({ row, contribution: false })}
+      confirm={row => setPreview({ row, revision: snapshot.revision, scope, botId })} forget={row => setForget({ row, contribution: false })}
       contribution={row => setForget({ row, contribution: true })} t={t} />
     {(snapshot.input.cursor || snapshot.next) && <div className={styles.actions}>
       <button type="button" className={styles.button} onClick={() => catalog.select({ cursor: undefined, revision: undefined })}>

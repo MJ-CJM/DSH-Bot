@@ -18,13 +18,23 @@ import { GroupOverview } from './GroupOverview.js';
 import { resolveGroupMentions } from '../group-mentions.js';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import { groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
+import { GROUP_ATTACHMENT_LIMIT, groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
 import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
-import { GroupRouteUnavailable, type GroupActions, unwrapGroup } from '../groups-state.js';
+import { GroupRouteUnavailable, type GroupActions, type GroupDraft, unwrapGroup } from '../groups-state.js';
 import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
+const draftErrorText = {
+  'group-data-blocked': 'groups.export.dataBlocked',
+  'membership-changed': 'groups.sendMembershipChanged',
+  'route-unavailable': 'groups.routeUnavailable',
+  'supergroup-conflict': 'botMode.inputConflict',
+  'supergroup-unsupported': 'botMode.inputUnsupported',
+  'member-limit': 'groups.memberLimitFailed',
+  'send-failed': 'groups.export.sendFailed',
+  conflict: 'groups.conflict',
+} as const satisfies Record<NonNullable<GroupDraft['errorCode']>, string>;
 const keyOf = (b: BotRecord) => ({ botId: b.id, botCreatedAt: b.createdAt });
 const subscribeNoPermission = (_listener: () => void) => () => {};
 /** Icon and copy of each '/' row, following the native composer menu's icons. */
@@ -505,11 +515,14 @@ export function GroupConversation({
       uploadControllers.current.clear();
     };
   }, [actions, rootId]);
+  const [filesOverLimit, setFilesOverLimit] = useState(false);
   const attach = (files: FileList | null) => {
     // Automatic collaboration admits shared text only. Refuse before upload,
     // even if a file-input event arrives after the group changed or was hidden.
     if (!view || automaticGroup || !files) return;
-    for (const file of files) {
+    const remaining = Math.max(0, GROUP_ATTACHMENT_LIMIT - actions.draft(rootId).uploads.length);
+    setFilesOverLimit(files.length > remaining);
+    for (const file of Array.from(files).slice(0, remaining)) {
       const id = crypto.randomUUID(), controller = new AbortController();
       uploadControllers.current.set(id, controller);
       setUploads(current => [...current, { id, name: file.name, bytes: file.size, state: 'uploading' }]);
@@ -548,7 +561,8 @@ export function GroupConversation({
     }));
   const resolveMentions = (text: string) => resolveGroupMentions(text, mentionTargets, mentions, sharedDraft.mentionBindings ?? []);
   const overMemberLimit = (view?.members.filter(member => member.removedAt === undefined).length ?? 0) > GROUP_MEMBER_LIMIT;
-  const canSend = Boolean(view && !overMemberLimit && !busy && !view.group.archived && !view.reason && view.group.state === 'ready' &&
+  const memoryConflict = sharedDraft.memoryStatusOnly && Boolean(replyTo || sharedDraft.followup);
+  const canSend = Boolean(view && !memoryConflict && uploads.length <= GROUP_ATTACHMENT_LIMIT && !overMemberLimit && !busy && !view.group.archived && !view.reason && view.group.state === 'ready' &&
     (draft.trim() || uploads.length) && uploads.every(row => row.state === 'uploaded'));
   const [modelOpen, setModelOpen] = useState(0), [permissionOpen, setPermissionOpen] = useState(0);
   const commandLauncher = useRef<() => void>();
@@ -633,17 +647,35 @@ export function GroupConversation({
     actions.patchDraft(rootId, value => ({ ...value, sending: true }));
     void perform(async () => {
       if (typeof actions.send !== 'function') throw new GroupRouteUnavailable();
-      const sent = await actions.send(groupKey(view.group), pending.request, dispatchLifetime.current.signal);
-      const turnId = sent.turnId;
+      let turnId: string | undefined;
+      try {
+        ({ turnId } = await actions.send(groupKey(view.group), pending.request, dispatchLifetime.current.signal));
+      } catch (cause) {
+        if (!automaticGroup && !pending.request.followup && hasOperationCode(cause, 'conflict')) {
+          await catalog.refresh();
+          const snapshot = catalog.getSnapshot();
+          const fresh = snapshot.view;
+          // Only release the idempotency key after an authoritative rejection and
+          // an updated roster with no recorded turn for this exact operation.
+          if (!snapshot.error && fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt &&
+              fresh.group.membershipRevision > pending.request.expectedMembershipRevision &&
+              !fresh.turns.some(turn => turn.operationId === pending.request.operationId)) {
+            actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
+              ? { ...current, operation: undefined, errorCode: 'membership-changed' } : current);
+          }
+        }
+        throw cause;
+      }
       if (turnId) setStatisticsSent(previous => ({ turnId, followup: Boolean(pending.request.followup), sequence: (previous?.sequence ?? 0) + 1 }));
       actions.patchDraft(rootId, value => ({ ...value, mentionBindings: value.text === pending.request.text ? [] : value.mentionBindings,
-        memoryStatusOnly: value.text === pending.request.text && value.memoryStatusOnly === pending.request.memoryStatusOnly ? undefined : value.memoryStatusOnly,
+        memoryStatusOnly: pending.request.memoryStatusOnly ? undefined : value.memoryStatusOnly,
         followup: value.followup?.deliveryId === pending.request.followup?.deliveryId ? undefined : value.followup }));
       setDraft((current) => (current === pending.request.text ? '' : current));
         setMentions((current) => (JSON.stringify(current) === JSON.stringify(selectedAtSend) ? [] : current));
         setReplyTo(current => current?.id === pending.request.replyTo ? undefined : current);
         setUploads(current => current.filter(row => !row.receiptId || !pending.request.fileReceiptIds?.includes(row.receiptId)));
         operation.current = undefined;
+        if (alive.current) setFilesOverLimit(false);
     }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
   };
   if (!view)
@@ -665,7 +697,9 @@ export function GroupConversation({
       <style>{css}</style>
       {view.group.state === 'ready' && !view.group.archived && !view.hasEarlier && !view.messages.length && !view.turns.length && <p role="status" data-group-empty-conversation="">{t('groups.emptyConversation')}</p>}
       {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit: GROUP_MEMBER_LIMIT })}</p>}
-      {(error || snapshot.error) && <p role="alert">{t(error ? sharedDraft.errorCode === 'route-unavailable' ? 'groups.routeUnavailable' : sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : sharedDraft.errorCode === 'group-data-blocked' ? 'groups.export.dataBlocked' : sharedDraft.errorCode === 'member-limit' ? 'groups.memberLimitFailed' : sharedDraft.errorCode === 'send-failed' ? 'groups.export.sendFailed' : 'groups.conflict' : 'groups.disconnected', { limit: GROUP_MEMBER_LIMIT })}</p>}
+      {(error || snapshot.error) && <p role="alert">{t(error ? draftErrorText[sharedDraft.errorCode ?? 'conflict'] : 'groups.disconnected', {
+        limit: GROUP_MEMBER_LIMIT, members: members.map(m => lookup(m.id)?.name ?? m.bot.botId).join(', '),
+      })}</p>}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       {!workspace && <>
       <h3>{view.group.name}</h3>
@@ -686,10 +720,6 @@ export function GroupConversation({
           {t('groups.archive')}
         </button>
       </div>
-      {(error || snapshot.error) && (
-        <p role="alert">{t(error ? sharedDraft.errorCode === 'route-unavailable' ? 'groups.routeUnavailable' : sharedDraft.errorCode === 'supergroup-conflict' ? 'botMode.inputConflict' : sharedDraft.errorCode === 'supergroup-unsupported' ? 'botMode.inputUnsupported' : sharedDraft.errorCode === 'group-data-blocked' ? 'groups.export.dataBlocked' : sharedDraft.errorCode === 'member-limit' ? 'groups.memberLimitFailed' : sharedDraft.errorCode === 'send-failed' ? 'groups.export.sendFailed' : 'groups.conflict' : 'groups.disconnected', { limit: GROUP_MEMBER_LIMIT })}</p>
-      )}
-      {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       <section className={styles.members} aria-label={t('groups.members')}>
         {members.map((m) => {
           const b = lookup(m.id);
@@ -774,11 +804,12 @@ export function GroupConversation({
         }}
       >
         <GroupExportQueue view={view} bots={bots} actions={actions} t={t} />
-        {!automaticGroup && sharedDraft.memoryStatusOnly && !replyTo && !sharedDraft.followup && <div className={styles.memoryStatusTag} data-group-memory-status="" role="status" title={t('groups.memoryStatus.hint')}>
+        {!automaticGroup && sharedDraft.memoryStatusOnly && <div className={styles.memoryStatusTag} data-group-memory-status="" role="status" title={t('groups.memoryStatus.hint')}>
           <IconDataOutlineRegular size={16} /><span>{t('groups.memoryStatus.toggle')}</span>
           <Button variant="ghost" size="sm" type="button" data-group-memory-cancel="" aria-label={t('groups.memoryStatus.cancel')} title={t('groups.memoryStatus.cancel')}
             disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => { actions.patchDraft(rootId, value => ({ ...value, memoryStatusOnly: undefined })); composer.current?.focus({ preventScroll: true }); }}>×</Button>
         </div>}
+        {memoryConflict && <p role="alert">{t('groups.memoryStatus.incompatible')}</p>}
         {replyTo && <div className={styles.replyPreview} role="status">
           <strong>{t('groups.replying', { name: replyTo.speaker?.name ?? t('groups.you') })}</strong>
           <span>{groupMessagePreview(replyTo.text)}</span>
@@ -797,10 +828,12 @@ export function GroupConversation({
             attach(event.currentTarget.files); event.currentTarget.value = '';
           }} />
         </label>
+        {(filesOverLimit || uploads.length > GROUP_ATTACHMENT_LIMIT) && <p role="alert">{t('groups.attachmentLimit', { limit: GROUP_ATTACHMENT_LIMIT })}</p>}
         {uploads.length > 0 && <ul className={styles.attachments} aria-label={t('groups.attachments')}>
           {uploads.map(upload => <li key={upload.id}>
             <span>{upload.name} · {upload.bytes.toLocaleString()} B · {t(`groups.${upload.state}`)}</span>
             <button type="button" disabled={busy} aria-label={t('groups.removeAttachment', { name: upload.name })} onClick={() => {
+              setFilesOverLimit(false);
               uploadControllers.current.get(upload.id)?.abort();
               setUploads(current => current.filter(row => row.id !== upload.id));
             }}>{t('groups.removeAttachment', { name: upload.name })}</button>

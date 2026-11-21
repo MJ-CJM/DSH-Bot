@@ -19,6 +19,7 @@ export const messageInputSchema = z.discriminatedUnion('action', [
     mode: z.enum(['notify', 'ask']),
     priority: z.enum(['normal', 'interrupt']).default('normal'),
     inReplyToContext: id.optional(),
+    sharePrivate: z.boolean().optional(),
   }),
   z.strictObject({
     action: z.literal('reply'),
@@ -27,6 +28,13 @@ export const messageInputSchema = z.discriminatedUnion('action', [
   }),
 ]);
 export type MessageInput = z.output<typeof messageInputSchema>;
+// The result operation only reads already delivered copies and cannot enter a send or reply path.
+export const peerResultInputSchema = z.strictObject({ action: z.literal('result'), to: botIdSchema, requestId: id.optional() });
+export const peerQueryTopic = z.enum(['capabilities', 'progress', 'previous-result']);
+export const peerQueryInputSchema = z.strictObject({ action: z.literal('query'), to: botIdSchema, topic: peerQueryTopic });
+export type PeerQueryInput = z.output<typeof peerQueryInputSchema>;
+export const messageToolInputSchema = z.union([messageInputSchema, peerResultInputSchema, peerQueryInputSchema]);
+export type MessageToolInput = z.output<typeof messageToolInputSchema>;
 const display = z.strictObject({
   name: z.string(),
   avatarVariant: avatarVariantSchema.optional(),
@@ -52,6 +60,7 @@ export const envelopeSchema = z
     hop: positive,
     depth: positive,
     mode: z.enum(['notify', 'ask', 'reply']),
+    queryTopic: peerQueryTopic.exclude(['capabilities']).optional(),
     priority: z.enum(['normal', 'interrupt']),
     ts: time,
     expiresAt: time,

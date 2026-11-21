@@ -52,7 +52,7 @@ export function apply(ctx, config) {
         if (last?.role === 'tool') yield* say('The native tool result has been recorded.');
         else if (instructions.has(body)) {
           const family = who.startsWith('first-') ? 'first' : 'policy';
-          yield* call(options.sessionId, { action: 'send', to: `${family}-reviewer`, mode: 'ask', priority: 'normal', content: QUESTIONS[family] });
+          yield* call(options.sessionId, { action: 'send', to: `${family}-reviewer`, mode: 'ask', priority: 'normal', sharePrivate: true, content: QUESTIONS[family] });
           yield { type: 'finish', reason: { kind: 'tool-calls' } }; return;
         } else if (body.includes('Mode ask.')) {
           const family = who.startsWith('first-') ? 'first' : 'policy';
@@ -77,30 +77,16 @@ export function apply(ctx, config) {
           && ((planned.args.action === 'send' && planned.args.to === `${current.split('-')[0]}-reviewer`
             && planned.args.content === QUESTIONS[current.split('-')[0]] && planned.args.mode === 'ask' && planned.args.priority === 'normal')
             || (planned.args.action === 'reply' && typeof planned.args.replyTo === 'string' && planned.args.content === ANSWERS[current.split('-')[0]]));
-        // Native tool execution and this plugin's native data-export gate are
-        // separate approvals. The latter has no callId: verify its complete
-        // serialized envelope against the exact scripted call and Bot identities.
+        // Check the exact private text and the native session/recipient, independent of internal transport JSON.
         if (request.toolName === 'dsh_bot_export_message' && current) {
-          try {
-            const lines = request.reason.split('\n'), prefix = 'Authorize this exact data export to ';
-            assert.ok(lines[0].startsWith(prefix) && lines[0].endsWith('?'));
-            const target = JSON.parse(lines[0].slice(prefix.length, -1)), data = JSON.parse(lines[1]);
-            const envelope = data.envelope;
-            planned = [...calls.values()].findLast(value => value.sessionId === request.agent.session.id
-              && value.args.content === envelope.content && (value.args.action === 'reply' ? envelope.mode === 'reply' && value.args.replyTo === envelope.replyTo
-                : value.args.action === 'send' && value.args.to === envelope.to.botId && value.args.mode === envelope.mode));
-            const from = { botId: current, botCreatedAt: bots[current].createdAt };
-            const peer = bots[envelope.to.botId]; assert.ok(peer);
-            const to = { botId: peer.id, botCreatedAt: peer.createdAt };
-            assert.deepEqual(target, { kind: 'bot', bot: to }); assert.deepEqual(envelope.from, from); assert.deepEqual(envelope.to, to);
-            assert.equal(envelope.fromSessionId, request.agent.session.id); assert.equal(envelope.toSessionId, mains[peer.id]);
-            assert.ok(planned && envelope.authorizationId.startsWith('native:'));
-            assert.deepEqual(data.nativeInput.source.from, from); assert.deepEqual(data.nativeInput.source.to, to);
-            assert.equal(data.nativeInput.source.kind, 'dsh-bot-message'); assert.equal(data.nativeInput.source.mode, envelope.mode);
-            assert.equal(data.outgoingInput.source.kind, 'dsh-bot-message-sent');
-            assert.ok(text(data.nativeInput).includes(envelope.content));
-            exportTarget = target; exact = true;
-          } catch { exact = false; }
+          const family = current.split('-')[0];
+          const targetId = `${family}-${current.endsWith('-planner') ? 'reviewer' : 'planner'}`;
+          const content = current.endsWith('-planner') ? QUESTIONS[family] : ANSWERS[family];
+          planned = [...calls.values()].findLast(value => value.sessionId === mains[current]
+            && value.args.content === content && (value.args.action === 'send' ? value.args.to === targetId && value.args.sharePrivate
+              : value.args.action === 'reply' && ctx.dshBotMessaging.store.get(value.args.replyTo)?.envelope.from.botId === targetId));
+          exact = Boolean(planned && request.reason === `Share this private message from "${current}" with "${targetId}"?\n\n${content}`);
+          exportTarget = { kind: 'bot', bot: { botId: targetId, botCreatedAt: bots[targetId].createdAt } };
         }
         approvals.push({ sessionId: request.agent.session.id, callId: String(request.callId), toolName: request.toolName,
           args: planned?.args, exportTarget, exact: Boolean(exact), outcome: exact ? 'allowed-once' : 'rejected' });

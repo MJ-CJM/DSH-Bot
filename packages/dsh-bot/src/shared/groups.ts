@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { botKeySchema, resourceId } from './integrations.js';
 import { botRecordFields } from './schema.js';
 export const GROUP_ROOT_PRESET = 'dsh-bot-group-root';
+export const GROUP_ATTACHMENT_LIMIT = 16;
 export const GROUP_TEXT_MAX_BYTES = 65536;
 export const GROUP_TIMELINE_LIMIT = 200;
 const rev = z.number().int().positive();
@@ -212,7 +213,7 @@ export const groupSendSchema = z.strictObject({
     .trim()
     .refine((s) => new TextEncoder().encode(s).length <= GROUP_TEXT_MAX_BYTES)
     .default(''),
-  fileReceiptIds: z.array(z.string().min(1)).max(16).default([]),
+  fileReceiptIds: z.array(z.string().min(1)).max(GROUP_ATTACHMENT_LIMIT).default([]),
   memberIds: z.array(resourceId).max(16).default([]),
   round: z.boolean().default(false),
   memoryStatusOnly: z.literal(true).optional(),

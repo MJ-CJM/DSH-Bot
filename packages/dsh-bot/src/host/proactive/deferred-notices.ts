@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import { hasOperationCode } from "../../shared/operation-errors.js";
 import { sameBot } from "../../shared/identity.js";
 import {
 	NOTIFICATION_TEXT_MAX_BYTES,
@@ -74,6 +75,21 @@ export function deferredNoticeText(
 		.join("\n\n");
 }
 
+export class NoticeReadUnavailable extends Error {}
+export class NoticeWithdrawn extends Error {}
+
+/** A missing policy is authoritative only when the policy store answered. */
+export function noticePolicy(ctx: Context, id: string): NotificationPolicy {
+	const notifications = ctx.get("dshBotNotifications");
+	if (!notifications) throw new NoticeReadUnavailable("Notification service unavailable");
+	try {
+		return notifications.policy(id);
+	} catch (error) {
+		if (hasOperationCode(error, "not-found")) throw new NoticeWithdrawn("Notification policy removed");
+		throw new NoticeReadUnavailable("Notification policy unavailable", { cause: error });
+	}
+}
+
 type Result = Pick<NoticeSettle, "state" | "reason">;
 /** Only call for a freshly claimed batch. Core retains claim uncertainty and
  * forbids replay; this adapter has no retry loop and never invokes an IM Port.
@@ -90,11 +106,12 @@ export async function recordDeferredNoticeBatch(
 	try {
 		if (batch.state !== "claimed")
 			return { state: "suppressed", reason: "not-claimed" };
+		if (batch.items.some(item => item.expiresAt <= now())) return { state: "suppressed", reason: "expired" };
 		const notifications = ctx.get("dshBotNotifications");
-		if (!notifications) return { state: "suppressed", reason: "unavailable" };
+		if (!notifications) throw new NoticeReadUnavailable("Notification service unavailable");
 		const checkPolicy = () => {
 			signal.throwIfAborted();
-			const policy = notifications.policy(batch.policyId);
+			const policy = noticePolicy(ctx, batch.policyId);
 			if (
 				!policy.enabled ||
 				policy.channel !== "in-app" ||
@@ -173,7 +190,8 @@ export async function recordDeferredNoticeBatch(
 			async () => {
 				try {
 					await beforeRecord();
-				} catch {
+				} catch (error) {
+					if (error instanceof NoticeReadUnavailable) throw error;
 					throw deniedBeforeRecord;
 				}
 			},
@@ -182,6 +200,7 @@ export async function recordDeferredNoticeBatch(
 			? { state: "recorded" }
 			: { state: "unknown", reason: "receipt-unconfirmed" };
 	} catch (error) {
+		if (error instanceof NoticeReadUnavailable) throw error;
 		// A record failure may be after the dedup tombstone committed. Preserve
 		// unknown rather than issuing another operation or deleting the tombstone.
 		return recordAttempted && error !== deniedBeforeRecord

@@ -25,6 +25,7 @@ import type { Capabilities } from "../capabilities/service.js";
 import { readRepairReview, formatRepairReview } from "./repair.js";
 import { formatWorkspaceReview } from "./workspace-repair.js";
 import { GROUP_TEXT_MAX_BYTES } from "../../shared/groups.js";
+import { NoticeWithdrawn } from "./deferred-notices.js";
 import { DeferredNoticePump } from "./notice-pump.js";
 import type { WorkspaceReviewRequest } from "../../shared/proactive/workspace-repair.js";
 import {
@@ -1138,7 +1139,7 @@ export class ProactiveService {
 		// A managed outlet can hold its ledger while checking this target.
 		const bot = this.ctx.dshBots.onboardingSnapshot(target.bot.botId, target.bot.botCreatedAt);
 		if (!bot || bot.updatedAt !== target.botUpdatedAt)
-			throw new Error("Proactive Bot incarnation changed");
+			throw new NoticeWithdrawn("Proactive Bot incarnation changed");
 		return bot;
 	}
 	async workList(owner?: BotKey) {

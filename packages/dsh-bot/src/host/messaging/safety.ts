@@ -2,7 +2,7 @@ import { withoutWakeControls } from './wake.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
 import { randomUUID } from 'node:crypto';
-import type { MessageInput } from '../../shared/messaging.js';
+import type { MessageInput, PeerQueryInput } from '../../shared/messaging.js';
 import type { BotKey } from '../../shared/identity.js';
 import { digest, OperationError } from '../common/operations.js';
 import type { MessagingAuthorization } from './core.js';
@@ -28,7 +28,7 @@ export class MessagingSafety implements MessagingAuthorization {
   active = true;
   revoke(key: string) { this.grants.delete(key); }
   close() { this.active = false; this.grants.clear(); this.scopes.clear(); }
-  async approve(agent: Agent, input: Exclude<MessageInput, { action: 'list' }>, target: BotKey, invocation = '') {
+  async approve(agent: Agent, input: Exclude<MessageInput, { action: 'list' }> | PeerQueryInput, target: BotKey, invocation = '') {
     const grant = this.grants.get(invocation);
     this.grants.delete(invocation);
     grant?.signal?.throwIfAborted();
@@ -38,7 +38,7 @@ export class MessagingSafety implements MessagingAuthorization {
     this.scopes.set(grant.id, grant.targets);
     return grant.id;
   }
-  grant(agent: Agent, input: MessageInput, target: BotKey, invocation: string, targets: BotKey[], signal?: AbortSignal, valid?: () => boolean) {
+  grant(agent: Agent, input: MessageInput | PeerQueryInput, target: BotKey, invocation: string, targets: BotKey[], signal?: AbortSignal, valid?: () => boolean) {
     if (!this.active) throw new OperationError('unavailable');
     this.grants.set(invocation, { agent, digest: digest(input), target, id: `native:${randomUUID()}`, targets, signal, valid });
   }

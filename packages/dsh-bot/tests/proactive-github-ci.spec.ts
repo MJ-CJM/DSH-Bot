@@ -62,3 +62,59 @@ test.each(['rate-limit','network','scope','credential','partial','overflow','rev
   expect(commits).toBe(0);
   if (failure === 'revoked') expect(calls).toBe(0);
 });
+
+test('a legacy 256-run checkpoint catches up, resumes partial commits, and revisits reruns and late completions', async () => {
+  const worker = await proactiveWorker();
+  const start = Math.floor(Date.now() / 1000) * 1000 - 10000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const settings = { ...config, since: iso(start) };
+  const rows = Array.from({ length: 256 }, (_, index) => ({
+    ...run(index + 1), created_at: iso(start), updated_at: iso(start),
+  }));
+  let failCommit = false;
+  let interrupted = false;
+  const sourceId = observeCiPage(scope, { complete: true, before: null, after: 'cursor', rows: [] }).sourceId;
+  const service = {
+    ciCheckpoint: async () => {
+      const reply = await worker.read({ kind: 'checkpoint', sourceId });
+      if (reply.kind !== 'checkpoint') throw new Error('unavailable');
+      return reply.source;
+    },
+    observeCi: (id: string, current: typeof scope, page: Parameters<typeof observeCiPage>[1]) => {
+      if (failCommit && !interrupted && page.before?.endsWith('fresh:32')) {
+        interrupted = true;
+        throw new Error('temporary failure before commit');
+      }
+      return worker.change(id, observeCiPage(current, page));
+    },
+  };
+  const request: typeof fetch = async input => {
+    const url = new URL(String(input));
+    const created = url.searchParams.get('created')!;
+    const [from, through] = created.startsWith('>=') ? [Date.parse(created.slice(2)), Infinity]
+      : created.split('..').map(value => Date.parse(value));
+    const eligible = rows.filter(row => Date.parse(row.created_at) >= from! && Date.parse(row.created_at) <= through!).reverse();
+    const offset = (Number(url.searchParams.get('page')) - 1) * 32;
+    return Response.json({ total_count: eligible.length, workflow_runs: eligible.slice(offset, offset + 32) });
+  };
+  const poll = () => observeGithubCi(scope, settings, service, new AbortController().signal, async () => 'fixture', request);
+  try {
+    await poll();
+    expect((await service.ciCheckpoint())?.checkpoint).toMatch(/^github:/);
+    rows.push({ ...run(257), created_at: iso(start), updated_at: iso(start) },
+      { ...run(258), status: 'in_progress', created_at: iso(start + 6000), updated_at: iso(start + 6000) });
+    failCommit = true;
+    await expect(poll()).rejects.toThrow('temporary failure before commit');
+    const cursor = (await service.ciCheckpoint())?.checkpoint;
+    expect(cursor).toMatch(/^github2:.*:fresh:32$/);
+    await worker.restart();
+    expect((await service.ciCheckpoint())?.checkpoint).toBe(cursor);
+    await poll();
+    expect(await worker.read({ kind: 'snapshot' })).toMatchObject({ snapshot: { triggerCount: 257 } });
+    // A native rerun of an old workflow and a formerly-unfinished run are both observations.
+    Object.assign(rows[0]!, { run_attempt: 2, updated_at: iso(start + 8000) });
+    Object.assign(rows.at(-1)!, { status: 'completed', updated_at: iso(start + 8000) });
+    for (let i = 0; i < 5; i++) await poll();
+    expect(await worker.read({ kind: 'snapshot' })).toMatchObject({ snapshot: { triggerCount: 259, ticketCount: 0 } });
+  } finally { await worker.close(); }
+});

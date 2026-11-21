@@ -14,7 +14,7 @@ describe('retained memory changes and safe restore', () => {
       const m = management(f);
       const privateId = await m.create({ scope: 'private', botId: 'alpha', kind: 'user_fact', content: 'DERIVED_OLD_SECRET_BODY',
         valid: { from: null, to: null, basis: 'unknown' }, expectedRevision: f.kernel.seq });
-      const publishedId = await m.confirm({ id: privateId, botId: 'alpha', scope: 'shared', expectedRevision: f.kernel.seq });
+      const publishedId = await m.confirm({ id: privateId, versionId: f.kernel.snapshot.versions.get(privateId)!.versionId, botId: 'alpha', scope: 'shared', expectedRevision: f.kernel.seq });
       const published = m.changes({ botId: 'beta' }).rows.find(row => row.version.memoryId === publishedId);
       expect(published?.payload.content).toBe('DERIVED_OLD_SECRET_BODY');
       if (!published) throw new Error('Missing authorized publication');

@@ -8,6 +8,8 @@ import { Messaging, messagingDomain } from '../src/host/messaging/service.js';
 import { MessageStore } from '../src/host/messaging/store.js';
 import { MessagingConfig } from '../src/host/messaging/config.js';
 import type { MessageRecord } from '../src/shared/messaging.js';
+import { need } from '../src/host/common/operations.js';
+import { flowFixture } from './deepening/managed-flow-fixture.js';
 async function setup(
   f: Parameters<Parameters<typeof withIntegrations>[0]>[0],
   capabilities = { coldWake: true, interrupt: true, processing: true },
@@ -155,6 +157,84 @@ async function setup(
   };
 }
 describe('B03 Host transport fault boundaries with JSON and native Session logs', () => {
+  it('reads a native private export only in its requester main, and stops reusing it after its source version changes', () =>
+    withIntegrations(async f => {
+      const s = await setup(f), ledger = await flowFixture();
+      try {
+        const request = vi.spyOn(f.ctx.approval, 'request').mockResolvedValue('allowed-once');
+        ledger.current.set('beta', 1);
+        Object.assign(f.registry, ledger.registry());
+        await ledger.seed(s.alpha.session.id, ledger.privateId);
+        const ask = await s.send('Consult the approved private note.');
+        await s.messaging.settled();
+        const claim = (agent: Agent) => {
+          const input = need(agent.inbox.nextTurn[0]);
+          agent.session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, removedCount: 1, inserted: [] });
+          agent.session.append('user/message', input, { surfaceOp: 'append' });
+        };
+        claim(s.beta);
+        const reply = await s.messaging.send(s.beta, { action: 'reply', replyTo: ask.messageId, content: 'A previously shared answer.' }, 'private-reply');
+        await s.messaging.settled();
+        claim(s.alpha);
+        s.beta.session.append('turn/end', { turn: 0, reason: { kind: 'completed' } });
+        s.messaging.retry(ask.messageId); s.messaging.retry(reply.messageId);
+        await s.messaging.settled();
+        s.alpha.session.append('turn/start', { turn: 1 });
+        s.alpha.session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'What did beta find?' }] }), { surfaceOp: 'append' });
+        const lookup = (scopedOnly = false) => s.messaging.peerResult(s.alpha, 'beta', ask.messageId, scopedOnly);
+        expect(await lookup()).toMatchObject({ status: 'completed', content: 'A previously shared answer.', scoped: false });
+        expect(await lookup(true)).toEqual({ status: 'missing' });
+        const originalApprovals = request.mock.calls.length;
+        expect(originalApprovals).toBeGreaterThan(0);
+        const epoch = ledger.f.kernel.epoch;
+        await ledger.f.alpha.update(ledger.privateId, { content: 'Updated private note.' });
+        expect(ledger.f.kernel.epoch).toBe(epoch);
+        expect(await lookup()).toEqual({ status: 'unknown', requestId: ask.messageId });
+        expect(request).toHaveBeenCalledTimes(originalApprovals);
+      } finally { await s.close(); await ledger.close(); }
+    }));
+  it('sends only a fixed question from a private root, coalesces retries, and reviews the exact private reply', () =>
+    withIntegrations(async f => {
+      const s = await setup(f), x = await flowFixture();
+      try {
+        x.current.set('beta', 1);
+        Object.assign(f.registry, x.registry(), {
+          directorySnapshot: () => [{ id: 'alpha', name: 'Alpha' }, { id: 'beta', name: 'Beta' }],
+          status: async () => ['alpha', 'beta'].map(id => ({ id, preset: { state: 'ok' } })),
+        });
+        await x.flow.inherit(s.alpha.session.id, x.flow.label('private'));
+        let allow = false;
+        const approve = vi.fn(async () => allow ? 'allowed-once' as const : 'rejected' as const);
+        f.ctx.on('approval/request', approve);
+        const query = { action: 'query', to: 'beta', topic: 'previous-result' } as const;
+        expect(await s.messaging.resolveQuery(s.alpha, { ...query, topic: 'capabilities' })).toMatchObject({ id: 'beta' });
+        expect(await s.messaging.resolveQuery(s.alpha, query)).toBeUndefined();
+        for (const extra of [{ content: 'PRIVATE_DRAFT' }, { inReplyToContext: 'PRIVATE_CONTEXT' }])
+          await expect(s.messaging.send(s.alpha, { ...query, ...extra }, 'forged')).rejects.toThrow();
+        const receipt = await s.messaging.send(s.alpha, query, 'fixed');
+        await s.messaging.settled();
+        const row = s.store.get(receipt.messageId);
+        if (!row?.nativeInput || !row.flowId) throw Error('Missing native delivery');
+        expect(row.envelope).toMatchObject({ queryTopic: 'previous-result', mode: 'ask' });
+        expect(row.envelope.content).toContain('most recent relevant task');
+        expect(JSON.stringify(row.nativeInput)).not.toContain('PRIVATE');
+        expect(x.flow.get(row.flowId).envelope?.label).toMatchObject({ sourceVersions: [],
+          readers: [{ botId: 'alpha', botCreatedAt: 1 }, { botId: 'beta', botCreatedAt: 1 }] });
+        expect(await s.messaging.send(s.alpha, query, 'fixed-retry')).toEqual(receipt);
+        expect(await s.messaging.resolveQuery(s.alpha, query)).toMatchObject({ status: 'pending', requestId: receipt.messageId });
+        expect(approve).not.toHaveBeenCalled();
+        s.beta.session.append('turn/start', { turn: 1 });
+        s.beta.session.append('user/message', row.nativeInput as unknown as ReturnType<typeof createUserMessage>, { surfaceOp: 'append' });
+        const reply = { action: 'reply', replyTo: receipt.messageId, content: 'EXACT_PRIVATE_ANSWER' };
+        await expect(s.messaging.send(s.beta, { ...query, to: 'alpha' }, 'no-human')).rejects.toThrow('approval-denied');
+        await expect(s.messaging.send(s.beta, reply, 'rejected')).rejects.toThrow('not approved');
+        expect(s.store.rows()).toHaveLength(1);
+        allow = true;
+        await s.messaging.send(s.beta, reply, 'accepted'); await s.messaging.settled();
+        expect(approve).toHaveBeenCalledTimes(2);
+        expect(s.store.rows().filter(v => v.envelope.replyTo === receipt.messageId)).toHaveLength(1);
+      } finally { await s.close(); await x.close(); }
+    }));
   it('expires its own durable pending input on recovery without waking or restoring it', () =>
     withIntegrations(async (f) => {
       const s = await setup(f);

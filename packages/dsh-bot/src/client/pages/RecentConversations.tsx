@@ -29,6 +29,7 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
     setRecentPreference(key, field); setRevision(value => value + 1);
   };
   const allRows = nativeDirectoryRows(model.entries, snapshot.groups, model.activity.sessions ?? []);
+  const unavailable = new Set(model.activity.bots?.filter(bot => bot.mainSessionState === 'unavailable').map(bot => bot.botId));
   const liveIdentities = JSON.stringify(allRows.map(({ kind, id, createdAt }) => ({ kind, id, createdAt })));
   useEffect(() => {
     if (model.snapshot?.loaded === false || groups && snapshot.loaded === false) return;
@@ -67,7 +68,7 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
     <ul className={styles.recentList}>
       {rows.map(row => <li key={row.key} className={styles.recentRow} data-directory-kind={row.kind} data-directory-id={row.id} data-directory-created-at={row.createdAt} data-directory-selected={selection === row.key ? '' : undefined}>
         <button type="button" data-directory-open="" data-bot-id={row.entry?.bot.id} aria-label={row.name} className={styles.recentOpen} disabled={model.busy || model.navigating} onClick={() => { void open(row); }}>
-          {row.entry ? <BotIdentity bot={row.entry.bot} size={36} preview={previewText(row.preview, t) || (row.entry.bot.description === row.name || /^bot-[a-z0-9-]+$/i.test(row.entry.bot.description) ? '' : row.entry.bot.description) || t('bots.noSessions')} disambiguate={allRows.filter(candidate => candidate.name === row.name).length > 1} /> : <><GroupAvatar size={36} members={row.group?.members} bots={model.entries.map(entry => entry.bot)} label={row.name} /><span className={styles.recentBody}>{row.name}<span className={styles.activityPreview}>{allRows.filter(candidate => candidate.name === row.name).length > 1 ? row.id : row.group?.running ? t('groups.running') : t('groups.title')}</span></span></>}
+          {row.entry ? <BotIdentity bot={row.entry.bot} size={36} preview={unavailable.has(row.id) || row.entry.status?.mainSessionState === 'unavailable' ? t('activity.mainUnavailable') : previewText(row.preview, t) || (row.entry.bot.description === row.name || /^bot-[a-z0-9-]+$/i.test(row.entry.bot.description) ? '' : row.entry.bot.description) || t('bots.noSessions')} disambiguate={allRows.filter(candidate => candidate.name === row.name).length > 1} /> : <><GroupAvatar size={36} members={row.group?.members} bots={model.entries.map(entry => entry.bot)} label={row.name} /><span className={styles.recentBody}>{row.name}<span className={styles.activityPreview}>{allRows.filter(candidate => candidate.name === row.name).length > 1 ? row.id : row.group?.running ? t('groups.running') : t('groups.title')}</span></span></>}
           {mode === 'bots' && row.entry?.status?.preset.state !== 'ok' && <span className={styles.hint}>{text(row.entry?.status?.preset.state === 'broken' ? 'card.statusBroken' : row.entry?.status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown')}</span>}
           {!!row.unread && <span data-unread="" role="img" aria-label={t('activity.unreadCount', { count: row.unread })}>●</span>}
           {!!row.at && <time className={styles.relativeTime} dateTime={new Date(row.at).toISOString()}>{relativeTime(row.at, t('activity.locale'))}</time>}

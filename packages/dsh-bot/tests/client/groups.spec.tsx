@@ -346,19 +346,73 @@ it('does not treat an IME confirmation as a send or cancel the armed memory mode
   } finally { await f.close(); }
 });
 
-it('suppresses the status-only choice for replies and keeps ordinary sends unchanged', async () => {
+it.each(['memory', 'reply'] as const)('requires an explicit choice between a reply and memory-only mode: %s', async choice => {
   const f = await composer();
   try {
     await armMemory(f);
     await act(async () => f.actions.reply(f.data.group.rootSessionId, view().messages[0] as NonNullable<ReturnType<typeof view>['messages'][0]>));
-    expect(f.element.querySelector('[data-group-memory-status]')).toBeNull();
-    expect(f.actions.draft(f.data.group.rootSessionId).memoryStatusOnly).toBe(true);
-    await fill(field(f.element, f.t('groups.message')), 'Reply to the prior message');
-    await click(button(f.element, f.t('groups.send')));
-    expect(f.send.mock.calls[0]?.[1]).not.toHaveProperty('memoryStatusOnly');
-    expect(f.send.mock.calls[0]?.[1].replyTo).toBe(view().messages[0]?.id);
-    await click(button(f.element, f.t('groups.clearReply')));
     expect(f.element.querySelector('[data-group-memory-status]')).not.toBeNull();
-    expect(field(f.element, f.t('groups.message')).value).toBe('Reply to the prior message');
+    await fill(field(f.element, f.t('groups.message')), 'Keep my draft');
+    const send = button(f.element, f.t('groups.send'));
+    expect(send.disabled).toBe(true);
+    expect(f.element.textContent).toContain(f.t('groups.memoryStatus.incompatible'));
+    expect(f.send).not.toHaveBeenCalled();
+    await click(choice === 'memory' ? button(f.element, f.t('groups.clearReply'))
+      : f.element.querySelector('[data-group-memory-cancel]') as HTMLElement);
+    f.send.mockResolvedValueOnce({ ok: true, value: { id: 'turn:choice' } as never });
+    await click(send);
+    const request = f.send.mock.calls[0]![1];
+    expect(request.memoryStatusOnly).toBe(choice === 'memory' ? true : undefined);
+    expect(request.replyTo).toBe(choice === 'reply' ? view().messages[0]?.id : undefined);
+    expect(f.element.querySelector('[data-group-memory-status]')).toBeNull();
+    expect(field(f.element, f.t('groups.message')).value).toBe('');
+  } finally { await f.close(); }
+});
+
+it.each([true, false])('rechecks changed recipients before replacing a rejected request, confirmed=%s', async confirmed => {
+  const f = await composer();
+  try {
+    await fill(field(f.element, f.t('groups.message')), 'Keep my draft');
+    f.send.mockImplementationOnce(async () => {
+      f.data.group = { ...f.data.group, membershipRevision: 2 };
+      if (confirmed) throw { code: 'dsh-bot/conflict' };
+      throw new Error('Transport lost');
+    });
+    const send = button(f.element, f.t('groups.send'));
+    await click(send);
+    const first = f.send.mock.calls[0]![1];
+    expect(first.expectedMembershipRevision).toBe(1);
+    expect(f.send).toHaveBeenCalledTimes(1);
+    expect(field(f.element, f.t('groups.message')).value).toBe('Keep my draft');
+    if (confirmed) expect(f.element.textContent).toContain('Group members changed');
+    const key = { groupId: f.data.group.id, groupCreatedAt: f.data.group.createdAt };
+    await act(async () => { await f.actions.messageView(key).refresh(); });
+    await click(send);
+    const second = f.send.mock.calls[1]![1];
+    expect(second.expectedMembershipRevision).toBe(confirmed ? 2 : 1);
+    expect(second.operationId === first.operationId).toBe(!confirmed);
+  } finally { await f.close(); }
+});
+
+it('limits file selection across batches before uploading and blocks oversized retained drafts', async () => {
+  const f = await composer();
+  try {
+    const id = f.data.group.rootSessionId;
+    const upload = vi.spyOn(f.actions, 'upload').mockImplementation(async (_, file) => ({receiptId: file.name, name: file.name, bytes: file.size}));
+    const input = f.element.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const choose = (count: number, prefix: string) => act(async () => {
+      Object.defineProperty(input, 'files', {configurable: true, value: Array.from({length: count}, (_, i) => new File(['hello'], prefix+i))});
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await choose(15, 'first');
+    await choose(2, 'next');
+    expect(upload).toHaveBeenCalledTimes(16);
+    expect(f.element.textContent).toContain(f.t('groups.attachmentLimit', {limit: 16}));
+    expect(f.actions.draft(id).uploads).toHaveLength(16);
+    const send = button(f.element, f.t('groups.send'));
+    expect(send.disabled).toBe(false);
+    await act(async () => { f.actions.patchDraft(id, draft => ({...draft, uploads: [...draft.uploads, {id:'old',name:'old',bytes:1,state:'uploaded',receiptId:'old'}]})); });
+    expect(send.disabled).toBe(true);
+    expect(f.send).not.toHaveBeenCalled();
   } finally { await f.close(); }
 });

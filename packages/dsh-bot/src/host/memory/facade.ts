@@ -206,10 +206,16 @@ export class MemoryManagement {
   async confirm(input: MemoryConfirm) {
     const f = memoryConfirmSchema.parse(input); this.check(f.expectedRevision);
     const old = this.fact(f.id);
+    if (old.version.versionId !== f.versionId) throw new DshBotError('bot/conflict', 'Preview the current memory version before confirming');
     if (old.version.consolidation) throw new Error('Use consolidation review for derived memories');
     const { bot, key } = this.bot(f.botId);
-    if (f.scope === 'shared' && old.version.status === 'proposed' && [...this.kernel.domain.table('migration_items').entries()]
-      .some(([, item]) => item.quarantine && item.memoryId === f.id)) throw new Error('Assign this legacy item privately first');
+    const quarantined = old.version.status === 'proposed' && [...this.kernel.domain.table('migration_items').entries()]
+      .some(([, item]) => item.quarantine && item.memoryId === f.id);
+    if (quarantined && f.scope === 'shared') throw new Error('Assign this legacy item privately first');
+    if (old.version.scope === 'private' && !quarantined &&
+        (!sameBot(old.version.ownerBotKey, key) || !canReadLabel(old.version.labels, key))) {
+      throw new DshBotError('memory/not-found', 'Memory not found');
+    }
     if (old.version.labels.restrictions.includes('secret') && f.scope === 'shared') throw new Error('Secret cannot be shared');
     if (old.version.scope === 'shared' && f.scope === 'private') throw new Error('Shared facts require an explicit new private copy');
     const promotion = old.version.scope === 'private' && f.scope === 'shared';

@@ -329,3 +329,23 @@ describe('DshBotRegistry with JSON storage and a preset service double', () => {
   }));
 
 });
+
+it('keeps healthy main-conversation previews and historical rows when a single main lookup fails, then recovers', async () => withFacility(async ({ start }) => {
+  const { registry } = await start();
+  for (const id of ['alpha', 'beta']) {
+    const bot = await registry.create({ id, name: id });
+    await registry.recordActivity({ botId: id, expectedBotCreatedAt: bot.createdAt, sessionId: id + '-main', role: 'assistant', text: id, at: 3 });
+  }
+  let offline = true;
+  registry.mainSessions = { find: async (id: string) => {
+    if (offline && id === 'beta') throw Error('Unavailable main');
+    return { sessionId: id + '-main' };
+  } } as unknown as NonNullable<typeof registry.mainSessions>;
+  const partial = await registry.listActivity();
+  expect(partial.sessions).toHaveLength(2);
+  expect(partial.bots.find(row => row.botId === 'alpha')).toMatchObject({ unreadCount: 1, latest: { preview: 'alpha' } });
+  expect(partial.bots.find(row => row.botId === 'beta')).toEqual({ botId: 'beta', lastActivityAt: 0, unreadCount: 0, mainSessionState: 'unavailable' });
+  offline = false;
+  expect((await registry.listActivity()).bots.find(row => row.botId === 'beta')).toEqual({ botId: 'beta', lastActivityAt: 3, unreadCount: 1,
+    latest: { sessionId: 'beta-main', role: 'assistant', preview: 'beta', at: 3 } });
+}));

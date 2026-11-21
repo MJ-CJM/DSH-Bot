@@ -16,7 +16,7 @@ export function memoryCommand(action, slot) {
       await m.revise({ id: entry.id, expectedRevision: kernel.seq, patch: { content } });
       entry.content = content; model.writes++;
     } else if (action === 2 && entry) {
-      const id = await m.confirm({ id: entry.id, botId: entry.botId, scope: 'shared', expectedRevision: kernel.seq });
+      const id = await m.confirm({ id: entry.id, versionId: kernel.snapshot.versions.get(entry.id).versionId, botId: entry.botId, scope: 'shared', expectedRevision: kernel.seq });
       if (id !== entry.id) model.rows.set(slot + 8, { ...entry });
       const row = { ...entry, id, scope: 'shared' };
       model.rows.set(slot, row); model.all.set(id, row); model.confirms++;

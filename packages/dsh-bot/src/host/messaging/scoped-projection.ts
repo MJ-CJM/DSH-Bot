@@ -8,6 +8,7 @@ import { getBotBinding } from '../bot-context.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { hasCredential } from '../../shared/secrets.js';
 import { MessagingRouting } from './reply-routing.js';
+import { appendDisplay } from './display-turn.js';
 
 /** Internal Host capability. Never accepted from model arguments or a Remote. */
 export interface ScopedMessageProjection {
@@ -61,7 +62,9 @@ export class MessagingProjection extends MessagingRouting {
   }
   async projectScoped(input: ScopedMessageProjection): Promise<ScopedProjectionReceipt> {
     input.signal.throwIfAborted(); await input.check();
-    if (this.stopped || !this.store.config.messagingEnabled || !this.registry.config.supergroup.enabled ||
+    const directPair = input.workId.startsWith('peer:') && input.readers.length === 2 &&
+      input.readers.some(reader => sameBot(reader, input.from)) && input.readers.some(reader => sameBot(reader, input.to));
+    if (this.stopped || !this.store.config.messagingEnabled || (!directPair && !this.registry.config.supergroup.enabled) ||
       !input.workId || !input.operationId || !input.content.trim() ||
       Buffer.byteLength(input.content) > this.store.config.messageMaxBytes || hasCredential(input.content) ||
       sameBot(input.from, input.to) || !input.readers.some(key => sameBot(key, input.from)) ||
@@ -121,17 +124,17 @@ export class MessagingProjection extends MessagingRouting {
       const row = flowId ? await need(flow).persist(flowId, save, input.signal) : await save();
       const publish = async () => {
         await input.check(); input.signal.throwIfAborted();
-        // Append surfaces are history only: no inbox, followup, send, wake or main-model request.
+        // The first display in a blank main needs a local native turn to establish its system head.
         if (draft) {
           await need(flow).inherit(from.session.id, draft.label);
           await need(flow).inherit(to.session.id, draft.label);
         }
         const existing = to.session.snapshotEvents().find(event => event.type === 'user/message' && event.data.id === nativeInput.id);
         if (existing?.type === 'user/message' && digest(existing.data) !== digest(nativeInput)) throw new OperationError('conflict');
-        const seq = existing?.seq ?? to.session.append('user/message', nativeInput as unknown as UserMessage, { surfaceOp: 'append' }).seq;
+        const seq = existing?.seq ?? await appendDisplay(to, nativeInput as unknown as UserMessage, input.signal);
         if (!await this.ctx.sessions.flush(to.session)) throw new OperationError('recovery-needed');
         await this.store.update(id, { nativeRef: { sessionId: to.session.id, messageId: nativeInput.id, seq: Number(seq) } });
-        await this.mirror(row);
+        await this.mirror(row, input.signal);
         await this.store.update(id, { delivery: 'delivered' });
         if (parent) await this.store.update(parent.envelope.id, { response: 'replied', processing: 'completed' });
         return receipt(need(this.store.get(id)));

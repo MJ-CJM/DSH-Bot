@@ -35,7 +35,7 @@ describe('I27 management-only Remote with strict shared codecs', () => {
     const create = { scope: 'shared', botId: 'alpha', kind: 'user_fact', content: 'EXACT', expectedRevision: 0,
       valid: { from: null, to: null, basis: 'unknown' } };
     const revise = { id: uid('id'), expectedRevision: 0, patch: { content: 'EXACT' } };
-    const confirm = { id: uid('id'), expectedRevision: 0, scope: 'shared', botId: 'alpha' };
+    const confirm = { id: uid('id'), versionId: uid('version'), expectedRevision: 0, scope: 'shared', botId: 'alpha' };
     const resolve = { ids: [uid('id')], choice: 'reject', expectedRevision: 0 };
     for (const key of ['trust', 'sourceRefs', 'sourceExcerpt', 'provenance', 'ownerBotKey', 'shard', 'commitSeq', 'epoch', 'verified']) {
       for (const [schema, value] of [[memoryQuerySchema, query], [memoryCreateSchema, create],

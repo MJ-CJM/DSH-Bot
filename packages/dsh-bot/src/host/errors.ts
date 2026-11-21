@@ -9,6 +9,7 @@ export type DshBotErrorCode =
   | 'memory/not-found'
   | 'memory/too-large'
   | 'memory/rejected'
+  | 'memory/consolidation-limit'
   | 'store/unavailable'
   | 'activity/not-found'
   | 'bot/preset-failed'

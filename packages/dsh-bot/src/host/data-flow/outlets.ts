@@ -5,7 +5,8 @@ import { isDeepStrictEqual } from 'node:util';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { DataLabel, EgressTarget } from '../../shared/data-flow.js';
 import { flowEnvelopeSchema, flowRecordSchema, type FlowEnvelope, type FlowRecord, type Outlet } from '../../shared/managed-flow.js';
-import type { BotKey } from '../../shared/identity.js';
+import { sameBot, type BotKey } from '../../shared/identity.js';
+import { envelopeSchema } from '../../shared/messaging.js';
 import { ExportAuthorizationRequired, type EgressChecker } from './egress.js';
 import type { OnceGrant } from './grants.js';
 import { MemoryLineage } from './lineage.js';
@@ -67,17 +68,35 @@ export class ManagedOutlets {
     } });
   }
   /** Data export approval is distinct from generic native tool execution approval. */
-  async request(agent: Agent, envelope: FlowEnvelope, signal: AbortSignal): Promise<OnceGrant | undefined> {
+  async request(agent: Agent, envelope: FlowEnvelope, signal: AbortSignal, requireConfirmation = false): Promise<OnceGrant | undefined> {
     signal = this.signal(signal); signal.throwIfAborted();
-    try { this.checker.check(envelope, undefined, undefined, signal); return; } catch (error) {
+    try {
+      this.checker.check(envelope, undefined, undefined, signal);
+      if (!requireConfirmation) return;
+    } catch (error) {
       if (!/authorization|Shared is not public/.test(String(error))) throw error;
     }
     const approval = agent.ctx.get('approval');
     if (!approval || agent.session.id !== envelope.binding.invocation.split('/')[0]) throw new Error('No export approval context');
-    const describe = (dictionary: typeof en) => dictionary.tools['dataFlow.export.approval']
-      .replace('{target}', () => JSON.stringify(envelope.binding.target)).replace('{content}', () => envelope.content);
-    const reason = `${describe(en)}\n${describe(zh)}`;
-    const outcome = await approval.request({ agent, toolName: `dsh_bot_export_${envelope.outlet}`, reason, signal });
+    const describe = (dictionary: typeof en) => {
+      const target = envelope.binding.target;
+      if (envelope.outlet === 'message' && target.kind === 'bot') {
+        const { envelope: message } = JSON.parse(envelope.content);
+        const packet = envelopeSchema.parse(message);
+        if (!packet.content || !sameBot(packet.from, envelope.binding.bot) || !sameBot(packet.to, target.bot))
+          throw new Error('Message approval destination or body changed');
+        const display = (name: string, id: string) => JSON.stringify(name === id ? id : `${name} (${id})`);
+        const values = { from: display(packet.fromDisplay.name, packet.from.botId),
+          to: display(packet.toDisplay.name, packet.to.botId), content: packet.content };
+        return dictionary.tools['dataFlow.message.approval'].replace(/\{(from|to|content)\}/g,
+          (_, key: keyof typeof values) => values[key]);
+      }
+      return dictionary.tools['dataFlow.export.approval']
+        .replace('{target}', () => JSON.stringify(target)).replace('{content}', () => envelope.content);
+    };
+    const displayReason = { en: describe(en), zh: describe(zh) };
+    const outcome = await approval.request({ agent, toolName: `dsh_bot_export_${envelope.outlet}`,
+      reason: displayReason.en, displayReason, signal });
     signal.throwIfAborted();
     if (outcome !== 'allowed-once') throw new Error('Data export not approved');
     const grant = this.checker.grants.issue(envelope.binding, envelope.content);

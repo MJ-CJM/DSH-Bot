@@ -38,6 +38,7 @@ export const activityBotSchema = z.strictObject({
   botId: botIdSchema,
   lastActivityAt: timestampSchema,
   unreadCount: z.number().int().nonnegative(),
+  mainSessionState: z.literal('unavailable').optional(),
   latest: activityMessageSchema.extend({ sessionId: activitySessionIdSchema }).optional(),
 });
 export const activityListResultSchema = z.strictObject({
