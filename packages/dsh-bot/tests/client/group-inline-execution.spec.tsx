@@ -62,9 +62,9 @@ async function fixture(language: 'en' | 'zh' = 'en', denials?: string[], firstDe
   const element = document.createElement('div'); document.body.append(element); let root = createRoot(element);
   const t = ((key: keyof typeof en.ui, params?: Record<string, unknown>) => (language === 'en' ? en : zh).ui[key]
     .replace(/\{(\w+)\}/g, (_match, k) => String(params?.[k] ?? k))) as PropsLocale<'dsh-bot'>['t'];
+  const nativeReply: GroupMessage = { ...questions[1] as GroupMessage, id: 'bot-reply', seq: 9, text: 'Reply', authorKind: 'bot' };
   const render = async () => {
-    const nodes = [...questions, { ...questions[1], id: 'followup', text: 'Supplement' },
-      { ...questions[1], id: 'bot-reply', text: 'Reply', authorKind: 'bot' }] as GroupMessage[];
+    const nodes = [...questions, { ...questions[1], id: 'followup', text: 'Supplement' }, nativeReply] as GroupMessage[];
     await act(async () => root.render(<>
       {nodes.map(message => <WorkspaceMessage key={message.id} node={{ data: { group: key, message } } as never}
         actions={actions} bots={catalog} executionBridge={bridge} onOpenSession={async () => {}} t={t} />)}
@@ -74,7 +74,7 @@ async function fixture(language: 'en' | 'zh' = 'en', denials?: string[], firstDe
     await vi.waitFor(() => expect(element.querySelectorAll('[data-group-turn]')).toHaveLength(2));
   };
   await render();
-  return { element, data, key, actions, bridge, remote, t, retained,
+  return { element, data, key, actions, bridge, remote, t, retained, nativeReply,
     question(id: string) { return element.querySelector(`[data-workspace-group-message="question-${id}"]`) as HTMLElement; },
     async refresh() { await act(async () => actions.messageView(key).refresh()); },
     async remount() { await act(async () => root.unmount()); root = createRoot(element); await render(); },
@@ -86,7 +86,7 @@ it.each(['en', 'zh'] as const)('%s anchors each task only below its question, in
   const f = await fixture(language);
   try {
     for (const id of ['first', 'second']) {
-      const question = f.question(id), disclosure = question.querySelector('button[aria-expanded]') as HTMLButtonElement;
+      const question = f.question(id), disclosure = question.querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement;
       expect(question.querySelector(`[data-group-turn="${id}"]`)).toBeTruthy();
       expect(disclosure.getAttribute('aria-expanded')).toBe('false');
       expect(question.querySelector(`[data-group-execution-card="delivery-${id}"]`)).toBeTruthy();
@@ -105,16 +105,16 @@ it.each(['en', 'zh'] as const)('%s anchors each task only below its question, in
 it('preserves independent disclosure choices through live updates and native message remounts', async () => {
   const f = await fixture();
   try {
-    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    await click(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement);
     f.data.turns[1] = { ...f.data.turns[1] as GroupTurn, state: 'paused', revision: 2 };
     await f.refresh();
-    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
     await f.remount();
-    expect(f.question('first').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
-    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
-    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    expect(f.question('first').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
+    await click(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement);
     await f.refresh();
-    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
     expect(f.bridge.open).not.toHaveBeenCalled();
   } finally { await f.close(); }
 });
@@ -123,7 +123,7 @@ it('keeps the original execution accessible through expiry and closure without o
   const f = await fixture('zh', undefined, { reasonCode: 'export-approval-required', exportFlowId: crypto.randomUUID() });
   try {
     const question = f.question('first');
-    const disclosure = question.querySelector('button[aria-expanded]') as HTMLButtonElement;
+    const disclosure = question.querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement;
     await click(disclosure);
     expect(question.textContent).toContain(f.t('groups.export.pending'));
     expect(button(question, f.t('groups.export.openQueue'))).toBeTruthy();
@@ -154,7 +154,7 @@ it('keeps native details, supplement focus, member stop and task cancellation bo
   try {
     const draft = f.element.querySelector('textarea') as HTMLTextAreaElement;
     await fill(draft, 'Keep this draft');
-    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    await click(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement);
     await click(button(f.question('second'), f.t('execution.viewDetails')));
     expect(f.bridge.open).toHaveBeenCalledWith('child-second');
     await click(f.question('second').querySelector('button[aria-haspopup=menu]') as HTMLButtonElement);
@@ -166,7 +166,7 @@ it('keeps native details, supplement focus, member stop and task cancellation bo
     expect(f.remote.stopMember).toHaveBeenCalledWith(f.key, 'second', 'member:beta', 1);
     await click(button(f.question('second'), f.t('execution.stopTurn')));
     expect(f.remote.cancel).toHaveBeenCalledWith(f.key, 'second', 1);
-    expect(f.question('first').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(f.question('first').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
   } finally { await f.close(); }
 });
 
@@ -175,7 +175,7 @@ it('shows a failed continuation locally and retries using the refreshed task rev
   try {
     f.data.turns[1] = { ...f.data.turns[1] as GroupTurn, state: 'paused', revision: 4 };
     await f.refresh();
-    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    await click(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement);
     f.remote.continueTurn.mockRejectedValueOnce(new Error('conflict'));
     await click(button(f.question('second'), f.t('execution.continue')));
     expect(f.question('second').querySelector('[role="alert"]')?.textContent).toBe(f.t('groups.conflict'));
@@ -196,10 +196,10 @@ it('keeps work folded unless the user chooses otherwise, and shows a continuing 
     expect(f.question('second').querySelector('[data-group-execution-card]')?.getAttribute('data-group-execution-card')).toBe('continued-second');
     f.data.turns[1] = { ...f.data.turns[1] as GroupTurn, state: 'idle', revision: 2 };
     await f.refresh();
-    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
-    await click(f.question('second').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    expect(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    await click(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement);
     await f.remount();
-    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true');
   } finally { await f.close(); }
 });
 
@@ -212,7 +212,7 @@ it.each([['en', ['child-first', 'child-second']], ['zh', ['child-first', 'child-
     else await vi.waitFor(() => expect(f.retained).toContain('child-second'));
     if (!denials.length) expect(notice()).toBeNull();
     expect(notice()?.getAttribute('role') ?? 'status').toBe('status');
-    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
     // Earlier questions are not observed while collapsed, bounding retained native histories.
     expect(f.question('first').querySelector('[data-group-permission-denied]')).toBeNull();
     expect(f.retained).not.toContain('child-first');
@@ -225,7 +225,7 @@ it.each(['en', 'zh'] as const)('%s keeps approval rejection visible while folded
     const notice = () => f.question('second').querySelector('[data-group-permission-denied]');
     await vi.waitFor(() => expect(notice()?.textContent).toBe(f.t('groups.permissionDenied', { names: bots[1]?.name })));
     expect(notice()?.querySelector('button')).toBeNull();
-    expect(f.question('second').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
     expect(f.remote.cancel).not.toHaveBeenCalled();
     expect(f.remote.continueTurn).not.toHaveBeenCalled();
   } finally { await f.close(); }
@@ -303,7 +303,71 @@ it('shows verified status-only memory counts and a selectable provider request I
     expect(f.question('first').textContent).toContain(f.t('groups.memoryStatus.summary', { saved: 1, failed: 0, unverified: 0 }));
     expect(f.question('first').querySelector('code')?.textContent).toBe('req-synthetic-402');
     expect(f.question('first').textContent).toContain(f.t('groups.failureRequestId'));
-    await click(f.question('first').querySelector('button[aria-expanded]') as HTMLButtonElement);
+    await click(f.question('first').querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement);
     expect(f.question('first').querySelector('[data-group-member-process]')).toBeNull();
+  } finally { await f.close(); }
+});
+
+it.each(['en', 'zh'] as const)('%s distinguishes a queued guest question, native receipt, withheld reply and confirmed author', async language => {
+  const f = await fixture(language);
+  try {
+    const turn = f.data.turns[1], row = f.data.deliveries[1];
+    if (!turn || !row) throw Error('Missing guest turn fixture');
+    turn.guestQuestion = { name: 'Jarvis', bot: { botId: 'outside', botCreatedAt: 2 } };
+    turn.orderedMemberIds = [];
+    row.state = 'starting';
+    const status = () => f.question('second').querySelector('[data-group-guest-status]')?.textContent;
+    const label = (key: keyof typeof en.ui) => f.t(key, { name: 'Jarvis' });
+    // A different generation with a completion record cannot stand in for Jarvis.
+    row.bot = { botId: 'outside', botCreatedAt: 1 }; row.state = 'completed'; row.outputMessageId = 'other';
+    await f.refresh(); expect(status()).toContain(label('groups.guest.queued'));
+    row.bot = turn.guestQuestion.bot; row.state = 'running'; delete row.outputMessageId;
+    await f.refresh(); expect(status()).toContain(label('groups.guest.queued'));
+    row.acceptedAt = 2; await f.refresh(); expect(status()).toContain(label('groups.guest.delivered'));
+    await click(f.question('second').querySelector('[data-group-turn] > button[aria-expanded]') as HTMLButtonElement);
+    expect(f.question('second').textContent).not.toContain(f.t('execution.viewDetails'));
+    row.state = 'failed'; await f.refresh(); expect(status()).toContain(label('groups.guest.noReply'));
+    delete row.acceptedAt; await f.refresh(); expect(status()).toContain(label('groups.guest.notSent'));
+    row.state = 'unknown'; row.reasonCode = 'export-approval-required'; row.exportFlowId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    await f.refresh(); expect(status()).toContain(label('groups.guest.review'));
+    delete row.reasonCode; delete row.exportFlowId; await f.refresh(); expect(status()).toContain(label('groups.guest.unconfirmed'));
+    row.acceptedAt = 3; await f.refresh(); expect(status()).toContain(label('groups.guest.replyUnconfirmed'));
+    delete row.acceptedAt; row.state = 'completed'; turn.state = 'idle'; await f.refresh(); expect(status()).toContain(label('groups.guest.unconfirmed'));
+    f.nativeReply.guestReply = true;
+    f.nativeReply.speaker = { name: 'Jarvis', bot: turn.guestQuestion.bot };
+    row.outputMessageId = 'different-answer'; row.outputSeq = 9;
+    await f.refresh(); await f.remount();
+    expect(f.element.querySelector('[data-group-guest-author]')).toBeNull();
+    row.outputMessageId = f.nativeReply.id; await f.refresh(); await f.remount();
+    expect(f.element.querySelector('[data-group-guest-author="outside"]')?.parentElement?.textContent).toContain('Jarvis');
+    expect(status()).toContain(label('groups.guest.replied'));
+    expect(status()).not.toContain(f.t('groups.turnSummary', { count: 0, state: f.t('groups.idle') }));
+  } finally { await f.close(); }
+});
+
+it('reports the outside answer as a handoff and only the exact member publication as a group reply', async () => {
+  const f = await fixture('zh');
+  try {
+    const turn = f.data.turns[1]!, member = f.data.deliveries[1]!;
+    const via = { bot: member.bot, memberId: member.memberId, name: 'Beta', presetId: member.presetId, botRevision: 1 };
+    const guest = { name: 'Jarvis', bot: { botId: 'outside', botCreatedAt: 2 }, via };
+    turn.guestQuestion = guest;
+    const source: GroupDelivery = { ...member, bot: guest.bot, memberId: 'guest:b', id: turn.id + ':0', state: 'running', acceptedAt: 5 };
+    member.ordinal = 1; member.id = turn.id + ':1'; member.state = 'pending';
+    f.data.deliveries.push(source);
+    const status = () => f.question('second').querySelector('[data-group-guest-status]')?.textContent;
+    await f.refresh(); expect(status()).toContain('Beta 的问题已送达 Jarvis');
+    source.state = 'completed'; source.answeredAt = 6;
+    await f.refresh(); expect(status()).toContain('Jarvis 已准备好答复');
+    member.acceptedAt = 7;
+    await f.refresh(); expect(status()).toContain('Jarvis 已答复 Beta，等待 Beta 回群');
+    member.outputMessageId = f.nativeReply.id; member.outputSeq = f.nativeReply.seq; member.state = 'completed';
+    f.nativeReply.guestReply = true; f.nativeReply.speaker = { name: 'Jarvis', bot: guest.bot };
+    await f.refresh(); await f.remount();
+    expect(f.element.querySelector('[data-workspace-group-message="bot-reply"]')).toBeNull();
+    delete f.nativeReply.guestReply; f.nativeReply.relayReply = true; f.nativeReply.speaker = { bot: via.bot, name: via.name };
+    await f.remount();
+    expect(f.element.querySelector('[data-group-relay-author="beta"]')).toBeTruthy();
+    expect(status()).toContain('Beta 已根据 Jarvis 的答复回群');
   } finally { await f.close(); }
 });

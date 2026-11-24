@@ -645,6 +645,8 @@ describe('group override model precedence', () => {
     session.scope.ctx.effect(() => installModelSelection(session.scope.ctx, inherited));
     try {
       await session.announce();
+      expect(Boolean(ctx.tools.get('bot_manage', session.subject))).toBe(!matches);
+      expect(ctx.tools.schemas(session.subject).some(tool => tool.name === 'bot_manage')).toBe(!matches);
       const assembly = await session.scope.ctx.systemPrompt.assemble({ scope: session.subject, agent: session.subject });
       expect(assembly.variables).toMatchObject(matches ? selection : { provider: 'bot-provider', model: 'bot-model' });
       const request = await ctx.waterfall(scopeTarget(session.subject, session.subject), 'agent/request', {

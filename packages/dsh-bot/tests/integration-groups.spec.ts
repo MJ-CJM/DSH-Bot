@@ -14,12 +14,16 @@ import { groupDeliverySchema, groupKey, groupViewSchema, GROUP_ROOT_PRESET, type
 import { groupExportReviewStatus } from '../src/shared/group-export-review.js';
 import { groupsSpec } from '../src/shared/groups-contract.js';
 import { flowFixture } from './deepening/managed-flow-fixture.js';
-async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0]) {
+async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0], verifyRoot = false) {
   const roots = new Map<string, AgentHandle>(); const persisted = new Map<string, AgentHandle>(); const sequence: string[] = [];
   const config = Config({ dataDir: f.root, seedExamples: false, groupRoundTimeoutMs: 1000, groupTaskTimeoutMs: 1000 });
   Object.assign(f.registry, { config, list: async () => [...f.bots.values()], status: async () => [...f.bots.keys()].map(id => ({ id, presetId: `bot-${id}`, preset: { state: 'ok' } })) });
   const workspaces = new Map<string, { id: string; path: string; sessionIds: SessionId[]; attachSession(id: SessionId): Promise<void> }>();
-  const workspaceRegistry = { create: vi.fn(async (path: string) => {
+  const archivedSessionIds: SessionId[] = [];
+  const archiveSession = vi.fn(async (id: SessionId) => {
+    if (!archivedSessionIds.includes(id)) archivedSessionIds.push(id);
+  });
+  const workspaceRegistry = { archiveSession, archivedSessionIds, create: vi.fn(async (path: string) => {
     let workspace = workspaces.get(path);
     if (!workspace) { workspace = { id: `workspace-${workspaces.size}`, path, sessionIds: [], async attachSession(id: SessionId) { if (!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaces.set(path, workspace); }
     return workspace;
@@ -36,6 +40,8 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
         // Native lifecycle service double; real turn/blank/model behavior is verified by groups-workspace-profile.
         activity = (async () => {
           const turn = session.snapshotEvents().filter(event => event.type === 'turn/start').length + 1;
+          if (verifyRoot && message.source.kind === 'dsh-bot-group-setup')
+            session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, inserted: [message] });
           session.append('turn/start', { turn });
           try {
             if (meta?.agentPreset !== GROUP_ROOT_PRESET) {
@@ -56,9 +62,15 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
   // Child agents are only Session holders here: the runner reads their native turn/end failure.
   const children = new Map<string, Agent>();
   f.ctx.provide('agents', { get: (id: string) => roots.get(id)?.agent ?? children.get(id), create, resume } as unknown as typeof f.ctx.agents);
-  const flush = vi.fn(async () => true); f.ctx.provide('sessions', { flush } as unknown as typeof f.ctx.sessions);
+  const flush = vi.fn(async () => true); f.ctx.provide('sessions', { flush, get: (id: string) => roots.get(id)?.agent.session } as unknown as typeof f.ctx.sessions);
   const rename = vi.fn(async ({ title }: { title: string }) => ({ title, renamed: true }));
-  f.ctx.provide('sessionController', { rename } as unknown as typeof f.ctx.sessionController);
+  f.ctx.provide('sessionController', { rename, projections: async () => ({ kind: 'sequenced', values: { agentPreset: GROUP_ROOT_PRESET } }) } as unknown as typeof f.ctx.sessionController);
+  if (verifyRoot) f.ctx.provide('sessionPersistence', {
+    stat: async (id: string) => { const header = persisted.get(id)?.agent.session.header; return header && { header }; },
+    open: async (id: string) => ({ read: async (offset: number, count: number) => ({
+      events: persisted.get(id)?.agent.session.snapshotEvents().slice(offset, offset + count) ?? [],
+    }), close: async () => {} }),
+  } as unknown as typeof f.ctx.sessionPersistence);
   let behavior: 'success' | 'hold' | 'partial' | 'throw' | 'quota' | 'quota-empty' = 'success';
   const calls: { preset: string; prompt: string; signal: AbortSignal }[] = [];
   const start = vi.fn(async (input: { childId?: SessionId; signal: AbortSignal; request: { parent: Agent; agentPreset: string; prompt: { text: string }[] } }) => {
@@ -78,11 +90,11 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
     } else if (behavior !== 'hold') finish({ output: [{ type: 'text', text: `reply-${calls.length}` }], stopReason: behavior === 'partial' ? 'max-tokens' : 'completed' });
     return { childId: `child-${calls.length}`, result, dispose: vi.fn(async () => { sequence.push('child-dispose'); finish({ output: [], stopReason: 'aborted' }); }) };
   });
-  f.ctx.provide('subagents', { listChildren: async () => [], drainChildren: async () => {}, getProvider: () => ({ inheritsParentContext: false, capabilities: { agentPreset: true, agentOptions: true, depthLimit: true } }), startActivation: start } as unknown as typeof f.ctx.subagents);
+  f.ctx.provide('subagents', { drainDescendants: async () => {}, getProvider: () => ({ inheritsParentContext: false, capabilities: { agentPreset: true, agentOptions: true, depthLimit: true } }), startActivation: start } as unknown as typeof f.ctx.subagents);
   let domain = await f.ctx.storageDomain.open(groupsDomain); let groups = new Groups(f.ctx, f.registry, domain, () => {}); await groups.start();
   const createGroup = (op = 'create-1') => groups.create({ operationId: op, name: 'Same name', members: [alpha, beta], mode: 'mention', historyConfirmed: true });
   const settle = async (g: GroupRecord) => { await vi.waitFor(async () => expect((await groups.view(groupKey(g))).turns.every(t => !['running', 'accepted'].includes(t.state))).toBe(true)); return groups.view(groupKey(g)); };
-  return { get groups() { return groups; }, get domain() { return domain; }, createGroup, settle, calls, create, resume, flush, rename, roots, workspaces, sequence, start, setBehavior(b: typeof behavior) { behavior = b; },
+  return { get groups() { return groups; }, get domain() { return domain; }, createGroup, settle, calls, create, resume, flush, rename, roots, workspaces, archiveSession, archivedSessionIds, sequence, start, setBehavior(b: typeof behavior) { behavior = b; },
     async seedUncertain(turnId: string) {
       const t = domain.table('turns').get(turnId); if (!t) throw new Error();
       await domain.table('turns').put(t.id,{...t,state:'running'});
@@ -90,6 +102,100 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
     },
     async reopen() { await groups.close(); domain = await f.ctx.storageDomain.open(groupsDomain); groups = new Groups(f.ctx, f.registry, domain, () => {}); await groups.start(); }, close: () => groups.close() };
 }
+it('deletes only the confirmed group generation and keeps native history and independent Bot identity', () => withIntegrations(async f => {
+  const s = await fixture(f, true);
+  try {
+    const g = await s.createGroup();
+    const other = await s.createGroup('other');
+    const key = groupKey(g);
+    const view = await s.groups.view(key);
+    const turn = await s.groups.send(key, { operationId: 'reply', text: 'reply', expectedMembershipRevision: 1, memberIds: [view.members[0]!.id] });
+    await s.groups.waitForTurn(turn.id);
+    const current = (await s.groups.view(key)).group;
+    const originalBots = structuredClone([...f.bots.values()]);
+    const deliveries = (await s.groups.view(key)).deliveries;
+    expect(deliveries.length).toBeGreaterThan(0);
+    const archived = await s.groups.archive(key, current.revision);
+    await expect(s.groups.deleteGroup(key, current.revision)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    await expect(s.groups.deleteGroup({ ...key, groupCreatedAt: 1 }, archived.revision)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    await expect(s.groups.deleteGroup(key, archived.revision)).resolves.toBe(true);
+    expect(s.archivedSessionIds).toEqual([g.rootSessionId]);
+    expect([...f.bots.values()]).toEqual(originalBots);
+    expect(s.domain.table('turns').get(turn.id)).toBeUndefined();
+    for (const delivery of deliveries) expect(s.domain.table('deliveries').get(delivery.id)).toBeUndefined();
+    expect([...s.domain.table('members').entries()].map(([, row]) => row.group)).toEqual([groupKey(other), groupKey(other)]);
+    await s.reopen();
+    expect((await s.groups.list()).map(row => row.group.id)).toEqual([other.id]);
+    await expect(s.groups.deleteGroup(key, archived.revision)).resolves.toBe(true);
+    await expect(s.createGroup()).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    await expect(s.groups.open(key)).rejects.toMatchObject({ code: 'dsh-bot/not-found' });
+    await expect(s.groups.view(key)).rejects.toMatchObject({ code: 'dsh-bot/not-found' });
+    expect((await s.groups.view(groupKey(other))).members).toHaveLength(2);
+  } finally { await s.close(); }
+}));
+
+it('refuses active work, protected work and a root belonging to another group before any removal', () => withIntegrations(async f => {
+  const s = await fixture(f, true);
+  try {
+    const g = await s.createGroup();
+    const other = await s.createGroup('other');
+    const key = groupKey(g);
+    const table = s.domain.table('groups');
+    await table.put(g.id, { ...g, supergroup: { workId: 'work', originSessionId: 'origin', originMessageId: 'original', owner: alpha, readers: [alpha], expiresAt: Date.now() + 60_000 } });
+    await expect(s.groups.deleteGroup(key, g.revision)).rejects.toMatchObject({ code: 'dsh-bot/unsupported' });
+    await table.put(g.id, { ...g, rootSessionId: other.rootSessionId });
+    await expect(s.groups.deleteGroup(key, g.revision)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+    await table.put(g.id, g);
+    s.setBehavior('hold');
+    const member = (await s.groups.view(key)).members[0]!;
+    await s.groups.send(key, { operationId: 'active', text: 'hello', expectedMembershipRevision: 1, memberIds: [member.id] });
+    await vi.waitFor(() => expect(s.start).toHaveBeenCalled());
+    const current = (await s.groups.view(key)).group;
+    await expect(s.groups.deleteGroup(key, current.revision)).rejects.toMatchObject({ code: 'dsh-bot/busy' });
+    expect(s.archiveSession).not.toHaveBeenCalled();
+    expect(s.domain.table('deletions').size).toBe(0);
+  } finally { await s.close(); }
+}));
+
+it('resumes a partial deletion without recreating the group and leaves an uncommitted native archive untouched', () => withIntegrations(async f => {
+  const s = await fixture(f, true);
+  try {
+    const g = await s.createGroup();
+    const other = await s.createGroup('other');
+    const receipt = (group: GroupRecord) => ({ group: groupKey(group), rootSessionId: group.rootSessionId, revision: group.revision, complete: false });
+    await s.archiveSession(g.rootSessionId as SessionId);
+    await s.domain.table('deletions').put(g.id, receipt(g));
+    await s.domain.table('deletions').put(other.id, receipt(other));
+    await s.reopen();
+    expect(s.domain.table('deletions').get(g.id)?.complete).toBe(true);
+    expect(s.domain.table('deletions').get(other.id)).toBeUndefined();
+    expect((await s.groups.list()).map(row => row.group.id)).toEqual([other.id]);
+    expect((await s.groups.view(groupKey(other))).members).toHaveLength(2);
+  } finally { await s.close(); }
+}));
+
+it('rejects an orphaned foreign root by its original native setup and recovers after native archive admission refuses', () => withIntegrations(async f => {
+  const s = await fixture(f, true);
+  try {
+    const g = await s.createGroup();
+    const key = groupKey(g);
+    s.archiveSession.mockRejectedValueOnce(Object.assign(new Error(), { name: 'WorkspaceActiveSessionError' }));
+    await expect(s.groups.deleteGroup(key, g.revision)).rejects.toMatchObject({ code: 'dsh-bot/busy' });
+    expect(s.domain.table('deletions').get(g.id)).toBeUndefined();
+    expect((await s.groups.view(key)).members).toHaveLength(2);
+    const archived = await s.groups.archive(key, g.revision);
+    const other = await s.createGroup('orphan');
+    await s.groups.archive(groupKey(other), other.revision);
+    const table = s.domain.table('groups');
+    await table.delete(other.id);
+    await table.put(g.id, { ...archived, rootSessionId: other.rootSessionId });
+    await expect(s.groups.deleteGroup(key, archived.revision)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+    expect(s.archiveSession).toHaveBeenCalledTimes(1);
+    expect(s.archivedSessionIds).toEqual([]);
+    expect(table.get(g.id)?.archived).toBe(true);
+  } finally { await s.close(); }
+}));
+
 it('persists exact group export settings across restart and explicitly disables without changing membership or history', async () => {
   await withIntegrations(async f => {
     const s = await fixture(f);
@@ -269,12 +375,15 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
       // Defense in depth: even a caller retaining a raw historical Config cannot raise the hard ceiling.
       f.registry.config.groupMaxMembers = 16;
       const six = await s.groups.create({ operationId: 'six', name: 'Six Bots', members: members.slice(0, 6), mode: 'mention', historyConfirmed: true });
-      expect((await s.groups.view(groupKey(six))).members).toHaveLength(6);
+      const fullView = await s.groups.view(groupKey(six));
+      expect(fullView.members).toHaveLength(6);
+      expect(fullView.memberLimit).toBe(6);
       const before = s.create.mock.calls.length;
       await expect(s.groups.create({ operationId: 'seven', name: 'Seven Bots', members, mode: 'mention', historyConfirmed: true }))
         .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
       expect(s.create).toHaveBeenCalledTimes(before);
       f.registry.config.groupMaxMembers = 3;
+      expect((await s.groups.view(groupKey(six))).memberLimit).toBe(3);
       await expect(s.groups.create({ operationId: 'four', name: 'Four Bots', members: members.slice(0, 4), mode: 'mention', historyConfirmed: true }))
         .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
     } finally { await s.close(); }
@@ -537,6 +646,8 @@ describe('group context and strict Remote boundary', () => {
     const msg = (id: string, text: string): GroupMessage => ({ id, text, turnId: 't', seq: 1, at: 0 });
     const q = msg('q','question'); const result = groupContext('g','target',['alpha'],q,[msg('old','长'.repeat(4000))],[msg('a','previous answer')],1024);
     expect(Buffer.byteLength(result.text)).toBeLessThanOrEqual(1024); expect(result.truncated).toBe(true); expect(result.outputIds).toEqual(['a']); expect(result.text).not.toContain('长');
+    expect(result.text).toContain('Reply directly to the person who asked');
+    expect(result.text).toContain('This group has no implicit lead');
     expect(() => groupContext('g','t',[],msg('q','q'.repeat(10000)),[],[],1024)).toThrow();
   });
   it('bounds turns and routes round robin to a stable next member', () => {
@@ -642,11 +753,11 @@ describe('OpenMaus reusable team preferences and local routing', () => {
 });
 
 
-it.each([false, true])('purges production proactive projected inputs, including legacy records without stored identity: %s', async legacy => {
+it.each(['governance', 'legacy', 'delete'])('purges exact production proactive copies through %s', async mode => {
   const x = await flowFixture(); x.current.set('beta', beta.botCreatedAt);
   try {
     await withIntegrations(async f => {
-      const s = await fixture(f);
+      const s = await fixture(f, mode === 'delete');
       try {
         Object.assign(f.registry, x.registry());
         f.registry.config.groupRoundTimeoutMs = 10000;
@@ -663,7 +774,7 @@ it.each([false, true])('purges production proactive projected inputs, including 
         expect(deliveries).toHaveLength(2);
         expect(deliveries.every(row => row.state === 'completed' && row.inputFlowId && row.inputFlowSessionId?.startsWith('group-context-'))).toBe(true);
         expect(turn.inputFlowSessionId).toMatch(/^group-context-/);
-        if (legacy) {
+        if (mode === 'legacy') {
           const { inputFlowId: _turnFlow, inputFlowSessionId: _turnSession, ...oldTurn } = turn;
           await s.domain.table('turns').put(turn.id, oldTurn);
           for (const delivery of deliveries) {
@@ -675,7 +786,16 @@ it.each([false, true])('purges production proactive projected inputs, including 
         expect(copies).toHaveLength(5);
         const root = need(s.roots.get(g.rootSessionId)).agent.session, native = root.snapshotEvents();
         expect(x.f.kernel.domain.table('flow_sessions').get(g.rootSessionId)).toBeUndefined();
-        expect(await s.groups.purgeProactiveCopies(['assignment'])).toBe(true);
+        if (mode === 'delete') {
+          await s.groups.waitForTurn(turn.id);
+          await s.domain.table('turns').put(turn.id, { ...turn, inputFlowId: 'f9d46ac2-4619-425b-878e-a1b43f684dfd' });
+          await expect(s.groups.deleteGroup(key, view.group.revision)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+          expect(s.archiveSession).not.toHaveBeenCalled();
+          expect(s.domain.table('deletions').get(key.groupId)).toBeUndefined();
+          expect(copies.every(([id]) => x.flow.get(id).envelope)).toBe(true);
+          await s.domain.table('turns').put(turn.id, turn);
+          expect(await s.groups.deleteGroup(key, view.group.revision)).toBe(true);
+        } else expect(await s.groups.purgeProactiveCopies(['assignment'])).toBe(true);
         expect(copies.every(([id]) => !x.flow.get(id).envelope)).toBe(true);
         expect(root.snapshotEvents()).toEqual(native);
         expect(await s.groups.purgeProactiveCopies(['assignment'])).toBe(true);
@@ -704,3 +824,268 @@ it('runs status-only memory recording for the full group, shares no narrative an
       followup: { turnId: turn.id, deliveryId: need(view.deliveries[0]).id } })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
   } finally { await s.close(); }
 }));
+
+it('records only the referenced shared message on an owner memory instruction', () => withIntegrations(async f => {
+  const s = await fixture(f);
+  try {
+    const g = await s.groups.create({ operationId: 'memory-reference', name: 'Memory group', members: [alpha, beta], mode: 'natural', historyConfirmed: true }), key = groupKey(g);
+    const send = (operationId: string, text: string, replyTo?: string) => s.groups.sendOwner(key,
+      { operationId, text, replyTo, expectedMembershipRevision: g.membershipRevision });
+    const first = await send('before', 'UNRELATED_EARLIER_INPUT');
+    await s.groups.waitForTurn(first.id);
+    const previous = await send('material', 'SHARED_LESSON_TO_RECORD');
+    await s.groups.waitForTurn(previous.id);
+    const before = s.calls.length;
+    await expect(send('empty', '只记下来')).rejects.toMatchObject({ code: 'dsh-bot/memory-text-required' });
+    const turn = await send('record', '只记下来', previous.inputMessageId);
+    await s.groups.waitForTurn(turn.id);
+    expect(turn.memoryStatusOnly).toBe(true);
+    await expect(s.groups.sendOwner(key, { operationId: 'unsafe-supplement', expectedMembershipRevision: g.membershipRevision,
+      text: '只记下来：仅保存状态', followup: { turnId: previous.id, deliveryId: previous.id + ':0' } })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+    expect(s.calls.slice(before)).toHaveLength(2);
+    for (const call of s.calls.slice(before)) {
+      expect(call.prompt).toContain('SHARED_LESSON_TO_RECORD');
+      expect(call.prompt).not.toContain('UNRELATED_EARLIER_INPUT');
+    }
+    const result = await s.groups.view(key);
+    expect(result.deliveries.filter(d => d.turnId === turn.id).every(d => d.memoryWriteStatus && !d.outputMessageId)).toBe(true);
+    expect((await send('record', '只记下来', previous.inputMessageId)).id).toBe(turn.id);
+  } finally { await s.close(); }
+}));
+
+it('routes @ by active group membership, including Bot IDs and everyone, while keeping quoted examples as text', () => withIntegrations(async f => {
+  const s = await fixture(f);
+  try {
+    const first = need(f.bots.get(alpha.botId));
+    f.bots.set(first.id, { ...first, name: 'Jarvis' });
+    f.bots.set('visitor', { ...first, id: 'visitor', createdAt: 5, name: 'Jarvis' });
+    const group = await s.createGroup(), key = groupKey(group);
+    const { members } = await s.groups.view(key);
+    const alphaId = need(members.find(m => m.bot.botId === alpha.botId)).id;
+    const betaId = need(members.find(m => m.bot.botId === beta.botId)).id;
+    await expect(s.groups.sendOwner(key, { operationId: 'mismatch', expectedMembershipRevision: 1,
+      text: '@alpha 最近的进展', memberIds: [betaId] })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    expect(s.calls).toHaveLength(0);
+    const send = async (text: string, memberIds?: string[]) => {
+      const turn = await s.groups.sendOwner(key, { operationId: 'typed-' + s.calls.length, expectedMembershipRevision: 1, text, memberIds });
+      await s.groups.waitForTurn(turn.id);
+      expect(turn.guestQuestion).toBeUndefined();
+      return turn.orderedMemberIds;
+    };
+    expect(await send('@Jarvis 今天的进展')).toEqual([alphaId]);
+    expect(await send('@alpha 今天的进展')).toEqual([alphaId]);
+    expect(await send('@everyone 大家好')).toEqual(members.map(m => m.id));
+    expect(await send('＠ｅｖｅｒｙｏｎｅ 大家好')).toEqual(members.map(m => m.id));
+    expect(await send('@alpha 请解释以下文字\n> @visitor text\n`@visitor` 和 user@visitor.net')).toEqual([alphaId]);
+    f.bots.set(beta.botId, { ...need(f.bots.get(beta.botId)), name: 'Jarvis' });
+    await expect(send('@Jarvis 近况', [alphaId, betaId])).rejects.toMatchObject({ code: 'dsh-bot/guest-ambiguous' });
+    expect(await send('@Jarvis 近况', [betaId])).toEqual([betaId]);
+    expect(await send('@Jarvis @Jarvis 请都回答', [betaId, alphaId])).toEqual([alphaId, betaId]);
+  } finally { await s.close(); }
+}));
+
+it('only delivers the explicitly addressed owner question to a guest and publishes its exact native reply once', async () => {
+  const x = await flowFixture();
+  x.current.set('beta', beta.botCreatedAt);
+  x.current.set('visitor', 5);
+  try {
+    await withIntegrations(async f => {
+      const s = await fixture(f);
+      try {
+        Object.assign(f.registry, x.registry());
+        f.registry.config.groupTaskTimeoutMs = 10000;
+        const visitor = { ...need(f.bots.get('alpha')), id: 'visitor', name: 'Jarvis', createdAt: 5 };
+        f.bots.set(visitor.id, visitor);
+        const group = await s.createGroup(), key = groupKey(group);
+        const view = await s.groups.view(key);
+        const first = await s.groups.send(key, { operationId: 'earlier', expectedMembershipRevision: 1,
+          text: 'UNRELATED_GROUP_HISTORY', memberIds: [need(view.members[0]).id] });
+        await s.settle(group);
+        const request = { operationId: 'ask-guest', expectedMembershipRevision: 1,
+          text: '你问下 Jarvis 最近有和这个相关的吗？', replyTo: first.inputMessageId,
+          expectedGuest: { botId: 'visitor', botCreatedAt: 5 }, relayTopic: 'HarmonyOS migration' };
+        await expect(s.groups.sendOwner(key, { ...request, relayTopic: undefined })).rejects.toMatchObject({ code: 'dsh-bot/relay-topic-required' });
+        const native = vi.fn(async ({ childId, request }: Parameters<typeof s.start>[0]) => {
+          expect(request.prompt).toHaveLength(1);
+          expect(request.prompt[0]?.text).toContain('最近有和这个相关的吗？');
+          expect(request.prompt[0]?.text).not.toContain('UNRELATED_GROUP_HISTORY');
+          expect(request.prompt[0]?.text).not.toContain('alpha');
+          expect(request.agentPreset).toBe('bot-visitor');
+          return { childId: need(childId), messageId: 'guest-accepted-id', result: Promise.resolve({
+            output: [{ type: 'text' as const, text: 'Jarvis native response' }], stopReason: 'completed' as const }),
+            dispose: vi.fn(async () => {}) };
+        });
+        s.start.mockImplementationOnce(native);
+        const turn = await s.groups.sendOwner(key, request);
+        expect((await s.groups.sendOwner(key, request)).id).toBe(turn.id);
+        const result = await s.settle(group);
+        expect(result.members).toEqual(view.members);
+        expect(result.turns.find(t => t.id === turn.id)?.guestQuestion).toEqual({ bot: request.expectedGuest, name: 'Jarvis' });
+        const deliveries = result.deliveries.filter(d => d.turnId === turn.id);
+        expect(deliveries).toHaveLength(1);
+        expect(deliveries[0]).toMatchObject({ state: 'completed', acceptedAt: expect.any(Number) });
+        expect(deliveries[0]).not.toHaveProperty('childSessionId');
+        expect(deliveries[0]).not.toHaveProperty('childMessageId');
+        expect(s.domain.table('deliveries').get(need(deliveries[0]).id)?.childMessageId).toBe('guest-accepted-id');
+        expect(result.messages.find(m => m.id === deliveries[0]?.outputMessageId)).toMatchObject({ guestReply: true,
+          speaker: { bot: request.expectedGuest, name: 'Jarvis' }, replyTo: turn.inputMessageId, text: 'Jarvis native response' });
+        expect(native).toHaveBeenCalledTimes(1);
+        await expect(s.groups.sendOwner(key, { ...request, text: '问 Jarvis 另一个问题' })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+        await expect(s.groups.sendOwner(key, { ...request, operationId: 'stale', expectedGuest: { ...request.expectedGuest, botCreatedAt: 6 } }))
+          .rejects.toMatchObject({ code: 'dsh-bot/guest-changed' });
+        await expect(s.groups.send(key, { ...request, operationId: 'no-owner' })).rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+        await expect(s.groups.sendOwner(key, { ...request, expectedGuest: undefined, operationId: 'missing', text: '问 Missing 怎么办' }))
+          .rejects.toMatchObject({ code: 'dsh-bot/guest-unavailable' });
+        // An incomplete native execution may contain text. That text must not become a guest answer.
+        s.start.mockImplementationOnce(async ({ childId }) => ({ childId: need(childId), messageId: 'guest-partial-id',
+          result: Promise.resolve({ output: [{ type: 'text', text: 'UNFINISHED_GUEST_OUTPUT' }], stopReason: 'error' }),
+          dispose: vi.fn(async () => {}) }));
+        const failed = await s.groups.sendOwner(key, { ...request, operationId: 'guest-failure' });
+        const failedView = await s.settle(group);
+        expect(failedView.deliveries.find(d => d.turnId === failed.id)).toMatchObject({ state: 'failed', acceptedAt: expect.any(Number) });
+        expect(failedView.messages.some(m => m.text === 'UNFINISHED_GUEST_OUTPUT')).toBe(false);
+        const secret = 'GUEST_PRIVATE_RESULT_CANARY';
+        for (const allow of [false, true]) {
+          s.start.mockImplementationOnce(async ({ childId }) => {
+            await x.flow.inherit(need(childId), { readers: [request.expectedGuest], originTrust: 'candidate',
+              sourceVersions: [], grants: [], restrictions: ['no-egress'] });
+            return { childId: need(childId), messageId: 'guest-private-id', result: Promise.resolve({
+              output: [{ type: 'text', text: secret }], stopReason: 'completed' }), dispose: vi.fn(async () => {}) };
+          });
+          const privateTurn = await s.groups.sendOwner(key, { ...request, operationId: `private-${allow}` });
+          const heldView = await s.settle(group);
+          const held = need(heldView.deliveries.find(d => d.turnId === privateTurn.id));
+          expect(held.reasonCode).toBe('export-approval-required');
+          expect(JSON.stringify(heldView)).not.toContain(secret);
+          expect(held).not.toHaveProperty('childSessionId');
+          const preview = await s.groups.exportReview.review(key, held.id);
+          expect(preview.content).toBe(secret);
+          await expect(s.groups.exportReview.decide(key, held.id, preview.token, 'always'))
+            .rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+          await s.groups.exportReview.decide(key, held.id, preview.token, allow);
+          const decided = await s.groups.view(key);
+          if (allow) {
+            const approved = need(decided.messages.find(m => m.text === secret));
+            expect(approved).toMatchObject({ guestReply: true, speaker: { name: 'Jarvis', bot: request.expectedGuest } });
+            expect(approved).not.toHaveProperty('childSessionId');
+          } else expect(JSON.stringify(decided)).not.toContain(secret);
+        }
+      } finally { await s.close(); }
+    });
+  } finally { await x.close(); }
+});
+
+it('routes an owner handoff through the quoted member, sends only the authorized question, and gates the exact outside answer', async () => {
+  const x = await flowFixture(), guest = { botId: 'visitor', botCreatedAt: 5 };
+  x.current.set('beta', beta.botCreatedAt);
+  x.current.set('visitor', guest.botCreatedAt);
+  try {
+    await withIntegrations(async f => {
+      const s = await fixture(f);
+      try {
+        Object.assign(f.registry, x.registry(), { onboardingSnapshot: (id: string, generation: number) => {
+          const bot = f.bots.get(id); return bot?.createdAt === generation ? bot : undefined;
+        } });
+        f.registry.config.groupTaskTimeoutMs = 10000;
+        f.bots.set('visitor', { ...need(f.bots.get('alpha')), id: 'visitor', name: 'Jarvis', createdAt: 5 });
+        const g = await s.createGroup(), key = groupKey(g);
+        const initial = await s.groups.view(key), member = need(initial.members.find(m => m.bot.botId === alpha.botId));
+        const original = await s.groups.send(key, { operationId: 'discussion', expectedMembershipRevision: 1,
+          text: 'UNRELATED_PRIVATE_GROUP_HISTORY', memberIds: [member.id] });
+        const settle = async (id: string) => { await s.groups.waitForTurn(id); return s.groups.view(key); };
+        const history = await settle(original.id);
+        const replyTo = need(history.messages.find(m => m.turnId === original.id && m.speaker?.bot.botId === alpha.botId)).id;
+        const request = { operationId: 'delegate', expectedMembershipRevision: 1, expectedGuest: guest, expectedRelay: alpha,
+          text: '你问下 Jarvis 最近有和这个相关的吗？', replyTo };
+        await expect(s.groups.sendOwner(key, request)).rejects.toMatchObject({ code: 'dsh-bot/relay-topic-required' });
+        const native = (text: string, protect = false) => s.start.mockImplementationOnce(async ({ childId, request }) => {
+          const prompt = need(request.prompt[0]).text;
+          if (request.agentPreset === 'bot-visitor') {
+            expect(prompt).toContain('toolchain');
+            expect(prompt).not.toContain('UNRELATED_PRIVATE_GROUP_HISTORY');
+            expect(prompt).not.toContain('reply-1');
+            if (protect) await x.flow.inherit(need(childId), { readers: [guest], originTrust: 'candidate', sourceVersions: [], grants: [], restrictions: ['no-egress'] });
+          } else {
+            expect(request.agentPreset).toBe('bot-alpha');
+            expect(prompt).toContain('JARVIS_RAW_REPLY');
+            expect(prompt).toContain('Jarvis');
+            if (prompt.includes('最近有和这个相关的吗')) expect(prompt).toContain('reply-1');
+          }
+          return { childId: need(childId), messageId: 'accepted-' + request.agentPreset, result: Promise.resolve({
+            output: [{ type: 'text', text }], stopReason: 'completed' }), dispose: vi.fn(async () => {}) };
+        });
+        await expect(s.groups.sendOwner(key, { ...request, relayTopic: 'toolchain', expectedRelay: beta }))
+          .rejects.toMatchObject({ code: 'dsh-bot/guest-changed' });
+        const before = await s.groups.view(key), callsBefore = s.start.mock.calls.length;
+        for (const [i, text] of ['@Jarvis toolchain', '请问＠Jarvis toolchain', '让 alpha 问@Jarvis toolchain',
+          '@alpha 问下 @Jarvis toolchain', '还有一题，@Jarvis 请回答'].entries()) {
+          // Old clients can retain an exact guest selection, a quote, or just the typed text.
+          await expect(s.groups.sendOwner(key, { ...request, operationId: 'outside-mention-' + i, text,
+            memberIds: i === 3 ? [member.id] : [], expectedGuest: i === 0 ? guest : undefined, expectedRelay: undefined }))
+            .rejects.toMatchObject({ code: 'dsh-bot/mention-not-member' });
+        }
+        const untouched = await s.groups.view(key);
+        expect(untouched.turns).toHaveLength(before.turns.length);
+        expect(untouched.messages).toHaveLength(before.messages.length);
+        expect(untouched.deliveries).toHaveLength(before.deliveries.length);
+        expect(s.start).toHaveBeenCalledTimes(callsBefore);
+        for (const [i, path] of ['quote', 'explicit', 'deny', 'deny-group'].entries()) {
+          const input = path === 'quote' ? { ...request, relayTopic: 'toolchain' } :
+            { ...request, operationId: path, replyTo: undefined, text: path === 'explicit' ? '@alpha 问下 Jarvis toolchain' : '让 alpha 去问 Jarvis toolchain' };
+          native('JARVIS_RAW_REPLY', i > 0);
+          if (!i) native('Alpha published answer using Jarvis');
+          const t = await s.groups.sendOwner(key, input);
+          expect(t.guestQuestion?.via).toMatchObject({ memberId: member.id, bot: alpha });
+          let view = await settle(t.id);
+          const staleReceipts: import('../src/shared/groups.js').GroupDelivery[] = [];
+          if (i > 0) {
+            const held = need(view.deliveries.find(d => d.turnId === t.id));
+            staleReceipts.push(need(s.domain.table('deliveries').get(held.id)));
+            expect(held.reasonCode).toBe('export-approval-required');
+            expect(view.deliveries.filter(d => d.turnId === t.id)).toHaveLength(1);
+            expect(view.messages.filter(m => m.turnId === t.id && m.speaker)).toHaveLength(0);
+            const preview = await s.groups.exportReview.review(key, held.id);
+            expect(preview.recipients.map(r => r.bot)).toEqual([alpha]);
+            if (path !== 'deny') native('Alpha published answer using Jarvis');
+            await s.groups.exportReview.decide(key, held.id, preview.token, path !== 'deny');
+            view = await settle(t.id);
+            if (path !== 'deny') {
+              const response = need(view.deliveries.find(d => d.turnId === t.id && d.ordinal === 1));
+              staleReceipts.push(need(s.domain.table('deliveries').get(response.id)));
+              expect(response.reasonCode).toBe('export-approval-required');
+              expect(view.messages.filter(m => m.turnId === t.id && m.speaker)).toHaveLength(0);
+              const groupPreview = await s.groups.exportReview.review(key, response.id);
+              expect(groupPreview.recipients.map(r => r.bot)).toEqual([alpha, beta]);
+              expect(groupPreview.content).toBe('Alpha published answer using Jarvis');
+              await s.groups.exportReview.decide(key, response.id, groupPreview.token, path !== 'deny-group');
+              view = await settle(t.id);
+            }
+          }
+          if (staleReceipts.length) {
+            // Simulate process exit after durable approval/native delivery but before the delivery metadata write.
+            const nativeCalls = s.start.mock.calls.length;
+            for (const old of staleReceipts) await s.domain.table('deliveries').put(old.id, old);
+            await s.reopen();
+            view = await s.groups.view(key);
+            expect(s.start.mock.calls.length).toBe(nativeCalls);
+            expect(view.deliveries.filter(d => d.turnId === t.id).some(d => d.exportFlowId)).toBe(false);
+          }
+          const messages = view.messages.filter(m => m.turnId === t.id && m.speaker);
+          if (path === 'deny' || path === 'deny-group') { expect(messages).toHaveLength(0); continue; }
+          expect(view.deliveries.filter(d => d.turnId === t.id)).toMatchObject([
+            { state: 'completed', acceptedAt: expect.any(Number), answeredAt: expect.any(Number) },
+            { state: 'completed', acceptedAt: expect.any(Number), memberId: member.id },
+          ]);
+          expect(messages).toHaveLength(1);
+          expect(messages[0]).toMatchObject({ relayReply: true, speaker: { bot: alpha }, text: 'Alpha published answer using Jarvis', replyTo: t.inputMessageId });
+          expect(JSON.stringify(view)).not.toContain('JARVIS_RAW_REPLY');
+          expect((await s.groups.sendOwner(key, input)).id).toBe(t.id);
+          const d = need(s.domain.table('deliveries').get(t.id + ':1')), copy = need(s.domain.table('deliveries').get(t.id + ':0')?.relayAnswerFlowId);
+          expect(x.flow.get(copy).envelope?.binding.target).toEqual({ kind: 'bot', bot: alpha });
+          expect(x.flow.get(need(d.inputFlowId)).envelope?.content).not.toContain('JARVIS_RAW_REPLY');
+          if (i > 0) expect(x.flow.label(need(d.childSessionId)).readers).toEqual([]);
+        }
+      } finally { await s.close(); }
+    });
+  } finally { await x.close(); }
+}, 20000);

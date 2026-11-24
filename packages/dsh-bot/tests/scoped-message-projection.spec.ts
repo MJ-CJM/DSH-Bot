@@ -9,6 +9,9 @@ import { MessagingConfig } from '../src/host/messaging/config.js';
 import { teammateTurn } from '../src/host/messaging/safety.js';
 import { digest, need } from '../src/host/common/operations.js';
 import { Supergroup, supergroupDomain } from '../src/host/supergroup/service.js';
+import { projectGroupRelay, recoverGroupRelay, relayMarkerIssue } from '../src/host/groups/relay-receipts.js';
+import type { GroupState } from '../src/host/groups/state.js';
+import type { GroupDelivery, GroupRecord, GroupTurn } from '../src/shared/groups.js';
 import type { Groups } from '../src/host/groups/service.js';
 import type { SupergroupWork } from '../src/shared/supergroup.js';
 import type { ScopedMessageProjection } from '../src/host/messaging/scoped-projection.js';
@@ -29,7 +32,7 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0])
   f.ctx.provide('sessionPersistence', { open: async (id: string) => ({ read: async () => ({ events: need(agents.get(id)).session.snapshotEvents() }), close: async () => {} }) } as unknown as typeof f.ctx.sessionPersistence);
   Object.assign(f.registry, { config: { supergroup: { enabled: true } },
     mainSessions: { find: async (id: string) => ({ sessionId: id === 'alpha' ? a.session.id : b.session.id }) },
-    openConversation: async (id: string) => ({ sessionId: id === 'alpha' ? a.session.id : b.session.id }) });
+    openConversationExact: async (key: typeof alpha) => ({ sessionId: key.botId === 'alpha' ? a.session.id : b.session.id }) });
   let store = new MessageStore(await f.ctx.storageDomain.open(messagingDomain), MessagingConfig({}));
   let messaging = new Messaging(f.ctx, f.registry, store, undefined, { coldWake: true, interrupt: true, processing: true });
   let release = f.ctx.provide('dshBotMessaging', messaging); await messaging.start();
@@ -239,5 +242,46 @@ test('an already visible historical failure card is never returned as a result, 
     expect(await read()).toEqual({ status: 'unknown', requestId: ask.messageId });
     expect(s.displays(s.a)).toHaveLength(2);
     expect(s.followup).not.toHaveBeenCalled();
+  } finally { await s.close(); }
+}));
+
+test('group handoff markers follow native receipts in both mains and cannot become reusable answers after restart', () => withIntegrations(async f => {
+  const s = await fixture(f);
+  const group = { id: 'group:one', createdAt: 1, rootSessionId: 'group-root', state: 'ready', membershipRevision: 1 };
+  const via = { bot: alpha, memberId: 'member:a', name: 'Alpha' };
+  const turn = { id: 'relay', group: { groupId: group.id, groupCreatedAt: group.createdAt }, operationId: 'relay:operation',
+    membershipRevision: 1, inputMessageId: 'group-question', guestQuestion: { bot: beta, name: 'Beta', via } };
+  const recipient = { bot: beta, ordinal: 0, state: 'completed', acceptedAt: undefined as number | undefined, answeredAt: undefined as number | undefined };
+  const sender = { bot: alpha, ordinal: 1, state: 'completed', memberId: via.memberId, acceptedAt: undefined as number | undefined };
+  const state = { ctx: f.ctx, registry: f.registry, startup: s.controller, record: () => group, members: () => [{ id: via.memberId, bot: alpha, enabled: true }],
+    bot: async () => {}, table: (name: string) => ({ get: (key: string) => name === 'turns' ? turn : key === 'relay:0' ? recipient : sender }) };
+  const marker = (kind: 'request' | 'reply') => projectGroupRelay(state as unknown as GroupState,
+    group as GroupRecord, turn as GroupTurn, kind, s.controller.signal);
+  try {
+    f.registry.config.supergroup.enabled = false;
+    await expect(marker('request')).rejects.toThrow();
+    expect(s.displays(s.b)).toHaveLength(0);
+    recipient.acceptedAt = Date.now();
+    const spy = vi.spyOn(s.messaging, 'projectScoped');
+    expect(relayMarkerIssue(state as unknown as GroupState, turn as GroupTurn, recipient as GroupDelivery)).toBe('unconfirmed');
+    await recoverGroupRelay(state as unknown as GroupState, group as GroupRecord, turn as GroupTurn);
+    expect(spy.mock.calls[0]?.[0].labelSessionId).toMatch(/^[a-zA-Z0-9_-]+$/);
+    await marker('request');
+    expect(relayMarkerIssue(state as unknown as GroupState, turn as GroupTurn, recipient as GroupDelivery)).toBeUndefined();
+    expect(relayMarkerIssue({ ...state, ctx: { get: () => undefined } } as unknown as GroupState, turn as GroupTurn, recipient as GroupDelivery)).toBe('unavailable');
+    recipient.answeredAt = 6;
+    await expect(marker('reply')).rejects.toThrow();
+    sender.acceptedAt = 7;
+    await marker('reply');
+    const entries = () => s.displays(s.b).flatMap(e => e.type === 'user/message' ? [e.data] : []);
+    expect(entries().map(e => e.source)).toMatchObject([{ kind: 'dsh-bot-message', groupRelayReceipt: true, mode: 'ask', from: alpha, to: beta },
+      { kind: 'dsh-bot-message-sent', groupRelayReceipt: true, mode: 'reply', from: beta, to: alpha }]);
+    expect(entries().map(e => e.content[0])).toMatchObject([{ text: expect.stringContaining('Group question received.') },
+      { text: expect.stringContaining('Group question answered.') }]);
+    expect(s.displays(s.a)).toHaveLength(2);
+    await s.reopen(); await marker('request'); await marker('reply');
+    expect(s.displays(s.b)).toHaveLength(2); expect(s.displays(s.a)).toHaveLength(2);
+    expect(s.followup).not.toHaveBeenCalled();
+    expect(await s.messaging.peerResultForHumanInput(s.a, beta.botId)).toEqual({ status: 'missing' });
   } finally { await s.close(); }
 }));

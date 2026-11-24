@@ -89,6 +89,7 @@ export const messageSourceSchema = z.strictObject({
   kind: z.enum(['dsh-bot-message', 'dsh-bot-message-sent']),
   form: z.enum(['relay', 'notice']),
   summary: z.string().optional(),
+  groupRelayReceipt: z.literal(true).optional(),
   messageId: id,
   threadId: id,
   replyTo: id.optional(),

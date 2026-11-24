@@ -144,7 +144,7 @@ export class GroupState {
       if (oldest !== undefined) this.proactiveDrains.delete(oldest);
     }
   }
-  table<K extends 'groups' | 'members' | 'turns' | 'deliveries' | 'read_state' | 'supergroup_requests' | 'team_recipes'>(key: K) {
+  table<K extends keyof typeof groupsDomain.tables>(key: K) {
     return this.domain.table(key);
   }
   check() {
@@ -156,6 +156,7 @@ export class GroupState {
     const g = this.table('groups').get(k.groupId);
     if (!g) throw new OperationError('not-found');
     if (g.createdAt !== k.groupCreatedAt) throw new OperationError('conflict');
+    if (this.table('deletions').get(k.groupId)) throw new OperationError('recovery-needed');
     return g;
   }
   members(g: GroupRecord) {
@@ -213,7 +214,7 @@ export class GroupState {
     void write.then(release, release);
     return write;
   }
-  private factChanged(group: GroupKey, turnId?: string) {
+  factChanged(group: GroupKey, turnId?: string) {
     try { this.ctx.emit('dsh-bot/group-fact-changed', group, turnId); }
     catch { this.ctx.logger.warn('[dsh-bot] committed group change could not wake local follow-up'); }
   }

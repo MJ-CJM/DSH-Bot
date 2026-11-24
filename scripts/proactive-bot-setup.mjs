@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { scratch } from './proactive/worker.mjs';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 const require = createRequire(resolve('packages/dsh-bot/package.json'));
 const { chromium } = require('playwright-core');
@@ -29,9 +29,7 @@ try {
   async function openWork() {
     await openBotsPanel(page,t['bots.title']);
     const bots=page.locator('[data-bots-page]:visible');
-    const profile=bots.getByRole('button',{name:`${t['chat.profile']} · Setup verification`,exact:true});
-    const fallback=bots.locator('button[data-bot-id="setup-bot"]');
-    await profile.or(fallback).first().waitFor();if(await profile.isVisible())await profile.click();else await fallback.click();
+    await selectBotDirectoryAction(bots, 'setup-bot', t['chat.profile']);
     await page.locator('[data-bot-detail="setup-bot"]').getByRole('tab',{name:t['detail.work'],exact:true}).click();
   }
   const initial=await until(async()=> (await read())?.conversation ? await read() : undefined);

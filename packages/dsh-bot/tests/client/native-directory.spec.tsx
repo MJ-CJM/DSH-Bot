@@ -13,6 +13,7 @@ import { GroupDirectory } from '../../src/client/components/GroupDirectory.js';
 import type { BotsPageProps } from '../../src/client/pages/bots-page-types.js';
 import type { BotsPageModel } from '../../src/client/pages/use-bots-page.js';
 import { bot, button, click, field, fill } from './helpers.js';
+import { requireValue } from './test-required.js';
 import { summary } from './group-fixture.js';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
@@ -70,35 +71,48 @@ describe('native directory identity and display preferences', () => {
   });
 });
 
-async function directory(language: 'en' | 'zh' = 'en') {
+async function directory(language: 'en' | 'zh' = 'en', mode: 'bots' | 'recent' = 'bots') {
   const record = bot({ id: 'planner-alpha', name: 'Planner', description: 'Release review' });
   const entries = [{ bot: record }];
   const start = vi.fn(async () => {}), exact = vi.fn(async (_bot: unknown, _signal: AbortSignal) => {}), showBot = vi.fn(), errors: unknown[] = [];
   const labels = (language === 'zh' ? zh : en).ui;
   const translate = ((key: keyof typeof en.ui, params?: Record<string, unknown>) => labels[key].replace(/\{(\w+)\}/g, (_m, name: string) => String(params?.[name] ?? name))) as typeof t;
-  const model = { entries, activity: { bots: [], sessions: [] }, snapshot: { loaded: true }, pageState: { lists: { bots: { query: '', hidden: false } } },
+  const model = { entries, activity: { bots: [], sessions: [] }, snapshot: { loaded: true }, pageState: { lists: { [mode]: { query: '', hidden: false } } },
     showBot, navigate: async (action: (signal: AbortSignal) => Promise<void>) => { try { await action(new AbortController().signal); } catch (error) { errors.push(error); } } } as unknown as BotsPageModel;
   const page = { t: translate, onStart: start, onStartExact: exact } as unknown as BotsPageProps;
   const element = document.createElement('div'); document.body.append(element); const root = createRoot(element);
   cleanups.push(async () => { await act(async () => root.unmount()); element.remove(); });
-  const render = async () => act(async () => root.render(<RecentConversations mode="bots" model={model} page={page} />));
+  const render = async () => act(async () => root.render(<RecentConversations mode={mode} model={model} page={page} />));
   await render();
   return { element, record, model, exact, start, showBot, errors, translate, render };
 }
 
-it.each(['en', 'zh'] as const)('uses scoped activation; pin/search/profile never start a session (%s)', async language => {
-  const f = await directory(language);
-  await fill(field(f.element, f.translate('navigation.searchBots')), 'planner-alpha release');
-  const row = f.element.querySelector('[data-directory-id="planner-alpha"]'); expect(row).not.toBeNull();
-  expect(row?.getAttribute('data-directory-created-at')).toBe(String(f.record.createdAt));
-  await click(row?.querySelector('[data-directory-pin]') as HTMLElement);
-  expect(row?.querySelector('[data-directory-pin]')?.getAttribute('aria-pressed')).toBe('true');
-  await click(button(f.element, `${f.translate('chat.profile')} · Planner`));
-  expect(f.showBot).toHaveBeenCalledWith(f.record); expect(f.exact).not.toHaveBeenCalled(); expect(f.start).not.toHaveBeenCalled();
-  await click(row?.querySelector('[data-directory-open]') as HTMLElement);
-  expect(f.exact).toHaveBeenCalledExactlyOnceWith({ id: f.record.id, createdAt: f.record.createdAt }, expect.any(AbortSignal));
-  expect(f.start).not.toHaveBeenCalled();
-  expect(recentPreferences.get(conversationKey('bot', f.record.id, f.record.createdAt))?.openedAt).toBeGreaterThan(0);
+describe.each(['bots', 'recent'] as const)('%s directory actions', mode => {
+  it.each(['en', 'zh'] as const)('uses one menu for pin, unpin and profile without opening the session (%s)', async language => {
+    const f = await directory(language, mode);
+    await fill(field(f.element, f.translate(mode === 'bots' ? 'navigation.searchBots' : 'chat.search')), 'planner-alpha release');
+    const row = requireValue(f.element.querySelector('[data-directory-id="planner-alpha"]'));
+    expect(row.getAttribute('data-directory-created-at')).toBe(String(f.record.createdAt));
+    const open = button(row, 'Planner'), more = button(row, `${f.translate('card.more')} Planner`);
+    expect([...row.querySelectorAll('button')]).toEqual([open, more]);
+    await click(more);
+    expect([...row.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual([
+      f.translate('chat.pin'), ...(mode === 'recent' ? [f.translate('chat.hide')] : []),
+      f.translate('chat.profile'), f.translate('actions.delete'),
+    ]);
+    await click(button(row, f.translate('chat.pin')));
+    expect(row.querySelector('[data-directory-pinned]')?.textContent).toBe(f.translate('chat.pinned'));
+    expect([...row.querySelectorAll('button')]).toEqual([open, more]);
+    await click(more); await click(button(row, f.translate('chat.unpin')));
+    expect(row.querySelector('[data-directory-pinned]')).toBeNull();
+    await click(more); await click(button(row, f.translate('chat.profile')));
+    expect(f.showBot).toHaveBeenCalledExactlyOnceWith(f.record);
+    expect(f.exact).not.toHaveBeenCalled(); expect(f.start).not.toHaveBeenCalled();
+    await click(open);
+    expect(f.exact).toHaveBeenCalledExactlyOnceWith({ id: f.record.id, createdAt: f.record.createdAt }, expect.any(AbortSignal));
+    expect(f.start).not.toHaveBeenCalled();
+    expect(recentPreferences.get(conversationKey('bot', f.record.id, f.record.createdAt))?.openedAt).toBeGreaterThan(0);
+  });
 });
 
 it('retains a failed directory row for retry and does not record a successful visit', async () => {
@@ -120,7 +134,7 @@ it('legacy selection locates the directory row without opening or replacing the 
   sessionStorage.setItem('dsh-bot.bot-mode.v1', JSON.stringify({ selected: { kind: 'bot', id: 'planner-alpha', createdAt: 1 }, pinned: [JSON.stringify(['bot', 'planner-alpha', 1])] }));
   const f = await directory();
   expect(f.element.querySelector('[data-directory-selected]')?.getAttribute('data-directory-id')).toBe(f.record.id);
-  expect(f.element.querySelector('[data-directory-pin]')?.getAttribute('aria-pressed')).toBe('true');
+  expect(f.element.querySelector('[data-directory-pinned]')?.textContent).toBe(f.translate('chat.pinned'));
   expect(f.exact).not.toHaveBeenCalled(); expect(f.start).not.toHaveBeenCalled();
 });
 
@@ -157,7 +171,25 @@ it('searches group ID and member names, retains filters on remount, and separate
   await render('two'); expect(field(element, en.ui['groups.search']).value).toBe('group:one researcher');
   await click(element.querySelector('[data-directory-open]') as HTMLElement);
   expect(open).toHaveBeenCalledExactlyOnceWith(group.group, expect.any(AbortSignal)); expect(select).not.toHaveBeenCalled();
-  await click(button(element, `${en.ui['chat.profile']} · ${group.group.name}`)); expect(select).toHaveBeenCalledExactlyOnceWith(group.group);
+  await click(button(element, `${en.ui['card.more']} · ${group.group.name}`));
+  await click(button(element, en.ui['chat.profile'])); expect(select).toHaveBeenCalledExactlyOnceWith(group.group);
+});
+
+it('pins and unpins the chosen group from its labelled menu without navigating', async () => {
+  const first = summary(), second = { ...first, group: { ...first.group, id: 'group:two', name: 'Zeta group' } };
+  const open = vi.fn(async () => {}), select = vi.fn(), element = document.createElement('div'), root = createRoot(element);
+  cleanups.push(async () => { await act(async () => root.unmount()); });
+  await act(async () => root.render(<GroupDirectory rows={[first, second]} bots={[]} onOpen={open} onSelect={select} onCreate={() => {}} onRefresh={() => {}} t={t} />));
+  const order = () => [...element.querySelectorAll('[data-group-directory-row]')].map(row => row.getAttribute('data-group-directory-row'));
+  const menu = () => button(element, `${en.ui['card.more']} · ${second.group.name}`);
+  expect(order()).toEqual([first.group.id, second.group.id]);
+  await click(menu()); await click(button(element, en.ui['chat.pin']));
+  expect(order()).toEqual([second.group.id, first.group.id]);
+  expect(element.querySelector('[data-group-directory-row]')?.textContent).toContain(en.ui['chat.pinned']);
+  await click(menu()); await click(button(element, en.ui['chat.unpin']));
+  expect(order()).toEqual([first.group.id, second.group.id]);
+  expect(element.textContent).not.toContain(en.ui['chat.pinned']);
+  expect(open).not.toHaveBeenCalled(); expect(select).not.toHaveBeenCalled();
 });
 
 it('deduplicates group opening and cancels pending navigation when management takes over', async () => {
@@ -169,7 +201,8 @@ it('deduplicates group opening and cancels pending navigation when management ta
   const target = element.querySelector('[data-directory-open]') as HTMLButtonElement;
   await act(async () => { target.click(); target.click(); });
   expect(open).toHaveBeenCalledOnce();
-  await click(button(element, `${en.ui['chat.profile']} · ${group.group.name}`));
+  await click(button(element, `${en.ui['card.more']} · ${group.group.name}`));
+  await click(button(element, en.ui['chat.profile']));
   expect(open.mock.calls[0]?.[1]?.aborted).toBe(true);
   await act(async () => finish());
   expect(recentPreferences.get(conversationKey('group', group.group.id, group.group.createdAt))?.openedAt).toBeUndefined();

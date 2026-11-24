@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 
 export async function verifyWorkspaceBrowser(root,dir,host,{groupRepair=false}={}) {
@@ -26,10 +26,7 @@ export async function verifyWorkspaceBrowser(root,dir,host,{groupRepair=false}={
         await dismissFirstRunOverlays(page,()=>{},'workspace-repair');
         await openBotsPanel(page,t['bots.title']);
         const bots=page.locator('[data-bots-page]:visible');
-        const profile=bots.getByRole('button',{name:`${t['chat.profile']} · Fixture CI`,exact:true});
-        const fallback=bots.locator('button[data-bot-id="fixture-ci"]');
-        await profile.or(fallback).first().waitFor();
-        if(await profile.isVisible())await profile.click();else await fallback.click();
+        await selectBotDirectoryAction(bots, 'fixture-ci', t['chat.profile']);
         const detail=page.locator('[data-bot-detail="fixture-ci"]');
         await detail.getByRole('tab',{name:t['detail.work'],exact:true}).click();
         await page.setViewportSize({width,height:950});

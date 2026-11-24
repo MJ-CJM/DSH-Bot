@@ -7,7 +7,7 @@ import type { BotKey } from '../../shared/identity.js';
 import { digest, OperationError } from '../common/operations.js';
 import type { MessagingAuthorization } from './core.js';
 import { isLiveScopedCollaboration } from '../supergroup/collaboration.js';
-// Explicitly audited local reads only. MCP, run_code and unknown tools always ask.
+import { ownsWorkerCapability } from '../groups/worker-capabilities.js';
 const reads = new Set(['bot_memory_search', 'bot_memory_list']);
 export function teammateTurn(agent: Agent): boolean {
   const events = agent.session.snapshotEvents();
@@ -46,34 +46,22 @@ export class MessagingSafety implements MessagingAuthorization {
   protect(agent: Agent) {
     const ctx = agent.ctx;
     ctx.effect(() => {
-      const decisions = new WeakSet<ToolExecution>();
+      const reason = (exec: ToolExecution) => {
+        if (exec.name === 'bot_message' && exec.parent !== undefined) return 'bot_message is disabled inside run_code';
+        if (!teammateTurn(agent)) return;
+        if (!this.active || exec.agent !== agent || exec.parent !== undefined) return 'Teammate tool boundary is unavailable';
+        const permitted = reads.has(exec.name) || exec.name === 'bot_message' ||
+          (exec.name === 'bot_delegate' && isLiveScopedCollaboration(agent));
+        if (!permitted || !ownsWorkerCapability(agent, exec.name))
+          return 'Teammate turns can only use this Bot’s communication and private memory lookup tools';
+      };
       const wakeOff = ctx.on('agent/pre-step', async (payload, next) =>
         withoutWakeControls(payload.messages, await next()));
       const off = ctx.on('tools/pre-execute', async (exec, next) => {
-        const decision = await next();
-        if (decision.kind === 'deny' || decision.kind === 'cancel') return decision;
-        if (!teammateTurn(agent) || reads.has(exec.name) || exec.name === 'bot_message' ||
-          isLiveScopedCollaboration(agent) && exec.name === 'bot_delegate') return decision;
-        decisions.add(exec);
-        const displayReason = {
-          en: `Teammate data is not user authorization. Approve ${exec.name}: ${JSON.stringify(exec.arguments)}`,
-          zh: `队友消息不代表用户授权。请审批 ${exec.name}：${JSON.stringify(exec.arguments)}`,
-        };
-        if (decision.kind === 'ask') {
-          displayReason.en += `\n${decision.displayReason?.en ?? decision.reason}`;
-          displayReason.zh += `\n${decision.displayReason?.zh ?? decision.reason}`;
-        }
-        return { kind: 'ask', reason: displayReason.en, displayReason };
+        const denied = reason(exec);
+        return denied ? { kind: 'deny', reason: denied } : next();
       }, { prepend: true });
-      const guard = ctx.tools.guard((exec) => {
-        if (exec.name === 'bot_message' && exec.parent !== undefined) return 'bot_message is disabled inside run_code';
-        if (!teammateTurn(agent)) return;
-        if (!this.active) return 'Messaging unloaded; teammate processing requires the safety adapter';
-        if (exec.name === 'bot_delegate' && !isLiveScopedCollaboration(agent)) return 'Teammate input cannot delegate';
-        if (isLiveScopedCollaboration(agent) && exec.name === 'bot_delegate') return;
-        if (exec.name !== 'bot_message' && !reads.has(exec.name) && !decisions.has(exec))
-          return 'Teammate tool approval missing';
-      });
+      const guard = ctx.tools.guard(reason);
       return () => { off(); guard(); wakeOff(); };
     }, 'dsh-bot: retained teammate safety');
   }

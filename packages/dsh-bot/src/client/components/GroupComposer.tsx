@@ -17,6 +17,7 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
   const [bridge] = useState(() => createGroupTrigger(sessionId, () => latest.current.targets, (span, memberId, insertion) => {
     const current = latest.current;
     if (span.draftRev !== revision.current) return false;
+    if (memberId !== undefined && memberId !== 'everyone' && !current.targets.some(member => member.id === memberId)) return false;
     const next = current.text.slice(0, span.start) + insertion + current.text.slice(span.end);
     const nextBindings = reconcileMentionBindings(current.text, next, current.bindings).filter(binding => !(binding.start === span.start || (binding.start < 0 && binding.text === insertion.trimEnd())));
     if (memberId !== undefined) nextBindings.push({ start: span.start, end: span.start + insertion.trimEnd().length, text: insertion.trimEnd(), memberId });
@@ -38,6 +39,13 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
   // biome-ignore lint/correctness/useExhaustiveDependencies: Text changes require measuring the controlled textarea after render.
   useEffect(() => { const input = inputRef.current; if (input) { input.style.height = 'auto'; input.style.height = `${Math.min(144, Math.max(56, input.scrollHeight))}px`; } }, [text, inputRef]);
   const menu = useSyncExternalStore(bridge.controller.menu.subscribe, bridge.controller.menu.getSnapshot);
+  const rosterKey = JSON.stringify(targets);
+  const lastRoster = useRef(rosterKey);
+  useEffect(() => {
+    if (lastRoster.current === rosterKey) return;
+    lastRoster.current = rosterKey;
+    bridge.controller.refreshOpenMenu();
+  }, [bridge, rosterKey]);
   useEffect(() => { if (menu.open && menu.highlight) document.getElementById(`${menuId}-${menu.highlight.source}-${menu.highlight.index}`)?.scrollIntoView?.({ block: 'nearest' }); }, [menu, menuId]);
   const track = () => { const input = inputRef.current; if (input) bridge.track(latest.current.text, input.selectionStart, revision.current); };
   const commandMenu = menu.hit?.trigger === '/';

@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { botDirectoryMore, openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 const root = process.cwd(), version = process.env.UI_VERSION ?? 'rc5', dir = resolve(root, `.dsh-dev/ui-completion/${version}-${Date.now()}`), out = resolve(root, `output/playwright/ui-completion/${version}`);
 await mkdir(out, { recursive: true });
@@ -41,7 +41,7 @@ try {
         };
         await capture('list');
         await main.getByRole('searchbox').fill('api-alpha');
-        await main.getByRole('button', { name: `${t['chat.profile']} · api-alpha`, exact: true }).click();
+        await selectBotDirectoryAction(main, 'api-alpha', t['chat.profile']);
         assert.equal(await page.getByRole('dialog').count(), 0);
         for (const key of ['overview', 'work', 'memory', 'settings', 'history']) {
           await tab(`detail.${key}`); await capture(key);
@@ -78,7 +78,7 @@ try {
         await dialog.getByRole('button', { name: t['navigation.discardLeave'], exact: true }).click();
         assert.equal(await main.getByRole('searchbox').inputValue(), 'api-alpha');
         await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
-        assert.equal(await main.getByRole('button', { name: `${t['chat.profile']} · api-alpha`, exact: true }).evaluate(el => el === document.activeElement), true);
+        assert.equal(await botDirectoryMore(main, 'api-alpha').evaluate(el => el === document.activeElement), true);
         await main.getByRole('searchbox').fill('');
         await click('chat.settings');
         for (const key of ['connectors.connectors', 'notifications.notifications', 'routine.title', 'team.title', 'im.title', 'manage.memoryTools']) { await tab(key); await capture(`settings-${key.split('.')[0]}`); }
@@ -101,7 +101,7 @@ try {
       }
     }
     await main.getByRole('searchbox').fill('api-alpha');
-    await main.getByRole('button', { name: `${t['chat.profile']} · api-alpha`, exact: true }).click();
+    await selectBotDirectoryAction(main, 'api-alpha', t['chat.profile']);
     await click('card.edit');
     await main.getByRole('textbox', { name: t['editor.description'], exact: true }).fill(`Verified inline save ${language}`);
     await click('editor.save');

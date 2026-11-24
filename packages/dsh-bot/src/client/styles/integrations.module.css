@@ -12,6 +12,7 @@
   font: inherit;
   line-height: 1.5;
 }
+.switchRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .panel *,
 .panel *::before,
 .panel *::after {

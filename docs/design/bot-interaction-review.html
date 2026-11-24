@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DSH-Bot 交互与审批架构</title>
+<style>
+:root{color-scheme:light;--ink:#19283b;--muted:#506278;--rule:#cfdae0;--paper:#fff;--back:#f3f6f7;--auto:#126151;--auto-bg:#e8f4ee;--ask:#884610;--ask-bg:#fff0d8;--policy:#3e5290;--policy-bg:#eaf0ff;--stop:#983a43;--stop-bg:#fae9eb}
+*{box-sizing:border-box}
+html{scroll-padding-top:12px}
+body{margin:0;background:var(--back);color:var(--ink);font:16px/1.57 "Inter",-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:1260px;margin:auto;padding:24px}
+section{margin:0 0 22px;padding:30px 34px;background:var(--paper);border:1px solid var(--rule);border-radius:16px}
+h1,h2,h3,p{margin:0}
+h1{font-size:clamp(25px,3vw,39px);letter-spacing:-.035em;line-height:1.3}
+h2{font-size:23px;letter-spacing:-.02em}
+h3{font-size:17px}
+.headline,.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+time,.fine,.section-head a{font-size:13px;color:var(--muted)}
+.lede{margin:9px 0 17px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:9px 0 18px}
+.key{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:650}
+.key i{width:10px;height:10px;background:currentColor;border-radius:50%}
+.auto{color:var(--auto);--fill:var(--auto-bg)}
+.ask{color:var(--ask);--fill:var(--ask-bg)}
+.policy{color:var(--policy);--fill:var(--policy-bg)}
+.stop{color:var(--stop);--fill:var(--stop-bg)}
+a{color:#195b83;text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:3px solid #4d79b0;outline-offset:2px}
+.flow{display:grid;grid-template-columns:minmax(116px,1.04fr) minmax(0,5fr);align-items:center;gap:14px;padding:11px 6px;border-top:1px solid var(--rule);color:inherit;text-decoration:none}
+.flow:hover,.flow:focus-visible{background:#f5f9fa}
+.flow-name{font-weight:680;font-size:15px}
+.path{display:grid;grid-template-columns:minmax(68px,1fr) minmax(78px,1.3fr) minmax(68px,1fr) minmax(78px,1.3fr) minmax(68px,1fr);align-items:center;gap:8px}
+.actor{display:block;text-align:center;border:1px solid #c5d3db;border-radius:7px;background:#f8fafb;padding:7px 3px;font-weight:630;font-size:14px;line-height:1.3}
+.edge{display:flex;flex-direction:column;align-items:center;font-size:12px;line-height:1.45;text-align:center;font-weight:650}
+.edge:after{content:"";display:block;width:96%;height:7px;background:currentColor;clip-path:polygon(0 45%,94% 45%,94% 0,100% 54%,94% 100%,94% 64%,0 64%)}
+.map-note{margin-top:12px;padding:10px 12px;border-left:3px solid var(--stop);background:var(--stop-bg);font-size:14px;color:#642c35}
+.review-links{display:flex;gap:12px 20px;flex-wrap:wrap;margin:0 4px 20px}
+.review-links a{font-size:15px}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:18px 0}
+.cards article{border-top:3px solid var(--rule);padding-top:9px}
+.cards p{margin-top:5px;font-size:15px}
+.example{padding:13px 16px;border-left:3px solid #52678b;background:#edf2f8}
+.table-wrap{margin-top:14px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--rule);padding:12px 10px}
+thead th{color:var(--muted);font-weight:580;font-size:13px;background:#f2f5f6}
+tbody th{width:18%;font-size:15px}
+tbody td:nth-child(2){width:27%}
+tr:target,article:target{background:#eef4ff}
+.tag{display:inline-block;background:var(--fill);padding:2px 7px;border-radius:4px;font-size:12px;font-weight:700;white-space:nowrap;margin:0 5px 4px 0}
+.sources{margin-top:6px;font-size:13px}
+.sources a{margin-right:10px}
+.rules{display:grid;gap:12px;margin:14px 0 0;padding-left:22px}
+footer{padding:0 4px 20px;color:var(--muted);font-size:13px}
+@media(max-width:780px){
+ main{padding:10px}section{padding:20px 14px;border-radius:10px}.headline,.section-head{gap:2px 12px}
+ .flow{grid-template-columns:1fr;gap:4px;padding:9px 0}.path{gap:4px;grid-template-columns:1fr 1.13fr 1fr 1.13fr 1fr}
+ .actor{font-size:12px}.edge{font-size:11px}.cards{grid-template-columns:1fr;gap:10px}
+ table,tbody,tr,td,tbody th{display:block;width:100%!important}thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ td,tbody th{border:0;padding:4px 0}tbody th{font-size:16px}tbody td:nth-child(2){color:var(--muted)}
+ tbody tr{border-bottom:1px solid var(--rule);padding:10px 0}
+}
+@media print{body{background:white}main{max-width:none;padding:0}section{border:0;padding:8px 0;margin:0 0 16px}nav,.backlink{display:none}
+ .flow,.cards article,tr{break-inside:avoid}h2,h3{break-after:avoid}*{print-color-adjust:exact}table{font-size:12px}}
+</style>
+<main>
+<section id="map" aria-labelledby="map-title">
+  <div class="headline"><h1 id="map-title">DSH-Bot 交互与审批架构</h1><time datetime="2026-11-23">2026.11.23 · 工作区候选版本</time></div>
+  <p class="lede">沿箭头看谁收到什么。橙色箭头标出可能需要你确认的位置。点击任一路径查看审批条件。</p>
+  <div class="legend" aria-label="图例"><span class="key auto"><i></i>自动处理</span><span class="key ask"><i></i>内容或操作需确认</span><span class="key policy"><i></i>取决于开关、策略或收据</span><span class="key stop"><i></i>阻止或失效</span></div>
+  <a class="flow" href="#dm"><span class="flow-name">用户私聊</span><span class="path"><span class="actor">用户</span><span class="edge auto">直接提问</span><span class="actor">Bot 主会话</span><span class="edge auto">文字答复</span><span class="actor">原私聊</span></span></a>
+  <a class="flow" href="#peer"><span class="flow-name">Bot 互问 / 追问</span><span class="path"><span class="actor">发起 Bot A</span><span class="edge ask">普通免审 · 私有须批</span><span class="actor">受问 Bot B</span><span class="edge ask">普通免审 · 私有须批</span><span class="actor">发起 Bot A</span></span></a>
+  <a class="flow" href="#reuse"><span class="flow-name">复用已有答案</span><span class="path"><span class="actor">原对话</span><span class="edge policy">核对投递与读者</span><span class="actor">已交付结果</span><span class="edge auto">命中直接读取</span><span class="actor">原对话</span></span></a>
+  <a class="flow" href="#group"><span class="flow-name">群内对话</span><span class="path"><span class="actor">群内用户</span><span class="edge auto">指名或群路由</span><span class="actor">选中成员</span><span class="edge ask">受限须批 / 有效预授权</span><span class="actor">当前全群</span></span></a>
+  <a class="flow" href="#direct"><span class="flow-name">群外直问</span><span class="path"><span class="actor">群内用户</span><span class="edge auto">明确给 B 的问题</span><span class="actor">群外 B</span><span class="edge ask">受限须批 · B 署名</span><span class="actor">当前全群</span></span></a>
+  <a class="flow" href="#handoff"><span class="flow-name">A 代问 B 后的回传</span><span class="path"><span class="actor">群外 B</span><span class="edge ask">答给 A · 受限须批</span><span class="actor">受托成员 A</span><span class="edge ask">A 回群 · 受限须批</span><span class="actor">当前全群</span></span></a>
+  <a class="flow" href="#memory"><span class="flow-name">群里只记录记忆</span><span class="path"><span class="actor">群内用户</span><span class="edge auto">本轮选择</span><span class="actor">成员各自记录</span><span class="edge auto">仅写入状态</span><span class="actor">当前全群</span></span></a>
+  <a class="flow" href="#team"><span class="flow-name">委派 / 自动组队</span><span class="path"><span class="actor">主 Bot</span><span class="edge policy">委派须批 / 已授权自动</span><span class="actor">子任务 / 团队</span><span class="edge policy">校验成果读者</span><span class="actor">原任务对话</span></span></a>
+  <a class="flow" href="#follow"><span class="flow-name">主动跟进</span><span class="path"><span class="actor">用户 / 群提案</span><span class="edge ask">启用并登记关注</span><span class="actor">跟进事项</span><span class="edge policy">派工另查授权</span><span class="actor">指定 Bot / 群</span></span></a>
+  <p class="map-note"><strong>直接阻止</strong>　跨 Bot 读取私聊日志、普通群直接 @ 群外 Bot、沿用成员变更前的旧回传许可。已失效的待办可以批量关闭。</p>
+</section>
+<nav class="review-links" aria-label="页内导航"><a href="#handoff">看代问的两次回传 ↓</a><a href="#matrix">查逐项审批对照 ↓</a><a href="#review">看交互规则 ↓</a><a href="#evidence">查验证依据 ↓</a></nav>
+<section id="handoff">
+  <div class="section-head"><h2>群外代问的两个收件范围</h2><a class="backlink" href="#map">回到总图 ↑</a></div>
+  <div class="cards">
+    <article><h3>群内用户 → 群外 B</h3><p>你指定“让 A 问 B”。B 收到明确转出的问题，以及你同意附上的话题或引用摘句。遇到“这个”等指代时可先补充。群历史和附件留在原群。</p></article>
+    <article><h3>B → 受托成员 A</h3><p>读者只有 A。B 只根据可分享问题作答时自动交付；读了 A 无权看的私有资料时，预览答复后可批准一次。拒绝则 A 收不到这份答复。</p></article>
+    <article><h3>A → 当前全群</h3><p>A 依据 B 的答复，用自己的身份组织群回复。系统按本轮读过的来源重新校验全体读者。扩大受众可能再次需要批准；拒绝这一段，群里不会出现这份回报。</p></article>
+  </div>
+  <p class="example"><strong>日常 DSH 中的一次实际转问</strong>　B 的回复和 A 的群内汇报都关联了同一批 9 个记忆版本。第一次许可给 A，第二次许可给 3 位群成员，两段均已送达。隔离验收还覆盖了另一种情况：双方仅使用可分享材料，全程免审。</p>
+  <p class="lede">在群里展开转问进度，可分别查看实际送给 B 的问题、当前群成员可读的中转答复和 A 的群回复。在 A、B 主会话中，点收发标记可核对该次投递的原文。</p>
+  <div class="sources"><a href="../../packages/dsh-bot/src/host/groups/guest-question.ts">转出的问题</a><a href="../../packages/dsh-bot/src/host/groups/turn-runner.ts">两段投递</a><a href="../../packages/dsh-bot/src/client/messaging.tsx">主会话标记</a></div>
+</section>
+<section id="matrix">
+  <div class="section-head"><h2>逐项审批对照</h2><a class="backlink" href="#map">回到总图 ↑</a></div>
+  <p class="lede">下表的“免审”指插件对这次通信免人工确认。宿主另行要求的工具、命令和文件操作审批仍然生效。</p>
+  <div class="table-wrap"><table>
+  <thead><tr><th scope="col">交互</th><th scope="col">谁能收到或看到</th><th scope="col">何时放行、确认或阻止</th></tr></thead><tbody>
+  <tr id="dm"><th scope="row">用户与单个 Bot</th><td>用户 ↔ 对应 Bot 的主会话</td><td><span class="tag auto">普通文字免审</span>Bot 可按自身权限使用自己的记忆。文件、命令、插件工具遵循 DSH 的访问模式和原生审批策略。<div class="sources"><a href="../../README.md">用户入口</a></div></td></tr>
+  <tr id="peer"><th scope="row">双人问答、回复和追问</th><td>指定的 A 与 B；双方可看到普通消息的收发记录</td><td><span class="tag auto">普通任务免审</span><span class="tag ask">私有正文按份确认</span>明确指名的用户问题和已交付任务可用于双人问答，自动协作开、关都支持。能力查询或索取结果可先发；显式分享私聊、私有记忆或应答需分享的私有结果时，确认准确正文和收件人。拒绝则不投递。<div class="sources"><a href="../verification/peer-communication.md">双人问答验收</a><a href="../../packages/dsh-bot/src/host/messaging/reply-routing.ts">分享判定</a></div></td></tr>
+  <tr id="reuse"><th scope="row">复用已有结果</th><td>回到原来的问答对话</td><td><span class="tag auto">命中直接读取</span>明确对应单一结果，且能证明已投递、已结算、当前仍有权读时，原样取回，新增模型调用和投递均为零。歧义、结果未知、缺少证据或失去权限时只给候选或状态。<div class="sources"><a href="../../packages/dsh-bot/src/host/messaging/peer-result.ts">结果读取</a><a href="../../packages/dsh-bot/src/host/messaging/result-recall.ts">会话内复用</a></div></td></tr>
+  <tr><th scope="row">Bot 单向通知与打断</th><td>A → 指定的 B</td><td><span class="tag policy">按来源与优先级</span>普通通知只做投递，无需 B 回答。通知正文仍校验读者；请求打断对方当前执行会增加操作审批。<div class="sources"><a href="../../packages/dsh-bot/src/host/messaging/tool.ts">消息策略</a></div></td></tr>
+  <tr id="group"><th scope="row">群内发问与最终回复</th><td>@、引用、按需选择、轮流或全体决定谁答；已发表正文对当前群可见</td><td><span class="tag auto">群可读则直发</span><span class="tag ask">受限则进审核队列</span>普通群可为指定 Bot 开启“始终允许回传”。有效许可适用于这个 Bot 和当时的群读者，每份消息仍校验来源。<div class="sources"><a href="../../packages/dsh-bot/src/host/groups/routing.ts">群路由</a><a href="../../packages/dsh-bot/src/host/groups/data-flow.ts">群回传</a></div></td></tr>
+  <tr><th scope="row">群成员途中同步进度、追问</th><td>群里可见；定向请求唤起目标，广播进度只通知已经活跃的成员</td><td><span class="tag stop">缺少分享权限时拦截</span>可读或已有有效回传许可时发送。中途发言受阻会返回工具错误；只有符合条件的最终答复会形成可逐项预览的待审核回复。<div class="sources"><a href="../../packages/dsh-bot/src/host/groups/concurrent.ts">途中群消息</a></div></td></tr>
+  <tr id="direct"><th scope="row">群外直问</th><td>群内用户 → 群外 B → 当前全群；群里由 B 署名</td><td><span class="tag ask">回群最多一处内容确认</span>普通群里明确写“问 Jarvis …”。B 无须入群；它只收到获准转出的文字。只基于群可读资料的回答可直发，涉及 B 的私有来源时需确认。@ 菜单只含本群有效成员和 @everyone。<div class="sources"><a href="../../packages/dsh-bot/src/host/groups/turns.ts">入口与限制</a></div></td></tr>
+  <tr><th scope="row">群成员代问群外 Bot</th><td>B → 受托 A；A → 当前全群</td><td><span class="tag ask">两段各自校验</span>免审、仅一段须批、两段须批均有可能。两段均不套用普通群的“始终允许回传”；第一段的一次许可只给 A。<div class="sources"><a href="#handoff">看这条路的实例 ↑</a><a href="../../packages/dsh-bot/src/host/groups/relay-answer.ts">中转答复范围</a></div></td></tr>
+  <tr id="memory"><th scope="row">只记录记忆</th><td>各成员写各自私有库；群里只看保存状态</td><td><span class="tag auto">无需批准回传正文</span>可直接发送“只记下来：具体内容”，也可引用一条消息说“只记下来”，或从普通群输入框的“＋”菜单选择。按实际写入收据显示已保存、失败或未核实。<div class="sources"><a href="../../packages/dsh-bot/src/host/groups/memory-status.ts">写入状态</a></div></td></tr>
+  <tr><th scope="row">回顾群经历、发布共享记忆</th><td>本人 Bot 可回顾授权群记录；发布到共享库后，本域当前及未来 Bot 可读该副本</td><td><span class="tag policy">回顾需核对参与和权限</span><span class="tag ask">共享由用户明确发布</span>主聊回顾仅覆盖自己参与且现在仍能访问的部分。在单聊中追问会准备引用草稿，由你发送。向一个收件人批准一条答复不会开放私有库。<div class="sources"><a href="../../packages/dsh-bot/src/host/groups/recall-tool.ts">群经历查询</a><a href="../../packages/dsh-bot/src/client/components/SharedMemoryPanel.tsx">发布共享副本</a></div></td></tr>
+  <tr id="team"><th scope="row">将任务委派给另一 Bot</th><td>主 Bot → 目标 Bot 的独立执行 → 原任务</td><td><span class="tag ask">关闭自动协作时审目标与任务</span><span class="tag policy">开启后按工作授权</span>这个入口会启动子任务。启用自动协作且工作有效、预算足够时可自动派工；宿主要求询问或拒绝时遵循宿主决定。<div class="sources"><a href="../../packages/dsh-bot/src/host/delegate/tool.ts">委派入口</a></div></td></tr>
+  <tr><th scope="row">自动组队、增邀专家</th><td>主 Bot → 工作群及允许名单内的已有专家 → 原对话</td><td><span class="tag policy">需开启自动协作</span>按当前用户任务、材料、名单、期限和预算执行；有效工作内可组队、增邀、继续和交付。超限、失去授权或已撤销时停止相应动作。邀请已有专家和创建新 Bot 是两种操作。<div class="sources"><a href="../verification/supergroup-collaboration-authorization.md">自动协作验收</a><a href="../../packages/dsh-bot/src/host/supergroup/service.ts">工作群与专家</a></div></td></tr>
+  <tr id="follow"><th scope="row">主动跟进与实际派工</th><td>个人 Bot 或指定群的事项 → 用户核对 → 被选中的执行者</td><td><span class="tag ask">登记与执行分别授权</span>按 Bot 或群开启。私聊里由 Bot 登记走原生工具审批；群成员可提案，由用户“确认关注”。观察和浏览不会自动派工；实际执行需单独批准或命中适用的精确自动规则。<div class="sources"><a href="../../packages/dsh-bot/src/host/proactive/follow-up-tool.ts">关注登记</a><a href="../verification/v066-local-follow-up.md">跟进验收</a></div></td></tr>
+  <tr><th scope="row">原生日程与手动执行</th><td>已配置的 DSH 原生日程 → 对应会话</td><td><span class="tag policy">按宿主日程</span><span class="tag ask">立即执行需确认</span>任务页“立即执行”会校验目标和版本。主动跟进中的定时唤醒桥保持关闭，不能据此承诺停机错过的事项自动补跑。<div class="sources"><a href="../../packages/dsh-bot/src/host/automation/remote.ts">手动执行</a><a href="../reports/continuous-agent/implementation.md">定时能力验证</a></div></td></tr>
+  <tr><th scope="row">站内通知、外部发送与管理操作</th><td>Bot 所有者、指定的外部目的地，或本地 Bot 目录</td><td><span class="tag policy">站内按通知设置</span><span class="tag ask">外发和管理另有权限</span>外部通知需可用适配器并确认目的地及正文；受管理的连接器调用绑定目标和参数。当前 dsh-im 的收发入口禁用。Bot 工具可读目录与资料，创建、修改、删除 Bot 另走原生审批。<div class="sources"><a href="../../packages/dsh-bot/src/host/notifications/data-flow.ts">通知</a><a href="../../packages/dsh-bot/src/host/data-flow/connector-boundary.ts">连接器</a><a href="../../packages/dsh-bot/src/host/im/service.ts">IM</a><a href="../../packages/dsh-bot/src/host/tools/bot-manage.ts">Bot 管理</a></div></td></tr>
+  </tbody></table></div>
+</section>
+<section>
+  <h2>从入口到投递，权限在哪里判断</h2>
+  <div class="cards">
+    <article><h3>入口与路由</h3><p>私聊从用户指名的任务确定对端。Groups 按当前群名单选择发言者，识别直问或代问。Supergroup 将组队请求绑定到发起任务、允许名单和预算。</p></article>
+    <article><h3>执行与来源记录</h3><p>受托方在自己的执行中生成结果。宿主先管工具能否执行，插件同时记录本轮读过的受限来源。代问中 A 接到 B 的答复时也继承它的来源。</p></article>
+    <article><h3>校验与回执</h3><p>资料出口核对来源、正文和实际收件人。通过后投递并记回执。私聊的分享可请求原生确认，已结束的群任务可向用户展示待审核答复，拒绝或失效的正文不发表。</p></article>
+  </div>
+  <div class="sources"><a href="../../packages/dsh-bot/src/host/groups/routing.ts">Groups 路由</a><a href="../../packages/dsh-bot/src/host/bot-context.ts">工具和记忆读取</a><a href="../../packages/dsh-bot/src/host/groups/concurrent.ts">代问来源继承</a><a href="../../packages/dsh-bot/src/host/data-flow/outlets.ts">资料出口与回执</a></div>
+</section>
+<section>
+  <h2>一次授权的边界</h2>
+  <ol class="rules">
+    <li><strong>确认正文和实际读者。</strong> 数据出口检查本轮已经读过的资料、当前收件人以及授权是否仍有效。即使最后只写一句摘要，也可能继承私有来源。来源已撤销、受禁止或身份失效时直接阻止。</li>
+    <li><strong>批量发送只处理已预览且选中的回复。</strong> 每份分别校验正文和读者。群设置里的长期许可仅覆盖指定 Bot 对该读者名单的后续普通回传；当前积压需手动处理。成员变更使原许可和相关旧待办失效。</li>
+    <li><strong>投递和操作审批独立。</strong> 允许一条答复发给某人，不代表同意其执行命令、调用外部服务或改动其他 Bot。结果未知时先核对原收据，不自动重发。</li>
+  </ol>
+  <div class="sources"><a href="../../packages/dsh-bot/src/host/data-flow/egress.ts">出口校验</a><a href="../../packages/dsh-bot/src/host/groups/export-review.ts">单次决定</a><a href="../../packages/dsh-bot/src/host/groups/context-flow.ts">持续许可</a><a href="../../packages/dsh-bot/src/client/components/GroupExportQueue.tsx">批量队列</a></div>
+</section>
+<section id="review">
+  <h2>实际使用时的三个规则</h2>
+  <ol class="rules">
+    <li><strong>普通转问何时需要查私有记忆？</strong> 优先用用户转出的问题和已分享资料作答。选择查询自己的私有资料后，根据本轮实际读过的来源和收件人判断是否要确认。</li>
+    <li><strong>审批按钮能否直接写出收件人？</strong> 向受托成员交付和向群成员发送分别确认。同一轮发往同一批群成员的回复可以一起预览、取消勾选后一次发送；新到回复会单独提示。</li>
+    <li><strong>收发标记能否打开本次转问？</strong> 展开收发标记，核对这一次实际送达的文字。群里可展开整次转问，权限按每一段的收件人重新校验。</li>
+  </ol>
+</section>
+<section id="evidence">
+  <h2>核对依据</h2>
+  <p class="lede">日常投递实例来自此前的版本。本次候选包在隔离 DSH 中使用本地合成模型验证了群外代问、两段授权、原文查看、结果复用和三人群批量审核。自动协作组队和主动跟进的其他路径可查对应版本的验收记录。</p>
+  <div class="sources"><a href="../../scripts/group-guest-browser.mjs">群外转问浏览器用例</a><a href="../../packages/dsh-bot/tests/group-guest-profile.mjs">两段授权用例</a><a href="../releases/v0.7.2.md">0.7.2 复验记录</a><a href="../releases/v0.7.1.md">普通群授权验收</a><a href="../dsh-api-notes.md">宿主接口核实记录</a></div>
+</section>
+<footer>DSH-Bot · 交互与审批架构评审　<a href="#map">返回总图 ↑</a></footer>
+</main>
+</html>

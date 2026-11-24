@@ -22,7 +22,7 @@ export function createGroupTrigger(sessionId: string, targets: () => MentionTarg
   const members: InputTriggerSource = { trigger: '@', name: 'dsh-bot-group-members',
     async candidates(_session, request) {
       const query = fold(request.query);
-      return [{ id: 'everyone', name: 'everyone', botId: 'everyone' }, ...targets()].filter(target => fold(`${target.name} ${target.botId}`).includes(query)).map(target => ({ name: target.id, label: target.name, description: target.botId, value: target.id }));
+      return [{ id: 'everyone', name: 'everyone', botId: 'everyone' }, ...targets()].filter(target => fold(`${target.name} ${target.botId}`).includes(query)).map(target => ({ name: target.id, label: target.name, description: target.botId === target.name ? undefined : target.botId, value: target.id }));
     },
     onPick(pick) { pending = { kind: 'member', memberId: pick.candidate.value ?? '' }; return { text: `@${pick.candidate.label ?? pick.candidate.name} ` }; },
   };

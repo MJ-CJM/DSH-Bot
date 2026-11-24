@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 
 /** Actual installed Client + owner Remote, used by the final shared Browser runner. */
 export async function verifyPage({ page, t, hostReceipt, outputDir, checks }) {
@@ -45,8 +45,7 @@ export async function verifyPage({ page, t, hostReceipt, outputDir, checks }) {
       await input.waitFor();
       check('Cross-Bot pending reads existing input, review and unknown receipts; opening a row does not resolve it');
     }
-    const profile = bots.getByRole('button', { name: `${tr('chat.profile')} · ${fixture.botName}`, exact: true });
-    await profile.click();
+    await selectBotDirectoryAction(bots, fixture.botId, tr('chat.profile'));
     await page.locator(`[data-bot-detail="${fixture.botId}"]`).getByRole('tab', { name: tr('detail.memory'), exact: true }).click();
   }
   const detail = page.locator(`[data-bot-detail="${fixture.botId}"]:visible`);

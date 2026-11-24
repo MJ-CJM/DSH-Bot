@@ -8,8 +8,11 @@ import type { Domain } from '@deepseek-ai/dsh-storage-domain';
 import type { DshBotRegistry } from '../registry.js';
 
 import { groupExportReviewsDomain, type groupsDomain } from './model.js';
+import type { RelayDetailsRequest } from '../../shared/group-relay-details.js';
+import { readRelayDetails } from './relay-details.js';
 import { GroupState } from './state.js';
 import { GroupRoots } from './roots.js';
+import { GroupDeletionService } from './deletion.js';
 import { TeamRecipes } from './team-recipes.js';
 import { GroupMembers } from './members.js';
 import { GroupMessages } from './messages.js';
@@ -33,6 +36,7 @@ export interface GroupFactPage {
 export class Groups {
   private state: GroupState;
   private roots: GroupRoots;
+  private deletion: GroupDeletionService;
   private membership: GroupMembers;
   readonly teamRecipes: TeamRecipes;
   readonly exportReview: GroupExportReview;
@@ -43,7 +47,13 @@ export class Groups {
   constructor(ctx: Context, registry: DshBotRegistry, domain: Domain<typeof groupsDomain>, changed: () => void) {
     this.state = new GroupState(ctx, registry, domain, changed);
     this.roots = new GroupRoots(this.state);
-    this.exportReview = new GroupExportReview(this.state, this.roots);
+    this.deletion = new GroupDeletionService(this.state, this.roots, async (group, mode) => {
+      const turns = this.state.turns(group).filter(turn => turn.proactive);
+      if (!turns.length) return true;
+      const refs = this.proactiveRefs(turns);
+      return !!refs && !!await outlets(this.state.registry)?.purgeProactiveGroupCopies(new Set(), refs, mode);
+    });
+    this.exportReview = new GroupExportReview(this.state, this.roots, t => this.turns.resumeRelay(t));
     this.exportSettings = new GroupExportSettings(this.state);
     this.membership = new GroupMembers(this.state, this.roots);
     this.teamRecipes = new TeamRecipes(this.state, this.membership);
@@ -63,9 +73,11 @@ export class Groups {
   }
   async start() {
     this.state.exportReviews = await this.state.ctx.storageDomain.open(groupExportReviewsDomain);
+    await this.deletion.recover();
     await this.roots.start();
   }
   open(...args: Parameters<GroupRoots['open']>) { return this.roots.open(...args); }
+  deleteGroup(key: GroupKey, expectedRevision: number) { return this.deletion.remove(key, expectedRevision); }
   create(value: unknown) { return this.membership.create(value); }
   createSupergroup(value: unknown, authority: SupergroupAuthority) { return this.membership.create(value, authority); }
   edit(key: GroupKey, value: unknown) { return this.membership.edit(key, value); }
@@ -125,6 +137,9 @@ export class Groups {
   validateRecallReferences(...args: Parameters<GroupRecall['validateReferences']>) {
     return this.recallReader.validateReferences(...args);
   }
+  relayDetails(request: RelayDetailsRequest, signal?: AbortSignal) {
+    return this.state.queue.run(() => readRelayDetails(this.state, request, signal));
+  }
   followUpSubject(key: GroupKey) {
     return this.state.queue.run(async () => structuredClone(this.state.record(key)));
   }
@@ -167,7 +182,7 @@ export class Groups {
       const group = this.state.record(key);
       const read = (id: string) => {
         const turn = this.state.table('turns').get(id);
-        return turn && !turn.proactive && turn.group.groupId === group.id && turn.group.groupCreatedAt === group.createdAt
+        return turn && !turn.proactive && !turn.guestQuestion && turn.group.groupId === group.id && turn.group.groupCreatedAt === group.createdAt
           ? [{ turn, deliveries: this.state.deliveries(turn.id).sort((a, b) => a.ordinal - b.ordinal || a.id.localeCompare(b.id)) }] : [];
       };
       if (request.turnId) return structuredClone({ group, rows: read(request.turnId) });
@@ -175,7 +190,7 @@ export class Groups {
       const prior = request.page;
       const page = prior && prior.group.groupId === group.id && prior.group.groupCreatedAt === group.createdAt && prior.since === since
         ? prior
-        : { group: key, since, offset: 0, ids: this.state.turns(group).filter(turn => !turn.proactive && (
+        : { group: key, since, offset: 0, ids: this.state.turns(group).filter(turn => !turn.proactive && !turn.guestQuestion && (
             ['accepted', 'running'].includes(turn.state) || turn.updatedAt >= since ||
             this.state.deliveries(turn.id).some(row => (row.updatedAt ?? row.endedAt ?? row.startedAt ?? 0) >= since)
           )).map(turn => turn.id).sort((a, b) => a.localeCompare(b)) };
@@ -185,6 +200,9 @@ export class Groups {
         ...(offset < page.ids.length ? { next: { ...page, offset } } : {}),
       };
     });
+  }
+  sendOwner(key: GroupKey, value: unknown) {
+    return this.turns.sendOwner(key, value);
   }
   send(...args: Parameters<GroupTurns['send']>) {
     return this.turns.send(...args);
@@ -213,25 +231,30 @@ export class Groups {
       const flow = outlets(this.state.registry);
       if (!flow) return false;
       const selected = new Set(assignmentIds);
-      const refs = new Map<string, ProactiveGroupCopyRef>();
-      for (const [, turn] of this.state.table('turns').entries()) {
-        if (!turn.proactive || !selected.has(turn.proactive.assignmentId)) continue;
-        if (this.state.chains.has(turn.id) || !['completed', 'partial', 'cancelled'].includes(turn.state)) return false;
-        const group = this.state.table('groups').get(turn.group.groupId);
-        if (group?.createdAt !== turn.group.groupCreatedAt) return false;
-        refs.set(turn.id, this.proactiveInputRef(turn, group, turn.id, turn.inputFlowId, turn.inputFlowSessionId));
-        const deliveries = this.state.deliveries(turn.id);
-        if (deliveries.length !== turn.orderedMemberIds.length ||
-            deliveries.some((delivery, index) => delivery.memberId !== turn.orderedMemberIds[index])) return false;
-        for (const delivery of deliveries) {
-          if (['pending', 'starting', 'running', 'unknown'].includes(delivery.state) ||
-              this.state.proactiveDrains.get(delivery.id) === false) return false;
-          refs.set(delivery.id, this.proactiveInputRef(turn, group, delivery.id, delivery.inputFlowId, delivery.inputFlowSessionId, delivery.bot));
-          refs.set(`${delivery.id}:result`, { sessionId: delivery.childSessionId, outlet: 'group-result' });
-        }
-      }
-      return flow.purgeProactiveGroupCopies(selected, refs);
+      const turns = Array.from(this.state.table('turns').entries(), ([, turn]) => turn)
+        .filter(turn => turn.proactive && selected.has(turn.proactive.assignmentId));
+      const refs = this.proactiveRefs(turns);
+      return !!refs && flow.purgeProactiveGroupCopies(selected, refs);
     });
+  }
+  private proactiveRefs(turns: readonly GroupTurn[]) {
+    const refs = new Map<string, ProactiveGroupCopyRef>();
+    for (const turn of turns) {
+      if (this.state.chains.has(turn.id) || !['completed', 'partial', 'cancelled'].includes(turn.state)) return undefined;
+      const group = this.state.table('groups').get(turn.group.groupId);
+      if (group?.createdAt !== turn.group.groupCreatedAt) return undefined;
+      refs.set(turn.id, this.proactiveInputRef(turn, group, turn.id, turn.inputFlowId, turn.inputFlowSessionId));
+      const deliveries = this.state.deliveries(turn.id);
+      if (deliveries.length !== turn.orderedMemberIds.length ||
+          deliveries.some((delivery, index) => delivery.memberId !== turn.orderedMemberIds[index])) return undefined;
+      for (const delivery of deliveries) {
+        if (['pending', 'starting', 'running', 'unknown'].includes(delivery.state) ||
+            this.state.proactiveDrains.get(delivery.id) === false) return undefined;
+        refs.set(delivery.id, this.proactiveInputRef(turn, group, delivery.id, delivery.inputFlowId, delivery.inputFlowSessionId, delivery.bot));
+        refs.set(`${delivery.id}:result`, { sessionId: delivery.childSessionId, outlet: 'group-result' });
+      }
+    }
+    return refs;
   }
   private proactiveInputRef(turn: import('../../shared/groups.js').GroupTurn, group: import('../../shared/groups.js').GroupRecord,
     call: string, flowId?: string, sessionId?: string, bot?: import('../../shared/identity.js').BotKey): ProactiveGroupCopyRef {
@@ -331,9 +354,13 @@ export class Groups {
       this.state.proactiveDrains.clear();
       this.state.proactiveAllowances.clear();
       this.state.shutdownPhase = 'disposing-roots';
-      for (const a of this.state.activations.values()) await attempt(() => a.dispose());
+      for (const [id, activation] of this.state.activations) await attempt(async () => {
+        await activation.dispose();
+        if (this.state.activations.get(id) === activation) this.state.activations.delete(id);
+      });
       for (const h of this.state.roots.values()) {
-        await attempt(async () => this.state.ctx.subagents.drainChildren(h.agent, (await this.state.ctx.subagents.listChildren(h.agent.id)).map(c => c.id)));
+        // This permanently closes new child admission until the parent leaves the registry.
+        if (h.ownership === 'owned') await attempt(() => this.state.ctx.subagents.drainDescendants([h.agent]));
         await attempt(() => this.roots.flush(h));
         await attempt(() => this.roots.release(h));
       }

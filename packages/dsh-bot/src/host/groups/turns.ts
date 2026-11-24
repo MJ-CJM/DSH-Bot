@@ -5,6 +5,11 @@ import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent';
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm';
 import { groupSendSchema, groupUploadedAttachment, ownerFollowUpBindingSchema, type GroupKey, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
 import { OperationError, digest, need, parse } from '../common/operations.js';
+import { memoryOnlyIntent } from '../../shared/group-memory-intent.js';
+import { hasExplicitBotAddress, isAddressedQuestion, isGroupDelegation, matchGroupAddress, relayNeedsTopic } from '../../shared/addressed-bot.js';
+import { resolveGroupMentions } from '../../shared/group-mentions.js';
+import { sameBot } from '../../shared/identity.js';
+import { guestDeliveryKey, guestPrompt } from './guest-question.js';
 import { groupContext, selectOnDemand } from './routing.js';
 
 import { blocks, terminal } from './model.js';
@@ -24,6 +29,9 @@ export class GroupTurns {
   async send(key: GroupKey, value: unknown, authority?: SupergroupAuthority) {
     const input = parse(groupSendSchema, value);
     return this.accept(key, input, undefined, authority);
+  }
+  sendOwner(key: GroupKey, value: unknown) {
+    return this.accept(key, parse(groupSendSchema, value), undefined, undefined, true);
   }
   startProactiveReview(
     key: GroupKey, value: unknown, review: NonNullable<GroupTurn['proactive']>, check: () => Promise<void>,
@@ -58,7 +66,7 @@ export class GroupTurns {
   }
   private accept(key: GroupKey, input: ReturnType<typeof groupSendSchema.parse>,
     restricted?: { review: NonNullable<GroupTurn['proactive']>; check: () => Promise<void> }
-      | { binding: OwnerFollowUpBinding; admit: () => Promise<void>; check: () => Promise<void> }, authority?: SupergroupAuthority) {
+      | { binding: OwnerFollowUpBinding; admit: () => Promise<void>; check: () => Promise<void> }, authority?: SupergroupAuthority, ownerInput = false) {
     return this.state.queue.run(async () => {
       const proactive = restricted && 'review' in restricted ? restricted : undefined;
       const owner = restricted && 'binding' in restricted ? restricted : undefined;
@@ -72,12 +80,14 @@ export class GroupTurns {
       if (g.supergroup && (!authority || this.state.supergroupAuthorities.get(g.id) !== authority || restricted ||
           input.followup || input.fileReceiptIds.length || input.replyTo && !authority.groupInput || input.text !== scoped?.text.trim()) || !g.supergroup && authority)
         throw new OperationError('approval-denied');
-      if (input.memoryStatusOnly && (g.supergroup || restricted || input.followup || input.replyTo)) throw new OperationError('invalid');
+      const memoryIntent = ownerInput && !g.supergroup && !restricted ? memoryOnlyIntent(input.text) : undefined;
+      if (input.memoryStatusOnly && (g.supergroup || restricted || input.followup || input.replyTo && !memoryIntent)) throw new OperationError('invalid');
       const used = this.state.turns(g).flatMap(t => [
         ...(t.operationId === input.operationId ? [{ requestDigest: t.requestDigest }] : []),
         ...(t.followups ?? []).filter(row => row.operationId === input.operationId),
       ]);
       if (used.some(row => row.requestDigest !== hash)) throw new OperationError('conflict');
+      if (input.followup && (input.expectedGuest || input.expectedRelay || input.relayTopic || memoryIntent && !used.length)) throw new OperationError('invalid');
       if (input.followup && !restricted) return this.followup(key, input, hash);
       const followUp = proactive?.review.followUp;
       const repair = proactive?.review.repair;
@@ -86,9 +96,12 @@ export class GroupTurns {
         throw new OperationError('invalid');
       const old = this.state.table('turns').get(id);
       if (old) {
+        if (old.guestQuestion && !ownerInput) throw new OperationError('approval-denied');
         if (old.requestDigest !== hash) throw new OperationError('conflict');
         return old;
       }
+      if (memoryIntent === 'reference' && !input.replyTo && !input.fileReceiptIds.length) throw new OperationError('memory-text-required');
+      if (memoryIntent) input = { ...input, memoryStatusOnly: true };
       this.state.checkNewWorkMembers(g);
       if (g.archived || g.state !== 'ready' || this.state.reasons.has(g.id))
         throw new OperationError('recovery-needed');
@@ -119,6 +132,52 @@ export class GroupTurns {
       const replyMember = replied?.speaker && this.state.members(g).find(m =>
         m.bot.botId === replied.speaker?.bot.botId && m.bot.botCreatedAt === replied.speaker.bot.botCreatedAt);
       const memberRows = this.state.members(g);
+      const addressable = !g.supergroup && !restricted && !input.round && !input.memoryStatusOnly;
+      const checkMentions = ownerInput && !g.supergroup && /[@＠]/u.test(input.text);
+      const candidates = checkMentions || addressable && (isAddressedQuestion(input.text) || isGroupDelegation(input.text))
+        ? await this.state.registry.list() : [];
+      const roster = memberRows.flatMap(member => {
+        if (!member.enabled || member.removedAt !== undefined) return [];
+        const bot = candidates.find(b => member.bot.botId === b.id && member.bot.botCreatedAt === b.createdAt);
+        return bot ? [{ member, bot }] : [];
+      });
+      const mentions = checkMentions ? resolveGroupMentions(input.text, roster.map(({ member, bot }) => ({
+        id: member.id, botId: bot.id, name: bot.name,
+      })), input.memberIds) : undefined;
+      if (mentions?.issues.some(issue => issue.reason === 'unknown')) throw new OperationError('mention-not-member');
+      if (mentions?.issues.length) throw new OperationError('guest-ambiguous');
+      if (mentions?.memberIds.length && input.memberIds.length && (mentions.memberIds.length !== input.memberIds.length ||
+        input.memberIds.some(id => !mentions.memberIds.includes(id)))) throw new OperationError('conflict');
+      const repliedBot = replied?.speaker && candidates.find(bot => sameBot(replied.speaker!.bot, { botId: bot.id, botCreatedAt: bot.createdAt }));
+      const address = matchGroupAddress(input.text, candidates, replyMember ? repliedBot : undefined, roster.map(row => row.bot));
+      if (address?.kind === 'nonmember-mention' && (addressable || checkMentions)) throw new OperationError('mention-not-member');
+      const addressed = addressable && (!input.memberIds.length || address?.kind === 'match' && address.via) ? address : undefined;
+      if (addressed?.kind === 'ambiguous') throw new OperationError('guest-ambiguous');
+      if ((input.expectedGuest || input.expectedRelay) && !addressed) throw new OperationError('guest-changed');
+      const memberIds = !input.memberIds.length && !input.round && mentions ? mentions.memberIds : input.memberIds;
+      if (addressable && !memberIds.length && !addressed && hasExplicitBotAddress(input.text)) throw new OperationError('guest-unavailable');
+      const target = addressed?.kind === 'match' ? { botId: addressed.bot.id, botCreatedAt: addressed.bot.createdAt } : undefined;
+      const namedMember = target && memberRows.find(m => m.removedAt === undefined && sameBot(m.bot, target));
+      const guest: GroupTurn['guestQuestion'] = target && !namedMember && addressed?.kind === 'match' ? { bot: target, name: addressed.bot.name } : undefined;
+      if (guest && !ownerInput) throw new OperationError('approval-denied');
+      if (guest && replied?.speaker && !sameBot(replied.speaker.bot, guest.bot) && !/^[@＠]/u.test(input.text) &&
+        addressed?.kind === 'match' && !addressed.via) throw new OperationError('guest-unavailable');
+      if (input.expectedGuest && (!guest || !sameBot(input.expectedGuest, guest.bot))) throw new OperationError('guest-changed');
+      if (namedMember && !namedMember.enabled) throw new OperationError('guest-unavailable');
+      if (guest && input.fileReceiptIds.length) throw new OperationError('invalid');
+      if (guest && addressed?.kind === 'match' && addressed.via) {
+        const via = addressed.via, bot = { botId: via.id, botCreatedAt: via.createdAt };
+        const member = memberRows.find(m => m.removedAt === undefined && m.enabled && sameBot(m.bot, bot));
+        if (!member || input.memberIds.some(id => id !== member.id)) throw new OperationError('guest-unavailable');
+        if (!outlets(this.state.registry)) throw new OperationError('group-data-blocked');
+        await this.state.validateMembers([bot]);
+        const status = need((await this.state.registry.status()).find(s => s.id === via.id));
+        guest.via = { bot, name: via.name, memberId: member.id, botRevision: via.updatedAt, presetId: status.presetId };
+      }
+      if (guest && addressed?.kind === 'match' && !input.relayTopic && relayNeedsTopic(addressed.question)) throw new OperationError('relay-topic-required');
+      if (input.expectedRelay && (!guest?.via || !sameBot(input.expectedRelay, guest.via.bot))) throw new OperationError('guest-changed');
+      if (input.relayTopic && !guest) throw new OperationError('invalid');
+      const text = input.relayTopic ? input.text + '\n\n' + input.relayTopic : input.text;
       const descriptions = new Map<string, string>();
       if (g.onDemand && !g.supergroup && !restricted && !input.memberIds.length && !replyMember && !input.round) {
         // Read only public Bot metadata; a missing Bot falls through to existing admission checks.
@@ -127,10 +186,14 @@ export class GroupTurns {
           if (bot) descriptions.set(member.id, `${bot.name} ${bot.description}`);
         }
       }
-      const choice = selectOnDemand(restricted || input.memoryStatusOnly ? { ...g, onDemand: false } : g, memberRows, input.text,
-        input.memberIds, replyMember?.id, input.memoryStatusOnly && !input.memberIds.length ? true : input.round, this.state.registry.config.groupMaxTurns, descriptions);
-      const selected = choice.selected;
-      await this.state.validateMembers(selected.map((m) => m.bot));
+      const choice = guest ? undefined : selectOnDemand(restricted || input.memoryStatusOnly ? { ...g, onDemand: false } : g, memberRows, input.text,
+        memberIds, input.memoryStatusOnly ? undefined : namedMember?.id ?? replyMember?.id, input.memoryStatusOnly && !memberIds.length ? true : input.round, this.state.registry.config.groupMaxTurns, descriptions);
+      const selected = guest ? [{ id: guestDeliveryKey(guest.bot), bot: guest.bot }] : need(choice).selected;
+      try { await this.state.validateMembers(selected.map((m) => m.bot)); }
+      catch (error) {
+        if (guest) throw new OperationError('guest-unavailable');
+        throw error;
+      }
       const provider = this.state.ctx.subagents.getProvider('spawn');
       if (proactive) await proactive.check();
       else if (!owner && (
@@ -160,11 +223,12 @@ export class GroupTurns {
         ...(repair ? { repairPhase: repair.phase } : {}),
         ...(followUp ? { factId: followUp.factId, predecessorTurnId: followUp.predecessorTurnId } : {}),
       } : owner ? { kind: 'dsh-bot-group-owner-followup' as const, group: key, turnId: id,
+        groupRootSessionId: g.rootSessionId,
         cardId: owner.binding.cardId, predecessorTurnId: owner.binding.predecessorTurnId,
       } : { kind: 'user' as const, group: key, turnId: id,
         ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(files.length ? { rpcId: id } : {}) };
       const message = scoped && 'existing' in scoped && !scoped.projected ? scoped.message : createUserMessage({ source,
-        content: scoped?.projected ? blocks(scoped.text) : scoped ? scoped.message.content : [...blocks(input.text),
+        content: scoped?.projected ? blocks(scoped.text) : scoped ? scoped.message.content : [...blocks(text),
           // IDs came from the native root-owned receipt and retain their native identity.
           ...files as Extract<ContentBlock, { type: 'file' | 'image' }>[]] });
       const at = Date.now();
@@ -175,20 +239,21 @@ export class GroupTurns {
         requestDigest: hash,
         inputMessageId: message.id,
         membershipRevision: g.membershipRevision,
-        orderedMemberIds: selected.map((m) => m.id),
-        ...(!restricted && !g.supergroup ? { routing: choice.routing } : {}),
+        orderedMemberIds: [...selected.map(m => m.id), ...(guest?.via ? [guest.via.memberId] : [])],
+        ...(!restricted && !g.supergroup && choice ? { routing: choice.routing } : {}),
+        ...(guest ? { guestQuestion: guest } : {}),
         mode: restricted ? 'round-robin' : g.mode,
         ...(proactive ? { proactive: proactive.review } : {}),
         ...(owner ? { ownerFollowUp: owner.binding } : {}),
-        ...(!restricted && g.mode !== 'round-robin' ? { protocol: 2 as const, automaticExecutions: 0, continuationAllowance: this.state.registry.config.groupMaxContinuations } : {}),
+        ...(!restricted && (guest || g.mode !== 'round-robin') ? { protocol: 2 as const, automaticExecutions: 0, continuationAllowance: guest ? 0 : this.state.registry.config.groupMaxContinuations } : {}),
         ...(g.modelSelection ? { modelSelection: { ...g.modelSelection } } : {}),
         ...(g.memberModelSelections ? { memberModelSelections: g.memberModelSelections.map(row => ({
           memberId: row.memberId, modelSelection: { ...row.modelSelection },
         })) } : {}),
         ...(input.memoryStatusOnly ? { memoryStatusOnly: true as const } : {}),
-        contextThroughSeq: restricted || input.memoryStatusOnly ? -1 : (this.messages.messages(g).at(-1)?.seq ?? -1),
+        contextThroughSeq: guest || restricted || input.memoryStatusOnly ? -1 : (this.messages.messages(g).at(-1)?.seq ?? -1),
         predecessorTurnIds: repair?.predecessorTurnId ? [repair.predecessorTurnId] : followUp ? [followUp.predecessorTurnId] :
-          owner ? [owner.binding.predecessorTurnId] : restricted || input.memoryStatusOnly || g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
+          owner ? [owner.binding.predecessorTurnId] : guest || restricted || input.memoryStatusOnly || g.mode !== 'round-robin' ? [] : this.state.turns(g).filter(t => !terminal(t)).map(t => t.id),
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
         state: 'accepted',
         revision: 1,
@@ -197,7 +262,8 @@ export class GroupTurns {
         updatedAt: at,
       };
       // Reject an oversized required question before admitting any native or model side effect.
-      groupContext(
+      if (guest && addressed?.kind === 'match') guestPrompt(input.relayTopic ? addressed.question + '\n\n' + input.relayTopic : addressed.question, this.state.registry.config.groupContextMaxBytes, guest.via?.name);
+      else groupContext(
         g.name,
         selected[0]?.bot.botId ?? '',
         this.state.members(g).map((m) => m.bot.botId),
@@ -256,22 +322,8 @@ export class GroupTurns {
         receiptBinding?.commit();
         await this.roots.flush(root);
         const accepted = await this.state.putTurn({ ...turn, inputSeq: Number(event.seq) });
-        const limit = accepted.protocol === 2 ? Number.MAX_SAFE_INTEGER : 1;
         if (restricted) this.state.proactiveChecks.set(id, restricted.check);
-        const running = this.state.schedule(g.id, limit, async () => {
-          try { await this.runner.execute(id); }
-          catch {
-            await this.state.queue.run(async () => {
-              const t = this.state.table('turns').get(id);
-              if (t && !terminal(t)) await this.state.putTurn({ ...t, state: 'recovery_needed' });
-            });
-          }
-        });
-        this.state.chains.set(id, running);
-        void running.finally(() => {
-          this.state.chains.delete(id);
-          this.state.proactiveChecks.delete(id);
-        }).catch(() => {});
+        this.schedule(accepted);
         return accepted;
       } catch {
         await this.state.putTurn({ ...turn, state: 'recovery_needed' });
@@ -279,12 +331,40 @@ export class GroupTurns {
       }
     });
   }
+  /** Resume after an exact owner approval, which may arrive while the first worker is settling. */
+  resumeRelay(turn: GroupTurn) {
+    const run = () => {
+      const current = this.state.table('turns').get(turn.id);
+      if (!this.state.stopped && current && this.state.deliveries(turn.id).some(d => d.state === 'pending')) this.schedule(current);
+    };
+    const previous = this.state.chains.get(turn.id);
+    if (previous) void previous.then(run, run).catch(() => {});
+    else run();
+  }
+  private schedule(accepted: GroupTurn) {
+    const id = accepted.id;
+    const limit = accepted.protocol === 2 ? Number.MAX_SAFE_INTEGER : 1;
+    const running = this.state.schedule(accepted.group.groupId, limit, async () => {
+      try { await this.runner.execute(id); }
+      catch {
+        await this.state.queue.run(async () => {
+          const t = this.state.table('turns').get(id);
+          if (t && !terminal(t)) await this.state.putTurn({ ...t, state: 'recovery_needed' });
+        });
+      }
+    });
+    this.state.chains.set(id, running);
+    void running.finally(() => {
+      if (this.state.chains.get(id) === running) this.state.chains.delete(id);
+      this.state.proactiveChecks.delete(id);
+    }).catch(() => {});
+  }
   /** Queue-owned, durable acceptance prevents re-dispatch after an unknown native outcome. */
   private async followup(key: GroupKey, input: ReturnType<typeof groupSendSchema.parse>, hash: string) {
     const g = this.state.record(key), target = need(input.followup);
     const t = this.state.turns(g).find(row => row.id === target.turnId);
     if (!t) throw new OperationError('not-found');
-    if (t.proactive || t.ownerFollowUp) throw new OperationError('unsupported');
+    if (t.proactive || t.ownerFollowUp || t.guestQuestion) throw new OperationError('unsupported');
     const old = t.followups?.find(row => row.operationId === input.operationId);
     if (old) {
       if (old.requestDigest !== hash) throw new OperationError('conflict');
@@ -422,7 +502,7 @@ export class GroupTurns {
     await this.state.queue.run(async () => {
       const h = this.state.roots.get(next.id);
       if (h) {
-        await this.state.ctx.subagents.drainChildren(h.agent, (await this.state.ctx.subagents.listChildren(h.agent.id)).map(child => child.id));
+        await this.state.ctx.subagents.drainDescendants([h.agent]);
         await this.roots.flush(h);
         await this.roots.release(h);
         this.state.roots.delete(next.id);

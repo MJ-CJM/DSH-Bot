@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 
 const root = process.cwd();
@@ -119,10 +119,7 @@ async function open(item) {
   await dismissFirstRunOverlays(page, () => {}, 'proactive-workflow');
   await openBotsPanel(page, t['bots.title']);
   const bots = page.locator('[data-bots-page]:visible');
-  const profile = bots.getByRole('button', { name: `${t['chat.profile']} · Fixture CI`, exact: true });
-  const fallback = bots.locator('button[data-bot-id="fixture-ci"]');
-  await profile.or(fallback).first().waitFor();
-  if (await profile.isVisible()) await profile.click(); else await fallback.click();
+  await selectBotDirectoryAction(bots, 'fixture-ci', t['chat.profile']);
   const detail = page.locator('[data-bot-detail="fixture-ci"]');
   await detail.getByRole('tab', { name: t['detail.work'], exact: true }).click();
   await page.setViewportSize({ width, height: 950 });

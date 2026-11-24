@@ -9,6 +9,7 @@ import type { Subject } from '../../shared/proactive/follow-up.js';
 import { getBotBinding } from '../data-flow/agent-binding.js';
 import { canReadLabel } from '../data-flow/labels.js';
 import { getGroupWorkerBinding } from '../groups/worker-tool.js';
+import { registerWorkerCapability } from '../groups/worker-capabilities.js';
 import { digest } from './wire.js';
 import type {} from './index.js';
 import { isNativeAmbientSource } from '../common/native-ambient-source.js';
@@ -174,7 +175,7 @@ export function registerFollowUpTool(agent: Agent): () => void {
       return { kind: 'ask', reason: displayReason.en, displayReason };
     }, { prepend: true });
     try {
-      const release = ctx.tools.register(definition);
+      const release = getGroupWorkerBinding(agent) ? registerWorkerCapability(agent, definition) : ctx.tools.register(definition);
       return () => { lifetime.abort(); release(); off(); replays.clear(); };
     } catch (error) { off(); throw error; }
   }, 'dsh-bot: explicit follow-up tool');

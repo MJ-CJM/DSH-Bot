@@ -36,6 +36,12 @@ export function setRecentPreference(key: string, field: 'pinned' | 'hidden'): vo
 }
 export function updateRecentPreference(key: string, value: RecentPreference): void {
   recentPreferences.set(key, { ...recentPreferences.get(key), ...value });
+  persistPreferences();
+}
+export function forgetRecentPreference(key: string): void {
+  if (recentPreferences.delete(key)) persistPreferences();
+}
+function persistPreferences(): void {
   try { preferenceStorage?.setItem(preferenceNamespace, JSON.stringify([...recentPreferences].slice(-2000))); }
   catch { /* Quota/private mode does not interrupt navigation or work. */ }
 }

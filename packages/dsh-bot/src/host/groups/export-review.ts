@@ -1,7 +1,8 @@
+import { assertRelayMember, releaseRelayAnswer } from './relay-answer.js';
 import { isDeepStrictEqual } from 'node:util';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { groupExportReviewStatus } from '../../shared/group-export-review.js';
-import type { GroupKey } from '../../shared/groups.js';
+import type { GroupKey, GroupTurn } from '../../shared/groups.js';
 import type { BotKey } from '../../shared/identity.js';
 import { digest, need, OperationError } from '../common/operations.js';
 import { outlets } from '../data-flow/tool-guard.js';
@@ -16,7 +17,7 @@ import { sameBot, sameGroupReaders } from './model.js';
 /** Final replies are already outside the native turn. Owner review authorizes only
  * this stored copy; it does not alter native approval policy or memory readers. */
 export class GroupExportReview {
-  constructor(private state: GroupState, private roots: GroupRoots) {}
+  constructor(private state: GroupState, private roots: GroupRoots, private resumeRelay: (t: GroupTurn) => void) {}
   private async settle(turnId: string) {
     const t = need(this.state.table('turns').get(turnId));
     if (['accepted', 'running', 'cancelled', 'paused'].includes(t.state)) return;
@@ -41,23 +42,27 @@ export class GroupExportReview {
     try { review = flow.review(d.exportFlowId, signal); }
     catch { throw new OperationError('group-data-blocked'); }
     const e = review.envelope;
-    const target = e.binding.target;
+    const target = e.binding.target, via = t.guestQuestion?.via;
+    const expectedTarget = via && d.ordinal === 0 ? { kind: 'bot' as const, bot: via.bot } : audience(this.state, g);
     if (e.outlet !== 'group-result' || e.binding.invocation !== `${d.childSessionId}/${d.id}:result` ||
-      !sameBot(e.binding.bot, d.bot) || target.kind !== 'group' || target.groupId !== g.id || target.groupCreatedAt !== g.createdAt ||
-      !sameGroupReaders(target.members, audience(this.state, g).members))
+      !sameBot(e.binding.bot, d.bot) || (expectedTarget.kind === 'bot' ? target.kind !== 'bot' || !sameBot(target.bot, expectedTarget.bot) :
+        target.kind !== 'group' || target.groupId !== g.id || target.groupCreatedAt !== g.createdAt ||
+        !sameGroupReaders(target.members, expectedTarget.members)))
       throw new OperationError('conflict');
     const message = JSON.parse(e.content) as ReturnType<typeof createUserMessage>;
     if (message.source.kind !== 'dsh-bot-group' || message.source.turnId !== t.id || message.source.memberId !== d.memberId ||
-      message.source.childSessionId !== d.childSessionId || !isDeepStrictEqual(message.source.group, key))
+      !sameBot(message.source.speaker.bot, d.bot) ||
+      (t.guestQuestion ? (t.guestQuestion.via && d.ordinal === 1 ? !message.source.relayReply : !message.source.guestReply) || message.source.childSessionId !== undefined :
+        message.source.childSessionId !== d.childSessionId) || !isDeepStrictEqual(message.source.group, key))
       throw new OperationError('conflict');
     const token = digest({ flowId: d.exportFlowId, digest: review.digest, revision: d.revision, membershipRevision: g.membershipRevision });
-    return { g, d, t, flow, review, message, token };
+    return { g, d, t, flow, review, message, token, expectedTarget };
   }
   review(key: GroupKey, deliveryId: string, signal?: AbortSignal) {
     return this.state.queue.run(async () => {
       await this.reconcileLegacy(key, deliveryId, signal ?? this.state.startup.signal);
       const p = await this.pending(key, deliveryId, signal);
-      const recipients = await Promise.all(audience(this.state, p.g).members.map(async bot => ({ bot, name: (await this.state.bot(bot)).name })));
+      const recipients = await Promise.all((p.expectedTarget.kind === 'bot' ? [p.expectedTarget.bot] : p.expectedTarget.members).map(async bot => ({ bot, name: (await this.state.bot(bot)).name })));
       // Names require async reads. Recheck revocation immediately before returning private text.
       if (p.flow.review(need(p.d.exportFlowId), signal).digest !== p.review.digest) throw new OperationError('conflict');
       // Render as plain text in an owner-only panel; no Markdown, remote images or model dispatch.
@@ -147,6 +152,7 @@ export class GroupExportReview {
   decide(key: GroupKey, deliveryId: string, token: string, allow: boolean | 'always', signal?: AbortSignal) {
     return this.state.queue.run(async () => {
       const p = await this.pending(key, deliveryId, signal);
+      if (p.t.guestQuestion && allow === 'always') throw new OperationError('approval-denied');
       if (p.token !== token) throw new OperationError('conflict');
       if (!allow) {
         await p.flow.rejectReview(need(p.d.exportFlowId));
@@ -154,11 +160,19 @@ export class GroupExportReview {
         await this.settleAfterDecision(p.t.id);
         return true;
       }
+      if (p.t.guestQuestion?.via && p.d.ordinal === 0) assertRelayMember(this.state, p.t);
       let attempted = false;
       let outputSeq: number | undefined;
       try {
         const id = await p.flow.approveReview(need(p.d.exportFlowId), p.review.digest, signal);
         const root = need(this.state.roots.get(p.g.id));
+        if (p.t.guestQuestion?.via && p.d.ordinal === 0) {
+          await p.flow.dispatch(id, () => { attempted = true; }, signal, async () => { await checkSupergroup(this.state, this.state.record(key)); });
+          await releaseRelayAnswer(this.state, p.t, p.d, id, signal ?? this.state.startup.signal);
+          await this.state.putTurn({ ...p.t, state: 'accepted' });
+          this.resumeRelay(p.t);
+          return true;
+        }
         if (p.g.supergroup) await p.flow.inherit(root.agent.session.id, p.review.envelope.label);
         await p.flow.dispatch(id, async () => {
           attempted = true;

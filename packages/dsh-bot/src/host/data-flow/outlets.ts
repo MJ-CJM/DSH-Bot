@@ -179,6 +179,17 @@ export class ManagedOutlets {
     const row = this.kernel.domain.table('flows').get(id);
     if (!row) throw new Error('Missing outlet envelope'); return structuredClone(row);
   }
+  /** Reopen only a delivered B→A result for the same A. Revalidate lineage and hard
+   * denials; the consumed exact grant covers the original private delivery only. */
+  deliveredBotResult(id: string, sender: BotKey, recipient: BotKey): FlowEnvelope {
+    const row = this.get(id), e = row.envelope;
+    if (row.state !== 'delivered' || !e || e.outlet !== 'group-result' || !sameBot(e.binding.bot, sender) ||
+      e.binding.target.kind !== 'bot' || !sameBot(e.binding.target.bot, recipient) ||
+      (row.grantUse && !this.kernel.snapshot.grantUses.has(row.grantUse))) throw new Error('Unavailable Bot handoff');
+    try { this.check(e, undefined, undefined, this.signal()); }
+    catch (error) { if (!(error instanceof ExportAuthorizationRequired) || !row.grantUse) throw error; }
+    return e;
+  }
   async validate(id: string, content?: string, signal?: AbortSignal): Promise<void> {
     await this.kernel.serial(() => {
       const row = this.get(id);
@@ -273,7 +284,8 @@ export class ManagedOutlets {
   }
   /** Group records own the turn/delivery IDs. Only their exact managed copies
    * are redacted here, without rewriting a native root or child session. */
-  purgeProactiveGroupCopies(assignmentIds: ReadonlySet<string>, refs: ReadonlyMap<string, ProactiveGroupCopyRef>) {
+  purgeProactiveGroupCopies(assignmentIds: ReadonlySet<string>, refs: ReadonlyMap<string, ProactiveGroupCopyRef>,
+    mode: 'check' | 'purge' = 'purge') {
     return this.kernel.serial(async () => {
       this.kernel.assertReadable(); this.kernel.assertOwnership();
       const copies: FlowRecord[] = [];
@@ -303,7 +315,7 @@ export class ManagedOutlets {
               typeof source.assignmentId === 'string' && assignmentIds.has(source.assignmentId)) return false;
         }
       }
-      await this.redactBodies(copies);
+      if (mode === 'purge') await this.redactBodies(copies);
       return true;
     });
   }

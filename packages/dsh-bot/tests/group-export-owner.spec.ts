@@ -2,11 +2,12 @@ import { expect, it, vi } from 'vitest';
 import { GroupsRemote } from '../lib/host/groups/remote.js';
 
 it('does not expose private previews or change export work without an owner invocation', async () => {
-  const review = vi.fn(), decide = vi.fn(), revoke = vi.fn(), discard = vi.fn(), closeStale = vi.fn(), getSettings = vi.fn(), setSettings = vi.fn();
+  const review = vi.fn(), decide = vi.fn(), revoke = vi.fn(), discard = vi.fn(), closeStale = vi.fn(), getSettings = vi.fn(), setSettings = vi.fn(), deleteGroup = vi.fn();
   const remote = Object.create(GroupsRemote.prototype) as GroupsRemote;
   Object.defineProperty(remote, 'ctx', { value: {}, configurable: true });
-  Object.defineProperty(remote, 'groups', { value: { exportReview: { review, decide, revoke, discard, closeStale }, exportSettings: { get: getSettings, set: setSettings } } });
+  Object.defineProperty(remote, 'groups', { value: { deleteGroup, exportReview: { review, decide, revoke, discard, closeStale }, exportSettings: { get: getSettings, set: setSettings } } });
   const group = { groupId: 'group', groupCreatedAt: 1 };
+  await expect(remote.getRelayDetails({ kind: 'group', group, turnId: 'turn' })).rejects.toThrow('Owner access required');
   await expect(remote.reviewExport(group, 'delivery')).rejects.toThrow('Owner access required');
   await expect(remote.decideExport(group, 'delivery', '0'.repeat(64), true)).rejects.toThrow('Owner access required');
   await expect(remote.decideExport(group, 'delivery', '0'.repeat(64), 'always')).rejects.toThrow('Owner access required');
@@ -19,10 +20,14 @@ it('does not expose private previews or change export work without an owner invo
   expect(getSettings).not.toHaveBeenCalled(); expect(setSettings).not.toHaveBeenCalled();
   expect(revoke).not.toHaveBeenCalled(); expect(discard).not.toHaveBeenCalled();
   expect(closeStale).not.toHaveBeenCalled();
+  await expect(remote.deleteGroup(group, 1)).rejects.toThrow('Owner access required');
+  expect(deleteGroup).not.toHaveBeenCalled();
   expect(review).not.toHaveBeenCalled(); expect(decide).not.toHaveBeenCalled();
   const signal = new AbortController().signal;
   Object.defineProperty(remote, 'ctx', { value: { invocation: { peer: { principal: { kind: 'owner' } }, signal } } });
   await remote.reviewExport(group, 'delivery');
+  await remote.deleteGroup(group, 1);
+  expect(deleteGroup).toHaveBeenCalledExactlyOnceWith(group, 1);
   expect(review).toHaveBeenCalledOnce();
   await remote.closeStaleExports(group, 2);
   expect(closeStale).toHaveBeenCalledExactlyOnceWith(group, 2, signal);

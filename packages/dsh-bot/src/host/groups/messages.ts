@@ -13,9 +13,10 @@ import {
 } from '../../shared/groups.js';
 import { OperationError, parse } from '../common/operations.js';
 
-import { textOf, terminal } from './model.js';
+import { sameBot, textOf, terminal } from './model.js';
 import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
+import { relayMarkerIssue } from './relay-receipts.js';
 import { countPendingGroupExports } from './export-pending.js';
 export class GroupMessages {
   constructor(
@@ -26,6 +27,7 @@ export class GroupMessages {
     const agent = this.state.roots.get(g.id)?.agent ?? this.state.ctx.agents.get(g.rootSessionId as SessionId);
     if (!agent || agent.session.header.agentPreset !== GROUP_ROOT_PRESET) return [];
     const inputs = new Map(turns.map(turn => [turn.inputMessageId, turn]));
+    const guestTurns = new Map(turns.filter(t => t.guestQuestion).map(t => [t.id, t]));
     const events = agent.session.snapshotEvents();
     const project = (e: SessionEvent): GroupMessage[] => {
       if (e.type !== 'user/message') return [];
@@ -40,7 +42,13 @@ export class GroupMessages {
         const attachment = groupMessageAttachment(block, legacyUpload);
         return attachment ? [attachment] : [];
       });
-      if (s.kind === 'dsh-bot-group' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
+      if (s.kind === 'dsh-bot-group' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt) {
+        const guest = guestTurns.get(s.turnId)?.guestQuestion;
+        if (s.guestReply || s.relayReply || guest) {
+          const receipt = this.state.table('deliveries').get(`${s.turnId}:${guest?.via ? 1 : 0}`);
+          if (!guest || (guest.via ? !s.relayReply || s.guestReply : !s.guestReply || s.relayReply) || !sameBot(s.speaker.bot, guest.via?.bot ?? guest.bot) || !receipt ||
+            receipt.state !== 'completed' || receipt.outputMessageId !== e.data.id || receipt.outputSeq !== Number(e.seq)) return [];
+        }
         return [
           {
             id: e.data.id,
@@ -54,12 +62,13 @@ export class GroupMessages {
             authorKind: 'bot' as const,
             replyTo: s.replyTo,
             causeId: s.causeId,
-            childSessionId: s.childSessionId,
+            ...(s.relayReply ? { relayReply: true as const } : s.guestReply ? { guestReply: true as const } : { childSessionId: s.childSessionId }),
             stopReason: s.stopReason,
             // Persisted log data: a malformed record drops only the detail, never the message.
-            ...(groupFailureSchema.safeParse(s.failure).success ? { failure: s.failure } : {}),
+            ...(!s.guestReply && groupFailureSchema.safeParse(s.failure).success ? { failure: s.failure } : {}),
           },
         ];
+      }
       if (s.kind === 'dsh-bot-group-followup' && s.group.groupId === g.id && s.group.groupCreatedAt === g.createdAt)
         return [{ id: e.data.id, seq: Number(e.seq), at: e.time, text: textOf(e.data.content), turnId: s.turnId, authorKind: 'user' as const, replyTo: s.replyTo }];
       if ((s.kind === 'dsh-bot-group-proactive' || s.kind === 'dsh-bot-group-owner-followup' || s.kind === 'dsh-bot-supergroup') &&
@@ -165,9 +174,17 @@ export class GroupMessages {
       const closed = this.state.closedExportReviews(groupKey(g));
       return {
         ...(await this.summary(g, turns, messages)),
+        memberLimit: this.state.memberLimit(Boolean(g.supergroup)),
         turns,
         deliveries: turns.flatMap(t => this.state.deliveries(t.id).map(delivery => {
           const staleExportClosedAt = closed.get(delivery.id);
+          if (t.guestQuestion) {
+            // Only the delivery receipt and approved answer are group-visible. The guest's session
+            // handle, raw native errors and input-flow identifiers are private execution details.
+            const { childSessionId, childMessageId, nativeRunId, failure, inputFlowId, inputFlowSessionId, relayAnswerFlowId, ...receipt } = delivery;
+            const relayMarker = relayMarkerIssue(this.state, t, delivery);
+            return { ...receipt, ...(relayMarker ? { relayMarker } : {}), ...(staleExportClosedAt !== undefined ? { staleExportClosedAt } : {}) };
+          }
           return staleExportClosedAt === undefined ? delivery : { ...delivery, staleExportClosedAt };
         })),
         messages: rows.slice(-p.limit),

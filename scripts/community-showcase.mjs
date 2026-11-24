@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel, openSidebarSession } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, openSidebarSession, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 
 assert.deepEqual(process.argv.slice(2), ['--mock-only']);
@@ -40,7 +40,7 @@ for (const language of ['zh', 'en']) {
     };
     await openBotsPanel(page, 'Bots'); const main = page.locator('[data-bots-page]');
     await main.locator('button[data-bot-id="research"]').waitFor(); await capture('bots');
-    await main.getByRole('button', { name: `${t['chat.profile']} · ${fixture.names[0]}`, exact: true }).click();
+    await selectBotDirectoryAction(main, 'research', t['chat.profile']);
     await main.getByRole('tab', { name: t['detail.overview'], exact: true }).click(); await capture('profile');
     await main.getByRole('tab', { name: t['detail.memory'], exact: true }).click();
     await main.getByText(language === 'zh' ? '回答先给结论，再列证据与来源。' : 'Start with the conclusion, then give evidence and sources.', { exact: true }).waitFor();

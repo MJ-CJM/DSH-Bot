@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupDelivery, GroupView } from '../../shared/groups.js';
+import { sameGroupReaders } from '../../shared/identity.js';
 import { groupKey } from '../../shared/groups.js';
 import { groupExportReviewStatus } from '../../shared/group-export-review.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
@@ -13,7 +14,13 @@ type Preview = Extract<Awaited<ReturnType<GroupMethods['reviewExport']>>, { ok: 
 type Receipt = 'sent' | 'rejected' | 'changed' | 'unavailable' | 'previewFailed' | 'uncertain' | 'preferenceFailed' | 'sentReceiptFailed';
 type Item = { identity: string; delivery: GroupDelivery; preview?: Preview; selected?: boolean; later?: boolean; receipt?: Receipt; processing?: 'preview' | 'decision' };
 type StaleResult = { closed: number } | 'conflict' | 'failed';
+type ReviewList = { ids: string[]; batch: boolean };
 const identity = (delivery: GroupDelivery, membershipRevision: number) => JSON.stringify([delivery.id, delivery.revision, delivery.exportFlowId, membershipRevision]);
+function matchesReaders(view: GroupView, delivery: GroupDelivery, preview: Preview) {
+  const via = delivery.ordinal === 0 && view.turns.find(turn => turn.id === delivery.turnId)?.guestQuestion?.via;
+  const readers = via ? [via.bot] : view.group.supergroup?.readers ?? view.members.filter(m => m.enabled && m.removedAt === undefined).map(m => m.bot);
+  return readers.length > 0 && sameGroupReaders(readers, preview.recipients.map(recipient => recipient.bot));
+}
 const failure = (error: unknown): Receipt => hasOperationCode(error, 'group-export-preference-failed') ? 'preferenceFailed'
   : hasOperationCode(error, 'group-export-sent-receipt-failed') ? 'sentReceiptFailed'
   : hasOperationCode(error, 'conflict') ? 'changed' : hasOperationCode(error, 'group-data-blocked') ? 'unavailable' : 'uncertain';
@@ -25,7 +32,7 @@ export function GroupExportQueueLink({ view, actions, stale, t }: { view: GroupV
   const focus = () => {
     const target = [...document.querySelectorAll<HTMLElement>('[data-group-export-queue]')].find(node => node.dataset.groupExportQueue === view.group.id);
     if (!target) return false;
-    if (!stale) target.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click();
+    if (!stale) target.querySelector<HTMLButtonElement>('button[aria-expanded="false"],button[data-other-replies]')?.click();
     target.scrollIntoView?.({ block: 'nearest' }); target.focus({ preventScroll: true });
     return true;
   };
@@ -42,7 +49,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
   view: GroupView; bots: readonly BotRecord[]; actions: GroupActions;
 } & PropsLocale<'dsh-bot'>) {
   const [items, setItems] = useState<Record<string, Item>>({});
-  const [expanded, setExpanded] = useState(false), [showLater, setShowLater] = useState(false), [busy, setBusy] = useState(false);
+  const [list, setList] = useState<ReviewList>(), [showLater, setShowLater] = useState(false), [busy, setBusy] = useState(false);
   const [batchSending, setBatchSending] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const [staleResult, setStaleResult] = useState<StaleResult>();
@@ -72,7 +79,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
     if (!row || row.turnId !== before.turnId || row.memberId !== before.memberId ||
         row.bot.botId !== before.bot.botId || row.bot.botCreatedAt !== before.bot.botCreatedAt ||
         (row.revision ?? 0) <= (before.revision ?? 0)) return item;
-    if (row.outputMessageId && row.outputSeq !== undefined)
+    if (row.outputMessageId && row.outputSeq !== undefined || turnsById.get(row.turnId)?.guestQuestion?.via && row.ordinal === 0 && row.answeredAt !== undefined)
       return { ...item, delivery: row, receipt: 'sent' as const };
     if (!row.exportFlowId && row.reasonCode === 'export-rejected')
       return { ...item, delivery: row, receipt: 'rejected' as const };
@@ -95,13 +102,14 @@ export function GroupExportQueue({ view, bots, actions, t }: {
     return { ...previous, [delivery.id]: { ...(before?.identity === expected ? before : {}), identity: expected, delivery, ...value } };
   });
   const nameOf = (delivery: GroupDelivery) => bots.find(bot => bot.id === delivery.bot.botId && bot.createdAt === delivery.bot.botCreatedAt)?.name ?? delivery.bot.botId;
+  const handoff = (delivery: GroupDelivery) => delivery.ordinal === 0 ? turnsById.get(delivery.turnId)?.guestQuestion?.via : undefined;
   const select = (delivery: GroupDelivery, checked: boolean) => setItems(previous => {
     const scoped = checked ? Object.fromEntries(Object.entries(previous).map(([id, item]) => [id,
       item.delivery.turnId === delivery.turnId ? item : { ...item, selected: false }])) : previous;
     const expected = identity(delivery, view.group.membershipRevision), before = scoped[delivery.id];
     return { ...scoped, [delivery.id]: { ...(before?.identity === expected ? before : {}), identity: expected, delivery, selected: checked } };
   });
-  const selected = pendingRows.filter(delivery => { const item = current(delivery); return item.preview && item.selected && !item.receipt; });
+  const selected = pendingRows.filter(delivery => { const item = current(delivery); return list?.ids.includes(delivery.id) && !handoff(delivery) && item.preview && item.selected && !item.receipt; });
   const pendingCount = pendingRows.filter(delivery => !finished(current(delivery).receipt)).length;
   const laterCount = pendingRows.filter(delivery => current(delivery).later && !current(delivery).receipt).length;
   const focusReceipt = (deliveryId: string) => {
@@ -109,27 +117,53 @@ export function GroupExportQueue({ view, bots, actions, t }: {
     node?.focus({ preventScroll: true });
   };
   const refresh = async () => { await Promise.allSettled([actions.messageView(key).refresh(), actions.catalog.refresh()]); };
-  const review = async (delivery: GroupDelivery, checking = false) => {
-    if (lock.current || view.group.archived || statuses.get(delivery.id) !== 'pending') return;
-    const trigger = document.activeElement;
-    lock.current = true; setBusy(true); patch(delivery, { processing: 'preview' });
+  const loadPreview = async (delivery: GroupDelivery, batch: boolean, checking = false) => {
+    const membership = view.group.membershipRevision;
+    const original = identity(delivery, membership);
+    patch(delivery, { processing: 'preview', selected: false });
     try {
       const preview = unwrapGroup(await actions.remote().reviewExport(key, delivery.id));
       if (!alive.current) return;
-      patch(delivery, { identity: JSON.stringify([delivery.id, preview.deliveryRevision, preview.flowId, view.group.membershipRevision]), preview, selected: false, receipt: undefined, later: false, processing: undefined });
+      const latest = currentView.current, row = latest.deliveries.find(item => item.id === delivery.id);
+      const reviewed = JSON.stringify([delivery.id, preview.deliveryRevision, preview.flowId, membership]);
+      // Only individual review can reconcile a pre-queue legacy delivery into a new held revision.
+      const latestIdentity = row && identity(row, membership);
+      const exact = original === reviewed && latestIdentity === original;
+      const legacy = !batch && !delivery.exportFlowId && (latestIdentity === reviewed || latestIdentity === original);
+      if (!row || latest.group.id !== key.groupId || latest.group.createdAt !== key.groupCreatedAt ||
+          latest.group.membershipRevision !== membership ||
+          groupExportReviewStatus(latest.group, latest.turns.find(turn => turn.id === row.turnId), row) !== 'pending' ||
+          (!exact && !legacy) || !matchesReaders(latest, row, preview))
+        throw { code: 'dsh-bot/conflict' };
+      patch(delivery, { identity: reviewed, preview, selected: batch, receipt: undefined, later: false, processing: undefined });
+    } catch (error) {
+      if (alive.current) patch(delivery, { preview: undefined, selected: false, processing: undefined,
+        receipt: checking ? 'uncertain' : hasOperationCode(error, 'conflict') ? 'changed' : hasOperationCode(error, 'group-data-blocked') ? 'unavailable' : 'previewFailed' });
+    }
+  };
+  const review = async (delivery: GroupDelivery, checking = false) => {
+    if (lock.current || view.group.archived || statuses.get(delivery.id) !== 'pending') return;
+    const trigger = document.activeElement;
+    lock.current = true; setBusy(true);
+    try {
+      await loadPreview(delivery, false, checking);
       await refresh();
       requestAnimationFrame(() => {
         if (document.activeElement !== trigger && document.activeElement !== document.body) return;
         const item = [...(region.current?.querySelectorAll<HTMLElement>('[data-group-export-review]') ?? [])].find(node => node.dataset.groupExportReview === delivery.id);
         item?.querySelector('pre')?.focus({ preventScroll: true });
       });
-    } catch (error) {
-      const conflict = hasOperationCode(error, 'conflict');
-      if (alive.current) patch(delivery, { preview: undefined, selected: false,
-        processing: undefined, receipt: checking ? 'uncertain' : conflict ? 'changed' : hasOperationCode(error, 'group-data-blocked') ? 'unavailable' : 'previewFailed' });
-      if (conflict) await refresh();
-    }
-    finally { lock.current = false; if (alive.current) setBusy(false); }
+    } finally { lock.current = false; if (alive.current) setBusy(false); }
+  };
+  const reviewRound = async (candidates: GroupDelivery[]) => {
+    if (lock.current || view.group.archived || candidates.length < 2) return;
+    lock.current = true; setBusy(true); setAnnouncement('');
+    setList({ ids: candidates.map(row => row.id), batch: true });
+    setItems(previous => Object.fromEntries(Object.entries(previous).map(([id, item]) => [id, { ...item, selected: false }])));
+    try {
+      await Promise.all(candidates.map(row => loadPreview(row, true)));
+      await refresh();
+    } finally { lock.current = false; if (alive.current) setBusy(false); }
   };
   const decide = async (deliveries: GroupDelivery[], allow: boolean) => {
     if (lock.current || view.group.archived) return;
@@ -150,7 +184,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
       try {
         const latest = currentView.current;
         const row = latest.deliveries.find(candidate => candidate.id === delivery.id);
-        if (!row || identity(row, latest.group.membershipRevision) !== decision.identity ||
+        if (!row || identity(row, latest.group.membershipRevision) !== decision.identity || !matchesReaders(latest, row, preview) ||
           groupExportReviewStatus(latest.group, latest.turns.find(turn => turn.id === row.turnId), row) !== 'pending') throw { code: 'dsh-bot/conflict' };
         unwrapGroup(await actions.remote().decideExport(key, delivery.id, preview.token, allow));
         receipt = allow ? 'sent' : 'rejected';
@@ -197,10 +231,26 @@ export function GroupExportQueue({ view, bots, actions, t }: {
     });
   };
   if (!rows.length && !staleCount && !staleResult) return null;
-  const turns = [...new Set(rows.map(row => row.turnId))].sort((left, right) => (turnsById.get(right)?.createdAt ?? 0) - (turnsById.get(left)?.createdAt ?? 0));
+  const orderedRows = [...rows].sort((a, b) => (turnsById.get(b.turnId)?.createdAt ?? 0) - (turnsById.get(a.turnId)?.createdAt ?? 0) || a.ordinal - b.ordinal);
+  const openAll = () => setList({ ids: orderedRows.map(row => row.id), batch: false });
+  const candidatesFor = (turnId: string) => pendingRows.filter(row => row.turnId === turnId && !handoff(row) &&
+    row.exportFlowId && row.revision !== undefined && !current(row).receipt && !current(row).later);
+  const latestBatch = candidatesFor(orderedRows[0]?.turnId ?? '');
+  // Preserve row order and scroll position while new replies arrive. Only an explicit review opens them.
+  const byId = new Map(rows.map(row => [row.id, row]));
+  const listed = list?.ids.flatMap(id => byId.get(id) ?? []) ?? [];
+  const turns = [...new Set(listed.map(row => row.turnId))];
+  const outsideCount = list ? pendingRows.filter(row => !list.ids.includes(row.id) && !finished(current(row).receipt)).length : 0;
+  const batchButton = (candidates: GroupDelivery[]) => candidates.length > 1 &&
+    <button type="button" data-review-round={candidates[0]?.turnId} disabled={busy || view.group.archived}
+      onClick={() => { void reviewRound(candidates); }}>{t('groups.export.reviewRound', { count: candidates.length })}</button>;
+  const batchPreview = selected[0] && current(selected[0]).preview;
   return <section ref={region} tabIndex={-1} className={styles.exportQueue} aria-label={t('groups.export.queue')} data-group-export-queue={view.group.id}>
     {rows.length > 0 && <div className={styles.exportQueueHeader}>
-      <button type="button" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded(value => !value)}>{t('groups.export.queueCount', { count: pendingCount })}</button>
+      <button type="button" aria-expanded={Boolean(list)} aria-controls={listId} disabled={busy}
+        onClick={() => list ? setList(undefined) : openAll()}>{t('groups.export.queueCount', { count: pendingCount })}</button>
+      {!list && batchButton(latestBatch)}
+      {list && outsideCount > 0 && <button type="button" data-other-replies="" disabled={busy} onClick={openAll}>{t('groups.export.showOtherPending', { count: outsideCount })}</button>}
       <span tabIndex={-1} role="status" aria-live="polite" data-export-batch-summary="">{announcement}</span>
     </div>}
     {staleCount > 0 && <div className={styles.exportQueueExpired} data-group-expired-exports="" data-expired-count={staleCount}>
@@ -211,24 +261,31 @@ export function GroupExportQueue({ view, bots, actions, t }: {
       data-closed-count={typeof staleResult === 'string' ? undefined : staleResult.closed}>
       {typeof staleResult === 'string' ? t(`groups.export.closeExpiredResult.${staleResult}`) : t('groups.export.closeExpiredResult.closed', { count: staleResult.closed })}
     </p>}
-    {expanded && rows.length > 0 && <div id={listId} className={styles.exportQueueList}>
-      <p>{t('groups.export.batchHint')}</p>
+    {list && listed.length > 0 && <div id={listId} className={styles.exportQueueList}>
+      {!list.batch && <p>{t('groups.export.batchHint')}</p>}
       {turns.map(turnId => {
         const turn = turnsById.get(turnId);
         const question = view.messages.find(message => message.id === turn?.inputMessageId)?.text;
+        const turnRows = listed.filter(row => row.turnId === turnId);
+        const common = list.batch && turnRows.map(row => current(row).preview).find(preview => preview !== undefined);
         return <section key={turnId} className={styles.exportQueueTurn} aria-label={t('groups.export.round', { round: view.turns.findIndex(row => row.id === turnId) + 1 })}>
-          <h4>{t('groups.export.round', { round: view.turns.findIndex(row => row.id === turnId) + 1 })}</h4>
+          <div className={styles.exportQueueHeader}><h4>{t('groups.export.round', { round: view.turns.findIndex(row => row.id === turnId) + 1 })}</h4>
+            {!list.batch && batchButton(candidatesFor(turnId).filter(row => list.ids.includes(row.id)))}</div>
           {question && <p className={styles.exportQueueQuestion}>{question}</p>}
-          {rows.filter(row => row.turnId === turnId).map(delivery => {
+          {common && <><p>{t('groups.export.scope', { group: common.groupName, members: common.recipients.map(reader => reader.name).join('、') })}</p>
+            <p>{t('groups.export.notice')}</p></>}
+          {turnRows.map(delivery => {
             const item = current(delivery), preview = item.preview, receipt = item.receipt;
+            const recipient = handoff(delivery);
+            const reviewLabel = recipient ? t('groups.relay.reviewHandoff', { sender: recipient.name }) : t('groups.export.review');
             if (item.later && !showLater && !receipt) return null;
             return <section key={delivery.id} className={styles.exportQueueItem} data-group-export-review={delivery.id}>
               <div className={styles.exportQueueHeader}>
                 <strong>{nameOf(delivery)}</strong>
-                {!receipt && <label><input type="checkbox" checked={Boolean(preview && item.selected)} disabled={busy || view.group.archived || !preview}
+                {!receipt && !recipient && <label><input type="checkbox" checked={Boolean(preview && item.selected)} disabled={busy || view.group.archived || !preview}
                   onChange={event => select(delivery, event.currentTarget.checked)} />{t('groups.export.select')}</label>}
               </div>
-              {receipt && <p tabIndex={-1} role="status" data-export-receipt={delivery.id}>{t(`groups.export.receipt.${receipt}`)}</p>}
+              {receipt && <p tabIndex={-1} role="status" data-export-receipt={delivery.id}>{recipient && receipt === 'sent' ? t('groups.relay.handoffApproved', { sender: recipient.name }) : t(`groups.export.receipt.${receipt}`)}</p>}
               {receipt === 'uncertain' && <button type="button" disabled={busy} onClick={() => {
                 // A read-only fresh preview may restore the controls for a still-held reply.
                 // Lost or already-dispatched operations never retry their old decision.
@@ -237,20 +294,21 @@ export function GroupExportQueue({ view, bots, actions, t }: {
                 else void refresh();
               }}>{t('groups.export.checkReceipt')}</button>}
               {!receipt && item.processing && <p role="status">{t(item.processing === 'preview' ? 'groups.export.itemPreviewing' : 'groups.export.itemProcessing')}</p>}
-              {!receipt && !preview && !item.processing && <button type="button" disabled={busy || view.group.archived} onClick={() => { void review(delivery); }}>{t('groups.export.review')}</button>}
+              {!receipt && !preview && !item.processing && <button type="button" disabled={busy || view.group.archived} onClick={() => { void review(delivery); }}>{reviewLabel}</button>}
               {!receipt && preview && <>
-                <p>{t('groups.export.scope', { group: preview.groupName, members: preview.recipients.map(row => row.name).join('、') })}</p>
-                <p>{t('groups.export.notice')}</p>
+                {!list.batch && <><p>{recipient ? t('groups.relay.handoffScope', { sender: preview.recipients[0]?.name }) :
+                  t('groups.export.scope', { group: preview.groupName, members: preview.recipients.map(row => row.name).join('、') })}</p>
+                <p>{recipient ? t('groups.relay.handoffNotice', { sender: recipient.name }) : t('groups.export.notice')}</p></>}
                 {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Complete private reply is keyboard-readable plain text, never Markdown. */}
                 <pre tabIndex={0} className={styles.exportBody}>{preview.content}</pre>
-                <div className={styles.exportQueueActions}>
-                  <button type="button" disabled={busy || view.group.archived} onClick={() => { void decide([delivery], true); }}>{t('groups.export.allow')}</button>
-                </div><p>{t('groups.export.policySettingsHint')}</p>
+                {!list.batch && <div className={styles.exportQueueActions}>
+                  <button type="button" data-send-one="" disabled={busy || view.group.archived} onClick={() => { void decide([delivery], true); }}>{recipient ? t('groups.relay.approveHandoff', { sender: recipient.name }) : t('groups.export.sendToGroup', { group: preview.groupName, readers: preview.recipients.length })}</button>
+                </div>}{!list.batch && !turn?.guestQuestion && <p>{t('groups.export.policySettingsHint')}</p>}
               </>}
-              {!item.processing && (!receipt || receipt === 'changed' || receipt === 'unavailable' || receipt === 'previewFailed') && <div className={styles.exportQueueActions}>
+              {!item.processing && (!list.batch || !preview) && (!receipt || receipt === 'changed' || receipt === 'unavailable' || receipt === 'previewFailed') && <div className={styles.exportQueueActions}>
                 <button type="button" disabled={busy || view.group.archived || !preview && (!delivery.exportFlowId || delivery.revision === undefined)} onClick={() => { if (preview) void decide([delivery], false); else void discard(delivery); }}>{t('groups.export.reject')}</button>
                 <button type="button" disabled={busy || view.group.archived} onClick={() => patch(delivery, { preview: undefined, selected: false, later: true, receipt: undefined })}>{t('groups.export.close')}</button>
-                {receipt && <button type="button" disabled={busy || view.group.archived} onClick={() => { void review(delivery); }}>{t('groups.export.review')}</button>}
+                {receipt && <button type="button" disabled={busy || view.group.archived} onClick={() => { void review(delivery); }}>{reviewLabel}</button>}
               </div>}
             </section>;
           })}
@@ -258,14 +316,14 @@ export function GroupExportQueue({ view, bots, actions, t }: {
       })}
       {laterCount > 0 && <button type="button" onClick={() => setShowLater(value => !value)}>{t(showLater ? 'groups.export.hideLater' : 'groups.export.showLater', { count: laterCount })}</button>}
     </div>}
-    {expanded && rows.length > 0 && <div className={styles.exportQueueActions}>
-      {selected[0] && <span>{t('groups.export.round', { round: view.turns.findIndex(turn => turn.id === selected[0]?.turnId) + 1 })}</span>}
-      {pendingCount > 0 && <button type="button" disabled={busy || view.group.archived || !selected.length} onClick={() => { void decide(selected, true); }}>{t(batchSending ? 'groups.export.batchSending' : 'groups.export.batchOnce', { count: selected.length })}</button>}
-      <button type="button" disabled={busy || clearableReceipts.length === 0} onClick={() => {
+    {list && rows.length > 0 && <div className={styles.exportQueueActions}>
+      {batchPreview && <button type="button" data-send-selection={selected.length} disabled={busy || view.group.archived} onClick={() => { void decide(selected, true); }}>
+        {t(batchSending ? 'groups.export.batchSending' : 'groups.export.sendSelection', { count: selected.length, group: batchPreview.groupName, readers: batchPreview.recipients.length })}</button>}
+      {clearableReceipts.length > 0 && <button type="button" disabled={busy} onClick={() => {
         const ids = new Set(clearableReceipts.map(item => item.delivery.id));
         setItems(previous => Object.fromEntries(Object.entries(previous).filter(([id]) => !ids.has(id))));
         setAnnouncement('');
-      }}>{t('groups.export.clearReceipts')}</button>
+      }}>{t('groups.export.clearReceipts')}</button>}
     </div>}
   </section>;
 }

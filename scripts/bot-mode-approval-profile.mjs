@@ -125,10 +125,19 @@ export function apply(ctx, config) {
           model: { provider: 'bot-mode-local', model: 'review' }, memory: { enabled: false, injectLimit: 20 } });
       const sessions = {};
       for (const [id] of bots) {
+        const bot = await ctx.dshBots.get(id);
         let main;
         for (let n = 0; n < 150; n++) {
-          try { main = await ctx.dshBots.openConversation(id); break; }
-          catch (error) { if (!String(error).includes('Main sessions are starting')) throw error; await new Promise(accept => setTimeout(accept, 100)); }
+          try {
+            // Match the directory's exact owner open after native startup reused a blank main.
+            main = typeof ctx.dshBots.openConversationExact === 'function'
+              ? await ctx.dshBots.openConversationExact({ botId: id, botCreatedAt: bot.createdAt })
+              : await ctx.dshBots.openConversation(id);
+            break;
+          } catch (error) {
+            if (!String(error).includes('Main sessions are starting')) throw error;
+            await new Promise(accept => setTimeout(accept, 100));
+          }
         }
         assert.ok(main); sessions[id] = main.sessionId;
       }

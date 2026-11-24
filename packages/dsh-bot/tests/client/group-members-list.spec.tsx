@@ -14,7 +14,7 @@ import { click } from './helpers.js';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 
-async function fixture(language: 'en' | 'zh' = 'en') {
+async function fixture(language: 'en' | 'zh' = 'en', onEdit?: (view: GroupView) => void) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const ctx = new Context();
   let data: GroupView = view(), registry: BotRecord[] = bots.map((bot, i) => ({ ...bot, description: `Responsibility ${i}` }));
@@ -33,7 +33,7 @@ async function fixture(language: 'en' | 'zh' = 'en') {
   const element = document.createElement('main'), root = createRoot(element);
   let summary: GroupSummary = data;
   const render = (strict = false) => act(async () => {
-    const list = <GroupMembersList summary={summary} actions={actions} bots={registry} onOpenBot={onOpenBot} t={t} />;
+    const list = <GroupMembersList summary={summary} actions={actions} bots={registry} onOpenBot={onOpenBot} onEdit={onEdit} t={t} />;
     root.render(strict ? <StrictMode>{list}</StrictMode> : list);
   });
   return { element, remote, actions, stores, onOpenBot, followup, t, render,
@@ -45,6 +45,27 @@ async function fixture(language: 'en' | 'zh' = 'en') {
     async close() { await act(async () => root.unmount()); await ctx.fiber.dispose(); },
   };
 }
+
+it('uses all six roster places and hides roster edits on archived or automatic groups', async () => {
+  const onEdit = vi.fn(), f = await fixture('zh', onEdit);
+  try {
+    const data = f.data(), owner = data.members[0]!;
+    for (let n = 2; n < 6; n++) data.members.push({ ...owner, id: `member-${n}`, bot: { ...owner.bot, botId: `bot-${n}` }, order: n, enabled: false });
+    await f.render();
+    const entry = () => f.element.querySelector<HTMLButtonElement>('[data-group-edit-members]');
+    expect(entry()?.textContent).toBe(f.t('groups.edit'));
+    await click(entry()!);
+    expect(onEdit).toHaveBeenCalledExactlyOnceWith(data);
+    data.group.archived = true;
+    await f.refresh();
+    expect(entry()).toBeNull();
+    data.group.archived = false;
+    data.group.supergroup = { workId: 'work', originSessionId: 'origin', originMessageId: 'input',
+      owner: owner.bot, readers: [owner.bot], expiresAt: 1000 };
+    await f.refresh();
+    expect(entry()).toBeNull();
+  } finally { await f.close(); }
+});
 
 it.each(['en', 'zh'] as const)('%s compact members preserve real roles, state and model sources and only navigate exact Bots', async language => {
   const f = await fixture(language);

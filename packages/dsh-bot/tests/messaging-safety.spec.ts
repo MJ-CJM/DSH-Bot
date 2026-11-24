@@ -23,7 +23,7 @@ describe('B04 native runtime safety (Agent/log fixtures)', () => {
     expect(withoutWakeControls([wake, user], { kind: 'enter', messages: [wake, user, context] })).toEqual({ kind: 'enter', messages: [user, context] });
     expect(withoutWakeControls([], { kind: 'enter', messages: [context] })).toEqual({ kind: 'enter', messages: [context] });
   });
-  it('holds mixed input for the entire turn, asks unknown tools, preserves deny/never, and keeps a retained guard after unload', () => withIntegrations(async (f) => {
+  it('holds mixed input for the entire turn, denies general tools, preserves deny/never, and keeps a retained guard after unload', () => withIntegrations(async (f) => {
     const { agent, scope } = f.createAgent(), safety = new MessagingSafety();
     safety.protect(agent); const off = agent.ctx.tools.register(tool('unknown_action'));
     const execute = () => f.ctx.tools.execute({ agent, name: 'unknown_action', arguments: {}, callId: ToolCallId(crypto.randomUUID()), signal: new AbortController().signal });
@@ -33,12 +33,12 @@ describe('B04 native runtime safety (Agent/log fixtures)', () => {
     body.mockClear(); let outcome = 'rejected' as 'rejected' | 'allowed-once';
     const answers = vi.fn(async () => outcome); f.ctx.on('approval/request', answers);
     expect((await execute()).isError).toBe(true); expect(body).not.toHaveBeenCalled();
-    outcome = 'allowed-once'; expect((await execute()).isError).toBe(false); expect(body).toHaveBeenCalledTimes(1);
-    setApprovalPolicy(agent.session, 'never'); expect((await execute()).isError).toBe(true); expect(body).toHaveBeenCalledTimes(1);
+    outcome = 'allowed-once'; expect((await execute()).isError).toBe(true); expect(body).not.toHaveBeenCalled(); expect(answers).not.toHaveBeenCalled();
+    setApprovalPolicy(agent.session, 'never'); expect((await execute()).isError).toBe(true); expect(body).not.toHaveBeenCalled();
     setApprovalPolicy(agent.session, 'ask');
     const deny = agent.ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'native denial' }));
     expect((await execute()).isError).toBe(true); deny();
-    safety.active = false; expect((await execute()).isError).toBe(true); expect(body).toHaveBeenCalledTimes(1);
+    safety.active = false; expect((await execute()).isError).toBe(true); expect(body).not.toHaveBeenCalled();
     // New independent human turn clears the source barrier, never a mixed input.
     agent.session.append('turn/end', { turn: 0, reason: { kind: 'completed' } });
     agent.session.append('turn/start', { turn: 1 });
@@ -46,7 +46,7 @@ describe('B04 native runtime safety (Agent/log fixtures)', () => {
     expect(teammateTurn(agent)).toBe(false); expect((await execute()).isError).toBe(false);
     off(); scope.dispose();
   }));
-  it('denies parent-token bot_message dispatches and asks the outer run_code-equivalent unknown transport', () => withIntegrations(async (f) => {
+  it('denies unchecked transports before any nested dispatch', () => withIntegrations(async (f) => {
     const { agent, scope } = f.createAgent(), safety = new MessagingSafety(); safety.protect(agent);
     const inner = vi.fn(async () => ({ ok: true }));
     agent.ctx.tools.register({ ...tool('bot_message'), execute: inner });
@@ -57,10 +57,10 @@ describe('B04 native runtime safety (Agent/log fixtures)', () => {
     agent.session.append('user/message', createUserMessage({ source, content: [{ type: 'text', text: 'peer' }] }), { surfaceOp: 'append' });
     const asks = vi.fn(async () => 'allowed-once' as const); f.ctx.on('approval/request', asks);
     const result = await f.ctx.tools.execute({ agent, name: 'transport', arguments: {}, callId: ToolCallId('outer'), signal: new AbortController().signal });
-    expect(asks).toHaveBeenCalledOnce(); expect(inner).not.toHaveBeenCalled();
-    expect(JSON.stringify(result)).toContain('disabled inside run_code'); scope.dispose();
+    expect(asks).not.toHaveBeenCalled(); expect(inner).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true); scope.dispose();
   }));
-  it('applies native approval to actual run_code and denies bot_message at its SDK sub-dispatch seam', () => withIntegrations(async (f) => {
+  it('denies the native run_code transport before starting a PTC runtime', () => withIntegrations(async (f) => {
     const { agent, scope } = f.createAgent(), safety = new MessagingSafety(); safety.protect(agent);
     const inner = vi.fn(async () => ({ ok: true })); agent.ctx.tools.register({ ...tool('bot_message'), execute: inner });
     const runs = vi.fn(async (spec: { bindings: Array<{ functions: Record<string, (args: unknown) => Promise<unknown>> }> }) => {
@@ -78,8 +78,8 @@ describe('B04 native runtime safety (Agent/log fixtures)', () => {
     const execute = () => f.ctx.tools.execute({ agent, name: 'run_code', arguments: { code: 'await tools.bot_message({})', description: 'PTC guarded fixture' }, callId: ToolCallId(crypto.randomUUID()), signal: new AbortController().signal });
     expect((await execute()).isError).toBe(true); expect(runs).not.toHaveBeenCalled();
     outcome = 'allowed-once'; const result = await execute();
-    expect(asks).toHaveBeenCalledTimes(2); expect(runs, JSON.stringify(result)).toHaveBeenCalledOnce(); expect(inner).not.toHaveBeenCalled();
-    expect(JSON.stringify(result)).toContain('disabled inside run_code'); present(); scope.dispose();
+    expect(asks).not.toHaveBeenCalled(); expect(runs).not.toHaveBeenCalled(); expect(inner).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true); present(); scope.dispose();
   }));
   it('retains the minimal guard when the creating preset plugin fiber is disposed', () => withIntegrations(async (f) => {
     const { agent, scope } = f.createAgent(), safety = new MessagingSafety();

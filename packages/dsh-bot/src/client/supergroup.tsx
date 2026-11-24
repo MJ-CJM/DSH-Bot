@@ -1,12 +1,11 @@
 import { TaskSupportPanel, type TaskSupportActions, type createTaskOriginFocus } from './task-support.js';
 import type { IntegrationActions } from './integrations-state.js';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { PropsLocale, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client';
-import { Button, Switch } from '@deepseek-ai/dsh-client-ui-primitives';
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
 import { supergroupViewSchema, type SupergroupWorkView } from '../shared/supergroup.js';
 import { SUPERGROUP_REMOTE } from '../shared/supergroup-contract.js';
@@ -18,54 +17,8 @@ import { GroupTurnExecution } from './components/GroupTurnExecution.js';
 import { BotAvatar } from './components/BotAvatar.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
-import settingsCss from './styles/integrations.module.css?inline';
-import settingsStyles from './styles/integrations.module.css';
-
-export interface SupergroupSettingsActions {
-  settings(): Promise<{ enabled: boolean }>;
-  configure(input: { enabled: boolean; expectedEnabled: boolean }): Promise<{ enabled: boolean }>;
-}
-
-/** Owner setting for automatic collaboration, independent of navigation. */
-export function SupergroupSettings({ actions, t }: { actions: SupergroupSettingsActions } & PropsLocale<'dsh-bot'>) {
-  const [value, setValue] = useState<{ enabled: boolean }>();
-  const [busy, setBusy] = useState(true), [failed, setFailed] = useState(false);
-  const alive = useRef(false), lock = useRef(false);
-  const refresh = useCallback(async () => {
-    if (lock.current) return;
-    lock.current = true; setBusy(true); setFailed(false);
-    try { const next = await actions.settings(); if (alive.current) setValue(next); }
-    catch { if (alive.current) { setValue(undefined); setFailed(true); } }
-    finally { lock.current = false; if (alive.current) setBusy(false); }
-  }, [actions]);
-  useEffect(() => {
-    alive.current = true; void refresh();
-    return () => { alive.current = false; };
-  }, [refresh]);
-  return <section className={settingsStyles.panel} data-supergroup-settings="" aria-label={t('supergroup.settingsTitle')}>
-    <style>{settingsCss}</style>
-    <h3>{t('supergroup.settingsTitle')}</h3>
-    <p>{t('supergroup.settingsScope')}</p>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-      <span>{t('supergroup.settingsGlobal')}</span>
-      <Switch label={t('supergroup.settingsTitle')} checked={value?.enabled ?? false} disabled={busy || !value || failed} onChange={enabled => {
-        if (lock.current || !value || failed) return;
-        lock.current = true; setBusy(true); setFailed(false);
-        void actions.configure({ enabled, expectedEnabled: value.enabled }).then(next => {
-          if (alive.current) setValue(next);
-        }, () => {
-          // A lost response may follow a committed edit. Keep the last accepted
-          // value and offer a read, never blindly repeat or flip optimistically.
-          if (alive.current) setFailed(true);
-        }).finally(() => { lock.current = false; if (alive.current) setBusy(false); });
-      }} />
-    </div>
-    <p role="status">{busy ? t('supergroup.settingsSaving') : !value ? t('supergroup.settingsUnknown') : value.enabled ? t('supergroup.settingsEnabled') : t('supergroup.settingsDisabled')}</p>
-    <p>{t('supergroup.settingsPermissions')}</p>
-    <p>{t('supergroup.settingsReturn')}</p>
-    {failed && <><p role="alert">{t('supergroup.settingsFailed')}</p><Button disabled={busy} onClick={() => { void refresh(); }}>{t('bots.refresh')}</Button></>}
-  </section>;
-}
+import { createSupergroupSettingsSource, SupergroupSettings } from './supergroup-settings.js';
+export { createSupergroupSettingsSource, SupergroupSettings, type SupergroupSettingsActions } from './supergroup-settings.js';
 
 declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap { 'supergroup-work': { messageId: string } }
@@ -271,9 +224,9 @@ export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots
   </section>;
 }
 
-export async function registerSupergroup(ctx: Context, actions: GroupActions, bots: BotCatalog, executionBridge?: ExecutionBridge, support?: SupergroupUiBridge['support']): Promise<void> {
+export async function registerSupergroupSettings(ctx: Context) {
   await ctx.effect(async () => await ctx.remote.$mount(SUPERGROUP_REMOTE), 'dsh-bot: Supergroup Remote');
-  const nativeSettings: SupergroupSettingsActions = {
+  const settings = createSupergroupSettingsSource({
     async settings() {
       const service = ctx.get('remote.dshBotSupergroup'); if (!service) throw new Error('Supergroup unavailable');
       const result = await service.settings(); if (!result.ok) throw result.error; return result.value;
@@ -282,11 +235,15 @@ export async function registerSupergroup(ctx: Context, actions: GroupActions, bo
       const service = ctx.get('remote.dshBotSupergroup'); if (!service) throw new Error('Supergroup unavailable');
       const result = await service.configure(input); if (!result.ok) throw result.error; return result.value;
     },
-  };
+  });
   ctx.effect(() => ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
     name: 'plugins.bundle.config', key: 'dsh-botgroup', locale: 'dsh-bot',
   }, (props: PropsRuntime<'plugins.bundle.config'> & PropsLocale<'dsh-bot'>) => props.view === 'summary'
-    ? <span>{props.t('supergroup.settingsTitle')}</span> : <SupergroupSettings actions={nativeSettings} t={props.t} />)), 'dsh-bot: Supergroup settings');
+    ? <span>{props.t('supergroup.settingsTitle')}</span> : <SupergroupSettings source={settings} t={props.t} />)), 'dsh-bot: Supergroup settings');
+  return settings;
+}
+
+export async function registerSupergroup(ctx: Context, actions: GroupActions, bots: BotCatalog, executionBridge?: ExecutionBridge, support?: SupergroupUiBridge['support']): Promise<void> {
   const bridge = createSupergroupUiBridge(ctx, actions);
   bridge.support = support;
   ctx.inject(['uiConversation'], scope => {

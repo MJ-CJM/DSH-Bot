@@ -118,8 +118,8 @@ it('reveals and focuses the editor once, without stealing focus on a same-group 
   try {
     await render();
     expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'start' });
-    expect(document.activeElement).toBe(element.querySelector('input'));
-    const checkbox = element.querySelector('fieldset input') as HTMLInputElement;
+    expect(document.activeElement).toBe(element.querySelector('fieldset input:not(:disabled)'));
+    const checkbox = element.querySelectorAll<HTMLInputElement>('fieldset input')[1]!;
     checkbox.focus(); await render();
     expect(document.activeElement).toBe(checkbox);
     expect(scroll).toHaveBeenCalledTimes(1);

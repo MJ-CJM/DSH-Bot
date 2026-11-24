@@ -1,3 +1,4 @@
+import type { RelayDetailsRequest } from '../../shared/group-relay-details.js';
 import type { Context } from '@deepseek-ai/cordis';
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { TypertContribution } from '@deepseek-ai/dsh-typert-registry';
@@ -24,6 +25,9 @@ export class GroupsRemote extends TypertRemoteService {
   }
   private owner() {
     if (this.ctx.invocation?.peer.principal.kind !== 'owner') throw new Error('Owner access required');
+  }
+  @Remote async getRelayDetails(request: RelayDetailsRequest) {
+    this.owner(); return this.groups.relayDetails(request, this.ctx.invocation?.signal);
   }
   @Remote async getExportApprovalSettings(group: GroupKey) {
     this.owner(); return this.groups.exportSettings.get(group, this.ctx.invocation?.signal);
@@ -82,6 +86,7 @@ export class GroupsRemote extends TypertRemoteService {
     return this.groups.view(group, page);
   }
   @Remote async send(group: GroupKey, input: unknown) {
+    if (this.ctx.invocation?.peer.principal.kind === 'owner') return this.groups.sendOwner(group, input);
     return this.groups.send(group, input);
   }
   @Remote async cancel(group: GroupKey, turnId: string, expectedRevision: number) {
@@ -91,6 +96,10 @@ export class GroupsRemote extends TypertRemoteService {
   @Remote async stopMember(group: GroupKey, turnId: string, memberId: string, expectedRevision: number) { return this.groups.stopMember(group, turnId, memberId, expectedRevision); }
   @Remote async archive(group: GroupKey, expectedRevision: number) {
     return this.groups.archive(group, expectedRevision);
+  }
+  @Remote async deleteGroup(group: GroupKey, expectedRevision: number) {
+    this.owner();
+    return this.groups.deleteGroup(group, expectedRevision);
   }
 }
 declare module '@deepseek-ai/cordis' {

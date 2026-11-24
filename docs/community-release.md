@@ -1,6 +1,6 @@
 # 社区发布与候选准备
 
-当前公开稳定版为 [v0.7.1](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.1)。当前工作树准备 [0.7.2 候选](releases/v0.7.2.md)，npm 包名为 `dsh-botgroup`。
+当前公开稳定版为 [v0.7.2](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.2)。当前工作树准备 [0.7.3 候选](releases/v0.7.3.md)，npm 包名为 `dsh-botgroup`。
 
 ## 本地检查与唯一候选
 
@@ -17,10 +17,10 @@ scripts/pnpm check
 随后选择一个尚不存在的候选目录打包；不要覆盖已有包：
 
 ```sh
-release_candidate_dir=$(mktemp -d "$PWD/.dsh-dev/release-0.7.2-XXXXXX")
+release_candidate_dir=$(mktemp -d "$PWD/.dsh-dev/release-0.7.3-XXXXXX")
 scripts/pnpm -C packages/dsh-bot pack --pack-destination "$release_candidate_dir"
-node scripts/verify-package.mjs "$release_candidate_dir/dsh-botgroup-0.7.2.tgz"
-scripts/pnpm release:prepare "$release_candidate_dir/dsh-botgroup-0.7.2.tgz"
+node scripts/verify-package.mjs "$release_candidate_dir/dsh-botgroup-0.7.3.tgz"
+scripts/pnpm release:prepare "$release_candidate_dir/dsh-botgroup-0.7.3.tgz"
 ```
 
 生成的 `dist/release-candidates/v<version>-<hash>/` 包含版本包、同字节 `dsh-bot.tgz`、两份单文件校验和、`release.json`、发布说明、审核清单和社区目录 YAML。该命令拒绝重复覆盖，不创建标签或发布；`runtimeAcceptance` 默认未运行，必须补上本次同包证据。同包复验完成后，将 `docs/releases/v<version>.md` 的已核对正文复制为候选目录的 `RELEASE_NOTES.md`，核对两份文件一致。确认后使用原包上传。

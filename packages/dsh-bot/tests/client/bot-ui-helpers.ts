@@ -8,7 +8,8 @@ type App = Awaited<ReturnType<typeof mountClient>>;
 export async function openProfile(app: App, language: 'en' | 'zh' = 'en', id = 'alpha-bot') {
   const row = app.container.querySelector(`[data-bot-id="${id}"]`)?.closest('li');
   if (!row) throw new Error(`Missing recent Bot ${id}`);
-  await click(button(row, (language === 'zh' ? zh.ui : en.ui)['chat.profile']));
+  await click(requireValue(row.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')));
+  await click(button(requireValue(row.querySelector('[role="menu"]')), (language === 'zh' ? zh.ui : en.ui)['chat.profile']));
 }
 export async function openHistory(app: App, language: 'en' | 'zh' = 'en') {
   await openProfile(app, language);

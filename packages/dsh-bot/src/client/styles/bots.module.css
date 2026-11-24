@@ -609,11 +609,13 @@
 .recentBody { display: grid; flex: 1; gap: 3px; min-width: 0; }
 .recentSearch { min-width: 0; max-width: 320px; }
 .listTools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.directorySettings { margin-top: 8px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 8px; overflow: hidden; }
+.listTools button[aria-expanded="true"] .settingsChevron { transform: rotate(180deg); }
 .listTools .field { min-width: 0; max-width: 100%; }
 .recentOpen:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .recentOpen:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
 .recentRow .quietAction { border: 0; padding-inline: 6px; color: var(--dsw-alias-label-secondary); background: transparent; }
-.recentRow [data-directory-pin][aria-pressed="true"] { color: var(--dsw-alias-state-business-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.directoryPinned { flex: none; color: var(--dsw-alias-label-secondary); font-size: 11px; }
 .page .pendingLocator { max-width: 100%; min-height: 36px; height: auto; white-space: normal; overflow-wrap: anywhere; text-align: start; }
 .recentRow > div { min-width: 0; }
 .activityPreview { display: block; overflow: hidden; font-size: 13px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }

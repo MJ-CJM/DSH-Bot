@@ -20,7 +20,7 @@ it('uses one round lookup and event snapshot to page a long group while preservi
   const readTurns = vi.fn(() => turns);
   const state = {
     queue: new Serial(), roots: new Map([[group.id, { agent }]]), registry: {}, reasons: new Map(),
-    members: () => [], turns: readTurns, deliveries: () => [], record: () => group,
+    members: () => [], memberLimit: () => 6, turns: readTurns, deliveries: () => [], record: () => group,
     closedExportReviews: () => new Map(), table: () => new Map(),
   } as unknown as GroupState;
   const history = new GroupMessages(state, { restore: async () => {} } as unknown as GroupRoots);

@@ -61,7 +61,8 @@ export async function verifyGroupExportBrowser(host, dir, report, { botMode = fa
         assert.equal(await queue.locator('[data-export-receipt]').count(), 0, 'Enabling future policy must leave existing pending replies unpublished');
         checks.push({ settingsEnable: 'PASS', existingPendingUnchanged: true });
       }
-      await review.getByRole('button', { name: t[index === 0 ? 'groups.export.allow' : 'groups.export.reject'], exact: true }).click();
+      if (index === 0) await review.locator('[data-send-one]').click();
+      else await review.getByRole('button', { name: t['groups.export.reject'], exact: true }).click();
       await queue.locator(`[data-export-receipt="${report.ui.deliveries[index]}"]`).waitFor();
       if (botMode && index === 1) {
         const composer = page.locator(`[data-workspace-group-composer="${report.ui.sessionId}"]:visible`);
@@ -72,7 +73,8 @@ export async function verifyGroupExportBrowser(host, dir, report, { botMode = fa
         assert.equal(await composer.getByRole('textbox', { name: t['groups.message'], exact: true }).inputValue(), '');
         assert.equal(await composer.getByRole('alert').count(), 0);
         // Execution details may be collapsed, so absence of a running node is not completion.
-        // A new review button can appear only after the native private-read worker has finished.
+        // New replies stay outside the currently open review until the owner chooses them.
+        await queue.locator('[data-other-replies]').click();
         await queue.getByRole('button', { name: t['groups.export.review'], exact: true }).first().waitFor();
         await writeFile(resolve(dir, 'export-bot-settings-before.txt'), await page.locator('body').ariaSnapshot());
         await page.locator('[data-bot-mode-object="group"] [data-bot-mode-details]').click();
@@ -117,7 +119,7 @@ export async function verifyGroupExportBrowser(host, dir, report, { botMode = fa
         assert.equal(await receipt.textContent(), t[`groups.export.receipt.${code}`]);
       };
       await rows[0].getByRole('button', { name: t['groups.export.review'], exact: true }).click();
-      await rows[0].getByRole('button', { name: t['groups.export.allow'], exact: true }).click();
+      await rows[0].locator('[data-send-one]').click();
       await verifyReceipt(batch.deliveries[0], 'sent');
       assert.equal(await queue.locator('button[aria-controls]').first().getAttribute('aria-expanded'), 'true');
       const toSend = narrow ? rows.slice(1, -1) : rows.slice(1);
@@ -125,7 +127,7 @@ export async function verifyGroupExportBrowser(host, dir, report, { botMode = fa
         await row.getByRole('button', { name: t['groups.export.review'], exact: true }).click();
         await row.getByRole('checkbox').check();
       }
-      await queue.getByRole('button', { name: t['groups.export.batchOnce'].replace('{count}', String(toSend.length)), exact: true }).click();
+      await queue.locator(`[data-send-selection="${toSend.length}"]`).click();
       for (const id of batch.deliveries.slice(1, narrow ? -1 : undefined)) await verifyReceipt(id, 'sent');
       if (narrow) {
         await rows.at(-1).getByRole('button', { name: t['groups.export.reject'], exact: true }).click();

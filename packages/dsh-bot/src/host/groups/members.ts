@@ -32,6 +32,7 @@ export class GroupMembers {
       this.state.check();
       const id = `group:${digest(input.operationId)}`,
         hash = digest(input);
+      if (this.state.table('deletions').get(id)) throw new OperationError('conflict');
       const prior = this.state.table('groups').get(id);
       if (prior) {
         if (prior.createDigest !== hash) throw new OperationError('conflict');

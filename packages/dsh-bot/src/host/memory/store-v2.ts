@@ -57,9 +57,9 @@ export class V2MemoryStore {
       (f.tag === undefined || r.tags.includes(f.tag)) && (!f.query || lexicalMemorySearch.matches(r, f.query)) &&
       (!f.before || this.compare(r, f.before) > 0)).slice(0, f.limit);
   }
-  readableByBot(botId: string, options: MemoryListOptions): (MemoryRecord & { scope?: 'private' | 'shared' })[] {
+  readableByBot(botId: string, options: MemoryListOptions, sharedOnly = false): (MemoryRecord & { scope?: 'private' | 'shared' })[] {
     const f = parseInput(memoryListOptionsSchema, options), owner = this.owner(botId);
-    const facts = readableFacts(this.kernel, owner, { at: Date.now() });
+    const facts = readableFacts(this.kernel, owner, { at: Date.now(), sharedOnly });
     return rankFacts(facts, f.query ?? '', 10000, this.kernel.retrievalConfig).flatMap(({ version: v, payload: p }) => {
       const record = p.legacy ? memorySchema.parse({ ...p.legacy, id: v.memoryId, content: p.content, botId }) : memorySchema.parse({
         id: v.memoryId, botId, content: p.content, kind: 'fact', tags: [], pinned: false,
