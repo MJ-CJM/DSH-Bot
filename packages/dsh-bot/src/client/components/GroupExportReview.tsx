@@ -26,6 +26,14 @@ export const turnExportStatus = (group: GroupRecord, turn: GroupTurn, deliveries
   if (keys.includes('groups.export.expiredStatus')) return 'groups.export.expiredStatus' as const;
   if (keys.includes('groups.export.expiredClosed')) return 'groups.export.expiredClosed' as const;
 };
+export function GroupTurnAttention({ group, turn, deliveries, t }: {
+  group: GroupRecord; turn: GroupTurn; deliveries: readonly GroupViewDelivery[];
+} & PropsLocale<'dsh-bot'>) {
+  const pending = deliveries.filter(row => groupExportReviewStatus(group, turn, row) === 'pending').length;
+  const failed = deliveries.filter(row => row.state === 'failed' && !exportStatusKey(group, turn, row)).length;
+  return <>{pending > 0 && <> · {t('groups.replies.pendingCount', { count: pending })}</>}
+    {failed > 0 && <> · {t('groups.replies.failedCount', { count: failed })}</>}</>;
+}
 export function GroupExportReview({ group, delivery, actions, disabled, t }: {
   group: GroupKey; delivery: GroupDelivery; actions: GroupActions; disabled?: boolean;
 } & PropsLocale<'dsh-bot'>) {

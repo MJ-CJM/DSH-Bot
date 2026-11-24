@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel, openSidebarSession } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, openSidebarSession, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 assert.deepEqual(process.argv.slice(2), ['--mock-only']);
 const root = process.cwd(); assert.equal(process.env.DSH_HOME, resolve(root, '.dsh-dev'));
@@ -72,8 +72,7 @@ try {
       await page.keyboard.press('Enter'); await settings.click();
       check('original scroll restored', await scroll.evaluate(el => el.scrollTop >= 400));
       await navigation.getByRole('button', { name: t['chat.recent'], exact: true }).click();
-      const row = panel.locator('li').filter({ has: page.locator('button[data-bot-id="navigation-bot-0"]') });
-      await row.locator('summary').click(); await row.getByRole('button', { name: t['chat.hide'], exact: true }).click();
+      await selectBotDirectoryAction(panel, 'navigation-bot-0', t['chat.hide']);
       check('hidden only in recent', await panel.locator('button[data-bot-id="navigation-bot-0"]').count() === 0);
       await navigation.getByRole('button', { name: t['navigation.myBots'], exact: true }).click();
       check('hidden Bot remains in My Bots', await panel.locator('button[data-bot-id="navigation-bot-0"]').count() === 1);

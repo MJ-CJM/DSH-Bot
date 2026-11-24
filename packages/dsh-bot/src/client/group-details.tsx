@@ -4,13 +4,15 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client';
 import { Button, SegmentedTabs, type SegmentedTab } from '@deepseek-ai/dsh-client-ui-primitives';
-import { groupKey, type GroupSummary } from '../shared/groups.js';
+import { groupKey, type GroupSummary, type GroupView } from '../shared/groups.js';
 import type { BotRecord } from '../shared/schema.js';
 import type { ExecutionBridge } from './group-execution.js';
 import { unwrapGroup, type GroupActions } from './groups-state.js';
 import type { BotCatalog } from './state.js';
 import { GroupAvatar } from './components/GroupAvatar.js';
 import { GroupMembersList, GroupOverview } from './components/GroupOverview.js';
+import { GroupRosterEditor } from './components/GroupsPanel.js';
+import { SettingsDrafts, useSettingsNavigation } from './components/SettingsNavigation.js';
 import { WorkMaterials, type WorkMaterialsActions } from './work-materials.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
@@ -87,6 +89,8 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
   { summary: GroupSummary; close(): void } & PropsLocale<'dsh-bot'>) {
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
   const [section, setSection] = useState<Section>('details');
+  const [editing, setEditing] = useState<GroupView>();
+  const navigation = useSettingsNavigation(t);
   const [stopping, setStopping] = useState(false);
   const stopLock = useRef(false);
   const [failed, setFailed] = useState(false);
@@ -99,9 +103,11 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
     <style>{css}</style>
     <header className={styles.overviewHeader}><GroupAvatar size={40} members={members} bots={records} />
       <div className={styles.overviewIdentity}><h3>{group.name}</h3><p>{t('navigation.memberCount', { count: members.filter(member => member.removedAt === undefined).length })}</p></div>
-      <Button variant="ghost" size="sm" onClick={close}>{t('actions.close')}</Button>
+      <Button variant="ghost" size="sm" onClick={() => navigation.leave(close)}>{t('actions.close')}</Button>
     </header>
-    <div className={styles.groupDetailsTabs}><SegmentedTabs label={t('botMode.detailsAndMaterials')} value={section} onChange={setSection} items={tabs} /></div>
+    <div className={styles.groupDetailsTabs}><SegmentedTabs label={t('botMode.detailsAndMaterials')} value={section} onChange={next => {
+      if (next !== section) navigation.leave(() => { setEditing(undefined); setSection(next); });
+    }} items={tabs} /></div>
     {failed && <p role="alert">{t('activity.openError')}</p>}
     {group.supergroup && summary.running && <Button variant="ghost" disabled={stopping} onClick={() => {
       if (stopLock.current) return;
@@ -120,11 +126,14 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
         {group.supergroup && <WorkMaterials scope={{ group: groupKey(group) }} sessionId={group.rootSessionId} actions={work} bots={records} t={t} />}
         <GroupMaterials summary={summary} actions={actions} t={t} />
       </>}
-      {section === 'members' && <GroupMembersList summary={summary} actions={actions} bots={records} openBotLabel={t('chat.openChat')}
-        onOpenBot={bot => { setFailed(false); void openBot(bot).catch(() => setFailed(true)); }} t={t} />}
+      {section === 'members' && (editing ? <SettingsDrafts.Provider value={navigation.registry}>
+        <GroupRosterEditor bots={records} initial={editing} actions={actions} onClose={() => setEditing(undefined)} t={t} />
+      </SettingsDrafts.Provider> : <GroupMembersList summary={summary} actions={actions} bots={records} onEdit={setEditing} openBotLabel={t('chat.openChat')}
+        onOpenBot={bot => { setFailed(false); void openBot(bot).catch(() => setFailed(true)); }} t={t} />)}
       {(section === 'activity' || section === 'settings') && <GroupOverview summary={summary} actions={actions} bots={records}
-        section={section} showHeader={false} showTabs={false} compactSettings executionBridge={executionBridge} t={t} />}
+        section={section} showHeader={false} showTabs={false} compactSettings executionBridge={executionBridge} onDeleted={close} t={t} />}
     </div>
+    {navigation.confirmation}
   </section>;
 }
 
@@ -146,7 +155,7 @@ export function registerGroupDetails(ctx: Context, deps: Dependencies) {
       const summary = catalog.groups.find(({ group }) => group.rootSessionId === props.sessionId &&
         (!target || group.id === target.id && group.createdAt === target.createdAt));
       if (!visible) return null;
-      if (!summary) return <p role="status">{props.t(catalog.loaded || catalog.error ? 'groups.disconnected' : 'groups.loading')}</p>;
+      if (!summary) return <p role="status">{props.t(catalog.error ? 'groups.disconnected' : catalog.loaded ? 'navigation.targetMissing' : 'groups.loading')}</p>;
       return <GroupDetails key={JSON.stringify([summary.group.id, summary.group.createdAt, navigation.revision])} summary={summary} {...deps} close={() => { if (scope.sidebarRight.isExpanded()) scope.sidebarRight.toggleExpanded(); }} t={props.t} />;
     })), 'dsh-bot: group details body');
   });

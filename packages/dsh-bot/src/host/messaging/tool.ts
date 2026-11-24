@@ -1,4 +1,5 @@
 import type { Agent } from '@deepseek-ai/dsh-agent';
+import { registerWorkerCapability } from '../groups/worker-capabilities.js';
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools';
 import { messageToolInputSchema, type MessageToolInput } from '../../shared/messaging.js';
 import { digest, OperationError } from '../common/operations.js';
@@ -62,7 +63,7 @@ export function registerMessageTool(agent: Agent, safety: MessagingSafety): () =
     }, { prepend: true });
     const guard = ctx.tools.guard((exec) => exec.name === 'bot_message' &&
       (!active || exec.parent !== undefined || !proposals.has(exec)) ? 'Message approval missing or nested dispatch' : undefined);
-    const release = ctx.tools.register(defineTool({
+    const release = registerWorkerCapability(agent, defineTool({
       name: 'bot_message', description: en.tools['bot_message.description'],
       parameters: {
         action: { type: 'string', required: true, enum: ['list', 'send', 'reply', 'result', 'query'] },

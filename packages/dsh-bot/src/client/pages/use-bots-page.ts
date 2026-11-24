@@ -142,7 +142,7 @@ export function useBotsPage({
   }, [groups, groupRequest, groupList, setSelectedGroup, setTab, t]);
   useEffect(() => {
     if (!selectedGroup || !groupList.loaded || groupList.error) return;
-    const found = groupList.groups.find(row => row.group.id === selectedGroup.id && row.group.createdAt === selectedGroup.createdAt && !row.group.archived);
+    const found = groupList.groups.find(row => row.group.id === selectedGroup.id && row.group.createdAt === selectedGroup.createdAt);
     if (!found) { setSelectedGroup(undefined); setToast({ text: t('navigation.targetMissing'), error: true }); }
   }, [selectedGroup, groupList, setSelectedGroup, t]);
   useEffect(() => {

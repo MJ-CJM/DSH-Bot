@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { webHost } from './deepening/b4-web-host.mjs';
 import { frozenArtifactAudit } from './proactive/artifact-audit.mjs';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 
 const root=process.cwd();assert.equal(process.env.DSH_HOME,resolve(root,'.dsh-dev'));
@@ -45,10 +45,7 @@ async function verifyObservationUi(){
   await dismissFirstRunOverlays(page,()=>{},'proactive-observation');
   await openBotsPanel(page,t['bots.title']);
   const bots=page.locator('[data-bots-page]:visible');
-  const profile=bots.getByRole('button',{name:`${t['chat.profile']} · Fixture CI`,exact:true});
-  const fallback=bots.locator('button[data-bot-id="fixture-ci"]');
-  await profile.or(fallback).first().waitFor();
-  if(await profile.isVisible())await profile.click();else await fallback.click();
+  await selectBotDirectoryAction(bots, 'fixture-ci', t['chat.profile']);
   const detail=page.locator('[data-bot-detail="fixture-ci"]');
   await detail.getByRole('tab',{name:t['detail.work'],exact:true}).click();
   await page.setViewportSize({width,height:950});
@@ -181,7 +178,7 @@ async function verifyResponsibilityUi(){
  await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
  await installOverlayHandler(page,()=>{});await page.goto(host.url,{waitUntil:'domcontentloaded'});await dismissFirstRunOverlays(page,()=>{},'responsibility-policy');
  await openBotsPanel(page,translations['bots.title']);const bots=page.locator('[data-bots-page]:visible');
- const profile=bots.getByRole('button',{name:`${translations['chat.profile']} · Fixture CI`,exact:true});const fallback=bots.locator('button[data-bot-id="fixture-ci"]');await profile.or(fallback).first().waitFor();if(await profile.isVisible())await profile.click();else await fallback.click();
+ await selectBotDirectoryAction(bots, 'fixture-ci', translations['chat.profile']);
  const detail=page.locator('[data-bot-detail="fixture-ci"]');await detail.getByRole('tab',{name:translations['detail.work'],exact:true}).click();
  const panel=detail.getByRole('region',{name:translations['responsibility.title']});const rule=panel.locator('[data-responsibility-id="host-role"]');await rule.waitFor();
  await panel.getByRole('button',{name:translations['responsibility.create'],exact:true}).and(panel.locator(':enabled')).waitFor();

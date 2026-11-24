@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel, openSidebarSession } from './deepening/sidebar-session.mjs';
+import { botDirectoryMore, openBotsPanel, openSidebarSession, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { auditArtifact } from './p34-artifact.mjs';
 import { scratch } from './proactive/worker.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
@@ -71,6 +71,37 @@ try {
   await dismissFirstRunOverlays(page, () => {}, 'native-bots-workspace');
   const botId = 'local-assistant', sessionId = fixture.sessions[botId];
   await openBotsPanel(page, t['bots.title']);
+  const panel = page.locator('[data-bots-page]:visible');
+  const sections = panel.getByRole('navigation', { name: t['navigation.sections'] });
+  for (const [mode, title] of [['bots', t['navigation.myBots']], ['recent', t['chat.recent']]]) {
+    await sections.getByRole('button', { name: title, exact: true }).click();
+    const row = panel.locator(`[data-bots-list="${mode}"] [data-directory-kind="bot"][data-directory-id="${botId}"]`);
+    await row.waitFor();
+    check(`${mode}: only the conversation and More buttons are shown`, await row.getByRole('button').count() === 2);
+    const more = botDirectoryMore(panel, botId);
+    await more.click();
+    const menu = page.getByRole('menu');
+    const menuLabels = await menu.getByRole('menuitem').allTextContents();
+    check(`${mode}: each action has exactly one menu entry`, ['chat.pin', 'chat.profile', 'actions.delete', ...(mode === 'recent' ? ['chat.hide'] : [])]
+      .every(key => menuLabels.filter(label => label.trim() === t[key]).length === 1));
+    await menu.getByRole('menuitem', { name: t['chat.profile'], exact: true }).click();
+    await panel.locator(`[data-bot-detail="${botId}"]`).waitFor();
+    await panel.getByRole('button', { name: t['navigation.returnTo'].replace('{name}', title), exact: true }).click();
+    await more.waitFor();
+    await page.waitForFunction(trigger => trigger === document.activeElement, await more.elementHandle());
+    check(`${mode}: opening the profile and returning restores focus to More`, true);
+    await selectBotDirectoryAction(panel, botId, t['chat.pin']);
+    await row.locator('[data-directory-pinned]').waitFor();
+    check(`${mode}: pinned label adds no duplicate button`, await row.getByRole('button').count() === 2);
+    await selectBotDirectoryAction(panel, botId, t['chat.unpin']);
+    await row.locator('[data-directory-pinned]').waitFor({ state: 'detached' });
+    await selectBotDirectoryAction(panel, botId, t['actions.delete']);
+    const confirmation = page.getByRole('dialog');
+    await confirmation.getByRole('button', { name: t['actions.cancel'], exact: true }).click();
+    await confirmation.waitFor({ state: 'hidden' });
+    check(`${mode}: unpin and cancel deletion preserve the same Bot`, await row.isVisible());
+  }
+  await sections.getByRole('button', { name: t['navigation.myBots'], exact: true }).click();
   await page.locator(`[data-directory-id="${botId}"][data-directory-kind="bot"] [data-directory-open]`).click();
   const main = page.locator(`[data-conversation-content][data-conversation-session="${sessionId}"]:visible`);
   const editor = main.locator('[contenteditable="true"]:visible').first();
@@ -128,14 +159,24 @@ try {
   const botsPanel = page.locator('[data-bots-page]:visible');
   await botsPanel.getByRole('navigation', { name: t['navigation.sections'], exact: true })
     .getByRole('button', { name: t['groups.title'], exact: true }).click();
-  await botsPanel.getByRole('button', { name: t['groups.create'], exact: true }).click();
-  const create = botsPanel.getByRole('form', { name: t['groups.create'], exact: true });
   const members = Object.keys(fixture.sessions);
   assert.equal(members.length, 4);
-  await create.getByRole('textbox', { name: t['groups.name'], exact: true }).fill('Sidebar Avatar Group');
-  for (const member of members) await create.getByRole('checkbox', { name: new RegExp(`\\(${member}\\)$`) }).check();
-  await create.getByRole('checkbox', { name: t['groups.historyConsent'], exact: true }).check();
-  await create.getByRole('button', { name: t['integrations.save'], exact: true }).click();
+  async function createFixtureGroup(name) {
+    await botsPanel.getByRole('button', { name: t['groups.create'], exact: true }).click();
+    const create = botsPanel.getByRole('form', { name: t['groups.create'], exact: true });
+    await create.getByRole('textbox', { name: t['groups.name'], exact: true }).fill(name);
+    for (const member of members) await create.getByRole('checkbox', { name: new RegExp(`\\(${member}\\)$`) }).check();
+    await create.getByRole('checkbox', { name: t['groups.historyConsent'], exact: true }).check();
+    const [response] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/dshBot.groups/create')),
+      create.getByRole('button', { name: t['integrations.save'], exact: true }).click(),
+    ]);
+    const result = (await response.json()).result;
+    assert.ok(result?.ok, JSON.stringify(result));
+    await page.locator(`[data-workspace-group-composer="${result.value.rootSessionId}"]:visible`).waitFor();
+    return result.value;
+  }
+  const original = await createFixtureGroup('Sidebar Avatar Group');
   const ordinaryComposer = page.locator('[data-workspace-group-composer]:visible');
   await ordinaryComposer.waitFor();
   const rootSession = await ordinaryComposer.getAttribute('data-workspace-group-composer');
@@ -198,6 +239,85 @@ try {
   const changed = await readAvatar('dark', members.slice(1));
   check('member editing refreshes the native avatar without reloading or dispatching a model',
     changed.members.length === 3 && (await read('calls')).length === requestsBeforeEdit);
+
+  const dialog = page.getByRole('dialog');
+  const deleteLabel = t['groups.delete'];
+  const groupRowIn = (list, record) => list.locator(`[data-directory-kind="group"][data-directory-id="${record.id}"][data-directory-created-at="${record.createdAt}"]`);
+  const openSection = async key => {
+    await openBotsPanel(page, t['bots.title']);
+    await sections.getByRole('button', { name: t[key], exact: true }).click();
+  };
+  const chooseRowAction = async (row, label) => {
+    await row.locator('button[aria-haspopup="menu"]').click();
+    await page.getByRole('menu').getByRole('menuitem', { name: label, exact: true }).click();
+  };
+  const confirmDelete = async record => {
+    assert.ok((await dialog.innerText()).includes(record.name));
+    const [response] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/dshBot.groups/deleteGroup')),
+      dialog.getByRole('button', { name: deleteLabel, exact: true }).click(),
+    ]);
+    const result = (await response.json()).result;
+    assert.ok(result?.ok, JSON.stringify(result));
+    await dialog.waitFor({ state: 'hidden' });
+  };
+  await management.getByRole('button', { name: deleteLabel, exact: true }).click();
+  await dialog.getByRole('button', { name: t['actions.cancel'], exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  check('cancelling from group settings keeps the same group and session', await groupRow.isVisible() && await management.isVisible());
+
+  await openSection('groups.title');
+  const duplicate = await createFixtureGroup(original.name);
+  assert.equal(duplicate.name, original.name);
+  assert.notEqual(duplicate.rootSessionId, original.rootSessionId);
+  const duplicateSidebar = page.locator(`[data-row-key="session:${duplicate.rootSessionId}"]`);
+  await openSidebarSession(page, duplicate.rootSessionId);
+  await duplicateSidebar.waitFor();
+  await openSection('chat.recent');
+  const recent = panel.locator('[data-bots-list="recent"]');
+  await groupRowIn(recent, original).waitFor();
+  await groupRowIn(recent, duplicate).waitFor();
+  await chooseRowAction(groupRowIn(recent, duplicate), deleteLabel);
+  await dialog.getByText(duplicate.id, { exact: true }).waitFor();
+  await confirmDelete(duplicate);
+  await groupRowIn(recent, duplicate).waitFor({ state: 'detached' });
+  await duplicateSidebar.waitFor({ state: 'hidden' });
+  await groupRowIn(recent, original).waitFor();
+  check('deleting from Recent removes only the selected same-name group', await groupRowIn(recent, original).isVisible());
+
+  await openSection('groups.title');
+  const directory = panel.getByRole('region', { name: t['groups.list'], exact: true });
+  check('group directory preserves the other group with the same name', await groupRowIn(directory, duplicate).count() === 0 && await groupRowIn(directory, original).isVisible());
+  await chooseRowAction(groupRowIn(directory, original), t['chat.profile']);
+  const overview = panel.locator(`[data-group-overview="${original.id}"]`);
+  await overview.getByRole('button', { name: t['card.more'], exact: true }).click();
+  const [archiveResult] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/dshBot.groups/archive')),
+    page.getByRole('menu').getByRole('menuitem', { name: t['groups.archive'], exact: true }).click(),
+  ]);
+  const archiveReceipt = (await archiveResult.json()).result;
+  assert.ok(archiveReceipt?.ok, JSON.stringify(archiveReceipt));
+  await directory.getByRole('button', { name: t['groups.filter'], exact: true }).click();
+  await page.getByRole('menu').getByText(t['groups.filter.archived'], { exact: true }).click();
+  await groupRowIn(directory, original).getByText(t['groups.archived'], { exact: true }).waitFor();
+  await chooseRowAction(groupRowIn(directory, original), deleteLabel);
+  await confirmDelete(original);
+  await groupRowIn(directory, original).waitFor({ state: 'detached' });
+  await groupRow.waitFor({ state: 'hidden' });
+  check('deletion removes the archived group from the Archived filter and native sidebar', true);
+  await directory.getByRole('button', { name: t['groups.filter'], exact: true }).click();
+  await page.getByRole('menu').getByText(t['groups.filter.all'], { exact: true }).click();
+  await groupRowIn(directory, view.group.group).waitFor();
+  check('All groups excludes both deleted groups and retains the independent automatic discussion',
+    await groupRowIn(directory, original).count() === 0 && await groupRowIn(directory, duplicate).count() === 0);
+  await chooseRowAction(groupRowIn(directory, view.group.group), deleteLabel);
+  await dialog.getByText(t['groups.deleteManaged'], { exact: true }).waitFor();
+  check('the automatic discussion explains its ownership and disables deletion',
+    await dialog.getByRole('button', { name: deleteLabel, exact: true }).isDisabled());
+  await dialog.getByRole('button', { name: t['actions.cancel'], exact: true }).click();
+  await openSection('navigation.myBots');
+  for (const member of members) await panel.locator(`[data-bots-list="bots"] [data-bot-id="${member}"][data-directory-open]`).waitFor();
+  check('all member Bots remain available after group deletion', true);
 
   assert.deepEqual(errors, []);
   check('no private mode shell mounted', await page.locator('[data-bot-mode-switch-button], [data-bot-mode-sidebar]').count() === 0);

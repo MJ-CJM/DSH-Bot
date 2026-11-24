@@ -6,13 +6,14 @@ import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { createScope } from '@deepseek-ai/dsh-scope';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
-import ToolRuntime from '@deepseek-ai/dsh-tools';
+import ToolRuntime, { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools';
 import ApprovalService from '@deepseek-ai/dsh-user-approval';
 import type { DshBotRegistry } from '../src/host/registry.js';
 import { bindings } from '../src/host/data-flow/agent-binding.js';
 import { ScopedCollaboration, getScopedCollaborationBinding, protectScopedCollaboration,
   isScopedCollaborationInput, type CollaborationScope } from '../src/host/supergroup/collaboration.js';
 import { registerDelegateTool } from '../src/host/delegate/tool.js';
+import { registerWorkerCapability } from '../src/host/groups/worker-capabilities.js';
 
 function fixture() {
   const controller = new AbortController();
@@ -31,9 +32,12 @@ function fixture() {
   const dispose = vi.fn(async () => {});
   const listeners = new Map<string, (payload: unknown, next: () => Promise<unknown>) => Promise<unknown>>();
   let toolGuard: ((exec: { agent: Agent; parent?: unknown; name: string }) => string | undefined) | undefined;
+  const tools = new Map<string, ToolDefinition>();
   const childContext = { effect: (setup: () => () => void) => setup(),
     on: (event: string, listener: typeof listeners extends Map<string, infer T> ? T : never) => { listeners.set(event, listener); return () => listeners.delete(event); },
-    tools: { guard: (callback: NonNullable<typeof toolGuard>) => { toolGuard = callback; return () => { toolGuard = undefined; }; } } };
+    tools: { get: (name: string) => tools.get(name),
+      register: (definition: ToolDefinition) => { tools.set(definition.name, definition); return () => tools.delete(definition.name); },
+      guard: (callback: NonNullable<typeof toolGuard>) => { toolGuard = callback; return () => { toolGuard = undefined; }; } } };
   const startActivation = vi.fn(async (spec: { childId: string; request: { parent: Agent; agentPreset: string; prompt: unknown[] } }) => {
     child = { ctx: childContext, session: { id: spec.childId, header: { parentSession: spec.request.parent.session.id,
       agentPreset: spec.request.agentPreset } } } as unknown as Agent;
@@ -343,6 +347,9 @@ test('exact scoped child input and tool restriction are enforced during native s
       isScopedCollaborationInput(child, { id: 'replayed', source: { kind: 'user' }, content } as never)];
     const draft = getScopedCollaborationBinding(child)?.phase === 'draft';
     for (const name of ['bot_message', 'bot_delegate']) {
+      expect(f.toolGuard()({ agent: child, name })).toBeDefined();
+      registerWorkerCapability(child, defineTool({ name, description: 'fixture', parameters: {},
+        output: { schema: { type: 'string' }, render: () => [] }, execute: async () => '' }));
       const decision = f.toolGuard()({ agent: child, name });
       if (draft) expect(decision).toContain('only checked Bot collaboration'); else expect(decision).toBeUndefined();
     }

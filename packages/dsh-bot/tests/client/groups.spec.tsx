@@ -8,12 +8,13 @@ import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import { GroupConversation } from '../../src/client/components/GroupsPanel.js';
 import { GroupMessageCard, GroupTimeline } from '../../src/client/components/GroupTimeline.js';
 import { selectGroupComposer, groupMessageDefinition } from '../../src/client/workspace-group.js';
+import { GroupReplyFolds } from '../../src/client/group-reply-folds.js';
 import { bots, view, summary, configure } from './group-fixture.js';
-import { mountClient, button, click, fill, field } from './helpers.js';
+import { bot, mountClient, button, click, fill, field } from './helpers.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
-async function composer(language: 'en' | 'zh' = 'en', workspace = true) {
+async function composer(language: 'en' | 'zh' = 'en', workspace = true, catalog = bots) {
   const ctx = new Context(); const data = view(); data.group.mode = 'natural';
   const send = vi.fn<GroupMethods['send']>(async () => { throw new Error('uncertain'); });
   const cancel = vi.fn<GroupMethods['cancel']>();
@@ -22,7 +23,7 @@ async function composer(language: 'en' | 'zh' = 'en', workspace = true) {
   const actions = createGroupActions(ctx, {}), element = document.createElement('div'); document.body.append(element);
   let root = createRoot(element); const t = ((key: keyof typeof en.ui, params?: Record<string, unknown>) =>
     (language === 'en' ? en : zh).ui[key].replace(/\{(\w+)\}/g, (_match, k) => String(params?.[k] ?? k))) as PropsLocale<'dsh-bot'>['t'];
-  const render = async () => { await act(async () => root.render(<GroupConversation workspace={workspace} summary={summary()} actions={actions} bots={bots}
+  const render = async () => { await act(async () => root.render(<GroupConversation workspace={workspace} summary={summary()} actions={actions} bots={catalog}
     expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={async () => {}} t={t} />));
     await vi.waitFor(() => expect(element.querySelector('textarea')).toBeTruthy()); };
   await render();
@@ -47,6 +48,124 @@ describe('workspace group composer and management', () => {
       expect((field(f.element, f.t('groups.message')) as HTMLTextAreaElement).value).toBe('ordinary message');
       await click(button(f.element, f.t('groups.send')));
       expect(f.send.mock.calls[1]?.[1].operationId).toBe(first?.operationId);
+    } finally { await f.close(); }
+  });
+  it('sends an explicit plain-text question to a guest by its exact identity', async () => {
+    const text = '问 Jarvis：请介绍你自己';
+    const jarvis = bot({ id: 'outside', name: 'Jarvis' }), f = await composer('zh', true, [...bots, jarvis]);
+    try {
+      await fill(field(f.element, f.t('groups.message')), text);
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send.mock.calls[0]?.[1]).toMatchObject({ text, expectedGuest: { botId: 'outside', botCreatedAt: jarvis.createdAt },
+        memberIds: [] });
+      expect(f.send.mock.calls[0]?.[1]).not.toHaveProperty('expectedRelay');
+    } finally { await f.close(); }
+  });
+  it.each(['你问下 Jarvis 最近有和这个相关的吗？', '@Beta 问下 Jarvis 最近有和这个相关的吗？'])('submits the named relay and only the human-supplied topic: %s', async text => {
+    const jarvis = bot({ id: 'outside', name: 'Jarvis' });
+    const f = await composer('zh', true, [bot({ id: 'alpha', name: 'Alpha' }), bot({ id: 'beta', name: 'Beta' }), jarvis]);
+    try {
+      const quoted = f.data.messages[0]!;
+      if (!text.startsWith('@')) await act(async () => f.actions.reply('group-root-one', quoted));
+      await fill(field(f.element, f.t('groups.message')), text);
+      expect(f.element.textContent).toContain(f.t('groups.relay.hint', { sender: 'Beta', guest: 'Jarvis' }));
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).not.toHaveBeenCalled();
+      expect(f.element.textContent).toContain(f.t('groups.relay.topicRequired'));
+      await fill(field(f.element, f.t('groups.relay.topicLabel')), 'HarmonyOS migration');
+      await f.remount();
+      expect(field(f.element, f.t('groups.relay.topicLabel')).value).toBe('HarmonyOS migration');
+      await click(button(f.element, f.t('groups.send')));
+      const request = f.send.mock.calls[0]?.[1];
+      expect(request).toMatchObject({ text, expectedGuest: { botId: 'outside', botCreatedAt: jarvis.createdAt },
+        expectedRelay: { botId: 'beta', botCreatedAt: 1 }, relayTopic: 'HarmonyOS migration', memberIds: ['member:beta'] });
+      expect(request?.replyTo).toBe(text.startsWith('@') ? undefined : quoted.id);
+      expect(JSON.stringify(request)).not.toContain(quoted.text);
+    } finally { await f.close(); }
+  });
+  it.each([true, false])('only lists everyone and available group members in the @ menu (workspace=%s)', async workspace => {
+    const f = await composer('zh', workspace, [...bots, bot({ id: 'outside', name: 'Jarvis' })]);
+    try {
+      const member = f.data.members[0]!;
+      f.data.members.push({ ...member, id: 'disabled-member', bot: { botId: 'disabled', botCreatedAt: 2 }, enabled: false },
+        { ...member, id: 'removed-member', bot: { botId: 'removed', botCreatedAt: 3 }, removedAt: 4 });
+      f.data.unavailableMemberIds.push(f.data.members[1]!.id);
+      await f.remount();
+      const draft = field(f.element, f.t('groups.message'));
+      for (const text of ['@', '请 @']) {
+        await fill(draft, text);
+        await vi.waitFor(() => expect(Array.from(f.element.querySelectorAll('[role=option] strong'), el => el.textContent))
+          .toEqual(['everyone', 'Same name']));
+      }
+      await fill(draft, '@Jar');
+      await vi.waitFor(() => expect(f.element.querySelector('[role=option]')).toBeNull());
+      expect(draft.value).toBe('@Jar');
+      await fill(draft, '@everyone check in');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send.mock.calls[0]?.[1].memberIds).toEqual([member.id]);
+    } finally { await f.close(); }
+  });
+  it('updates an open mention menu when members leave or are disabled without editing the draft', async () => {
+    const f = await composer('en', true, [bot({ id: 'alpha', name: 'Alpha' }), bot({ id: 'beta', name: 'Beta' })]);
+    try {
+      const draft = field(f.element, f.t('groups.message'));
+      const options = () => Array.from(f.element.querySelectorAll('[role=option] strong'), el => el.textContent);
+      await fill(draft, '@');
+      await vi.waitFor(() => expect(options()).toEqual(['everyone', 'Alpha', 'Beta']));
+      f.data.members[0]!.enabled = false;
+      f.data.members[1]!.removedAt = 4;
+      f.data.group.membershipRevision++;
+      await act(async () => f.actions.messageView({ groupId: f.data.group.id, groupCreatedAt: f.data.group.createdAt }).refresh());
+      await vi.waitFor(() => expect(options()).toEqual(['everyone']));
+      expect(draft.value).toBe('@');
+      expect(f.send).not.toHaveBeenCalled();
+    } finally { await f.close(); }
+  });
+  it.each(['@Jarvis 请介绍你自己', '请 @Jarvis 核实', '＠Jarvis 请介绍你自己', '让 Beta 问 @Jarvis：核实版本'])(
+    'keeps an out-of-group @ in the draft without dispatching: %s', async text => {
+      const f = await composer('zh', true, [bot({ id: 'alpha', name: 'Alpha' }), bot({ id: 'beta', name: 'Beta' }),
+        bot({ id: 'outside', name: 'Jarvis' })]);
+      try {
+        const draft = field(f.element, f.t('groups.message'));
+        await fill(draft, text);
+        await click(button(f.element, f.t('groups.send')));
+        expect(f.send).not.toHaveBeenCalled();
+        expect(draft.value).toBe(text);
+        expect(Array.from(f.element.querySelectorAll('[role=alert]'), el => el.textContent).join(' ')).toContain('@');
+      } finally { await f.close(); }
+    });
+  it('retains old guest picks in the draft without routing them to a namesake group member', async () => {
+    const jarvis = bot({ id: 'outside', name: 'Jarvis' });
+    const f = await composer('zh', true, [bot({ id: 'alpha', name: 'Jarvis' }), jarvis]);
+    try {
+      const text = '@Jarvis 请核实版本';
+      const mention = '@Jarvis';
+      await act(async () => f.actions.patchDraft(f.data.group.rootSessionId, draft => ({ ...draft, text,
+        mentionBindings: [{ start: 0, end: mention.length, text: mention, memberId: 'guest:' + JSON.stringify([jarvis.id, jarvis.createdAt]) }] })));
+      await f.remount();
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).not.toHaveBeenCalled();
+      expect(field(f.element, f.t('groups.message')).value).toBe(text);
+    } finally { await f.close(); }
+  });
+  it('resolves a typed member @ within the group even if a guest has the same display name', async () => {
+    const f = await composer('zh', true, [bot({ id: 'alpha', name: 'Jarvis' }), bot({ id: 'guest-duplicate', name: 'Jarvis' })]);
+    try {
+      await fill(field(f.element, f.t('groups.message')), '@Jarvis how are you?');
+      await click(button(f.element, f.t('groups.send')));
+      const request = f.send.mock.calls[0]?.[1];
+      expect(request?.memberIds).toEqual(['member:alpha']);
+      expect(request).not.toHaveProperty('expectedGuest');
+    } finally { await f.close(); }
+  });
+  it.each(['guest-ambiguous', 'guest-unavailable', 'guest-changed'] as const)('shows the host reason for a rejected guest question: %s', async code => {
+    const f = await composer();
+    try {
+      f.send.mockRejectedValueOnce({ code: `dsh-bot/${code}` });
+      await fill(field(f.element, f.t('groups.message')), 'Ask Jarvis what is the status?');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.element.textContent).toContain(f.t(code === 'guest-unavailable' ? 'groups.guest.unavailable' : code === 'guest-ambiguous' ? 'groups.guest.ambiguous' : 'groups.guest.changed'));
+      expect(f.send).toHaveBeenCalledTimes(1);
     } finally { await f.close(); }
   });
   it.each(['group-data-blocked', 'conflict', 'member-limit'] as const)('shows a specific %s refusal and retains the draft', async code => {
@@ -108,7 +227,8 @@ describe('workspace group composer and management', () => {
     const app = await mountClient(bots, 'en', configure);
     try {
       await click(button(app.container, en.ui['groups.title']));
-      await click([...app.container.querySelectorAll('nav button')].find(node => node.getAttribute('aria-label') === en.ui['chat.profile'] + ' · Synthetic group') as HTMLButtonElement);
+      await click(button(app.container, en.ui['card.more'] + ' · Synthetic group'));
+      await click(button(app.container, en.ui['chat.profile']));
       await vi.waitFor(() => expect(app.container.textContent).toContain('Synthetic group'));
       expect(app.container.querySelector('[role="log"]')).toBeNull();
       expect(app.container.querySelector('textarea')).toBeNull();
@@ -209,6 +329,68 @@ it('public conversation projection keeps user authorship and explicit reply meta
   }
 });
 
+it('folds group-only task inputs, owner follow-ups and unassigned Supergroup messages in their owning session', async () => {
+  const { WorkspaceMessage } = await import('../../src/client/workspace-group.js');
+  const data = view(), group = { groupId: data.group.id, groupCreatedAt: data.group.createdAt };
+  const t = ((name: keyof typeof en.ui) => en.ui[name]) as PropsLocale<'dsh-bot'>['t'];
+  const content = [{ type: 'text', text: 'Public question\n\nSecond paragraph.' }];
+  const event = (id: string, source: object) => ({ type: 'user/message', surfaceOp: 'append', seq: 3, time: 1, data: { id, source, content } });
+  const followup = { kind: 'dsh-bot-group-owner-followup', group, turnId: 'turn', cardId: 'card', predecessorTurnId: 'previous' };
+  const task = { kind: 'dsh-bot-supergroup', group, turnId: 'turn', workId: 'work' };
+  const ownerInput = { kind: 'user', group, supergroupWorkId: 'work', operationId: 'send' };
+  const input = (id: string, source: object) => {
+    const row = event(id, source);
+    expect(groupMessageDefinition.match(row as never)?.exclusive).toBe(true);
+    return groupMessageDefinition.start({} as never, { event: row } as never, {} as never);
+  };
+  // The worker receives a separate native prompt with the same kind and card.
+  expect(groupMessageDefinition.match(event('private-worker-message', followup) as never)).toBeNull();
+  expect(groupMessageDefinition.match(event('historical-user-input', { kind: 'user' }) as never)).toBeNull();
+  data.turns = [{ id: 'turn', group, mode: 'natural', state: 'completed', operationId: 'op', requestDigest: 'digest',
+    inputMessageId: 'question', inputSeq: 3, revision: 1, createdAt: 1, updatedAt: 1, schemaVersion: 1, membershipRevision: 1, contextThroughSeq: 0,
+    orderedMemberIds: ['member:alpha'], ownerFollowUp: { cardId: 'card', cardRevision: 1, predecessorTurnId: 'previous', predecessorTurnRevision: 1,
+      membershipRevision: 1, modelRevision: 0, memberId: 'member:alpha', bot: { botId: 'alpha', botCreatedAt: 1 }, botRevision: 1,
+      modelSelection: { provider: 'local', model: 'fixture' } } }];
+  const snapshot = { view: data };
+  const actions = { messageView: () => ({ subscribe: () => () => {}, getSnapshot: () => snapshot }), replyFolds: new GroupReplyFolds() } as unknown as import('../../src/client/groups-state.js').GroupActions;
+  const element = document.createElement('div'), root = createRoot(element);
+  const render = (id: string, source: object, sessionId = data.group.rootSessionId) => act(async () => {
+    root.render(<WorkspaceMessage sessionId={sessionId} node={{ data: input(id, source) } as never} actions={actions} onOpenSession={async () => {}} t={t} />);
+  });
+  const fold = async (kind: 'user' | 'proactive') => {
+    const button = element.querySelector<HTMLButtonElement>('[data-group-author="' + kind + '"] [data-group-reply-toggle]');
+    if (!button) throw Error('Missing public message fold control');
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    await click(button);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(element.querySelector('[data-group-reply-preview]')?.textContent).toBe('Public question');
+    await click(button);
+  };
+  try {
+    const publicFollowup = { ...followup, groupRootSessionId: data.group.rootSessionId };
+    await render('question', publicFollowup);
+    await fold('proactive');
+    for (const [id, changes, session] of [
+      ['private-worker-message', {}, data.group.rootSessionId],
+      ['question', {}, 'worker-session'],
+      ['question', { predecessorTurnId: 'another' }, data.group.rootSessionId],
+    ] as const) {
+      await render(id, { ...publicFollowup, ...changes }, session);
+      expect(element.childElementCount).toBe(0);
+    }
+    data.group.supergroup = { workId: 'work', originSessionId: 'origin', originMessageId: 'original', owner: { botId: 'alpha', botCreatedAt: 1 },
+      readers: [{ botId: 'alpha', botCreatedAt: 1 }], expiresAt: 1000 };
+    await render('question', task);
+    await fold('proactive');
+    await render('question', { ...task, workId: 'other' });
+    expect(element.childElementCount).toBe(0);
+    await render('unassigned', ownerInput);
+    await fold('user');
+    await render('unassigned', ownerInput, 'private-session');
+    expect(element.childElementCount).toBe(0);
+  } finally { await act(async () => root.unmount()); }
+});
+
 it('projects a legacy wrapped upload only when its native receipt belongs to that input', () => {
   const attachment = { type: 'file', attachment: { attachmentId: 'known-file', name: 'from-history.txt', bytes: 5 } };
   const project = (rpcId: string) => groupMessageDefinition.start({} as never, { event: { type: 'user/message', time: 1, seq: 2,
@@ -293,6 +475,60 @@ async function armMemory(f: Awaited<ReturnType<typeof composer>>) {
   await vi.waitFor(() => expect(f.element.querySelector('[data-group-command="memory"]')).not.toBeNull());
   await click(f.element.querySelector('[data-group-command="memory"]') as HTMLElement);
 }
+
+it('pins the single suggested memory reference while a new group reply arrives', async () => {
+  const f = await composer('zh');
+  try {
+    const quoted = f.data.messages[0]!, group = f.data.group, member = f.data.members[1]!;
+    f.data.turns.push({ id: quoted.turnId, group: { groupId: group.id, groupCreatedAt: group.createdAt }, operationId: 'previous',
+      requestDigest: 'digest', inputMessageId: 'question', createdAt: 1, updatedAt: 1, revision: 1, schemaVersion: 1,
+      membershipRevision: group.membershipRevision, orderedMemberIds: [member.id], mode: 'natural', contextThroughSeq: 1, state: 'completed' });
+    const delivery = { id: 'reply-delivery', turnId: quoted.turnId, memberId: member.id, ordinal: 0, bot: member.bot,
+      botRevision: 1, presetId: 'bot-beta', contextOutputMessageIds: [], contextTruncated: false, state: 'completed' as const, outputMessageId: quoted.id };
+    f.data.deliveries.push(delivery);
+    await f.remount();
+    await fill(field(f.element, f.t('groups.message')), '只记下来。');
+    expect(f.element.querySelector('[data-group-memory-reference]')?.textContent).toContain(quoted.text);
+    f.data.messages.push({ ...quoted, id: 'another', seq: 2, text: 'Different reply' });
+    f.data.deliveries.push({ ...delivery, id: 'another-delivery', outputMessageId: 'another' });
+    await f.remount();
+    await click(button(f.element, f.t('groups.send')));
+    expect(f.send.mock.calls.at(-1)?.[1]).toMatchObject({ memoryStatusOnly: true, replyTo: quoted.id });
+    await fill(field(f.element, f.t('groups.message')), 'new draft');
+    await fill(field(f.element, f.t('groups.message')), '只记下来');
+    await click(button(f.element, f.t('groups.send')));
+    expect(f.send).toHaveBeenCalledTimes(1);
+    expect(f.element.textContent).toContain(f.t('groups.memoryStatus.needsText'));
+  } finally { await f.close(); }
+});
+
+it('records an explicit memory instruction, asking for a reference only when the material is missing', async () => {
+  const f = await composer('zh');
+  try {
+    const draft = field(f.element, f.t('groups.message')), send = button(f.element, f.t('groups.send'));
+    await fill(draft, '只记下来');
+    await click(send);
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.element.textContent).toContain(f.t('groups.memoryStatus.needsText'));
+    const quoted = f.data.messages[0]!;
+    await act(async () => f.actions.reply(f.data.group.rootSessionId, quoted));
+    await click(send);
+    expect(f.send.mock.calls.at(-1)?.[1]).toMatchObject({ memoryStatusOnly: true, replyTo: quoted.id, text: '只记下来' });
+    await click(button(f.element, f.t('groups.clearReply')));
+    await fill(draft, '只记下来：先核对旧版的行为');
+    await click(send);
+    expect(f.send.mock.calls.at(-1)?.[1]).toMatchObject({ memoryStatusOnly: true, text: '只记下来：先核对旧版的行为' });
+    await fill(draft, '你刚才说的“只记下来”是什么意思？');
+    await click(send);
+    expect(f.send.mock.calls.at(-1)?.[1]).not.toHaveProperty('memoryStatusOnly');
+    const count = f.send.mock.calls.length;
+    await act(async () => f.actions.patchDraft(f.data.group.rootSessionId, old => ({ ...old, followup: { deliveryId: 'active', turnId: 'active-turn' } })));
+    await fill(draft, '只记下来：仅保存状态');
+    expect(send.disabled).toBe(true);
+    expect(f.element.textContent).toContain(f.t('groups.memoryStatus.incompatible'));
+    expect(f.send).toHaveBeenCalledTimes(count);
+  } finally { await f.close(); }
+});
 
 it.each(['en', 'zh'] as const)('opts into memory from +, retains failure/remount and clears the successful draft (%s)', async language => {
   const f = await composer(language);

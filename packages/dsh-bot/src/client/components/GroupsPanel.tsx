@@ -14,7 +14,10 @@ import type { GroupCommandSource } from '../group-trigger.js';
 import type { ModelActions } from '../model-catalog-state.js';
 import { GroupTimeline, groupMessagePreview } from './GroupTimeline.js';
 import { GroupDirectory } from './GroupDirectory.js';
+import { GroupDeleteDialog } from './GroupDeleteDialog.js';
 import { GroupOverview } from './GroupOverview.js';
+import { memoryOnlyIntent, singleMemoryReference } from '../../shared/group-memory-intent.js';
+import { isGroupDelegation, matchAddressedBot, matchGroupAddress, relayNeedsTopic } from '../../shared/addressed-bot.js';
 import { resolveGroupMentions } from '../group-mentions.js';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -25,7 +28,14 @@ import { GroupRouteUnavailable, type GroupActions, type GroupDraft, unwrapGroup 
 import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
+const sendErrors = ['memory-text-required', 'mention-not-member', 'guest-ambiguous', 'guest-unavailable', 'guest-changed', 'relay-topic-required', 'member-limit', 'group-data-blocked', 'conflict'] as const;
 const draftErrorText = {
+  'mention-not-member': 'groups.mentionMembersOnly',
+  'memory-text-required': 'groups.memoryStatus.needsText',
+  'relay-topic-required': 'groups.relay.topicRequired',
+  'guest-ambiguous': 'groups.guest.ambiguous',
+  'guest-unavailable': 'groups.guest.unavailable',
+  'guest-changed': 'groups.guest.changed',
   'group-data-blocked': 'groups.export.dataBlocked',
   'membership-changed': 'groups.sendMembershipChanged',
   'route-unavailable': 'groups.routeUnavailable',
@@ -80,6 +90,8 @@ export function GroupsPanel({
     actions.catalog.getSnapshot,
   );
   const [selected, setSelected] = useState<PageIdentity>();
+  const [deleting, setDeleting] = useState<GroupRecord>();
+  const [deletedName, setDeletedName] = useState<string>();
   const listRef = useRef<HTMLElement>(null), origin = useRef<HTMLElement | null>(null), scroll = useRef(0);
   const back = () => {
     setSelected(undefined); onSelectGroup?.(undefined);
@@ -104,11 +116,13 @@ export function GroupsPanel({
       <style>{css}</style>
       {!initialCreate && <h2>{t('groups.title')}</h2>}
       {list.error && <p role="alert">{t('groups.disconnected')}</p>}
+      {deletedName && <p role="status">{t('groups.deleted', { name: deletedName })}</p>}
       {list.loading && !list.loaded && <p role="status">{t('groups.loading')}</p>}
       <div className={initialCreate ? styles.content : styles.layout} data-group-selected={!!active || creating}>
         {!initialCreate && <nav ref={listRef} aria-label={t('groups.list')} className={styles.list}>
           <GroupDirectory rows={list.groups} bots={bots} selectedId={!creating ? active?.group.id : undefined}
             onSelect={group => { navigation.leave(() => select(group)); }}
+            onDelete={group => { setDeletedName(undefined); setDeleting(group); }}
             onOpen={(group, signal) => actions.open(groupKey(group), signal)}
             onCreate={() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); }}
             onRefresh={() => { void actions.catalog.refresh(); }} t={t} />
@@ -146,6 +160,7 @@ export function GroupsPanel({
                 setExpandedTurns((old) => ({ ...old, [id]: expanded }));
               }}
               summary={active}
+              onDelete={group => { setDeletedName(undefined); setDeleting(group); }}
               visible={visible}
               onOpenBot={onOpenBot}
               actions={actions}
@@ -159,6 +174,11 @@ export function GroupsPanel({
         </div>
       </div>
       {navigation.confirmation}
+      {deleting && <GroupDeleteDialog group={deleting} actions={actions} t={t} onClose={() => setDeleting(undefined)}
+        onDeleted={group => {
+          if (choice?.id === group.id && choice.createdAt === group.createdAt) back();
+          setDeletedName(group.name);
+        }} />}
     </section></SettingsDrafts.Provider>
   );
 }
@@ -235,7 +255,7 @@ export function GroupEditor({
   useEffect(() => {
     if (!editIdentity) return;
     editorForm.current?.scrollIntoView?.({ block: 'start' });
-    editorForm.current?.querySelector('input')?.focus({ preventScroll: true });
+    editorForm.current?.querySelector<HTMLInputElement>('fieldset input:not(:disabled)')?.focus({ preventScroll: true });
   }, [editIdentity]);
   const [mode, setMode] = useState(initial?.group.mode ?? 'natural');
   const [onDemand, setOnDemand] = useState(initial ? initial.group.onDemand ?? false : true);
@@ -243,10 +263,11 @@ export function GroupEditor({
     () => initial?.members.filter((m) => m.removedAt === undefined).map((m) => m.bot) ?? [],
   );
   const originalMembers = useRef(members);
-  const legacyOverLimit = originalMembers.current.length > GROUP_MEMBER_LIMIT;
+  const limit = initial?.memberLimit ?? GROUP_MEMBER_LIMIT;
+  const legacyOverLimit = originalMembers.current.length > limit;
   const canSaveMembers = members.length >= 2 && (legacyOverLimit
     ? members.length < originalMembers.current.length && members.every(member => originalMembers.current.some(original => original.botId === member.botId && original.botCreatedAt === member.botCreatedAt))
-    : members.length <= GROUP_MEMBER_LIMIT);
+    : members.length <= limit);
   const [cwd, setCwd] = useState('');
   const initialDraft = useRef(JSON.stringify([name, mode, members, cwd, onDemand]));
   useSettingsDraft(JSON.stringify([name, mode, members, cwd, onDemand]) !== initialDraft.current);
@@ -302,14 +323,14 @@ export function GroupEditor({
       }}
     >
       <h3>{t(initial ? 'groups.edit' : 'groups.create')}</h3>
-      {error && <p role="alert">{t(creationSaved ? 'groups.createdOpenFailed' : error === 'member-limit' ? 'groups.memberLimitFailed' : 'groups.conflict', { limit: GROUP_MEMBER_LIMIT })}</p>}
+      {error && <p role="alert">{t(creationSaved ? 'groups.createdOpenFailed' : error === 'member-limit' ? 'groups.memberLimitFailed' : 'groups.conflict', { limit })}</p>}
       <label>
         {t('groups.name')}
         <input disabled={busy || creationSaved} value={creationSaved ? createdName ?? name : name} onChange={(e) => setName(e.target.value)} />
       </label>
       <fieldset aria-describedby={memberHintId}>
         <legend>{t('groups.members')}</legend>
-        <p id={memberHintId} role="status">{t(legacyOverLimit ? 'groups.memberLimitLegacy' : 'groups.memberLimit', { count: members.length, limit: GROUP_MEMBER_LIMIT })}</p>
+        <p id={memberHintId} role="status">{t(legacyOverLimit ? 'groups.memberLimitLegacy' : 'groups.memberLimit', { count: members.length, limit })}</p>
         {bots.map((b) => {
           const selected = members.some((m) => m.botId === b.id && m.botCreatedAt === b.createdAt);
           return (
@@ -317,9 +338,9 @@ export function GroupEditor({
               <input
                 type="checkbox"
                 checked={selected}
-                disabled={busy || creationSaved || (!selected && (legacyOverLimit || members.length >= GROUP_MEMBER_LIMIT))}
+                disabled={busy || creationSaved || (!selected && (legacyOverLimit || members.length >= limit))}
                 onChange={(e) => {
-                  if (e.target.checked && (legacyOverLimit || members.length >= GROUP_MEMBER_LIMIT)) return;
+                  if (e.target.checked && (legacyOverLimit || members.length >= limit)) return;
                   change(e.target.checked ? [...members, keyOf(b)] : members.filter((m) => m.botId !== b.id || m.botCreatedAt !== b.createdAt));
                 }}
               />
@@ -394,6 +415,22 @@ export function GroupEditor({
     </form>
   );
 }
+/** Use the roster and revision that the user actually reviewed, even after a peer window edits it. */
+export function GroupRosterEditor({ initial, actions, bots, onClose, t }: {
+  initial: GroupView; actions: GroupActions; bots: BotRecord[]; onClose(): void;
+} & Localized) {
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  return <GroupEditor initial={initial} bots={bots} onCancel={onClose} t={t} onSave={async input => {
+    const { operationId: _operation, cwd: _cwd, ...edit } = input;
+    const key = groupKey(initial.group);
+    unwrapGroup(await actions.remote().edit(key, { ...edit, expectedRevision: initial.group.revision,
+      expectedMembershipRevision: initial.group.membershipRevision }));
+    await actions.refreshRoster(key);
+    if (alive.current) onClose();
+  }} />;
+}
+
 export function GroupConversation({
   workspace = false,
   executionBridge,
@@ -476,6 +513,8 @@ export function GroupConversation({
     };
   }, [actions, catalog, readSeq, view?.unread, view?.readRevision, view?.group]);
   const [mentionIssues, setMentionIssues] = useState<ReturnType<typeof resolveGroupMentions>['issues']>([]);
+  const mentionAlerts = new Map(mentionIssues.map(issue => [issue.reason + ':' + issue.mention, issue]));
+  const [guestIssue, setGuestIssue] = useState<'groups.memoryStatus.needsText' | 'groups.mentionMembersOnly' | 'groups.guest.changed' | 'groups.guest.unsupported' | 'groups.guest.ambiguous' | 'groups.relay.topicRequired'>();
   const rootId = summary.group.rootSessionId;
   const dispatchLifetime = useRef(new AbortController());
   useEffect(() => {
@@ -545,23 +584,45 @@ export function GroupConversation({
       await work();
       await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
     } catch (error) {
-      actions.patchDraft(rootId, value => ({ ...value, errorCode: value.errorCode ?? (error instanceof GroupRouteUnavailable ? 'route-unavailable' : hasOperationCode(error, 'member-limit') ? 'member-limit' : hasOperationCode(error, 'group-data-blocked') ? 'group-data-blocked' : hasOperationCode(error, 'conflict') ? 'conflict' : 'send-failed') }));
+      actions.patchDraft(rootId, value => ({ ...value, errorCode: value.errorCode ?? (error instanceof GroupRouteUnavailable ? 'route-unavailable' : sendErrors.find(code => hasOperationCode(error, code)) ?? 'send-failed') }));
       setError(true);
     } finally {
       lock.current = false;
       if (alive.current) setBusy(false);
     }
   };
-  const mentionTargets = (view?.members ?? [])
-    .filter((m) => m.enabled && m.removedAt === undefined && !view?.unavailableMemberIds.includes(m.id))
-    .map((m) => ({
-      id: m.id,
-      botId: m.bot.botId,
-      name: bots.find((b) => b.id === m.bot.botId && b.createdAt === m.bot.botCreatedAt)?.name ?? m.bot.botId,
-    }));
+  const availableMembers = (view?.members ?? []).filter(m => m.enabled && m.removedAt === undefined && !view?.unavailableMemberIds.includes(m.id));
+  const memberBots = bots.filter(bot => availableMembers.some(m => m.bot.botId === bot.id && m.bot.botCreatedAt === bot.createdAt));
+  const mentionTargets = availableMembers.map(m => ({
+    id: m.id,
+    botId: m.bot.botId,
+    name: memberBots.find(b => b.id === m.bot.botId && b.createdAt === m.bot.botCreatedAt)?.name ?? m.bot.botId,
+  }));
+  const guestCandidates = automaticGroup ? [] : bots.filter(bot => !view?.members.some(member =>
+    member.removedAt === undefined && member.bot.botId === bot.id && member.bot.botCreatedAt === bot.createdAt));
+  const author = replyTo?.speaker?.bot;
+  const replyAuthor = author && memberBots.find(bot => bot.id === author.botId && bot.createdAt === author.botCreatedAt);
+  const addressed = automaticGroup ? undefined : matchGroupAddress(draft, bots, replyAuthor, memberBots);
+  const guest = addressed?.kind === 'match' && guestCandidates.includes(addressed.bot) ? addressed.bot : undefined;
+  const via = guest && addressed?.kind === 'match' ? addressed.via : undefined;
+  const viaMember = via && mentionTargets.find(member => member.botId === via.id);
+  const needsTopic = Boolean(guest && addressed?.kind === 'match' && relayNeedsTopic(addressed.question));
+  const topicKey = guest ? JSON.stringify([rootId, via && keyOf(via), keyOf(guest), replyTo?.id, draft]) : undefined;
+  const topic = topicKey && sharedDraft.relayTopic?.key === topicKey ? sharedDraft.relayTopic.text : '';
+  const quoteExcerpt = needsTopic && replyTo && (!via || replyAuthor === via) ? groupMessagePreview(replyTo?.text) : '';
+  const updateTopic = (text: string) => {
+    if (!topicKey) return;
+    actions.patchDraft(rootId, value => ({ ...value, relayTopic: { key: topicKey, text } }));
+    setGuestIssue(undefined);
+  };
   const resolveMentions = (text: string) => resolveGroupMentions(text, mentionTargets, mentions, sharedDraft.mentionBindings ?? []);
-  const overMemberLimit = (view?.members.filter(member => member.removedAt === undefined).length ?? 0) > GROUP_MEMBER_LIMIT;
-  const memoryConflict = sharedDraft.memoryStatusOnly && Boolean(replyTo || sharedDraft.followup);
+  const limit = view?.memberLimit ?? GROUP_MEMBER_LIMIT;
+  const overMemberLimit = (view?.members.filter(member => member.removedAt === undefined).length ?? 0) > limit;
+  const memoryIntent = automaticGroup ? undefined : memoryOnlyIntent(draft);
+  const suggestedQuote = memoryIntent === 'reference' && !replyTo && sharedDraft.memoryReferenceId
+    ? view?.messages.find(row => row.id === sharedDraft.memoryReferenceId) : undefined;
+  const memoryConflict = Boolean(sharedDraft.followup && (sharedDraft.memoryStatusOnly || memoryIntent) ||
+    sharedDraft.memoryStatusOnly && replyTo && !memoryIntent);
   const canSend = Boolean(view && !memoryConflict && uploads.length <= GROUP_ATTACHMENT_LIMIT && !overMemberLimit && !busy && !view.group.archived && !view.reason && view.group.state === 'ready' &&
     (draft.trim() || uploads.length) && uploads.every(row => row.state === 'uploaded'));
   const [modelOpen, setModelOpen] = useState(0), [permissionOpen, setPermissionOpen] = useState(0);
@@ -615,23 +676,56 @@ export function GroupConversation({
       return;
     }
     if (!canSend || lock.current || !view) return;
-    const resolved = resolveMentions(draft);
+    setGuestIssue(undefined);
+    if (memoryIntent === 'reference' && !replyTo && !suggestedQuote && !uploads.length) {
+      setGuestIssue('groups.memoryStatus.needsText'); return;
+    }
+    let resolved = resolveMentions(draft);
+    const picked = sharedDraft.mentionBindings?.filter(binding => binding.start >= 0 && draft.slice(binding.start, binding.end) === binding.text) ?? [];
+    if (addressed?.kind === 'nonmember-mention' || picked.some(binding => binding.memberId.startsWith('guest:'))) {
+      setGuestIssue('groups.mentionMembersOnly'); return;
+    }
+    if (resolved.issues.length) { setMentionIssues(resolved.issues); return; }
+    const ambiguousRelay = addressed?.kind === 'ambiguous' && (isGroupDelegation(draft) || /^[@＠].+?\s(?:问|去问|请问|ask\b)/iu.test(draft.trim()));
+    if (addressed?.kind === 'ambiguous' && (ambiguousRelay || !/^[@＠]/u.test(draft.trimStart()) && matchAddressedBot(draft, guestCandidates) &&
+        !picked.some(binding => mentionTargets.some(member => member.id === binding.memberId)))) {
+      setGuestIssue('groups.guest.ambiguous'); return;
+    }
+    if (guest && addressed?.kind === 'match') {
+      resolved = resolveGroupMentions(addressed.question, mentionTargets);
+      if (via && (!viaMember || picked.some(binding => binding.memberId !== viaMember.id))) {
+        setGuestIssue('groups.guest.changed'); return;
+      }
+      if (needsTopic && !topic.trim()) { setGuestIssue('groups.relay.topicRequired'); return; }
+      if (round || uploads.length || sharedDraft.followup || sharedDraft.memoryStatusOnly || resolved.memberIds.length || mentions.some(id => id !== viaMember?.id)) {
+        setGuestIssue('groups.guest.unsupported'); return;
+      }
+      if (viaMember) resolved = { ...resolved, memberIds: [viaMember.id] };
+    }
     setMentionIssues(resolved.issues);
-    if (mentions.some(id => !resolved.memberIds.includes(id)) || resolved.issues.length || (sharedDraft.followup && (uploads.length || resolved.memberIds.length || replyTo))) { setError(true); return; }
+    if (resolved.issues.length) return;
+    if (mentions.some(id => !resolved.memberIds.includes(id)) || (sharedDraft.followup && (uploads.length || resolved.memberIds.length || replyTo))) { setError(true); return; }
+    const reference = replyTo ?? suggestedQuote;
     const base = {
       expectedMembershipRevision: view.group.membershipRevision,
       ...(sharedDraft.followup ? { followup: sharedDraft.followup } : {}),
-      ...(!automaticGroup && !replyTo && !sharedDraft.followup && sharedDraft.memoryStatusOnly ? { memoryStatusOnly: true as const } : {}),
+      ...(!automaticGroup && !sharedDraft.followup && (memoryIntent || !replyTo && sharedDraft.memoryStatusOnly) ? { memoryStatusOnly: true as const } : {}),
       text: draft,
+      ...(guest ? { expectedGuest: keyOf(guest) } : {}),
+      ...(via ? { expectedRelay: keyOf(via) } : {}),
+      ...(needsTopic ? { relayTopic: topic.trim() } : {}),
       memberIds: round ? [] : resolved.memberIds,
       round,
-      ...(replyTo ? { replyTo: replyTo.id } : {}),
+      ...(reference ? { replyTo: reference.id } : {}),
       fileReceiptIds: uploads.flatMap(row => row.receiptId ? [row.receiptId] : []),
     };
     const signature = JSON.stringify({
       followup: base.followup,
       memoryStatusOnly: base.memoryStatusOnly,
       text: base.text,
+      expectedGuest: base.expectedGuest,
+      expectedRelay: base.expectedRelay,
+      relayTopic: base.relayTopic,
       memberIds: base.memberIds,
       round: base.round,
       replyTo: base.replyTo,
@@ -668,6 +762,8 @@ export function GroupConversation({
       }
       if (turnId) setStatisticsSent(previous => ({ turnId, followup: Boolean(pending.request.followup), sequence: (previous?.sequence ?? 0) + 1 }));
       actions.patchDraft(rootId, value => ({ ...value, mentionBindings: value.text === pending.request.text ? [] : value.mentionBindings,
+        memoryReferenceId: value.text === pending.request.text ? undefined : value.memoryReferenceId,
+        relayTopic: value.relayTopic?.key === topicKey ? undefined : value.relayTopic,
         memoryStatusOnly: pending.request.memoryStatusOnly ? undefined : value.memoryStatusOnly,
         followup: value.followup?.deliveryId === pending.request.followup?.deliveryId ? undefined : value.followup }));
       setDraft((current) => (current === pending.request.text ? '' : current));
@@ -696,16 +792,16 @@ export function GroupConversation({
     <article className={`${styles.conversation} ${workspace ? `${styles.panel} ${styles.workspace}` : ''}`} aria-label={view.group.name} data-workspace-group-composer={workspace ? view.group.rootSessionId : undefined}>
       <style>{css}</style>
       {view.group.state === 'ready' && !view.group.archived && !view.hasEarlier && !view.messages.length && !view.turns.length && <p role="status" data-group-empty-conversation="">{t('groups.emptyConversation')}</p>}
-      {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit: GROUP_MEMBER_LIMIT })}</p>}
+      {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit })}</p>}
       {(error || snapshot.error) && <p role="alert">{t(error ? draftErrorText[sharedDraft.errorCode ?? 'conflict'] : 'groups.disconnected', {
-        limit: GROUP_MEMBER_LIMIT, members: members.map(m => lookup(m.id)?.name ?? m.bot.botId).join(', '),
+        limit, members: members.map(m => lookup(m.id)?.name ?? m.bot.botId).join(', '),
       })}</p>}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       {!workspace && <>
       <h3>{view.group.name}</h3>
       <div className={styles.bar}>
         <span>{t(`groups.${view.group.mode}`)}</span>
-        <button type="button" onClick={() => setEditing(view)}>
+        <button type="button" disabled={view.group.archived || view.group.state !== 'ready' || !!view.group.supergroup} onClick={() => setEditing(view)}>
           {t('groups.edit')}
         </button>
         <button
@@ -733,24 +829,7 @@ export function GroupConversation({
         })}
       </section>
       {editing && (
-        <GroupEditor
-          bots={bots}
-          initial={editing}
-          t={t}
-          onCancel={() => setEditing(undefined)}
-          onSave={async (input) => {
-            const { operationId: _op, cwd: _cwd, ...edit } = input;
-            unwrapGroup(
-              await actions.remote().edit(groupKey(view.group), {
-                ...edit,
-                expectedRevision: editing.group.revision,
-                expectedMembershipRevision: editing.group.membershipRevision,
-              }),
-            );
-            await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
-            if (alive.current) setEditing(undefined);
-          }}
-        />
+        <GroupRosterEditor bots={bots} actions={actions} initial={editing} t={t} onClose={() => setEditing(undefined)} />
       )}
       {(hasOlder ?? view.hasEarlier) && (
         <button
@@ -803,11 +882,15 @@ export function GroupConversation({
           submit(false);
         }}
       >
-        <GroupExportQueue view={view} bots={bots} actions={actions} t={t} />
+        <GroupExportQueue key={JSON.stringify(groupKey(view.group))} view={view} bots={bots} actions={actions} t={t} />
         {!automaticGroup && sharedDraft.memoryStatusOnly && <div className={styles.memoryStatusTag} data-group-memory-status="" role="status" title={t('groups.memoryStatus.hint')}>
           <IconDataOutlineRegular size={16} /><span>{t('groups.memoryStatus.toggle')}</span>
           <Button variant="ghost" size="sm" type="button" data-group-memory-cancel="" aria-label={t('groups.memoryStatus.cancel')} title={t('groups.memoryStatus.cancel')}
             disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => { actions.patchDraft(rootId, value => ({ ...value, memoryStatusOnly: undefined })); composer.current?.focus({ preventScroll: true }); }}>×</Button>
+        </div>}
+        {suggestedQuote && <div className={styles.replyPreview} role="status" data-group-memory-reference="">
+          <strong>{t('groups.memoryStatus.reference', { name: suggestedQuote.speaker?.name ?? t('groups.you') })}</strong>
+          <span>{groupMessagePreview(suggestedQuote.text)}</span>
         </div>}
         {memoryConflict && <p role="alert">{t('groups.memoryStatus.incompatible')}</p>}
         {replyTo && <div className={styles.replyPreview} role="status">
@@ -821,7 +904,12 @@ export function GroupConversation({
           <button type="button" onClick={() => actions.patchDraft(rootId, value => ({ ...value, followup: undefined }))}>{t('groups.close')}</button></div>}
         <GroupComposerInput sessionId={rootId} text={draft} bindings={sharedDraft.mentionBindings ?? []} targets={mentionTargets} inputRef={composer} t={t}
           commands={commands} commandLauncher={commandLauncher}
-          onChange={(text, mentionBindings) => { actions.patchDraft(rootId, value => ({ ...value, text, mentionBindings, mentions: [] })); setMentionIssues([]); }} onSubmit={() => submit(false)} />
+          onChange={(text, mentionBindings) => {
+            actions.patchDraft(rootId, value => ({ ...value, text, mentionBindings, mentions: [],
+              memoryReferenceId: !automaticGroup && !value.replyTo && !value.followup && memoryOnlyIntent(text) === 'reference'
+                ? (memoryOnlyIntent(value.text) === 'reference' ? value.memoryReferenceId : singleMemoryReference(view)?.id) : undefined }));
+            setMentionIssues([]); setGuestIssue(undefined);
+          }} onSubmit={() => submit(false)} />
         <label hidden={workspace} style={workspace ? { display: 'none' } : undefined}>
           {t('groups.attach')}
           <input ref={attachmentInput} type="file" multiple disabled={busy || view.group.archived || automaticGroup} onChange={event => {
@@ -839,11 +927,22 @@ export function GroupConversation({
             }}>{t('groups.removeAttachment', { name: upload.name })}</button>
           </li>)}
         </ul>}
-        {mentionIssues.length > 0 && <p role="alert">{t('groups.chooseMention')}</p>}
-        {mentionIssues.map((issue) => (
-          <p role="alert" key={issue.mention}>
+        {guest && via && <p role="status" data-group-relay-route="">{t('groups.relay.hint', { sender: via.name, guest: guest.name })}</p>}
+        {needsTopic && topicKey && <>
+          <label>{t('groups.relay.topicLabel')}
+            <input type="text" data-group-relay-topic="" maxLength={2048} value={topic} disabled={busy}
+              onChange={event => updateTopic(event.currentTarget.value)} />
+          </label>
+          {quoteExcerpt && !topic && <button type="button" disabled={busy} onClick={() => updateTopic(quoteExcerpt)}>
+            {t('groups.relay.useQuoteExcerpt')}
+          </button>}
+        </>}
+        {guest && !via && replyTo && <p role="status">{t('groups.guest.quoteHint', { name: guest.name })}</p>}
+        {guestIssue && <p role="alert">{t(guestIssue)}</p>}
+        {Array.from(mentionAlerts, ([key, issue]) => (
+          <p role="alert" key={key}>
             @{issue.mention} ·{' '}
-            {t(issue.reason === 'ambiguous' ? 'groups.ambiguousMention' : 'groups.unknownMention')}
+            {t(issue.reason === 'ambiguous' ? 'groups.ambiguousMention' : 'groups.mentionMembersOnly')}
           </p>
         ))}
         {!workspace && <p>{t('groups.routingHint')}</p>}
@@ -875,21 +974,11 @@ export function GroupConversation({
   );
 }
 
-function GroupManager({ summary, actions, bots, t, onOpenBot, visible }: Parameters<typeof GroupConversation>[0] & {
-  onOpenBot?(bot: BotRecord): void; visible?: boolean;
+function GroupManager({ summary, actions, bots, t, onOpenBot, visible, onDelete }: Parameters<typeof GroupConversation>[0] & {
+  onOpenBot?(bot: BotRecord): void; visible?: boolean; onDelete(group: GroupRecord): void;
 }) {
   const [editing, setEditing] = useState<GroupView>();
-  const [generation, setGeneration] = useState(0);
-  return <>
-    <GroupOverview key={`${summary.group.id}:${generation}`} summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
-      onEdit={setEditing} visible={visible} t={t} />
-    {editing && <GroupEditor bots={bots} initial={editing} t={t} onCancel={() => setEditing(undefined)} onSave={async input => {
-      const { operationId: _operation, cwd: _cwd, ...edit } = input;
-      unwrapGroup(await actions.remote().edit(groupKey(editing.group), { ...edit, expectedRevision: editing.group.revision,
-        expectedMembershipRevision: editing.group.membershipRevision }));
-      await actions.catalog.refresh();
-      setEditing(undefined);
-      setGeneration(value => value + 1);
-    }} />}
-  </>;
+  if (editing) return <GroupRosterEditor bots={bots} actions={actions} initial={editing} t={t} onClose={() => setEditing(undefined)} />;
+  return <GroupOverview summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
+    onEdit={setEditing} onDelete={onDelete} visible={visible} t={t} />;
 }

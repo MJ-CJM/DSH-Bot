@@ -1,3 +1,5 @@
+import { recoverRelayDecisions } from './relay-recovery.js';
+import { recoverGroupRelay } from './relay-receipts.js';
 import { runRootSetup } from './root-guard.js';
 import en from '../../../locale/en.json' with { type: 'json' };
 import zh from '../../../locale/zh.json' with { type: 'json' };
@@ -30,6 +32,7 @@ export class GroupRoots {
     this.state.unregister = () => fiber.dispose();
     await fiber.await();
     for (const [, g] of this.state.table('groups').entries()) {
+      if (this.state.table('deletions').get(g.id)) continue;
       for (const t of this.state.turns(g)) {
         const unresolved = this.state
           .deliveries(t.id)
@@ -42,12 +45,22 @@ export class GroupRoots {
           });
         if (!terminal(t) || t.state === 'paused' || unresolved.some((d) => d.state !== 'pending'))
           await this.state.putTurn({ ...t, state: 'recovery_needed' });
+        if (t.guestQuestion?.via) await recoverGroupRelay(this.state, g, t).catch(() => {
+          this.state.ctx.logger.warn('[dsh-bot] Could not reconcile group handoff receipts');
+        });
       }
       if (g.state === 'creating') {
         await this.state.putGroup({ ...g, state: 'recovery_needed' });
         this.state.reasons.set(g.id, 'recovery-needed');
       }
-      if (!g.archived) await this.restore(g).catch(() => {});
+      if (!g.archived) {
+        const root = await this.restore(g).catch(() => undefined);
+        if (root) for (const turn of this.state.turns(g).filter(t => t.guestQuestion?.via)) {
+          await recoverRelayDecisions(this.state, g, turn, root).catch(() => {
+            this.state.ctx.logger.warn('[dsh-bot] Could not reconcile group handoff decision');
+          });
+        }
+      }
     }
     this.state.offTitle = this.state.ctx.effect(
       () =>

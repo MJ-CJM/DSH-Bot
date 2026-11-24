@@ -1,0 +1,4 @@
+.relayDetails { margin: 8px 0; padding-inline-start: 12px; border-inline-start: 2px solid var(--dsw-alias-border-l3); text-align: start; }
+.relayDetails > div + div { margin-top: 12px; }
+.relayDetails dt { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.relayDetails dd { margin: 4px 0 0; color: var(--dsw-alias-label-primary); white-space: pre-wrap; overflow-wrap: anywhere; }

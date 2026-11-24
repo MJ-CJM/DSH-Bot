@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 export async function verifyContinuousBrowser(host, dir) {
   const root = process.cwd(), require = createRequire(resolve(root, 'packages/dsh-bot/package.json'));
   const { chromium } = require('playwright-core'), cache = resolve(homedir(), 'Library/Caches/ms-playwright');
@@ -27,7 +27,7 @@ export async function verifyContinuousBrowser(host, dir) {
       const bots = page.locator('[data-bots-page]:visible');
       await bots.getByRole('navigation', { name: t['navigation.sections'], exact: true }).getByRole('button', { name: t['navigation.myBots'], exact: true }).click();
       await bots.getByLabel(t['navigation.searchBots'], { exact: true }).fill('Continuous fixture');
-      await bots.getByRole('button', { name: `${t['chat.profile']} · Continuous fixture`, exact: true }).click();
+      await selectBotDirectoryAction(bots, 'continuous-fixture', t['chat.profile']);
       const detail = page.locator('[data-bot-detail="continuous-fixture"]:visible');
       await detail.getByRole('tab', { name: t['detail.memory'], exact: true }).click();
       const panel = detail.locator('[data-memory-consolidation]'); await panel.locator(':scope > summary').click();

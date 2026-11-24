@@ -40,6 +40,13 @@ describe('typed group mentions resolve against the current membership', () => {
     expect(resolveGroupMentions('@missing @研究员', targets, ['member:space']).issues).toHaveLength(1);
     expect(resolveGroupMentions('@ＲＥＳＥＡＲＣＨ Assistant', targets).memberIds).toEqual(['member:space']);
   });
+  it('allows separate picks of namesakes only when there is a mention for each selected identity', () => {
+    const ids = ['member:duplicate1', 'member:duplicate2'];
+    expect(resolveGroupMentions('@重名 Bot @重名 Bot 请回答', targets, ids)).toEqual({ memberIds: ids, issues: [] });
+    for (const text of ['@重名 Bot 请回答\n> @重名 Bot', '@重名 Bot 请回答，参见 `@重名 Bot`']) {
+      expect(resolveGroupMentions(text, targets, ids)).toEqual({ memberIds: [], issues: [{ mention: '重名 bot', reason: 'ambiguous' }] });
+    }
+  });
   it('prefers a complete longer name and rejects stale targets', () => {
     const overlapping = [...targets, { id: 'short', name: 'Research', botId: 'short' }];
     expect(resolveGroupMentions('@Research Assistant hello', overlapping).memberIds).toEqual([

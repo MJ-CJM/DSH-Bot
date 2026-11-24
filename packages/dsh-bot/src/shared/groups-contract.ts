@@ -1,3 +1,4 @@
+import { relayDetailsRequestSchema, relayDetailsSchema } from './group-relay-details.js';
 import { z } from 'zod';
 import { teamRecipeSchema, savedTeamRecipeSchema, teamPreviewSchema, teamMappingSchema, teamPreviewMappingSchema } from './team-recipes.js';
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info';
@@ -34,6 +35,7 @@ const base = { service: 'dshBotGroupsRemote', invocation: { kind: 'direct' as co
 export const groupsSpec = {
   package: 'dsh-bot/groups',
   methods: {
+    'dshBot.groups/getRelayDetails': { ...base, parameters: [param('request', relayDetailsRequestSchema)], result: codec('RelayDetails', relayDetailsSchema) },
     'dshBot.groups/getExportApprovalSettings': { ...base, parameters: [param('group', groupKeySchema)],
       result: codec('ExportApprovalSettings', groupExportApprovalSettingsSchema) },
     'dshBot.groups/setExportApproval': { ...base, parameters: [param('group', groupKeySchema), param('bot', botKeySchema),
@@ -125,6 +127,11 @@ export const groupsSpec = {
       ...base,
       parameters: [param('group', groupKeySchema), param('expectedRevision', z.number().int().positive())],
       result: codec('Group', groupRecordSchema),
+    },
+    'dshBot.groups/deleteGroup': {
+      ...base,
+      parameters: [param('group', groupKeySchema), param('expectedRevision', z.number().int().positive())],
+      result: codec('GroupDeleted', z.boolean()),
     },
   },
 } as const satisfies TypertRemoteSpec;

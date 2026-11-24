@@ -7,7 +7,7 @@ import type { GroupTurn } from '../../src/shared/groups.js';
 import { GROUP_MANAGEMENT_VIEW } from '../../src/client/group-views.js';
 import styles from '../../src/client/styles/groups.module.css';
 import { bots, configure, summary, view } from './group-fixture.js';
-import { button, click, field, fill, mountClient } from './helpers.js';
+import { bot, button, click, field, fill, mountClient } from './helpers.js';
 import en from '../../locale/en.json';
 
 const rootA = 'group-root-one';
@@ -112,6 +112,66 @@ it('confirms closing an edited group form in the conversation view', async () =>
       expect(container.querySelector('form')).toBeNull();
       expect(app.remote.groups.edit).not.toHaveBeenCalled();
     } finally { await workspace.unmount(); }
+  } finally { await app.dispose(); }
+});
+
+it.each(['management', 'sidebar'] as const)('adds a member from the %s roster, refreshes both lists and respects the host limit', async source => {
+  const newcomer = { ...bot({ id: 'gamma', name: 'Gamma specialist' }), createdAt: 414 };
+  const reserve = bot({ id: 'delta', name: 'Delta specialist' });
+  const original = { ...view(), memberLimit: 3 }, key = { groupId: original.group.id, groupCreatedAt: original.group.createdAt };
+  const app = await mountClient([...bots, newcomer, reserve], 'en', remote => {
+    configure(remote);
+    remote.data.groupView = original;
+    remote.groups.edit.mockImplementation(async () => {
+      const group = { ...original.group, revision: original.group.revision + 1, membershipRevision: original.group.membershipRevision + 1 };
+      const members = [...original.members, { id: 'new-member', group: key, enabled: true, joinedAt: 415, order: 2,
+        bot: { botId: newcomer.id, botCreatedAt: newcomer.createdAt } }];
+      remote.data.groupView = { ...original, group, members };
+      remote.data.groups = [{ ...summary(), group, members }];
+      return { ok: true, value: group };
+    });
+  }, {}, undefined, true, ownedSession(rootA));
+  try {
+    await vi.waitFor(() => expect(app.core.entries('conversation.view')).toHaveLength(1));
+    const management = await app.mountEntry('conversation.view', options => options.id === GROUP_MANAGEMENT_VIEW, {
+      sessionId: rootA, viewRequest: null, openView: vi.fn(), completeViewRequest: vi.fn(),
+    });
+    const sidebar = await app.mountEntry('sidebar.right.pane.tab', options => options.key === 'dsh-bot.group-details', {
+      sessionId: rootA, useTabInfo: () => ({ tab: { visible: true, navigation: { revision: 1, params: { id: key.groupId, createdAt: key.groupCreatedAt } } } }),
+    });
+    try {
+      await click(button(sidebar.container, en.ui['groups.members']));
+      const surface = source === 'management' ? management.container : sidebar.container;
+      await click(button(surface, en.ui['groups.addMembers']));
+      const form = surface.querySelector('form');
+      if (!form) throw new Error('Member editor is missing from the selected roster');
+      const option = [...form.querySelectorAll('fieldset label')].find(row => row.textContent?.includes(newcomer.name))?.querySelector('input');
+      if (!option) throw new Error('Eligible Bot is missing from the roster editor');
+      await click(option);
+      const save = button(form, en.ui['integrations.save']);
+      expect(save.disabled).toBe(true);
+      await click(field(form, en.ui['groups.historyConsent']));
+      await click(save);
+      expect(app.remote.groups.edit).toHaveBeenCalledExactlyOnceWith(key, expect.objectContaining({
+        expectedRevision: original.group.revision, expectedMembershipRevision: original.group.membershipRevision, historyConfirmed: true,
+        members: [...original.members.map(member => member.bot), { botId: newcomer.id, botCreatedAt: newcomer.createdAt }],
+      }));
+      await vi.waitFor(() => {
+        expect(surface.querySelector('form')).toBeNull();
+        for (const panel of [management, sidebar]) {
+          expect(panel.container.querySelector('[data-group-member="new-member"]')?.textContent).toContain(newcomer.name);
+          expect(panel.container.querySelector('[data-group-edit-members]')?.textContent).toBe(en.ui['groups.edit']);
+        }
+      });
+      await click(button(surface, en.ui['groups.edit']));
+      const fullEditor = surface.querySelector('form');
+      if (!fullEditor) throw new Error('Full groups must still support editing the roster');
+      expect(fullEditor.querySelector('fieldset [role="status"]')?.textContent).toBe(en.ui['groups.memberLimit'].replace('{count}', '3').replace('{limit}', '3'));
+      const fourthOption = [...fullEditor.querySelectorAll('fieldset label')].find(row => row.textContent?.includes(reserve.name))?.querySelector('input');
+      expect(fourthOption?.disabled).toBe(true);
+      expect(fourthOption?.checked).toBe(false);
+      expect(app.openSession).not.toHaveBeenCalled();
+    } finally { await sidebar.unmount(); await management.unmount(); }
   } finally { await app.dispose(); }
 });
 

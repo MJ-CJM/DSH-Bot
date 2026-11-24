@@ -17,14 +17,14 @@ import type { BotRecord } from '../shared/schema.js';
 import { GroupSessionLeading, GroupSessionHover } from './components/GroupSessionRow.js';
 import { WORKSPACE_REMOTE } from '../shared/workspace-contract.js';
 import { createWorkspaceActions } from './workspace-state.js';
-import type { GroupSummary } from '../shared/groups.js';
+import type { GroupKey, GroupSummary } from '../shared/groups.js';
 import { GROUPS_REMOTE } from '../shared/groups-contract.js';
 import { createGroupActions } from './groups-state.js';
 import { createGroupRecallBinding } from './group-recall.js';
 import { GroupSessionBadge } from './components/GroupSessionBadge.js';
 import { registerWorkspaceGroups } from './workspace-group.js';
 import { createTaskOriginFocus, createTaskSupportActions, type TaskOrigin } from './task-support.js';
-import { registerSupergroup } from './supergroup.js';
+import { registerSupergroup, registerSupergroupSettings } from './supergroup.js';
 import { stopGroupWork } from './stop-group.js';
 import { registerGroupDetails } from './group-details.js';
 import { supergroupViewSchema } from '../shared/supergroup.js';
@@ -141,7 +141,19 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const integrations = createIntegrationActions(ctx, config);
   const collaboration = createCollaborationActions(ctx, config);
   const followUp = createFollowUpSource(ctx, config);
-  const groups = { ...createGroupActions(ctx, config), followUp };
+  const pageNavigation = createPageNavigation(ctx);
+  const groups = { ...createGroupActions(ctx, config), followUp,
+    returnAfterDeletion(group: GroupKey, rootSessionId: string, section: 'groups' | 'recent') {
+      if (!active) return;
+      if (pageNavigation.group?.id === group.groupId && pageNavigation.group.createdAt === group.groupCreatedAt) delete pageNavigation.group;
+      const currentPanel = ctx.layout.panelInfo?.getSnapshot().activePanelId;
+      if (currentPanel) return;
+      const current = Object.values(sessions.list.getSnapshot().byId).find(row => (row.retainedBy?.mainView ?? 0) > 0);
+      if (current && current.id !== rootSessionId && !current.blank) return;
+      pageNavigation.open?.(section);
+      ctx.layout.selectPanel('dsh-bot' as MainPanelId);
+    },
+  };
   const groupRecall = createGroupRecallBinding(groups, t, (bot, prompt, signal) => askBot(bot, prompt, signal));
   const management = createWorkspaceActions(ctx, config);
   // Host and Client ambient Context declarations share a TS program here;
@@ -268,6 +280,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     if (!bot || bot.createdAt !== target.owner.botCreatedAt) throw new Error(t('taskSupport.failed'));
     await openSession(target.originSessionId, () => taskFocus.set(target));
   };
+  const supergroupSettings = await registerSupergroupSettings(ctx);
   const page: BotsPageInjected = {
     taskSupport,
     openPendingTask,
@@ -319,8 +332,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     collaboration,
     groups,
     management,
-    pageNavigation: createPageNavigation(ctx),
-    onOpenAutomaticCollaboration: () => { if (active) ctx.layout.selectPanel('plugins' as MainPanelId); },
+    pageNavigation,
+    supergroupSettings,
     hooks: {
       catalog,
       activity,
@@ -484,7 +497,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       ctx.uiWorkspace.openSession(sessionId as SessionId);
     });
   };
-  registerMessaging(ctx, { onOpenBot: (id) => openBot(id), onShowStatus: (id) => openBot(id, 'messages') });
+  registerMessaging(ctx, { groups, onOpenBot: (id) => openBot(id), onShowStatus: (id) => openBot(id, 'messages') });
   const firstChatInjected = () => ({
     hooks: { catalog: { getSnapshot: catalog.getSnapshot, subscribe: catalog.observe }, activity },
     onMarkRead: activity.markRead,

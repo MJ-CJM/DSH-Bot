@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { botKeySchema, resourceId } from './integrations.js';
 import { botRecordFields } from './schema.js';
+import { GROUP_MEMBER_LIMIT } from './group-limits.js';
 export const GROUP_ROOT_PRESET = 'dsh-bot-group-root';
 export const GROUP_ATTACHMENT_LIMIT = 16;
 export const GROUP_TEXT_MAX_BYTES = 65536;
@@ -105,6 +106,7 @@ export const groupTurnSchema = z.strictObject({
   inputFlowId: z.uuid().optional(),
   inputFlowSessionId: z.string().optional(),
   ownerFollowUp: ownerFollowUpBindingSchema.optional(),
+  guestQuestion: z.strictObject({ bot: botKeySchema, name, via: z.strictObject({ bot: botKeySchema, name, memberId: resourceId, botRevision: z.number(), presetId: z.string().min(1) }).optional() }).optional(),
   proactive: z.strictObject({
     ticketId: resourceId, assignmentId: resourceId,
     memberModels: groupMemberModelSelectionsSchema.optional(),
@@ -164,6 +166,9 @@ export const groupDeliverySchema = z.strictObject({
   contextTruncated: z.boolean(),
   state: z.enum(['pending', 'starting', 'running', 'completed', 'skipped', 'failed', 'cancelled', 'unknown']),
   automatic: z.boolean().optional(),
+  acceptedAt: z.number().optional(),
+  answeredAt: z.number().optional(),
+  relayAnswerFlowId: z.uuid().optional(),
   startedAt: z.number().optional(),
   endedAt: z.number().optional(),
   nativeRunId: z.string().optional(),
@@ -206,6 +211,9 @@ export const groupEditSchema = z.strictObject({
   memberRoles: groupRoleSchema.optional(),
 });
 export const groupSendSchema = z.strictObject({
+  expectedGuest: botKeySchema.optional(),
+  expectedRelay: botKeySchema.optional(),
+  relayTopic: z.string().trim().min(1).max(2048).optional(),
   operationId: resourceId,
   expectedMembershipRevision: rev,
   text: z
@@ -259,6 +267,8 @@ export const groupMessageSchema = z.strictObject({
   authorKind: z.enum(['user', 'bot', 'proactive']).optional(),
   causeId: z.string().optional(),
   speaker: speakerSchema.optional(),
+  guestReply: z.literal(true).optional(),
+  relayReply: z.literal(true).optional(),
   childSessionId: z.string().optional(),
   stopReason: z.string().optional(),
   failure: groupFailureSchema.optional(),
@@ -285,10 +295,13 @@ export const groupSummarySchema = z.strictObject({
   reason: z.enum(['root-owned-elsewhere', 'root-unavailable', 'recovery-needed']).optional(),
 });
 const groupViewDeliverySchema = groupDeliverySchema.extend({
+  relayMarker: z.enum(['unavailable', 'unconfirmed']).optional(),
   /** Projected from review receipts. Historical delivery records retain their original shape. */
   staleExportClosedAt: z.number().int().nonnegative().optional(),
 });
 export const groupViewSchema = groupSummarySchema.extend({
+  /** Computed by the current Host; older responses omit it. */
+  memberLimit: z.number().int().min(2).max(GROUP_MEMBER_LIMIT).optional(),
   turns: z.array(groupTurnSchema),
   deliveries: z.array(groupViewDeliverySchema),
   messages: z.array(groupMessageSchema),

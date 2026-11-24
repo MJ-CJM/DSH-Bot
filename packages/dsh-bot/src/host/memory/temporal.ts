@@ -3,7 +3,7 @@ import type { MemoryVersion, MemoryPayload } from '../../shared/memory-v2.js';
 import type { MemoryKernel } from './op-log.js';
 
 export interface Fact { version: MemoryVersion; payload: MemoryPayload }
-export interface TimeQuery { at: number; recordedBefore?: number; commitBefore?: number }
+export interface TimeQuery { at: number; recordedBefore?: number; commitBefore?: number; sharedOnly?: boolean }
 export const effective = (p: MemoryPayload, at: number) =>
   (p.valid.from === null || p.valid.from <= at) && (p.valid.to === null || at < p.valid.to);
 /** Recorded time is a knowledge cutoff; valid time is the independently queried real-world interval. */
@@ -20,10 +20,12 @@ export function temporalView(kernel: MemoryKernel, query: TimeQuery): { facts: F
     if (state.forgotten.has(id)) continue;
     versions.sort((a, b) => b.commitSeq - a.commitSeq);
     const latest = versions[0]; if (!latest) continue;
+    if (query.sharedOnly && (latest.scope !== 'shared' || latest.labels.restrictions.includes('secret'))) continue;
     if (latest.scope === 'private' && state.retired.has(JSON.stringify(latest.ownerBotKey))) continue;
     if (latest.labels.restrictions.some(r => r === 'revoked' || r === 'pending-cleanup')) continue;
     let selected: Fact | undefined;
     for (const version of versions) {
+      if (query.sharedOnly && (version.scope !== 'shared' || version.labels.restrictions.includes('secret'))) continue;
       const payload = kernel.domain.table('payloads').get(version.contentRef);
       if (!payload) throw new Error('Memory payload missing');
       for (const at of [payload.valid.from, payload.valid.to]) if (at !== null && at > query.at) boundary = Math.min(boundary, at);

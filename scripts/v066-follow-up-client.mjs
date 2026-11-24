@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 import { auditArtifact } from './p34-artifact.mjs';
 import { scratch } from './proactive/worker.mjs';
@@ -61,10 +61,7 @@ try {
     const bots = page.locator('[data-bots-page]:visible');
     const openPersonal = async () => {
       await openBotsPanel(page, t['bots.title']);
-      const profile = bots.getByRole('button', { name: `${t['chat.profile']} · Fixture alpha`, exact: true });
-      const fallback = bots.locator('button[data-bot-id="alpha"]');
-      await profile.or(fallback).first().waitFor();
-      if (await profile.isVisible()) await profile.click(); else await fallback.click();
+      await selectBotDirectoryAction(bots, 'alpha', t['chat.profile']);
       const detail = page.locator('[data-bot-detail="alpha"]');
       await detail.getByRole('tab', { name: t['detail.work'], exact: true }).click();
       const followUp = detail.locator('[data-follow-up="detail"]:visible');

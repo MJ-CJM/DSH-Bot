@@ -5,7 +5,7 @@ import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { dismissFirstRunOverlays, installOverlayHandler } from '../packages/dsh-bot/scripts/screenshot-support.ts';
 import { webHost } from './deepening/b4-web-host.mjs';
-import { openBotsPanel, openSidebarSession } from './deepening/sidebar-session.mjs';
+import { openBotsPanel, openSidebarSession, selectBotDirectoryAction } from './deepening/sidebar-session.mjs';
 import { auditArtifact, command } from './p34-artifact.mjs';
 import { scratch } from './proactive/worker.mjs';
 
@@ -93,7 +93,7 @@ try {
       await openBotsPanel(page, t['bots.title']);
       const bots = page.locator('[data-bots-page]:visible');
       const detail = bots.locator(`[data-bot-detail="${alpha.botId}"]:visible`);
-      if (!await detail.isVisible()) await bots.getByRole('button', { name: `${t['chat.profile']} · ${alpha.botId}`, exact: true }).click();
+      if (!await detail.isVisible()) await selectBotDirectoryAction(bots, alpha.botId, t['chat.profile']);
       await detail.getByRole('tab', { name: t['detail.memory'], exact: true }).click();
       const section = detail.getByRole('region', { name: t['groupRecall.title'], exact: true });
       await section.waitFor();

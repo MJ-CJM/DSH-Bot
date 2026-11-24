@@ -1,4 +1,5 @@
 import { startDelegate } from '../data-flow/delegation.js';
+import { registerWorkerCapability } from '../groups/worker-capabilities.js';
 import type { SubagentActivation } from '@deepseek-ai/dsh-subagent';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
@@ -84,7 +85,7 @@ export function registerDelegateTool(owner: Agent): () => void {
       { prepend: true },
     );
     try {
-      const release = ctx.tools.register(
+      const release = registerWorkerCapability(owner,
         defineTool({
           name: BOT_DELEGATE_TOOL_NAME,
           description: en.tools['bot_delegate.description'],

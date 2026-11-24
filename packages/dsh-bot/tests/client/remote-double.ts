@@ -281,6 +281,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
     teamRemove: vi.fn<GroupMethods["teamRemove"]>(),
     teamPreview: vi.fn<GroupMethods["teamPreview"]>(),
     teamApply: vi.fn<GroupMethods["teamApply"]>(),
+    getRelayDetails: vi.fn<GroupMethods['getRelayDetails']>(),
     closeStaleExports: vi.fn<GroupMethods['closeStaleExports']>(),
 		open: vi.fn<GroupMethods["open"]>(async () => {
 			if (!data.groupView) throw new Error("No group fixture");
@@ -312,6 +313,7 @@ export function remoteDouble(initial: BotRecord[] = []) {
 		send: vi.fn<GroupMethods["send"]>(),
 		cancel: vi.fn<GroupMethods["cancel"]>(),
 		archive: vi.fn<GroupMethods["archive"]>(),
+		deleteGroup: vi.fn<GroupMethods["deleteGroup"]>(),
 	};
 	const im = {
 		status: vi.fn(async () => ({

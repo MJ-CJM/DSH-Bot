@@ -126,12 +126,12 @@ it('saved HTTP connector credentials do not cause a false unsaved warning', asyn
 });
 
 
-it('retains search, scroll and exact profile-button focus when returning from inline details', async () => {
+it('retains search, scroll and focus on the same row menu when returning from inline details', async () => {
   const app = await mount([bot()]);
   await fill(field(app.container, en.ui['navigation.searchBots']), 'Alpha');
   const scroll = requireValue(app.container.querySelector<HTMLDivElement>('[data-bots-page] > div'));
-  const trigger = button(app.container, en.ui['chat.profile']);
-  await act(async () => { scroll.scrollTop = 120; trigger.focus(); });
+  const trigger = button(app.container, `${en.ui['card.more']} Alpha Bot`);
+  await act(async () => { scroll.scrollTop = 120; });
   await openProfile(app);
   expect(app.container.querySelector('dialog')).toBeNull();
   await click(button(app.container, 'Back to My Bots'));

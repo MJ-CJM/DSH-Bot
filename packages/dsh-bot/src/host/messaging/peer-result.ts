@@ -3,6 +3,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import { sameBot, type BotKey } from '../../shared/identity.js';
 import type { MessageRecord } from '../../shared/messaging.js';
 import { canReadLabel } from '../data-flow/labels.js';
+import { groupRelayWork } from './scoped-projection.js';
 import { digest } from '../common/operations.js';
 import type { ManagedOutlets } from '../data-flow/outlets.js';
 import { ExportAuthorizationRequired } from '../data-flow/egress.js';
@@ -20,7 +21,7 @@ export function peerResultFromRows(
   events: readonly SessionEvent[], flow: ManagedOutlets | undefined, requestId?: string, scopedOnly = false,
   settlement?: Supergroup['peerReplyStatus'],
 ): PeerResult {
-  const asks = rows.filter(({ envelope: e, execution }) => e.mode === 'ask' && sameBot(e.from, owner) && sameBot(e.to, peer) &&
+  const asks = rows.filter(({ envelope: e, execution }) => e.mode === 'ask' && !(execution && groupRelayWork(execution.workId)) && sameBot(e.from, owner) && sameBot(e.to, peer) &&
     e.fromSessionId === ownSession && e.toSessionId === peerSession && (!scopedOnly || execution?.phase === 'request') &&
     (!requestId || e.id === requestId));
   if (!asks.length) return { status: 'missing' };

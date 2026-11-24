@@ -18,7 +18,6 @@ import {
 } from '../../shared/schema.js';
 import { DshBotError, parseInput } from '../errors.js';
 import { getScopedCollaborationBinding } from '../supergroup/collaboration.js';
-import { isSupergroupWorker } from '../groups/worker-tool.js';
 import type { DshBotRegistry } from '../registry.js';
 
 export const BOT_MANAGE_TOOL_NAME = 'bot_manage';
@@ -156,12 +155,17 @@ function toolError(error: unknown): never {
 
 function readArguments(exec: ToolExecution, owner: Agent) {
   try {
-    if (exec.agent !== owner) throw new DshBotError('bot/invalid', 'Bot management tool belongs to another agent');
+    if (exec.agent !== owner || !canManageBots(owner)) throw new DshBotError('bot/invalid', 'Bot management requires the owning foreground session');
     exec.signal.throwIfAborted();
     return parseInput(argumentsSchema, exec.arguments);
   } catch (error) {
     return toolError(error);
   }
+}
+function canManageBots(agent: Agent): boolean {
+  const header = agent.session.header;
+  return !header.parentSession && header.origin !== 'subagent' && !(header.delegationDepth ?? 0) &&
+    !getScopedCollaborationBinding(agent);
 }
 
 /** One agent owns both the policy gate and the tool; the caller retains the disposer. */
@@ -174,6 +178,7 @@ export function registerBotManageTool(
   // Blank preset selection can transfer this package's tool between retained
   // Bot generations and standard. Never replace another plugin's definition.
   activeTools.get(owner)?.();
+  if (!canManageBots(owner)) return () => {};
   let dispose: (() => void) | undefined;
   dispose = owner.ctx.effect(() => {
     const releases: Array<() => void> = [];
@@ -432,7 +437,7 @@ function registerMatchingAgents(ctx: Context, matches: (agent: Agent) => boolean
   ctx.effect(() => {
     const agents = new Map<Agent, () => void>();
     const refresh = (agent: Agent) => {
-      if (!matches(agent)) {
+      if (!canManageBots(agent) || !matches(agent)) {
         agents.get(agent)?.();
         return;
       }
@@ -476,14 +481,12 @@ function registerMatchingAgents(ctx: Context, matches: (agent: Agent) => boolean
 /** Optional Host contribution: no global tool and no mutation of the standard preset. */
 export function registerStandardBotManage(ctx: Context): void {
   // The creation header is immutable even when a blank session changes preset.
-  registerMatchingAgents(ctx, (agent) => !getScopedCollaborationBinding(agent) && !isSupergroupWorker(agent) &&
-    ctx.agentPresets.composedPreset(agent.ctx) === 'standard');
+  registerMatchingAgents(ctx, (agent) => ctx.agentPresets.composedPreset(agent.ctx) === 'standard');
 }
 
 /** Follow the exact Bot generation, including blank-session preset changes. */
 export function registerBotPresetManage(ctx: Context, botId: string): void {
   const presetScope = scopeOf(ctx);
   if (!presetScope) throw new Error('Bot management requires a preset scope');
-  registerMatchingAgents(ctx, (agent) => !getScopedCollaborationBinding(agent) && !isSupergroupWorker(agent) &&
-    scopeChainOf(scopeOf(agent.ctx)).includes(presetScope), botId);
+  registerMatchingAgents(ctx, (agent) => scopeChainOf(scopeOf(agent.ctx)).includes(presetScope), botId);
 }

@@ -398,9 +398,13 @@ describe('Groups portable recipe Remote contract', () => {
   const mappings = bots.map((bot, index) => ({ roleId: `role-${index}`, bot }));
   const saved = { id: 'team:test', savedAt: 1, recipe };
   const cases: Record<string, { args: Record<string, unknown>; valid: unknown; invalid: unknown }> = {
+    deleteGroup: { args: { group: key, expectedRevision: 1 }, valid: true, invalid: { deleted: true } },
     getExportApprovalSettings: { args: { group: key }, valid: { groupRevision: 1, membershipRevision: 1,
       readers: bots.map(bot => ({ bot, name: bot.botId })), eligibleBots: bots, enabledBots: [], canEnable: true }, invalid: { canEnable: true } },
     setExportApproval: { args: { group: key, bot: bots[0], enabled: true, expectedRevision: 1, expectedMembershipRevision: 1 }, valid: group, invalid: { ...group, authority: {} } },
+    getRelayDetails: { args: { request: { kind: 'receipt', messageId: 'marker', nativeId: 'native', sessionId: 'session' } },
+      valid: { sender: 'A', guest: 'B', answer: { state: 'readable', text: 'answer' } },
+      invalid: { sender: 'A', guest: 'B', answer: { state: 'restricted', text: 'private' } } },
     closeStaleExports: { args: { group: key, expectedMembershipRevision: 1 }, valid: { closed: 2 }, invalid: { closed: -1 } },
     teamList: { args: {}, valid: [saved], invalid: [{ ...saved, authority: {} }] },
     teamCapture: { args: { group: key, name: 'Portable' }, valid: recipe, invalid: { ...recipe, version: 2 } },
@@ -412,9 +416,9 @@ describe('Groups portable recipe Remote contract', () => {
   };
   it('lists all Groups methods exactly and validates every portable recipe argument/result on both wire directions', () => {
     expect(GROUPS_REMOTE.descriptors.map(row => `${row.namespace}/${row.method}`)).toEqual(Object.keys(groupsSpec.methods));
-    expect(GROUPS_REMOTE.descriptors.map(row => row.method).sort()).toEqual(['archive', 'cancel', 'continueTurn', 'create', 'edit', 'list', 'markRead',
+    expect(GROUPS_REMOTE.descriptors.map(row => row.method).sort()).toEqual(['archive', 'cancel', 'continueTurn', 'create', 'deleteGroup', 'edit', 'list', 'markRead',
       'open', 'openAttachment', 'recallForBot', 'send', 'setModel', 'stopMember', 'view',
-      'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].sort());
+      'getRelayDetails', 'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].sort());
     for (const [name, value] of Object.entries(cases)) {
       const method = GROUPS_REMOTE.methods[`dshBot.groups/${name}`];
       if (!method) throw new Error(`Missing Groups method ${name}`);

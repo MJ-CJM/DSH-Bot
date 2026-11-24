@@ -1,3 +1,13 @@
+/** Select rows by identity, including when different Bots share a display name. */
+export function botDirectoryMore(panel, botId) {
+  return panel.locator(`[data-bots-list]:visible [data-directory-kind="bot"][data-directory-id="${botId}"] button[aria-haspopup="menu"]`);
+}
+
+export async function selectBotDirectoryAction(panel, botId, label) {
+  await botDirectoryMore(panel, botId).click();
+  await panel.page().getByRole('menu').getByRole('menuitem', { name: label, exact: true }).click();
+}
+
 /** Navigate the native sidebar, including paged overflow in both supported locales. */
 export async function openSidebarSession(page, sessionId) {
   const target = page.getByRole('treeitem').and(page.locator(`[data-row-key="session:${sessionId}"]:visible`));

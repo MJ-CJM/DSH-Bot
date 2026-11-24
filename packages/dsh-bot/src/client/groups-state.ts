@@ -19,16 +19,19 @@ import {
   type GroupAttachment,
 } from '../shared/groups.js';
 import { createPollingCatalog, type PollingCatalog, type BotCatalogOptions } from './state.js';
+import { GroupReplyFolds } from './group-reply-folds.js';
 export const unwrapGroup = <T>(r: RemoteResult<T>): T => {
   if (!r.ok) throw r.error;
   return r.value;
 };
 export interface GroupDraft {
+  relayTopic?: { key: string; text: string };
   memoryStatusOnly?: true;
+  memoryReferenceId?: string;
   text: string; mentions: string[]; mentionBindings?: MentionBinding[]; followup?: { turnId: string; deliveryId: string }; replyTo?: GroupView['messages'][number];
   uploads: Array<{ id: string; name: string; bytes: number; state: 'uploading' | 'uploaded' | 'uploadFailed'; receiptId?: string }>;
   operation?: { signature: string; request: GroupSend };
-  sending: boolean; error: boolean; errorCode?: 'supergroup-conflict' | 'supergroup-unsupported' | 'group-data-blocked' | 'member-limit' | 'membership-changed' | 'send-failed' | 'conflict' | 'route-unavailable';
+  sending: boolean; error: boolean; errorCode?: 'memory-text-required' | 'mention-not-member' | 'relay-topic-required' | 'guest-ambiguous' | 'guest-unavailable' | 'guest-changed' | 'supergroup-conflict' | 'supergroup-unsupported' | 'group-data-blocked' | 'member-limit' | 'membership-changed' | 'send-failed' | 'conflict' | 'route-unavailable';
 }
 export class GroupRouteUnavailable extends Error {
   constructor() { super('Current group route is unconfirmed'); }
@@ -36,6 +39,8 @@ export class GroupRouteUnavailable extends Error {
 type GroupRunSource = { messageId: string; seq: number };
 export interface GroupRunRequest { sessionId: string; turnId: string; requestId: number; source?: GroupRunSource }
 export interface GroupActions {
+  /** Keep the originating directory visible if archiving its native session closed the panel. */
+  returnAfterDeletion?(group: GroupKey, rootSessionId: string, section: 'groups' | 'recent'): void;
   followUp?: import('./proactive/follow-up-state.js').FollowUpSource;
   reply(sessionId: string, message: GroupView['messages'][number]): void;
   replies: { subscribe(listener: () => void): () => void; getSnapshot(): { sessionId: string; message: GroupView['messages'][number] } | undefined };
@@ -57,11 +62,13 @@ export interface GroupActions {
   loadThrough(key: GroupKey, seq: number): Promise<void>;
   messageView(key: GroupKey): PollingCatalog<{ view?: GroupView }>;
   createView(key: GroupKey): PollingCatalog<{ view?: GroupView }>;
+  refreshRoster(key: GroupKey): Promise<void>;
   selection: PollingCatalog<{ selectedId?: string; createdAt?: number; requestId?: number }>;
   select(id: string, createdAt?: number): void;
   consumeSelection(requestId: number): void;
   /** Client-session preferences, released with the plugin effect. */
   turnExpansion: Map<string, boolean>;
+  replyFolds: GroupReplyFolds;
   /** Native display metadata cached only after a user opens the model menu. */
   modelMetadata?: Map<string, Awaited<ReturnType<ModelActions['modelInfo']>>>;
 }
@@ -74,9 +81,11 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
   const supergroupOperations = new Map<string, { workId: string; revision: number }>();
   ctx.effect(() => () => supergroupOperations.clear(), 'dsh-bot: group input operation receipts');
   const turnExpansion = new Map<string, boolean>();
+  const replyFolds = new GroupReplyFolds();
   const modelMetadata = new Map<string, Awaited<ReturnType<ModelActions['modelInfo']>>>();
   const messageViews = new Map<string, PollingCatalog<{ view?: GroupView }>>();
-  ctx.effect(() => () => { for (const view of messageViews.values()) view.dispose(); messageViews.clear(); }, 'group message quote views');
+  const openViews = new Map<PollingCatalog<{ view?: GroupView }>, GroupKey>();
+  ctx.effect(() => () => { for (const view of messageViews.values()) view.dispose(); messageViews.clear(); openViews.clear(); }, 'group views');
   const drafts: GroupActions['drafts'] = new Map();
   let draftRevision = 0; const draftListeners = new Set<() => void>();
   const draft = (id: string): GroupDraft => { let value = drafts.get(id); if (!value) { value = { text: '', mentions: [], uploads: [], sending: false, error: false }; drafts.set(id, value); } return value; };
@@ -87,7 +96,7 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
   const runRequestListeners = new Set<() => void>();
   const publishRunRequest = (request?: GroupRunRequest) => { runRequest = request; for (const listener of runRequestListeners) listener(); };
   ctx.effect(() => () => { live = false; openEpoch++; drafts.clear(); draftListeners.clear(); replyListeners.clear(); reply = undefined; runRequest = undefined; runRequestListeners.clear(); }, 'dsh-bot: group navigation');
-  ctx.effect(() => () => { turnExpansion.clear(); modelMetadata.clear(); }, 'dsh-bot: group display preferences');
+  ctx.effect(() => () => { turnExpansion.clear(); replyFolds.clear(); modelMetadata.clear(); }, 'dsh-bot: group display preferences');
   let requested: { selectedId?: string; createdAt?: number; requestId?: number } = {};
   let requestSequence = 0;
   const selection = createPollingCatalog(ctx, requested, async () => requested, options);
@@ -129,7 +138,7 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
       if (!service) throw new Error('Native image preview unavailable');
       return service.imageUrl(sessionId as SessionId, attachment as Parameters<UiConversation['imageUrl']>[1]);
     },
-    turnExpansion, modelMetadata,
+    turnExpansion, replyFolds, modelMetadata,
     remote,
     async send(key, request, signal) {
       // Directory entries are display caches. Missing/stale entries must never
@@ -147,7 +156,7 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
         cached.supergroup?.workId !== group.supergroup?.workId)) throw new GroupRouteUnavailable();
       if (!group.supergroup) return { turnId: unwrapGroup(await remote().send(key, request)).id };
       const rootId = group.rootSessionId;
-      if (request.fileReceiptIds?.length || request.round || request.followup || request.memoryStatusOnly || !request.text?.trim()) {
+      if (request.fileReceiptIds?.length || request.round || request.followup || request.memoryStatusOnly || request.expectedGuest || !request.text?.trim()) {
         patchDraft(rootId, value => ({ ...value, errorCode: 'supergroup-unsupported' }));
         throw new Error('Supergroup input unsupported');
       }
@@ -218,13 +227,29 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
       if (!view) { view = createPollingCatalog(ctx, {} as { view?: GroupView }, async () => ({ view: groupViewSchema.parse(unwrapGroup(await remote().view(key, {}))) }), options); messageViews.set(id, view); }
       return view;
     },
-    createView: (key) =>
-      createPollingCatalog(
+    createView(key) {
+      const view = createPollingCatalog(
         ctx,
         {} as { view?: GroupView },
         async () => ({ view: groupViewSchema.parse(unwrapGroup(await remote().view(key, {}))) }),
         options,
-      ),
+      );
+      return {
+        ...view,
+        subscribe(listener) { openViews.set(view, key); return view.subscribe(listener); },
+        observe(listener) { openViews.set(view, key); return view.observe(listener); },
+        dispose() { openViews.delete(view); view.dispose(); },
+      };
+    },
+    async refreshRoster(key) {
+      const reads = [result.catalog.refresh()];
+      const messages = messageViews.get(JSON.stringify(key));
+      if (messages) reads.push(messages.refresh());
+      for (const [view, target] of openViews) {
+        if (key.groupId === target.groupId && key.groupCreatedAt === target.groupCreatedAt) reads.push(view.refresh());
+      }
+      await Promise.all(reads);
+    },
   };
   return result;
 }

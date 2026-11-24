@@ -1,5 +1,5 @@
 import en from '../../../locale/en.json' with { type: 'json' };
-import type { BotKey } from '../../shared/identity.js';
+import { sameBot, type BotKey } from '../../shared/identity.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools';
 import { z } from 'zod';
@@ -8,19 +8,26 @@ import type { GroupModelSelection } from '../../shared/groups.js';
 import type { GroupState } from './state.js';
 import type { GroupTurnRunner } from './turn-runner.js';
 import { checkSupergroup, reserveSupergroupRequest } from './supergroup-admission.js';
-export interface WorkerBinding { turnId: string; deliveryId: string; childId: string; rootId: string; presetId: string; resumeAllowed?: boolean; approvedInputs?: Set<string>; restrictedInputId?: string; modelSelection?: GroupModelSelection; audience: BotKey[]; automaticSupergroup?: boolean; isActive?: () => boolean; agent?: Agent }
+import { protectWorkerCapabilities, registerWorkerCapability, type GroupWorkerMode } from './worker-capabilities.js';
+export interface WorkerBinding { turnId: string; deliveryId: string; childId: string; rootId: string; presetId: string; resumeAllowed?: boolean; approvedInputs?: Set<string>; restrictedInputId?: string; modelSelection?: GroupModelSelection; guestQuestion?: true; guestIdentity?: { bot: BotKey; revision: number }; audience: BotKey[]; automaticSupergroup?: boolean; isActive?: () => boolean; agent?: Agent }
 const bindings = new WeakMap<Agent, WorkerBinding>();
+const modes = new WeakMap<WorkerBinding, { mode: GroupWorkerMode; state: GroupState }>();
 export const workerReservations = new Map<string, WorkerBinding>();
 const workerStates = new Set<GroupState>();
 /** Derive the privacy boundary from an exact Host reservation before preset initialization. */
 function automaticBinding(agent: Agent, binding: WorkerBinding): boolean {
-  if (binding.childId !== agent.session.id || workerReservations.get(binding.childId) !== binding) return false;
+  return groupWorkerMode(agent, binding) === 'supergroup';
+}
+export function groupWorkerMode(agent: Agent, binding: WorkerBinding): GroupWorkerMode | undefined {
+  if (binding.childId !== agent.session.id || workerReservations.get(binding.childId) !== binding) return;
   for (const state of workerStates) {
     if (state.stopped || state.workers.get(binding.childId) !== binding) continue;
     const turn = state.table('turns').get(binding.turnId), group = turn && state.table('groups').get(turn.group.groupId);
-    if (group?.supergroup && group.createdAt === turn?.group.groupCreatedAt && group.rootSessionId === binding.rootId) return true;
+    if (turn && group && group.createdAt === turn.group.groupCreatedAt && group.rootSessionId === binding.rootId) {
+      if (binding.restrictedInputId || Boolean(turn.guestQuestion) !== Boolean(binding.guestQuestion)) return;
+      return turn.guestQuestion ? 'guest' : turn.memoryStatusOnly ? 'memory' : group.supergroup ? 'supergroup' : 'member';
+    }
   }
-  return false;
 }
 export function getGroupWorkerBinding(agent: Agent) {
   const binding = workerReservations.get(agent.session.id) ?? bindings.get(agent);
@@ -33,6 +40,18 @@ export const isSupergroupWorker = (agent: Agent): boolean => Boolean(getGroupWor
 export function isLiveGroupWorker(agent: Agent): boolean {
   const binding = getGroupWorkerBinding(agent);
   return Boolean(binding && binding.agent === agent && workerReservations.get(agent.session.id) === binding && binding.isActive?.());
+}
+export function hasGroupParent(agent: Agent): boolean {
+  // A group-root marker can only remove capabilities, never grant them.
+  return Boolean(agent.session.header.parentSession?.startsWith('group-root-') || getGroupWorkerBinding(agent));
+}
+export function protectGroupWorker(agent: Agent) {
+  if (!hasGroupParent(agent)) return;
+  protectWorkerCapabilities(agent, () => {
+    const binding = getGroupWorkerBinding(agent);
+    const policy = binding && modes.get(binding);
+    return policy && !policy.state.stopped && workerStates.has(policy.state) && isLiveGroupWorker(agent) ? policy.mode : undefined;
+  });
 }
 /** Only exact inputs admitted by the group bridge retain the shared label. */
 export function isAdmittedGroupInput(agent: Agent, message: import('@deepseek-ai/dsh-llm').UserMessage): boolean {
@@ -73,8 +92,10 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
     workerStates.add(state);
     const releases = new Set<() => void>();
     const off = state.ctx.on('agent/created', async ({ agent, source }) => {
+      protectGroupWorker(agent);
       const binding = state.workers.get(agent.session.id);
       if (!binding || (source !== 'startup' && !binding.resumeAllowed) || binding.agent || agent.session.header.parentSession !== binding.rootId || agent.session.header.agentPreset !== binding.presetId) return;
+      modes.delete(binding);
       binding.agent = agent;
       if (state.table('turns').get(binding.turnId)?.routing) agent.ctx.effect(() => agent.ctx.on('agent/request', async ({ agent: requesting }, next) => {
         if (requesting === agent) await state.queue.run(async () => {
@@ -85,26 +106,22 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
         return next();
       }, { prepend: true }), 'dsh-bot: ordinary group observed request count');
       const turn = state.table('turns').get(binding.turnId);
-      if (turn?.memoryStatusOnly) {
-        agent.ctx.effect(() => agent.ctx.tools.guard(exec =>
-          exec.agent === agent && exec.parent === undefined &&
-          ['bot_memory_save', 'bot_memory_list', 'bot_memory_search'].includes(exec.name)
-            ? undefined : 'This group turn permits only private memory operations'), 'dsh-bot: private memory status tool boundary');
-        return;
-      }
       const group = state.table('groups').get(turn?.group.groupId ?? '');
-      if (group?.supergroup) agent.ctx.effect(() => agent.ctx.tools.guard(exec =>
-        exec.agent === agent && exec.name === 'group_message' && exec.parent === undefined
-          ? undefined : 'Supergroup P0 permits only checked group collaboration'), 'dsh-bot: supergroup read-only tool boundary');
+      if (!turn || !group || group.createdAt !== turn.group.groupCreatedAt || group.rootSessionId !== binding.rootId || binding.restrictedInputId) return;
+      const delivery = state.table('deliveries').get(binding.deliveryId);
+      if (!delivery || Boolean(turn.guestQuestion) !== Boolean(binding.guestQuestion) ||
+          (turn.guestQuestion && !sameBot(delivery.ordinal === 1 && turn.guestQuestion.via ? turn.guestQuestion.via.bot : turn.guestQuestion.bot, delivery.bot))) return;
+      const bot = await state.bot(delivery.bot);
+      const mode = groupWorkerMode(agent, binding);
+      if (!mode) return;
+      if (turn.guestQuestion || turn.memoryStatusOnly) { modes.set(binding, { mode, state }); return; }
       if (group?.supergroup) agent.ctx.effect(() => agent.ctx.on('agent/request', async ({ agent: requesting }, next) => {
         if (requesting !== agent || !isLiveGroupWorker(agent)) throw new OperationError('approval-denied');
         await checkSupergroup(state, group);
         await reserveSupergroupRequest(state, group);
         return next();
       }, { prepend: true }), 'dsh-bot: supergroup native request budget');
-      if (binding.restrictedInputId) return;
-      const delivery = state.table('deliveries').get(binding.deliveryId);
-      if (!delivery || (await state.bot(delivery.bot)).tools.deny.includes('group_message')) return;
+      if (bot.tools.deny.includes('group_message')) { modes.set(binding, { mode, state }); return; }
       bindings.set(agent, binding);
       const live = () => binding.agent === agent && !state.stopped && state.workers.get(agent.session.id) === binding &&
         !state.cancelledTurns.has(binding.turnId) && Boolean(binding.isActive?.());
@@ -126,7 +143,7 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
       });
       const release = agent.ctx.effect(() => {
         definitions.set(agent, { definition, live });
-        const unregister = agent.ctx.tools.register(definition);
+        const unregister = registerWorkerCapability(agent, definition);
         const offDirectory = group?.supergroup ? agent.ctx.systemPrompt.context({
           name: 'dsh-bot:supergroup-experts', order: 9055, required: true, interpolate: false,
           text: () => {
@@ -144,6 +161,7 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
         return () => { offDirectory(); definitions.delete(agent); bindings.delete(agent); unregister(); releases.delete(release); };
       }, 'dsh-bot: group worker tool');
       releases.add(release);
+      modes.set(binding, { mode, state });
     });
     return () => { workerStates.delete(state); off(); for (const release of releases) release(); releases.clear(); };
   }, 'dsh-bot: owned group workers');

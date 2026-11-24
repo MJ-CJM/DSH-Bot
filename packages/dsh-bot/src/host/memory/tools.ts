@@ -38,7 +38,10 @@ const listOutput = {
 };
 
 /** Definitions bind both the trusted Bot service and the owning Agent, never model arguments. */
-export function createMemoryTools(memory: BotMemoryService, owner: Agent, observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}) {
+export function createMemoryTools(memory: BotMemoryService, owner: Agent, observed: (rows: MemoryRecord[]) => Promise<void> = async () => {},
+  sharedFirst = false) {
+  const sourceChoice: Record<string, { type: 'boolean'; description: string }> = sharedFirst ? { includePrivate: { type: 'boolean',
+    description: "Only set true when the answer needs this Bot's own saved knowledge or experience. Private sources may require approval before sharing." } } : {};
   const authorize = (exec: ToolRunContext) => {
     if (exec.agent !== owner) throw new DshBotError('bot/invalid', 'Memory tool belongs to another agent');
     exec.signal.throwIfAborted();
@@ -84,21 +87,26 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent, observ
     }),
     defineTool({
       name: 'bot_memory_search',
-      description: "Search this Bot's private memories and published user-shared facts before asking the user again.",
+      description: sharedFirst ? 'Search published shared facts relevant to the question. Prefer the supplied material first.' :
+        "Search this Bot's private memories and published user-shared facts before asking the user again.",
       parameters: {
+        ...sourceChoice,
         query: { type: 'string', required: true },
         limit: { type: 'integer', description: 'Maximum results, from 1 to 200.' },
       },
       output: listOutput,
       async execute(args, exec) {
         authorize(exec);
-        return memory.search(args, exec.signal, observed);
+        const { includePrivate, ...fields } = args as typeof args & { includePrivate?: boolean };
+        return memory.search(fields, exec.signal, observed, sharedFirst && includePrivate !== true);
       },
     }),
     defineTool({
       name: 'bot_memory_list',
-      description: "List this Bot's private memories and published shared facts; candidates and conflicts are excluded.",
+      description: sharedFirst ? "List published shared facts. An empty shared list says nothing about this Bot's private memory." :
+        "List this Bot's private memories and published shared facts; candidates and conflicts are excluded.",
       parameters: {
+        ...sourceChoice,
         tag: { type: 'string' },
         pinned: { type: 'boolean' },
         limit: { type: 'integer', description: 'Maximum results, from 1 to 200.' },
@@ -106,7 +114,8 @@ export function createMemoryTools(memory: BotMemoryService, owner: Agent, observ
       output: listOutput,
       async execute(args, exec) {
         authorize(exec);
-        return memory.list(args, exec.signal, observed);
+        const { includePrivate, ...fields } = args as typeof args & { includePrivate?: boolean };
+        return memory.list(fields, exec.signal, observed, sharedFirst && includePrivate !== true);
       },
     }),
     defineTool({

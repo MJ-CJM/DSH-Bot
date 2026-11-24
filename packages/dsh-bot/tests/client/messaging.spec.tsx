@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MessageCard, messageDefinition, messageGroupTree, messageLabel, messageText } from '../../src/client/messaging.js';
+import type { GroupActions } from '../../src/client/groups-state.js';
 import { messageSourceSchema } from '../../src/shared/messaging.js';
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 type SessionEventLike = Parameters<typeof messageDefinition.match>[0];
@@ -69,6 +70,30 @@ describe('B05 formal message projection and keyboard cards', () => {
       expect(container.querySelector('script')).toBeNull(); expect(container.textContent).toContain('方案风险');
       await act(async () => root.render(<MessageCard node={{ ...node, data: { ...node.data } }} t={t} />));
       expect(container.querySelector('button')).toBe(button); expect(document.activeElement).toBe(button); expect(button.getAttribute('aria-expanded')).toBe('true');
+    } finally { await act(async () => root.unmount()); container.remove(); }
+  });
+  it('loads relay text only when expanded in its native session and discards a late answer after switching views', async () => {
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    const container = document.createElement('div'), root = createRoot(container); document.body.append(container);
+    const data = { ...node.data, source: { ...source, groupRelayReceipt: true as const } };
+    const value = { ok: true, value: { sender: 'A', guest: 'B', question: { state: 'readable', text: 'PERMITTED QUESTION' } } };
+    let finish = (_result: typeof value) => {};
+    const getRelayDetails = vi.fn(async () => new Promise<typeof value>(resolve => { finish = resolve; }));
+    const groups = { remote: () => ({ getRelayDetails }), catalog: { getSnapshot: () => ({ pollIntervalMs: 60_000 }) } } as unknown as GroupActions;
+    const render = (sessionId: string) => act(async () => root.render(<MessageCard node={{ ...node, data }} t={key => (en.ui as Record<string, string>)[key] ?? key} groups={groups} sessionId={sessionId} />));
+    const toggle = () => container.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    try {
+      await render(source.fromSessionId); expect(toggle()).toBeNull();
+      await render(source.toSessionId); expect(toggle()).not.toBeNull(); expect(getRelayDetails).not.toHaveBeenCalled();
+      await act(async () => toggle()?.click());
+      expect(getRelayDetails).toHaveBeenCalledExactlyOnceWith({ kind: 'receipt', messageId: source.messageId, nativeId: node.id, sessionId: source.toSessionId });
+      await act(async () => finish(value));
+      expect(container.querySelector('[data-relay-part="question"]')?.textContent).toContain('PERMITTED QUESTION');
+      expect(container.textContent).not.toContain('方案风险'); expect(container.querySelector('[data-relay-part="report"]')).toBeNull();
+      await act(async () => toggle()?.click()); expect(container.textContent).not.toContain('PERMITTED QUESTION');
+      await act(async () => toggle()?.click());
+      await render(source.fromSessionId); await act(async () => finish(value));
+      expect(container.querySelector('[data-group-relay-details]')).toBeNull(); expect(container.textContent).not.toContain('PERMITTED QUESTION');
     } finally { await act(async () => root.unmount()); container.remove(); }
   });
   it('keeps teammate messages out of the folded Turn process', () => {

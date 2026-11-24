@@ -1,3 +1,5 @@
+import { releaseRelayAnswer, readRelayAnswer } from './relay-answer.js';
+import { guestContext } from './guest-question.js';
 import { groupMemoryWriteStatus } from './memory-status.js';
 import { readableGroupMessages, groupMessageDigests } from './context-flow.js';
 import { groupMemberModel, proactiveMemberModel } from './model-selection.js';
@@ -25,7 +27,9 @@ import { compatibleActivationSpec } from '../common/subagent-activation.js';
 
 import { blocks, textOf, terminal } from './model.js';
 import { memberRunFailure } from './failure.js';
-import type { GroupState } from './state.js';
+import type { GroupState, GroupRoot } from './state.js';
+import type { GroupRecord } from '../../shared/groups.js';
+import type { BotRecord } from '../../shared/schema.js';
 import type { GroupRoots } from './roots.js';
 import type { GroupMessages } from './messages.js';
 import { checkSupergroup, checkSupergroupEnqueue, groupReaders } from './supergroup-admission.js';
@@ -38,7 +42,7 @@ export class GroupTurnRunner {
   ) { this.concurrent = new ConcurrentGroups(state, roots, messages, this); }
   /** Called inside the service queue. A delivery receipt is the durable acceptance point. */
   async enqueue(t: GroupTurn, memberId: string, triggerMessageId: string, id: string, returnMemberId?: string, requestDigest?: string) {
-    if (t.ownerFollowUp) throw new OperationError('approval-denied');
+    if (t.ownerFollowUp || t.guestQuestion) throw new OperationError('approval-denied');
     const old = this.state.table('deliveries').get(id);
     if (old) {
       if (requestDigest && old.requestDigest !== requestDigest) throw new OperationError('conflict');
@@ -63,6 +67,7 @@ export class GroupTurnRunner {
     return row;
   }
   async groupMessage(agent: Agent, binding: WorkerBinding, input: z.output<typeof groupToolInput>, callId: string, signal: AbortSignal) {
+    if (this.state.table('turns').get(binding.turnId)?.guestQuestion) throw new OperationError('approval-denied');
     if (input.action === 'request-expert') return this.state.queue.run(async () => {
       signal.throwIfAborted();
       const turn = need(this.state.table('turns').get(binding.turnId)), group = this.state.record(turn.group);
@@ -137,6 +142,45 @@ export class GroupTurnRunner {
       return { status: 'accepted', messageId: message.id };
     });
   }
+  private async memberContext(t: GroupTurn, d: GroupDelivery, g: GroupRecord,
+    bot: BotRecord, root: GroupRoot, relay?: { from: string; reply: string }) {
+    const allMessages = this.messages.messages(g);
+    const readable = readableGroupMessages(this.state, g, root.agent);
+    const messageDigests = outlets(this.state.registry) && !g.supergroup ? groupMessageDigests(g, root.agent) : undefined;
+    const messages = allMessages.filter(message => readable.has(message.id));
+    const question = need(messages.find((m) => m.id === (d.triggerMessageId ?? t.inputMessageId)));
+    if ((question.replyTo || t.replyTo) && !readable.has((question.replyTo ?? t.replyTo)!)) throw new OperationError('group-data-blocked');
+    const previous = t.proactive || t.ownerFollowUp ? [] : this.state
+      .turns(g).filter(prior => prior.id === t.id || t.predecessorTurnIds?.includes(prior.id))
+      .flatMap(prior => this.state.deliveries(prior.id))
+      .filter((row) => t.protocol === 2 ? row.turnId !== t.id : row.ordinal < d.ordinal || row.turnId !== t.id)
+      .filter((d) => d.outputMessageId)
+      .flatMap((d) => messages.filter((m) => m.id === d.outputMessageId));
+    const participantNames = await Promise.all(
+      this.state.members(g).filter(m => m.enabled && m.removedAt === undefined).map(async (d) => {
+        try {
+          const b = await this.state.bot(d.bot);
+          return `${b.name} (botId=${b.id}, memberId=${d.id})`;
+        } catch {
+          return d.bot.botId;
+        }
+      }),
+    );
+    const context = groupContext(
+      g.name,
+      bot.name,
+      participantNames,
+      question,
+      messages.filter((m) => m.seq <= t.contextThroughSeq),
+      [...previous, ...messages.filter(m => m.id === (d.triggerMessageId ? question.replyTo : t.replyTo))],
+      this.state.registry.config.groupContextMaxBytes,
+      g.memberRoles?.find(row => row.bot.botId === bot.id && row.bot.botCreatedAt === bot.createdAt)?.role,
+      t.memoryStatusOnly, relay,
+    );
+    const attachmentBlocks = [...new Map(messages.filter(m => context.messageIds.includes(m.id))
+      .flatMap(m => m.attachments ?? []).map(block => [`${block.type}:${block.attachment.attachmentId}`, block])).values()] as import('@deepseek-ai/dsh-llm').ContentBlock[];
+    return { context, attachmentBlocks, messageDigests };
+  }
   async prepareDelivery(t: GroupTurn, deliveryId: string, signal: AbortSignal) {
     return this.state.queue.run(async () => {
       const d = need(this.state.table('deliveries').get(deliveryId)),
@@ -148,10 +192,9 @@ export class GroupTurnRunner {
         this.state.stopped ||
         this.state.cancelledTurns.has(t.id) ||
         d.state !== 'pending' ||
-        ((t.proactive || t.ownerFollowUp || g.supergroup) && g.membershipRevision !== t.membershipRevision) ||
+        ((t.proactive || t.ownerFollowUp || t.guestQuestion || g.supergroup) && g.membershipRevision !== t.membershipRevision) ||
         signal.aborted ||
-        !member?.enabled ||
-        member.removedAt !== undefined ||
+        ((!t.guestQuestion || d.ordinal !== 0) && (!member?.enabled || member.removedAt !== undefined)) ||
         g.archived ||
         this.state.table('turns').get(t.id)?.stoppedMemberIds?.includes(d.memberId)
       ) {
@@ -163,39 +206,10 @@ export class GroupTurnRunner {
       if (bot.updatedAt !== d.botRevision || status?.presetId !== d.presetId || status.preset.state !== 'ok')
         throw new OperationError('conflict');
       const root = need(this.state.roots.get(g.id));
-      const allMessages = this.messages.messages(g);
-      const readable = readableGroupMessages(this.state, g, root.agent);
-      const messageDigests = outlets(this.state.registry) && !g.supergroup ? groupMessageDigests(g, root.agent) : undefined;
-      const messages = allMessages.filter(message => readable.has(message.id));
-      const question = need(messages.find((m) => m.id === (d.triggerMessageId ?? t.inputMessageId)));
-      if ((question.replyTo || t.replyTo) && !readable.has((question.replyTo ?? t.replyTo)!)) throw new OperationError('group-data-blocked');
-      const previous = t.proactive || t.ownerFollowUp ? [] : this.state
-        .turns(g).filter(prior => prior.id === t.id || t.predecessorTurnIds?.includes(prior.id))
-        .flatMap(prior => this.state.deliveries(prior.id))
-        .filter((row) => t.protocol === 2 ? row.turnId !== t.id : row.ordinal < d.ordinal || row.turnId !== t.id)
-        .filter((d) => d.outputMessageId)
-        .flatMap((d) => messages.filter((m) => m.id === d.outputMessageId));
-      const participantNames = await Promise.all(
-        this.state.members(g).filter(m => m.enabled && m.removedAt === undefined).map(async (d) => {
-          try {
-            const b = await this.state.bot(d.bot);
-            return `${b.name} (botId=${b.id}, memberId=${d.id})`;
-          } catch {
-            return d.bot.botId;
-          }
-        }),
-      );
-      const context = groupContext(
-        g.name,
-        bot.name,
-        participantNames,
-        question,
-        messages.filter((m) => m.seq <= t.contextThroughSeq),
-        [...previous, ...messages.filter(m => m.id === (d.triggerMessageId ? question.replyTo : t.replyTo))],
-        this.state.registry.config.groupContextMaxBytes,
-        g.memberRoles?.find(row => row.bot.botId === bot.id && row.bot.botCreatedAt === bot.createdAt)?.role,
-        t.memoryStatusOnly,
-      );
+      const relay = t.guestQuestion?.via && d.ordinal === 1 ? readRelayAnswer(this.state, g, t, d) : undefined;
+      const { context, attachmentBlocks, messageDigests } = t.guestQuestion && d.ordinal === 0
+        ? { context: guestContext(this.state, g, root.agent, t, d), attachmentBlocks: [], messageDigests: undefined }
+        : await this.memberContext(t, d, g, bot, root, relay ? { from: relay.from, reply: relay.text } : undefined);
       if (t.protocol === 2 && d.automatic) {
         const current = need(this.state.table('turns').get(t.id));
         if ((current.automaticExecutions ?? 0) >= (current.continuationAllowance ?? 0)) return;
@@ -208,15 +222,13 @@ export class GroupTurnRunner {
         contextOutputMessageIds: context.outputIds,
         contextTruncated: context.truncated,
       });
-      const attachmentBlocks = [...new Map(messages.filter(m => context.messageIds.includes(m.id))
-        .flatMap(m => m.attachments ?? []).map(block => [`${block.type}:${block.attachment.attachmentId}`, block])).values()] as import('@deepseek-ai/dsh-llm').ContentBlock[];
       const modelSelection = t.memberModelSelections?.find(row => row.memberId === d.memberId)?.modelSelection ?? t.modelSelection;
       const selected = t.ownerFollowUp?.modelSelection ??
         (t.proactive ? proactiveMemberModel(t.proactive, d.memberId) : groupMemberModel(t, d.memberId, bot, () => this.state.route()));
       const route = selected ? { ...selected,
         // Explicit undefined clears a same-route effort inherited from the root's creation options.
         reasoningEffort: selected.reasoningEffort === undefined ? undefined : ReasoningEffortId(selected.reasoningEffort) } : this.state.route();
-      return { root, bot, d, context, attachmentBlocks, route, modelSelection, group: g, messageDigests };
+      return { root, bot, d, context, attachmentBlocks, route, modelSelection, group: g, messageDigests, relayAnswer: relay };
     });
   }
   async recordDeliveryResult(
@@ -232,7 +244,7 @@ export class GroupTurnRunner {
       const g = this.state.record(t.group),
         d = need(this.state.table('deliveries').get(deliveryId));
       await checkSupergroup(this.state, g);
-      if ((t.proactive || t.ownerFollowUp || g.supergroup) && g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
+      if ((t.proactive || t.ownerFollowUp || t.guestQuestion || g.supergroup) && g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
       if (t.memoryStatusOnly) {
         if (g.membershipRevision !== t.membershipRevision) throw new OperationError('conflict');
         await verify?.();
@@ -246,8 +258,13 @@ export class GroupTurnRunner {
           outputMessageId: undefined, outputSeq: undefined, exportFlowId: undefined });
         return;
       }
-      const text = textOf(result.output);
-      const hasContent = !d.skipped && !signal.aborted && (Boolean(text.trim()) || result.output.some((b) => b.type !== 'text'));
+      if (t.guestQuestion && (d.childSessionId !== childId || !d.childMessageId ||
+        (await this.state.bot(d.bot)).updatedAt !== d.botRevision)) throw new OperationError('conflict');
+      const content = t.guestQuestion ? result.output.filter(block => block.type === 'text') : result.output;
+      const text = textOf(content);
+      const completedGuest = !t.guestQuestion || result.stopReason === 'completed' && d.acceptedAt !== undefined;
+      const hasContent = completedGuest && !d.skipped && !signal.aborted &&
+        (Boolean(text.trim()) || content.some((b) => b.type !== 'text'));
       const state = signal.aborted
         ? 'cancelled'
         : d.skipped && result.stopReason === 'completed'
@@ -256,7 +273,7 @@ export class GroupTurnRunner {
           ? 'completed'
           : 'failed';
       // Native local results carry no failure detail; read the child's own failed turn/end.
-      const failure = state === 'failed' && result.stopReason === 'error'
+      const failure = !t.guestQuestion && state === 'failed' && result.stopReason === 'error'
         ? memberRunFailure(this.state.workers.get(childId)?.agent ?? this.state.ctx.agents.get(SessionId(childId)), d.startedAt ?? 0)
         : undefined;
       let output: { outputMessageId: string; outputSeq: number } | undefined;
@@ -276,20 +293,26 @@ export class GroupTurnRunner {
             turnId: t.id,
             memberId: d.memberId,
             speaker,
-            childSessionId: childId,
+            ...(t.guestQuestion?.via && d.ordinal === 1 ? { relayReply: true as const } : t.guestQuestion ? { guestReply: true as const } : { childSessionId: childId }),
             stopReason: result.stopReason,
             ...(failure ? { failure } : {}),
-            replyTo: d.triggerMessageId ?? t.replyTo ?? t.inputMessageId,
+            replyTo: t.guestQuestion ? t.inputMessageId : d.triggerMessageId ?? t.replyTo ?? t.inputMessageId,
             causeId: t.id,
           },
-          content: [...result.output],
+          content: [...content],
         });
         const append = () => prepared.root.agent.session.append('user/message', message, { surfaceOp: 'append' });
         const send = verify ? async () => { await verify(); return append(); } : append;
         let event: Awaited<ReturnType<typeof send>>;
         try {
+          if (t.guestQuestion?.via && d.ordinal === 0) {
+            const id = await groupResult(this.state, g, d.bot, childId, prepared.root.agent, JSON.stringify(message),
+              deliveryId + ':result', flowId => need(flowId), signal, true, false, t.guestQuestion.via.bot);
+            await releaseRelayAnswer(this.state, t, d, id, signal);
+            return;
+          }
           event = await groupResult(this.state, g, d.bot, childId, prepared.root.agent,
-            JSON.stringify(message), `${deliveryId}:result`, send, signal, true);
+            JSON.stringify(message), `${deliveryId}:result`, send, signal, true, !t.guestQuestion?.via);
         } catch (error) {
           if (!(error instanceof GroupExportError)) throw error;
           await this.state.putDelivery({ ...d, state: 'failed', endedAt: Date.now(), stopReason: result.stopReason,
@@ -323,7 +346,7 @@ export class GroupTurnRunner {
         this.state.deliveries(t.id).length < t.orderedMemberIds.length + this.state.registry.config.groupMaxContinuations &&
         (this.state.registry.config.groupRoundTimeoutMs === 0 || Date.now() < t.createdAt + this.state.registry.config.groupRoundTimeoutMs) && g.membershipRevision === t.membershipRevision)
         await this.enqueue(t, d.returnMemberId, output.outputMessageId, `group-return:${digest(d.id)}`);
-      if (state === 'completed' && output && !t.proactive && !t.ownerFollowUp) {
+      if (state === 'completed' && output && !t.proactive && !t.ownerFollowUp && !t.guestQuestion) {
         await this.state.putGroup({
           ...g,
           nextMemberId: nextRoundRobinMember(this.state.members(g), d.memberId),

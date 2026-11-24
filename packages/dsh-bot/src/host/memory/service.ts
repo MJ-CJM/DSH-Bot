@@ -72,23 +72,22 @@ export class BotMemoryService {
   }
 
   async search(input: MemorySearchInput, signal?: AbortSignal,
-    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}): Promise<MemoryRecord[]> {
+    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}, sharedOnly = false): Promise<MemoryRecord[]> {
     const fields = parseInput(memorySearchInputSchema, input);
-    return this.run(async () => {
-      const rows = (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
-        ...fields, limit: fields.limit ?? this.defaultListLimit,
-      });
-      await observed(rows); return rows;
-    }, signal);
+    return this.read({ ...fields, limit: fields.limit ?? this.defaultListLimit }, sharedOnly, observed, signal);
   }
 
   async list(input: MemoryListInput = {}, signal?: AbortSignal,
-    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}): Promise<MemoryRecord[]> {
+    observed: (rows: MemoryRecord[]) => Promise<void> = async () => {}, sharedOnly = false): Promise<MemoryRecord[]> {
     const fields = parseInput(memoryListInputSchema, input);
+    return this.read({ ...fields, limit: fields.limit ?? this.defaultListLimit }, sharedOnly, observed, signal);
+  }
+
+  private read(fields: MemoryListOptions, sharedOnly: boolean, observed: (rows: MemoryRecord[]) => Promise<void>, signal?: AbortSignal) {
     return this.run(async () => {
-      const rows = (this.store.readableByBot?.bind(this.store) ?? this.store.listByBot.bind(this.store))(this.botId, {
-        ...fields, limit: fields.limit ?? this.defaultListLimit,
-      });
+      // Legacy stores contain only the Bot's private records.
+      const rows = this.store.readableByBot?.(this.botId, fields, sharedOnly) ??
+        (sharedOnly ? [] : this.store.listByBot(this.botId, fields));
       await observed(rows); return rows;
     }, signal);
   }

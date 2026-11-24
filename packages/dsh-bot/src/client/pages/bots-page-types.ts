@@ -8,6 +8,7 @@ import type { BotKey } from '../../shared/identity.js';
 import type { ModelActions } from '../model-catalog-state.js';
 import type { MessageActions } from '../components/MessageOverview.js';
 import type { BackgroundActions } from '../background-work-state.js';
+import type { SupergroupSettingsSource } from '../supergroup-settings.js';
 import type { WorkspaceActions } from '../workspace-state.js';
 import type { GroupActions } from '../groups-state.js';
 import type { CollaborationActions } from '../collaboration-state.js';
@@ -31,7 +32,7 @@ import type { PendingWorkSource, NativeStatusHook } from '../pending-work.js';
 export interface BotsPageInjected extends ChatLauncherActions {
   /** Open only this Bot incarnation; stale directory rows must never open a replacement Bot. */
   onStartExact?(bot: Pick<BotRecord, 'id' | 'createdAt'>, signal?: AbortSignal): Promise<void>;
-  onOpenAutomaticCollaboration?(): void;
+  supergroupSettings?: SupergroupSettingsSource;
   proactive?: ProactiveActions;
   proactiveWork?: ProactiveWorkSource;
   openPendingTask?(target: import('../task-support.js').TaskOrigin): Promise<void>;

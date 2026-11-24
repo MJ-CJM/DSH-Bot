@@ -81,7 +81,7 @@ async function fixture(f: Parameters<Parameters<typeof withIntegrations>[0]>[0],
     });
     return handle;
   });
-  f.ctx.provide('subagents', { listChildren: async () => [], drainChildren: async () => {}, getProvider: () => ({ inheritsParentContext: false, capabilities: { agentPreset: true, agentOptions: true, depthLimit: true } }), startActivation: start,
+  f.ctx.provide('subagents', { drainDescendants: async () => {}, getProvider: () => ({ inheritsParentContext: false, capabilities: { agentPreset: true, agentOptions: true, depthLimit: true } }), startActivation: start,
     interrupt: (id: SessionId) => { void activeChildren.get(id)?.dispose(); },
     sendMessage: async (_parent: Agent, childId: SessionId, content: { text: string }[]) => {
       const prior = need(priorInputs.get(childId));

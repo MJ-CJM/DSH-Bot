@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, IconChevronDownOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupSummary } from '../../shared/groups.js';
 import type { BotRecord } from '../../shared/schema.js';
@@ -11,12 +11,13 @@ import { directoryWindow, migrateLegacyDirectory, readDirectoryWindow, writeDire
 import { conversationKey, recentPreferences, setRecentPreference, updateRecentPreference } from '../pages/recent-conversations.js';
 import styles from '../styles/groups.module.css';
 
-export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onCreate, onRefresh, t }: {
+export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onDelete, onCreate, onRefresh, t }: {
   rows: readonly GroupSummary[];
   bots: readonly BotRecord[];
   selectedId?: string;
   onSelect(group: GroupSummary['group']): void;
   onOpen?(group: GroupSummary['group'], signal?: AbortSignal): Promise<void>;
+  onDelete?(group: GroupSummary['group']): void;
   onCreate(): void;
   onRefresh(): void;
 } & PropsLocale<'dsh-bot'>) {
@@ -38,6 +39,8 @@ export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onCre
   const navigation = useRef<AbortController>();
   useEffect(() => () => navigation.current?.abort(), []);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [menuKey, setMenuKey] = useState<string>();
+  const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const tokens = query.normalize('NFKC').trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   const visible = filterGroupDirectory(rows, '', filter).filter(row => {
     const memberBots = row.members.filter(member => member.removedAt === undefined).flatMap(member => {
@@ -75,6 +78,8 @@ export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onCre
         const active = row.members.filter(member => member.enabled && member.removedAt === undefined);
         const latest = row.latest;
         const key = conversationKey('group', row.group.id, row.group.createdAt);
+        const pinned = Boolean(recentPreferences.get(key)?.pinned);
+        const menuLabel = `${t('card.more')} · ${row.group.name}`;
         return <li key={key} className={styles.directoryEntry} data-directory-kind="group" data-directory-id={row.group.id} data-directory-created-at={row.group.createdAt}>
           <button type="button" className={styles.directoryRow} data-group-directory-row={row.group.id}
             data-directory-open="" disabled={opening} aria-current={selectedId === row.group.id ? 'page' : undefined} onClick={() => {
@@ -86,11 +91,12 @@ export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onCre
                 if (!controller.signal.aborted) setOpening(false);
               });
             }}>
-            <GroupAvatar size={40} members={active} bots={bots} label={row.group.name} />
+            <GroupAvatar size={36} members={active} bots={bots} />
             <span className={styles.directoryRowBody}>
               <span className={styles.directoryRowTitle}>
-                <strong>{row.group.name}</strong>
+                <strong title={row.group.name}>{row.group.name}</strong>
                 {row.unread && <span className={styles.unreadMark} role="status" aria-label={t('groups.unread')}>●</span>}
+                {pinned && <span className={styles.directoryPinned}>{t('chat.pinned')}</span>}
               </span>
               {rows.filter(candidate => candidate.group.name === row.group.name).length > 1 && <span className={styles.directoryRowMeta}>{row.group.id}</span>}
               <span className={styles.directoryRowMeta}>
@@ -103,9 +109,29 @@ export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onCre
               </span>
             </span>
           </button>
-          <Button variant="ghost" data-directory-pin="" aria-pressed={Boolean(recentPreferences.get(key)?.pinned)} aria-label={`${t(recentPreferences.get(key)?.pinned ? 'chat.unpin' : 'chat.pin')} · ${row.group.name}`}
-            onClick={() => { setRecentPreference(key, 'pinned'); setRevision(value => value + 1); }}><span aria-hidden="true">⌖</span></Button>
-          {onOpen && <Button variant="ghost" aria-label={`${t('chat.profile')} · ${row.group.name}`} onClick={() => { navigation.current?.abort(); navigation.current = undefined; setOpening(false); onSelect(row.group); }}>{t('chat.profile')}</Button>}
+          <Menu open={menuKey === key} onClose={() => setMenuKey(undefined)} align="end" portal autoFocus
+            anchor={<Button variant="ghost" size="sm" className={styles.directoryMore} aria-label={menuLabel} title={menuLabel}
+              aria-haspopup="menu" aria-expanded={menuKey === key} onClick={event => {
+                menuTrigger.current = event.currentTarget; setMenuKey(menuKey === key ? undefined : key);
+              }}>
+              <IconEllipsisOutlineRegular size={18} />
+            </Button>}
+            items={[
+              ...(onOpen ? [{ id: 'profile', label: t('chat.profile') }] : []),
+              { id: 'pin', label: t(pinned ? 'chat.unpin' : 'chat.pin') },
+              ...(onDelete ? [{ id: 'delete', label: t('groups.delete') }] : []),
+            ]}
+            onSelect={id => {
+              setMenuKey(undefined);
+              if (id === 'pin') {
+                setRecentPreference(key, 'pinned'); setRevision(value => value + 1);
+              } else {
+                navigation.current?.abort(); navigation.current = undefined; setOpening(false);
+                menuTrigger.current?.focus({ preventScroll: true });
+                if (id === 'delete') onDelete?.(row.group);
+                else if (id === 'profile') onSelect(row.group);
+              }
+            }} />
         </li>;
       })}
     </ul> : <div className={styles.directoryEmpty}>

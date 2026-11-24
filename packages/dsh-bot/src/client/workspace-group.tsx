@@ -13,7 +13,11 @@ import type { ModelActions } from './model-catalog-state.js';
 import { createGroupCommandServices, type GroupCommandServices } from './group-commands.js';
 import { createGroupPermissionState, type GroupPermissionState } from './group-permission-state.js';
 import { GroupConversation } from './components/GroupsPanel.js';
-import { GroupMemberJoins, GroupMessageCard } from './components/GroupTimeline.js';
+import { sameBot } from '../shared/identity.js';
+import { guestQuestionStatus } from './group-management.js';
+import { GroupMemberJoins, PublishedGroupMessage } from './components/GroupTimeline.js';
+import { autoFoldLongReplies } from './group-reply-folds.js';
+import { GroupReplyTools } from './components/GroupReplyFolds.js';
 import { GroupTurnExecution } from './components/GroupTurnExecution.js';
 import { registerGroupExecution, type ExecutionBridge } from './group-execution.js';
 import { registerGroupViews } from './group-views.js';
@@ -21,13 +25,20 @@ import type { BotRecord } from '../shared/schema.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
 const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: groupKeySchema, turnId: z.string().min(1),
-  memberId: z.string().min(1), speaker: speakerSchema, childSessionId: z.string().optional(), stopReason: z.string().optional(),
+  memberId: z.string().min(1), speaker: speakerSchema, guestReply: z.literal(true).optional(), relayReply: z.literal(true).optional(), childSessionId: z.string().optional(), stopReason: z.string().optional(),
   // A malformed failure drops only the detail, never the claimed message.
   failure: groupFailureSchema.optional().catch(undefined),
   replyTo: z.string().optional(), causeId: z.string().optional() });
 const userSourceSchema = z.object({ kind: z.enum(['user', 'dsh-bot-group-user', 'dsh-bot-group-followup', 'dsh-bot-group-proactive']), group: groupKeySchema, turnId: z.string().min(1), replyTo: z.string().optional(), rpcId: z.string().optional() });
-const sourceSchema = z.union([botSourceSchema, userSourceSchema]);
-export interface WorkspaceGroupMessage { group: z.output<typeof groupKeySchema>; message: GroupMessage }
+const groupTaskSource = z.object({ kind: z.literal('dsh-bot-supergroup'), group: groupKeySchema, turnId: z.string().min(1), workId: z.string().min(1) });
+const ownerFollowupSource = z.object({ kind: z.literal('dsh-bot-group-owner-followup'), group: groupKeySchema, turnId: z.string().min(1),
+  groupRootSessionId: z.string().min(1), cardId: z.string().min(1), predecessorTurnId: z.string().min(1) });
+const supergroupInputSource = z.object({ kind: z.literal('user'), group: groupKeySchema, supergroupWorkId: z.string().min(1), operationId: z.string().min(1), replyTo: z.string().optional() });
+const sourceSchema = z.union([botSourceSchema, userSourceSchema, groupTaskSource, ownerFollowupSource, supergroupInputSource]);
+export interface WorkspaceGroupMessage {
+  group: z.output<typeof groupKeySchema>; message: GroupMessage;
+  publishedInput?: { kind: 'task' | 'input'; workId: string } | { kind: 'followup'; rootId: string; cardId: string; predecessor: string };
+}
 const noSubscription = () => () => {};
 const noBots = () => undefined;
 declare module '@deepseek-ai/dsh-client-ui-chat/client' { interface ChatNodeDataMap { 'dsh-bot-group': WorkspaceGroupMessage } }
@@ -40,11 +51,16 @@ export const groupMessageDefinition: ConversationNodeDefinition<WorkspaceGroupMe
   start(_context, match) {
     const event = match.event; if (event.type !== 'user/message') throw new Error('Group message required');
     const source = sourceSchema.parse(event.data.source);
-    const legacyUpload = source.kind === 'user' && source.rpcId === source.turnId;
-    return { group: source.group, message: { id: event.data.id, seq: Number(event.seq), at: event.time,
+    const legacyUpload = source.kind === 'user' && 'turnId' in source && source.rpcId === source.turnId;
+    const publishedInput: WorkspaceGroupMessage['publishedInput'] = source.kind === 'dsh-bot-supergroup' ? { kind: 'task', workId: source.workId }
+      : source.kind === 'dsh-bot-group-owner-followup' ? { kind: 'followup', rootId: source.groupRootSessionId, cardId: source.cardId, predecessor: source.predecessorTurnId }
+      : 'supergroupWorkId' in source ? { kind: 'input', workId: source.supergroupWorkId } : undefined;
+    const proactive = source.kind === 'dsh-bot-group-proactive' || publishedInput?.kind === 'task' || publishedInput?.kind === 'followup';
+    return { group: source.group, ...(publishedInput ? { publishedInput } : {}), message: { id: event.data.id, seq: Number(event.seq), at: event.time,
       text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
-      turnId: source.turnId, authorKind: source.kind === 'dsh-bot-group' ? 'bot' : source.kind === 'dsh-bot-group-proactive' ? 'proactive' : 'user', replyTo: source.replyTo,
-      ...(source.kind === 'dsh-bot-group' ? { speaker: source.speaker, causeId: source.causeId, childSessionId: source.childSessionId, stopReason: source.stopReason,
+      turnId: 'turnId' in source ? source.turnId : '', authorKind: source.kind === 'dsh-bot-group' ? 'bot' : proactive ? 'proactive' : 'user',
+      replyTo: 'replyTo' in source ? source.replyTo : undefined,
+      ...(source.kind === 'dsh-bot-group' ? { speaker: source.speaker, causeId: source.causeId, ...(source.guestReply ? { guestReply: true as const } : source.relayReply ? { relayReply: true as const } : { childSessionId: source.childSessionId }), stopReason: source.stopReason,
         ...(source.failure ? { failure: source.failure } : {}) } : {}),
       attachments: event.data.content.flatMap(block => {
         const attachment = groupMessageAttachment(block, legacyUpload);
@@ -96,7 +112,7 @@ export function WorkspaceGroupComposer({ matched, actions, bots, models, createP
     permissionState={permissionState?.rootSessionId === matched.sessionId ? permissionState : undefined}
     bots={botState.entries.map(row => row.bot)} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={onOpenSession} t={t} /></>;
 }
-export function WorkspaceMessage({ node, actions, bots, executionBridge, renderFactorySlot, onOpenSession, t }: { node: ChatNode<'dsh-bot-group'>; actions: GroupActions;
+export function WorkspaceMessage({ node, sessionId, actions, bots, executionBridge, renderFactorySlot, onOpenSession, t }: { node: ChatNode<'dsh-bot-group'>; sessionId?: string; actions: GroupActions;
   bots?: BotCatalog; executionBridge?: ExecutionBridge; onOpenSession(id: string): Promise<void> } & Partial<PropsRenderFactories> & PropsLocale<'dsh-bot'>) {
   const catalog = useMemo(() => actions.messageView({ groupId: node.data.group.groupId, groupCreatedAt: node.data.group.groupCreatedAt }),
     [actions, node.data.group.groupId, node.data.group.groupCreatedAt]);
@@ -106,16 +122,27 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
   const sourceLabel = snapshot.view?.group.id === node.data.group.groupId
     && snapshot.view.group.createdAt === node.data.group.groupCreatedAt && snapshot.view.group.supergroup
     ? t('groups.collaborationSource') : undefined;
-  const turn = snapshot.view?.turns.find(row => row.id === node.data.message.turnId && row.inputMessageId === node.data.message.id);
+  const { publishedInput } = node.data;
+  const messageTurn = snapshot.view?.turns.find(row => publishedInput?.kind === 'input' ? row.inputMessageId === node.data.message.id : row.id === node.data.message.turnId);
+  const turn = messageTurn?.inputMessageId === node.data.message.id ? messageTurn : undefined;
+  const round = actions.replyFolds?.forTurn(node.data.group, messageTurn, messageTurn?.id || node.data.message.turnId);
+  // The owner may publish an input before the work service assigns a turn.
+  const messageRound = publishedInput?.kind === 'input' ? actions.replyFolds?.forTurn(node.data.group, undefined, node.data.message.id) : round;
+  const group = snapshot.view?.group;
+  const atRoot = group?.id === node.data.group.groupId && group.createdAt === node.data.group.groupCreatedAt && group.rootSessionId === sessionId;
+  const exactInput = Boolean(turn && (turn.inputSeq === undefined || turn.inputSeq === node.data.message.seq));
+  const publicInput = !publishedInput || (atRoot && (publishedInput.kind === 'followup'
+    ? sessionId === publishedInput.rootId && exactInput && turn?.ownerFollowUp?.cardId === publishedInput.cardId && turn.ownerFollowUp.predecessorTurnId === publishedInput.predecessor
+    : group.supergroup?.workId === publishedInput.workId && (publishedInput.kind === 'input' || exactInput)));
   const [historicQuote, setHistoricQuote] = useState<GroupMessage>();
   const [quoteResolvedId, setQuoteResolvedId] = useState<string>();
   const quoted = snapshot.view?.messages.find(message => message.id === node.data.message.replyTo) ?? (historicQuote?.id === node.data.message.replyTo ? historicQuote : undefined);
   const quotedLoading = Boolean(node.data.message.replyTo && !quoted && quoteResolvedId !== node.data.message.replyTo);
   useEffect(() => {
     let active = true;
-    if (node.data.message.replyTo && !quoted) void actions.quotedMessage(node.data.group, node.data.message.replyTo).then(message => { if (active) { setHistoricQuote(message); setQuoteResolvedId(node.data.message.replyTo); } }).catch(() => { if (active) setQuoteResolvedId(node.data.message.replyTo); });
+    if (publicInput && node.data.message.replyTo && !quoted) void actions.quotedMessage(node.data.group, node.data.message.replyTo).then(message => { if (active) { setHistoricQuote(message); setQuoteResolvedId(node.data.message.replyTo); } }).catch(() => { if (active) setQuoteResolvedId(node.data.message.replyTo); });
     return () => { active = false; };
-  }, [actions, node.data.group, node.data.message.replyTo, quoted]);
+  }, [actions, node.data.group, node.data.message.replyTo, quoted, publicInput]);
   const [jumpUnavailable, setJumpUnavailable] = useState(false);
   const jump = (id: string) => {
     void (async () => {
@@ -127,9 +154,22 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
     })().catch(() => setJumpUnavailable(true));
   };
   const labels = useMemo(() => ({ code: { copyLabel: t('groups.markdownCopy'), copiedLabel: t('groups.markdownCopied') }, footnotes: t('groups.markdownFootnotes') }), [t]);
+  const message = node.data.message;
+  if (!publicInput) return null;
+  if (message.authorKind === 'bot') {
+    if (!snapshot.view) return null;
+    const guest = messageTurn?.guestQuestion;
+    if (message.guestReply || message.relayReply || guest) {
+      const author = guest?.via ? message.relayReply && !message.guestReply && guest.via.bot : message.guestReply && !message.relayReply && guest?.bot;
+      const committed = author && message.speaker && sameBot(message.speaker.bot, author) &&
+        snapshot.view.deliveries.some(row => row.turnId === message.turnId && sameBot(row.bot, author) &&
+          row.state === 'completed' && row.outputMessageId === message.id && row.outputSeq === message.seq);
+      if (!committed) return null;
+    }
+  }
   return <div className={`dsh-bot-group-workspace ${styles.panel} ${styles.workspaceMessage}`} data-workspace-group-message={node.data.message.id} data-workspace-group={`${node.data.group.groupId}:${node.data.group.groupCreatedAt}`} tabIndex={-1}><style>{css}</style>
     {snapshot.view && <GroupMemberJoins view={snapshot.view} message={node.data.message} bots={memberBots} position="before" t={t} />}
-    <GroupMessageCard message={node.data.message} quoted={quoted} quotedLoading={quotedLoading} sourceLabel={sourceLabel} onJump={jump} labels={labels} t={t}
+    <PublishedGroupMessage round={messageRound} autoFold={autoFoldLongReplies(messageTurn)} message={node.data.message} allowExecutionSource={!messageTurn?.guestQuestion} quoted={quoted} quotedLoading={quotedLoading} sourceLabel={sourceLabel} onJump={jump} labels={labels} t={t}
     onOpenSession={onOpenSession} onReply={message => { const row = actions.catalog.getSnapshot().groups.find(group =>
       group.group.id === node.data.group.groupId && group.group.createdAt === node.data.group.groupCreatedAt);
       if (row) actions.reply(row.group.rootSessionId, message);
@@ -144,6 +184,9 @@ export function WorkspaceMessage({ node, actions, bots, executionBridge, renderF
     {node.data.message.authorKind !== 'bot' && turn && snapshot.view && bots && executionBridge && <GroupTurnExecution
       key={JSON.stringify([node.data.group.groupId, node.data.group.groupCreatedAt, turn.id])} view={snapshot.view} turn={turn} actions={actions} bots={bots}
       onOpenExecution={executionBridge.open} executionBridge={executionBridge} renderFactorySlot={renderFactorySlot} t={t} />}
+    {turn?.guestQuestion && snapshot.view && (!bots || !executionBridge) && <p role="status" data-group-guest-status={turn.id}>{guestQuestionStatus(snapshot.view, turn, t)}</p>}
+    {turn && round && snapshot.view && <GroupReplyTools round={round} autoFold={autoFoldLongReplies(turn)} turnId={turn.id}
+      messages={snapshot.view.messages} deliveries={snapshot.view.deliveries} t={t} />}
   </div>;
 }
 export function registerWorkspaceGroups(ctx: Context, actions: GroupActions, bots: BotCatalog, onOpenSession: (id: string) => Promise<void>, models?: ModelActions,

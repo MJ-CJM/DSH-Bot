@@ -8,7 +8,7 @@ English · [中文](README.md)
 
 **Your personal agent workspace.** Create Bots with their own roles, memory and tools in DeepSeek Harness. Keep working in ongoing conversations, collaborate, and receive results in the original chat.
 
-**Current source: 0.7.2 candidate (npm package: `dsh-botgroup`).** See the [0.7.2 release notes](docs/releases/v0.7.2.md) for candidate features. The published stable release is [0.7.1](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.1). [Changelog](CHANGELOG.md).
+**Current source: 0.7.3 candidate (npm package: `dsh-botgroup`).** See the [0.7.3 release notes](docs/releases/v0.7.3.md) for candidate features. The published stable release is [0.7.2](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.2). [Changelog](CHANGELOG.md).
 
 ![Personal Bot workspace example](packages/dsh-bot/assets/showcase/en-bots.png)
 
@@ -20,7 +20,7 @@ After installation, open Bots in the native DSH sidebar.
 
 1. Open **Bots** in the native sidebar, select or create a Bot, then open its native chat. For example: “Compare these two proposals. Ask the researcher and reviewer to help if needed.”
 2. Use the Bot/group directory for roles, memory, tasks and materials. Conversation details link back to the corresponding directory. New, search, branch and archive remain native DSH commands.
-3. Ask your Bot to contact another Bot or ask a follow-up. The reply appears in the original conversation. Sharing private memory or private chat content requires your confirmation. To form teams automatically, enable **Supergroup collaboration** in settings.
+3. Ask your Bot to contact another Bot or ask a follow-up. The reply appears in the original conversation. Sharing private memory or private chat content requires your confirmation. To let Bots form teams, open **Bots → My Bots → Automatic collaboration**. The button shows the current state and expands the setting in place.
 4. Add materials, continue or stop through the existing work controls. Navigation and closing details do not enable or stop collaboration. File permissions, tool approvals and model configuration remain those of the host.
 
 Chat requires an available DSH model, and model services may charge for usage. Follow-up and collaboration have separate settings; opening Bots enables neither.
@@ -68,6 +68,12 @@ With the Bot's memory enabled, use **Memory → Group work this Bot joined** to 
 
 New manually created ordinary groups select relevant speakers locally for each question by default; turn this off in settings if preferred. Explicit mentions, replies and rounds take priority. Unmatched questions use the existing route. Selection makes no decider-model call; member answers still use models. Existing groups keep their preferences. Automatic Supergroup teams collaborate around the task without ordinary-group routing configuration.
 
+The group @ menu lists available members and @everyone. In an ordinary group, write “Ask Jarvis: which migration tasks are still open?” for a reply from Jarvis in the group. To have a member report back, reply to that member’s message with “Ask Jarvis which migration tasks are still open.” Jarvis answers the member, who then replies in the group. Expand the relay in the group to inspect the delivered question, intermediate answer, and final report within the current readers’ permissions. Jarvis’s incoming and outgoing markers open the original text for that delivery. If the question refers to “this,” enter the topic you want to share, or select “Use the quoted excerpt” and edit it before sending. Guest queries use shared material by default. If an answer uses private material, sharing it with the member and then with the whole group requires a separate decision for each audience.
+
+Preview same-round replies going to the same group readers together, deselect any replies to hold back, and confirm the send. Replies that arrive during review wait for the next batch. In an ordinary group, write “Just note this down: …” or reply to a message with “Just note this down” to save it in members’ own memories and report the write status in the group.
+
+You can expand or collapse each question and reply. In multi-member rounds, long replies start as a single line. Short replies and individually addressed answers start open. Once two Bot replies have arrived, you can expand or collapse all replies in that round.
+
 ![Ordinary group collaboration and member execution example](packages/dsh-bot/assets/showcase/en-group.png)
 
 Native background tasks, result review, ordinary schedules, Bot messages, and optional document-snapshot analysis and working-method evaluation remain available through task/management entry points. Configure advanced execution and external connections when needed; neither is required to start a Bot conversation.
@@ -76,8 +82,8 @@ Native background tasks, result review, ordinary schedules, Bot messages, and op
 
 | Scope | Current status |
 | --- | --- |
-| Published stable release | [0.7.1 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.1), with its own release notes and assets. |
-| Development candidate | `dsh-botgroup-0.7.2.tgz`. Use the acceptance record for the exact frozen package. |
+| Published stable release | [0.7.2 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.2), with its own release notes and assets. |
+| Development candidate | `dsh-botgroup-0.7.3.tgz`. Use the acceptance record for the exact frozen package. |
 | Recommended target | Official macOS arm64 **DSH 0.2.2-rc.5 + official web-app + one dsh-botgroup product package**. Stock rc.3 is the upgrade regression baseline; support depends on this iteration's same-package acceptance. |
 | Other hosts | Declared range: `>=0.2.1-rc.2 <0.3.0`; development dependencies remain pinned to `0.2.1-rc.2`. This does not establish testing on every version or platform. |
 
@@ -85,7 +91,7 @@ The native design needs no replacement web-app, three-Client adapter package or 
 
 ### Published releases
 
-The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The stable versioned archive is `dsh-botgroup-0.7.1.tgz`. The fixed download name `dsh-bot.tgz` is an alias for the same package.
+The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The stable versioned archive is `dsh-botgroup-0.7.2.tgz`. The fixed download name `dsh-bot.tgz` is an alias for the same package.
 
 Open the relevant [Release](https://github.com/MJ-CJM/DSH-Bot/releases), read its compatibility notes, and download the plugin tgz and checksum file from that same release. On macOS, for example:
 
@@ -97,7 +103,7 @@ In DSH, use **Plugins → Add plugin → Install third-party plugin**, select th
 
 ### Current candidate
 
-See the [0.7.2 release notes](docs/releases/v0.7.2.md) for installation and migration requirements. Verify the download using the matching checksum and install in the validated host configuration.
+See the [0.7.3 release notes](docs/releases/v0.7.3.md) for installation and migration requirements. Verify the download using the matching checksum and install in the validated host configuration.
 
 To migrate from the old `dsh-bot` package, stop the Host and back up the complete profile and data. Remove the old package through native plugin management, then install `dsh-botgroup`. Before restarting, inspect the profile's `cordis.patch.yml`: if the original `id: dsh-bot` override has `name: dsh-bot`, change only that name to `dsh-botgroup`. Keep its ID, config and dataDir; do not add a name where none exists. Keep only one package dependency/bundle selected, and review old references in custom includes/templates separately. See the [migration notes](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7).
 
@@ -105,7 +111,7 @@ Before upgrading, back up the original profile and complete data and keep the st
 
 ## Validation and limits
 
-See the [0.7.2 release notes](docs/releases/v0.7.2.md) for the exact candidate, isolated Host and browser checks, and upgrade validation.
+See the [0.7.3 release notes](docs/releases/v0.7.3.md) for the exact candidate, isolated Host and browser checks, and upgrade validation.
 
 These checks do not establish real paid-model quality, external account authentication, external IM messaging or automatic compatibility with future hosts. Tasks need a running local Host. Cloud hosting, execution after system exit, and system/mobile push are not provided. Uncertain execution outcomes are not automatically replayed.
 

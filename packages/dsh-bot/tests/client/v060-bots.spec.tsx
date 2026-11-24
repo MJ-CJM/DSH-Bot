@@ -101,10 +101,11 @@ it('combines native Bot/group opens, search, pin, hide and recover without stopp
   await clickText('Researcher'); await clickText('Team');
   expect(start).toHaveBeenCalledWith('research', expect.any(AbortSignal));
   expect(open).toHaveBeenCalledWith({ groupId: 'team', groupCreatedAt: 2 }, expect.any(AbortSignal));
-  const pin = container.querySelector('li button:nth-of-type(1)'); expect(pin).toBeTruthy();
   await clickText('More Researcher');
   await clickText(additions.en['chat.pin']);
-  expect(container.querySelector('li')?.textContent).toContain('Researcher');
+  const firstRow = requireValue(container.querySelector('li'));
+  expect(firstRow.getAttribute('data-directory-id')).toBe('research');
+  expect(firstRow.querySelector('[data-directory-pinned]')?.textContent).toBe(additions.en['chat.pinned']);
   await clickText('More Researcher');
   await clickText(additions.en['chat.hide']);
   expect(container.querySelector('ul')?.textContent).not.toContain('Researcher');

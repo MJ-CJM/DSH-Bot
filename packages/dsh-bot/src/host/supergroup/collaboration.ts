@@ -10,6 +10,7 @@ import type { DshBotRegistry } from '../registry.js';
 import { getBotBinding } from '../data-flow/agent-binding.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { reserveDelegate } from '../delegate/continuation.js';
+import { ownsWorkerCapability } from '../groups/worker-capabilities.js';
 import { digest, OperationError } from '../common/operations.js';
 import { compatibleActivationSpec } from '../common/subagent-activation.js';
 import { isNativeAmbientSource } from '../common/native-ambient-source.js';
@@ -156,7 +157,8 @@ export function protectScopedCollaboration(agent: Agent, bot: BotKey, source: st
     }, { prepend: true });
     // Text-only P0: private memory, files, MCP, native messaging, run_code and external tools cannot taint a shared result.
     const guard = agent.ctx.tools.guard(exec => exec.agent === agent && exec.parent === undefined &&
-      isLiveScopedCollaboration(agent) && binding.phase !== 'draft' && ['bot_message', 'bot_delegate'].includes(exec.name)
+      isLiveScopedCollaboration(agent) && binding.phase !== 'draft' && ['bot_message', 'bot_delegate'].includes(exec.name) &&
+      ownsWorkerCapability(agent, exec.name)
       ? undefined : en.tools['bot_supergroup.textToolBoundary']);
     return () => { offStep(); offRequest(); offPrompt(); offError(); guard(); };
   }, 'dsh-bot: scoped collaboration input and tools');

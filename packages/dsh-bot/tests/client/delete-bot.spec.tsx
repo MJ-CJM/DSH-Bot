@@ -16,16 +16,23 @@ function summary(running: boolean): SessionSummary {
     retainedBy: {}, projectionValues: { agentPreset: 'host-selected/alpha-bot' } };
 }
 describe('discoverable Bot deletion with the existing confirmation and Host method', () => {
-  it.each(['en', 'zh'] as const)('opens deletion from More, preserves by cancel, deletes selected and retains the next Bot (%s)', async language => {
+  it.each([
+    ['bots', 'en'], ['bots', 'zh'], ['recent', 'en'], ['recent', 'zh'],
+  ] as const)('%s opens deletion from More, preserves by cancel, deletes selected and retains the next Bot (%s)', async (section, language) => {
     const t = language === 'en' ? en.ui : zh.ui;
     const app = await mount([{ ...bot(), createdAt: 13, updatedAt: 29 }, bot({ id: 'beta-bot', name: 'Beta Bot' })], language);
-    const detail = app.container.querySelector('li') as HTMLElement;
+    if (section === 'recent') await click(button(app.container, t['chat.recent']));
+    const detail = app.container.querySelector(`[data-bots-list="${section}"] [data-directory-id="alpha-bot"]`) as HTMLElement;
     await click(button(detail, `${t['card.more']} Alpha Bot`));
     await click(button(detail, t['actions.delete']));
     let dialog = app.container.querySelector('dialog') as HTMLDialogElement;
     expect(dialog.textContent).toContain(additions[language]['delete.workspaceRetained']);
     expect(app.remote.methods.delete).not.toHaveBeenCalled();
-    await click(button(dialog, t['actions.cancel'])); expect(app.remote.methods.delete).not.toHaveBeenCalled();
+    await click(button(dialog, t['actions.cancel']));
+    expect(app.container.querySelector('dialog')).toBeNull();
+    expect(detail.isConnected).toBe(true);
+    expect(app.remote.methods.delete).not.toHaveBeenCalled();
+    expect(app.openSession).not.toHaveBeenCalled();
     await click(button(detail, `${t['card.more']} Alpha Bot`)); await click(button(detail, t['actions.delete'])); dialog = app.container.querySelector('dialog') as HTMLDialogElement;
     await click(field(dialog, t['delete.memories'])); await click(field(dialog, t['delete.home']));
     await click(button(dialog, t['actions.delete']));

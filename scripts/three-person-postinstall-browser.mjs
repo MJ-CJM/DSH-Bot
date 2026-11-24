@@ -44,8 +44,8 @@ export async function verifyThreePersonBrowser(host, dir, { native = false } = {
       const sidebar=page.locator('[data-bot-mode-sidebar]:visible');await sidebar.waitFor();await sidebar.getByRole('navigation').getByRole('button',{name:fixture.name,exact:true}).click();
     }
     const composer=page.locator(`[data-workspace-group-composer="${fixture.sessionId}"]`),queue=page.locator(`[data-group-export-queue="${fixture.key.groupId}"]`);await composer.waitFor();
-    const queueToggle=queue.locator('button[aria-controls]').first();await queueToggle.click();
     const row = id => queue.locator(`[data-group-export-review="${id}"]`);
+    const openOther = count => queue.getByRole('button', { name: t['groups.export.showOtherPending'].replace('{count}', count), exact: true }).click();
     const preview = async delivery => { await snapshot();await row(delivery.id).getByRole('button',{name:t['groups.export.review'],exact:true}).click();const body=row(delivery.id).locator('pre');await body.waitFor();assert.ok((await body.textContent()).includes('PRIVATE_EXPORT:'));assert.equal(await row(delivery.id).locator('img').count(),0);for(const bot of fixture.bots)assert.ok((await row(delivery.id).textContent()).includes(bot.botId)); };
     const receipt = async (delivery,kind) => { const node=row(delivery.id).locator('[data-export-receipt]');await node.waitFor();assert.equal(await node.textContent(),t['groups.export.receipt.'+kind]); };
     const policyPanel = page.locator(native ? '[data-group-details]:visible' : '[data-bot-mode-details-panel]:visible');
@@ -68,10 +68,22 @@ export async function verifyThreePersonBrowser(host, dir, { native = false } = {
     const send = async text => { await snapshot();await composer.getByRole('textbox',{name:t['groups.message'],exact:true}).fill(text);await composer.getByRole('button',{name:t['groups.send'],exact:true}).click(); };
     let report=await phase('THREE_R1'),ds=report.phases.THREE_R1.deliveries;
     assert.ok(ds.every(d=>d.reasonCode==='export-approval-required'));check('all three native private replies are held before owner review');
-    for(const delivery of ds){await preview(delivery);await row(delivery.id).getByRole('checkbox').check();}await shot('01-three-exact-previews');
-    await queue.getByRole('button',{name:t['groups.export.batchOnce'].replace('{count}','3'),exact:true}).click();for(const delivery of ds)await receipt(delivery,'sent');
+    await queue.locator('[data-review-round]').click();
+    for(const delivery of ds) {
+      const item = row(delivery.id); await item.locator('pre').waitFor();
+      assert.ok((await item.locator('pre').textContent()).includes('PRIVATE_EXPORT:'));
+      assert.equal(await item.getByRole('checkbox').isChecked(),true);
+    }
+    check('one round preview selects exactly three complete replies for the same three readers',fixture.bots.every(bot=>ds.some(d=>d.bot.botId===bot.botId)));
+    await row(ds[2].id).getByRole('checkbox').uncheck();
+    assert.equal(await queue.locator('[data-send-selection="2"]').textContent(),t['groups.export.sendSelection'].replace('{count}','2').replace('{group}',fixture.name).replace('{readers}','3'));
+    await row(ds[2].id).getByRole('checkbox').check();
+    check('changing the selection updates the count, group and reader count before sending');
+    await shot('01-three-exact-previews');
+    await queue.locator('[data-send-selection="3"]').click();for(const delivery of ds)await receipt(delivery,'sent');
     report=await live(r=>r.phases.THREE_R1.publishedPrivateExportReplies===3);check('UI batch once publishes exactly the three reviewed replies',report.phases.THREE_R1.deliveries.every(d=>d.outputMessageId));check('one-time batch creates no automatic-export preference',report.exportApprovals.length===0);await shot('02-three-batch-once-sent');
     await send('THREE_R2: review updated private notes for this group.');report=await phase('THREE_R2');ds=report.phases.THREE_R2.deliveries;check('a new round again requires approval for all three after once',ds.every(d=>d.reasonCode==='export-approval-required'));
+    await openOther(3);
     const alpha=ds.find(d=>d.bot.botId==='proof-alpha');await preview(alpha);
     check('pending reply review has no persistent-always decision',await row(alpha.id).getByRole('button',{name:t['groups.export.always'],exact:true}).count()===0);
     const alphaPolicy=await openPolicy('proof-alpha');await alphaPolicy.locator('[data-export-policy-action]').click();
@@ -83,12 +95,44 @@ export async function verifyThreePersonBrowser(host, dir, { native = false } = {
     check('settings enable records the exact three-person audience',report.exportApprovals[0].members.length===3);
     check('enabling future export does not publish or alter already pending replies',report.phases.THREE_R2.publishedPrivateExportReplies===0&&report.phases.THREE_R2.deliveries.every(d=>d.reasonCode==='export-approval-required'&&!d.outputMessageId));
     await closePolicy();
-    await row(alpha.id).getByRole('button',{name:t['groups.export.allow'],exact:true}).click();await receipt(alpha,'sent');
-    for(const delivery of ds.filter(d=>d.id!==alpha.id)){await preview(delivery);await row(delivery.id).getByRole('checkbox').check();}await queue.getByRole('button',{name:t['groups.export.batchOnce'].replace('{count}','2'),exact:true}).click();for(const delivery of ds.filter(d=>d.id!==alpha.id))await receipt(delivery,'sent');
+    await row(alpha.id).locator('[data-send-one]').click();await receipt(alpha,'sent');
+    const others = ds.filter(d=>d.id!==alpha.id);
+    for(const delivery of others){await preview(delivery);await row(delivery.id).getByRole('checkbox').check();}
+    const nextQuestion = 'THREE_R3: prove the other Bots still need their own approval.';
+    if (native) {
+      const secondTab = await context.newPage();
+      try {
+        await secondTab.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
+        await installOverlayHandler(secondTab, () => {}); await secondTab.goto(host.url, { waitUntil: 'domcontentloaded' });
+        await dismissFirstRunOverlays(secondTab, () => {}, 'review-position');
+        await openGroupFromDirectory(secondTab, t);
+        const otherComposer = secondTab.locator(`[data-workspace-group-composer="${fixture.sessionId}"]:visible`);
+        await otherComposer.getByRole('textbox', { name: t['groups.message'], exact: true }).fill(nextQuestion);
+        const reading = row(others[1].id).locator('pre');
+        await reading.scrollIntoViewIfNeeded(); await reading.focus();
+        const position = () => reading.evaluate(node => ({
+          top: node.getBoundingClientRect().top, scroll: node.closest('[id]').scrollTop, focused: document.activeElement === node,
+        }));
+        const before = await position();
+        assert.ok(before.focused);
+        await otherComposer.getByRole('button', { name: t['groups.send'], exact: true }).click();
+        report = await phase('THREE_R3');
+        await queue.getByRole('button', { name: t['groups.export.showOtherPending'].replace('{count}', '2'), exact: true }).waitFor();
+        const after = await position();
+        assert.ok(after.focused && Math.abs(after.top - before.top) <= 2 && after.scroll === before.scroll,
+          'A new round moved the focused reply: ' + JSON.stringify({before,after}));
+        assert.equal(await queue.locator('input:checked').count(), 2);
+        for (const delivery of report.phases.THREE_R3.deliveries) assert.equal(await row(delivery.id).count(), 0);
+        check('an incoming round preserves the focused preview, viewport position, scroll and exact selection');
+      } finally { await secondTab.close(); }
+    }
+    await queue.locator('[data-send-selection="2"]').click();for(const delivery of others)await receipt(delivery,'sent');
     report=await live(r=>r.phases.THREE_R2.publishedPrivateExportReplies===3);check('always grants only the explicitly chosen Bot in this group',report.exportApprovals.length===1&&report.exportApprovals[0].bot.botId==='proof-alpha'&&report.exportApprovals[0].members.length===3);
-    await send('THREE_R3: prove the other Bots still need their own approval.');report=await phase('THREE_R3');ds=report.phases.THREE_R3.deliveries;
+    if (!native) await send(nextQuestion);
+    report=await phase('THREE_R3');ds=report.phases.THREE_R3.deliveries;
     check('next native round automatically publishes only alpha',ds.find(d=>d.bot.botId==='proof-alpha').state==='completed'&&report.phases.THREE_R3.publishedPrivateExportReplies===1);
     const held=ds.filter(d=>d.bot.botId!=='proof-alpha');check('other Bots remain independently held',held.length===2&&held.every(d=>d.reasonCode==='export-approval-required'&&!d.outputMessageId));await shot('04-next-round-bot-scoped-approval');
+    await openOther(2);
     for(const delivery of held){await row(delivery.id).getByRole('button',{name:t['groups.export.reject'],exact:true}).click();await receipt(delivery,'rejected');}
     report=await live(r=>r.phases.THREE_R3.deliveries.filter(d=>d.reasonCode==='export-rejected').length===2);check('explicitly rejected-only remainder does not publish or become a false execution failure',['completed','idle'].includes(report.phases.THREE_R3.turn.state));
     const enabledPolicy=await openPolicy('proof-alpha');await enabledPolicy.locator('[data-export-policy-action]').click();
@@ -97,6 +141,7 @@ export async function verifyThreePersonBrowser(host, dir, { native = false } = {
     await closePolicy();await send('THREE_R4: after disabling the policy, all Bots need approval again.');
     report=await phase('THREE_R4');ds=report.phases.THREE_R4.deliveries;
     check('disabled policy restores individual approval for all three Bots',ds.every(d=>d.reasonCode==='export-approval-required'&&!d.outputMessageId));
+    await openOther(3);
     for(const delivery of ds){await row(delivery.id).getByRole('button',{name:t['groups.export.reject'],exact:true}).click();await receipt(delivery,'rejected');}
     const memoryChip=composer.locator('[data-group-memory-status]');
     check('memory option is not a permanent composer checkbox',await composer.getByRole('checkbox',{name:t['groups.memoryStatus.toggle'],exact:true}).count()===0&&await memoryChip.count()===0);

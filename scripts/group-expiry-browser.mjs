@@ -158,7 +158,7 @@ try {
   check('composer pending badge shows exactly four current replies', await expired(ui.queue).getAttribute('data-expired-count') === '3');
   await expand(ui.queue);
   const clearReceipts = ui.queue.getByRole('button', { name: ui.labels['groups.export.clearReceipts'], exact: true });
-  check('clear-processed-receipts is disabled without any processed receipts', await clearReceipts.isDisabled());
+  check('clear-processed-receipts stays hidden until there are processed receipts', await clearReceipts.count() === 0);
   const chosen = mixed.freshHeld[0];
   const row = ui.queue.locator(`[data-group-export-review="${chosen.id}"]`);
   await row.getByRole('button', { name: ui.labels['groups.export.review'], exact: true }).click();
@@ -186,7 +186,7 @@ try {
     unchanged(closed) && closed.publishedOld === 0 && closed.noAutomaticApproval);
   check('bulk close does not rerun or replay a model', closed.calls === 14 && host.requests() === 14);
   await shot(page, '04-bulk-closed-receipt');
-  await ui.queue.getByRole('button', { name: ui.labels['groups.export.batchOnce'].replace('{count}', '1'), exact: true }).click();
+  await ui.queue.locator('[data-send-selection="1"]').click();
   await row.locator('[data-export-receipt]').waitFor();
   const approved = await live(report => report.publishedFresh === 1);
   check('current selected reply sends exactly once after old replies close', approved.pending === 3
@@ -194,7 +194,7 @@ try {
   await clearReceipts.click();
   await row.waitFor({ state: 'hidden' });
   check('clear-processed-receipts removes the message receipt while keeping all current pending work',
-    await clearReceipts.isDisabled() && await pendingRows(ui.queue).count() === 3 && (await live(() => true)).publishedFresh === 1);
+    await clearReceipts.count() === 0 && await pendingRows(ui.queue).count() === 3 && (await live(() => true)).publishedFresh === 1);
   check('actual browser executes the installed frozen Client source', exactClientServed);
   check('browser hit no page errors', errors.length === 0);
 

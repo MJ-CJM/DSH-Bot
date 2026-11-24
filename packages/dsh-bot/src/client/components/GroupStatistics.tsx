@@ -4,7 +4,7 @@ import { Button, IconChevronDownOutlineRegular, IconDatabaseOutlineRegular, Icon
 import type { GroupDelivery, GroupTurn, GroupView } from '../../shared/groups.js';
 import type { BotRecord } from '../../shared/schema.js';
 import type { ExecutionBridge } from '../group-execution.js';
-import type { GroupActivityFocus } from '../group-management.js';
+import { type GroupActivityFocus, guestQuestionStatus } from '../group-management.js';
 import { aggregateStatistics, cachePercent, contextPercent, defaultStatisticsTurn, groupStatisticsWorkers, loadingStatistics, readStatisticsOnce, statisticsDeliveries, tokenTotal, type ChildStatistics } from '../group-statistics.js';
 import { turnExportStatus } from './GroupExportReview.js';
 import styles from '../styles/groups.module.css';
@@ -160,7 +160,9 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
   useEffect(() => { if (sent) { setSelected(sent.turnId); setPinned(sent.followup); setWhole(false); } }, [sent]);
   useEffect(() => { if (!active) { setMenu(false); setOpen(false); } }, [active]);
   const turn = view.turns.find(row => row.id === selected) ?? (selected === undefined ? defaultStatisticsTurn(view.turns) : undefined);
-  const workers = turn && !whole ? statisticsDeliveries(view, turn.id) : [];
+  // Guest execution sessions are private. The group has delivery receipts, but no usage stream.
+  const receiptOnly = Boolean(turn?.guestQuestion && !whole);
+  const workers = turn && !whole && !receiptOnly ? statisticsDeliveries(view, turn.id) : [];
   const exportState = turn && !whole ? turnExportStatus(view.group, turn, view.deliveries.filter(delivery => delivery.turnId === turn.id)) : undefined;
   const questionValues = useStatistics(bridge, view.group.rootSessionId, active ? workers : []);
   const groupRows = whole ? groupStatisticsWorkers(view) : [];
@@ -206,7 +208,7 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
       ...recent.map(row => ({ id: row.id, icon: <StateDot state={TURN_DOT[row.state]} />,
         label: <span className={styles.questionOption} data-statistics-question={row.id}>
           <span className={styles.questionTitle} title={title(row)}>{title(row)}</span>
-          <span className={styles.questionMeta}>{[clock(row.createdAt), t(`statistics.status.${row.state}`), (names.get(row.id) ?? []).join(', ')].filter(Boolean).join(' · ')}</span>
+          <span className={styles.questionMeta}>{[clock(row.createdAt), guestQuestionStatus(view, row, t) ?? t(`statistics.status.${row.state}`), (names.get(row.id) ?? []).join(', ')].filter(Boolean).join(' · ')}</span>
         </span> }))];
   };
   const current = whole ? t('statistics.wholeGroup') : turn ? title(turn) : '';
@@ -237,7 +239,7 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
       }} />
     {turn || whole ? <>
       {whole ? <span className={styles.statisticsStatus} data-statistics-status="group"><span className={styles.statLabel}>{t('statistics.questionCount', { count: view.turns.length })}</span></span>
-        : turn && <span className={styles.statisticsStatus} data-statistics-status={turn.state}><StateDot state={exportState === 'groups.export.pending' || exportState === 'groups.export.expiredStatus' ? 'warning' : TURN_DOT[turn.state]} /><span className={styles.statLabel}>{t(exportState ?? `statistics.status.${turn.state}`)}</span></span>}
+        : turn && <span className={styles.statisticsStatus} data-statistics-status={turn.state}><StateDot state={exportState === 'groups.export.pending' || exportState === 'groups.export.expiredStatus' ? 'warning' : TURN_DOT[turn.state]} /><span className={styles.statLabel}>{guestQuestionStatus(view, turn, t) ?? t(exportState ?? `statistics.status.${turn.state}`)}</span></span>}
       {mode === 'detailed' && sum.activity && <span className={`${styles.statItem} ${styles.statisticsWide}`} title={scope}><IconGaugeOutlineRegular /><span className={styles.statLabel}>{t('statistics.counts', sum.activity)}</span></span>}
       {(tokenCount !== undefined || cache !== undefined) && <span className={`${styles.statItem} ${tokenCount === undefined ? styles.statisticsWide : ''}`} data-group-usage="" title={scope}>
         <IconDatabaseOutlineRegular />
@@ -245,11 +247,11 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
         {tokenCount !== undefined && cache !== undefined && <span className={`${styles.statSep} ${styles.statisticsWide}`} aria-hidden="true">·</span>}
         {cache !== undefined && <span className={styles.statisticsWide}>{t('statistics.cache', { percent: number(cache) })}</span>}
       </span>}
-      {tokenCount === undefined && !sum.reported && <span className={styles.statItem}>{t(`statistics.${emptyState}`)}</span>}
-      {partial && <span className={`${styles.statItem} ${styles.statisticsWide}`}>{t('statistics.incomplete')} · {coverage}</span>}
+      {!receiptOnly && tokenCount === undefined && !sum.reported && <span className={styles.statItem}>{t(`statistics.${emptyState}`)}</span>}
+      {!receiptOnly && partial && <span className={`${styles.statItem} ${styles.statisticsWide}`}>{t('statistics.incomplete')} · {coverage}</span>}
       {other > 0 && <button type="button" className={`${styles.statPill} ${styles.statisticsWide}`} onClick={() => setMenu(true)}>{t('statistics.other', { count: other })}</button>}
-      <button type="button" className={styles.statPill} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>{t('statistics.details')}</button>
-      {open && <Modal open title={t('statistics.details')} closeLabel={t('actions.close')} description={t(whole ? 'statistics.groupScope' : 'statistics.scope')}
+      {!receiptOnly && <button type="button" className={styles.statPill} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>{t('statistics.details')}</button>}
+      {!receiptOnly && open && <Modal open title={t('statistics.details')} closeLabel={t('actions.close')} description={t(whole ? 'statistics.groupScope' : 'statistics.scope')}
         className={styles.statisticsDialog} contentClassName={styles.statisticsContent} onClose={() => setOpen(false)}
         footer={<Button size="sm" onClick={() => setOpen(false)}>{t('actions.close')}</Button>}>
         {whole ? <>

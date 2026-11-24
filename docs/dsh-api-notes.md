@@ -1,5 +1,27 @@
 # DSH API 核实记录
 
+## 群成员代问群外 Bot
+
+群输入框的 `@` 候选取自当前群的可用成员，另提供 `@everyone`。名单或名称变更时，通过公开的 `InputTriggerController.refreshOpenMenu()` 刷新已打开的候选菜单。普通群仍可用「问 Jarvis」直接提问，或用「让通用助手问 Jarvis」委托成员转问。发送时 Host 根据当前群名单独立核对提及的成员。
+
+群内受托成员和群外 Bot 各有独立的原生执行。问题送达取自群外执行的原生接收回执，受托成员收到答复后再生成群内消息。插件通过公开的会话接口给两个 Bot 的主会话写入收发标记。写入时用 Bot ID 和创建时间定位主会话，以便在同一会话内处理空白主会话的预设恢复。标记只包含收发事实，授权过的中转答复单独保存在数据出口中。
+
+群转问详情通过仅限所有者的插件 Remote `dshBot.groups/getRelayDetails(request)` 按需加载。群页以群身份和轮次查询。主会话收发标记绑定当前原生会话、原生消息和托管投递标识。每段原文读取时重新校验当前读者、原任务和来源版本，单个标记只返回对应一次投递。
+
+在隔离的 rc.5 宿主上用 `scripts/group-guest-browser.mjs` 验证两级回传。先用不同的合成答案区分群外执行和群内答复，再在 Jarvis 的原生会话核对入站和出站标记。每条公开群消息的折叠和阅读位置使用 `scripts/group-reply-fold-browser.mjs` 验证。
+
+## 2026-11-22 群聊删除与原生会话归档
+
+插件的 owner Remote `dshBot.groups/deleteGroup(group, expectedRevision)` 使用群 ID、创建时间和版本定位本次确认的普通群。归档群也可删除。成员仍在执行或群关联自动协作任务时，Host 会说明阻止原因。成功后的删除回执用于处理重复确认，并防止重放旧的创建请求。
+
+删除群聊复用公开的 `WorkspaceRegistry.archiveSession(sessionId)`，由宿主归档群根会话并移除其原生置顶。普通群可能与其他群或 Bot 共用同一个工作区，因此删除以会话为单位。群目录和原生会话日志分别管理，成员 Bot 的主会话和私有记忆也有各自的生命周期。
+
+独立的群归档操作在 rc.5 上使用公开的 `subagents.drainDescendants([rootAgent])` 停止目标群的子任务。rc.2 也提供该 API。用隔离 profile 冷启动两个宿主版本，验证同名群选择、重复请求、原生历史和成员私有记忆，复现入口为 `scripts/group-delete-host.mjs`。
+
+## 2026-11-21 群成员名额
+
+`dshBot.groups/view` 的 `memberLimit` 为 Host 对该群实际执行的人数上限。普通群使用 `groupMaxMembers`；自动协作群还受 Supergroup 配置约束。该值随视图计算，无需迁移存储。客户端读取缺少此字段的旧视图时按 6 人显示。停用但未移除的成员继续占用名额。
+
 ## 2026-11-19 双人问答、结果复用与首次收件
 
 - 普通双人问答复用原生隔离执行及 Messaging 回执。Host 从真实用户指向收件人的任务文字或双方已交付的任务成果构建输入；发起 Bot 在长期主会话写的自由文本仍受原有资料出口约束。固定用途查询只接受目标及用途。私有正文授权继续绑定内容、身份及目的地。
@@ -48,7 +70,7 @@ rc.2 `sessionController.inspect(id).events` 与 rc.3 `sessionController.events({
 
 旧版 native-failure 仅在 owner 主动核对时，用公开 `sessionPersistence.open(..., 'read')` 和 Session 事件校验父/子/preset/输入/最终轮次；无既往出口记录、无已发布回复且可重现权限拦截时，才生成待审核项。原生 ambient 只按既有精确白名单忽略，不把它作为授权。
 
-0.7.1 的隔离 Host、浏览器和升级验收见[发布说明](releases/v0.7.1.md)。
+真实 Host、Browser、源码检查和部署证据见 [回传修复验收](releases/v0.7.1.md)。
 
 ## 公开包名迁移与原生设置归属（2026-11-16）
 
@@ -1971,7 +1993,7 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 - 群设置复用同一耐久偏好：owner-only `getExportApprovalSettings(group)` 返回当前完整读者、可设置的实际成员、有效偏好和群／成员版本；Supergroup 读者含原工作 authority 中的额外 Bot。`setExportApproval(group, bot, enabled, expectedRevision, expectedMembershipRevision)` 对两个版本做 CAS，开启前核对实际成员、全部 Bot 代际及既有 Supergroup authority；关闭允许清除失效偏好。该入口仅保存未来偏好，不发布已有待审核正文、不改私有读者、工具或模型权限；每条未来回复仍走原 exact-content egress。失效的 authority 不因这个设置恢复。
 - Client 用公开 Remote 返回的 flowId/deliveryRevision 更新预览身份，解决旧记录恢复后的首次审核失效。审核入口位于折叠详情之外；原生执行权限与群数据回传授权分别显示。发送前的数据阻止、并发版本冲突和不确定网络结果分别提示，不自动重复执行或发布。
 
-同包群回传验证见[0.7.1 发布说明](releases/v0.7.1.md)。
+同包实测及本地部署结果见[群回传续聊与持续授权验收](releases/v0.7.1.md)。
 
 ## 主会话身份与群路由（2026-11-18）
 
@@ -1979,3 +2001,9 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 - 复用公开 `sessionController.projections({ sessionId }, signal)` 核对冷会话的 sequenced 当前 preset，不把 migration-required 的缓存提示当成身份保证，不 inspect 正文或激活 Agent。驻留 Session 的有效投影先于旧进程绑定；新建会话也必须通过同一身份检查，不能接受原生空白复用时降为 standard 的结果。
 - 群输入先读取准确同代 `groups/view` 以确定普通群或 Supergroup，再核对自动工作的原 group/work 地址；未知分类不回退到普通发送。原生审批／问题优先占据 composer；只有目录精确 root 或原生 group-root preset 证明的会话可挂群输入。未提交的路由读取在 composer 卸载时失效，已提交写入仍核对原回执，不以取消读取推断写入失败。
 - `GroupSummary.exportPendingCount` 是可选的安全计数投影：只包含仍可直接拒绝的 held 回传，不读取预览正文。读者失效或过期仍可计入可安全丢弃项；已归档、已交付、缺失 flow 和尚未重建的旧 native-failure 不计入。该计数不发布、不重建、不清理任何正文。源码回归与同包运行证据分别记录。
+
+## 群后台与 Bot 互问的读取边界（2026-11-22）
+
+锁定的 DSH `SandboxExecutionPolicy.workspaceRoot` 指定可写工作区。其公开策略没有“禁止读取其他 Bot 的私聊目录”这一项。群后台使用原生 `agent.ctx.tools.restrict({ allow: [] })` 移除继承工具，并在自己的 Agent scope 上注册 `tools/pre-execute`、`tools.guard` 和 `tools/execute` 检查。允许的工具必须是本插件绑定到这个 Agent 的同一个 ToolDefinition，且仍有当前任务的有效授权。宿主同级新增工具或同名工具不能获得授权。rc.2 的群子会话可用 `tools.presentAs('native')` 直接展示这些能力。桌面 rc.5 的工具服务已移除此呈现接口，仍由相同的执行检查实施隔离。
+
+普通群成员可使用群消息、本 Bot 的记忆操作及已受控的群跟进工具。只记录记忆的回合允许保存、搜索和列举自己的记忆。外部受邀 Bot 可按需搜索、列举自身记忆，其私有内容仍由原有回传授权处理。访客不自动注入记忆。群后台不挂载通用文件、Shell 或 MCP 连接器。已失去 reservation 的历史子会话不会恢复工具权限。传统后台委派只返回文本，作用域受控的自动互问沿用其通信工具。正在处理队友消息的主会话回合仅能用自己的受控通信和记忆查询工具，独立的用户私聊回合沿用宿主权限。后者的通用文件能力仍受操作系统账号的读权限约束。

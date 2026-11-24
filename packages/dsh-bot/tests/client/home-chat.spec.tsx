@@ -142,8 +142,7 @@ describe('single main conversation launch', () => {
   });
   it('opens profile management without opening a main conversation', async () => {
     const app = await mount('zh');
-    const row = required(app.container.querySelector<HTMLElement>('li'));
-    await click(button(row, zh.ui['chat.profile']));
+    await openProfile(app, 'zh');
     expect(app.container.querySelector('[data-bot-detail="alpha-bot"]')).not.toBeNull();
     expect(app.remote.methods.openConversation).not.toHaveBeenCalled();
     expect(app.remote.methods.openConversationExact).not.toHaveBeenCalled();

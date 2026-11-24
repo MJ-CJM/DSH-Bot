@@ -99,6 +99,11 @@ it('native assembler emits exactly one exclusive group Bot card and leaves ordin
     const a = new api.ConversationNodeAssembler(events, views); a.activateTarget('chat');
     a.replaceWindow([row(0, source), row(1, { kind: 'user' }), row(2, { kind: 'schedule' }), row(3, { kind: 'dsh-bot-group' })], false); a.flush();
     expect((a.snapshot('chat') as readonly ConversationViewNode[]).map(node => node.kind)).toEqual(['dsh-bot-group', 'native', 'native', 'native']);
+    a.replaceWindow([row(4, { ...source, guestReply: true, childSessionId: 'not-for-the-group',
+      speaker: { bot: { botId: 'jarvis', botCreatedAt: 2 }, name: 'Jarvis' } })], false); a.flush();
+    const guest = (a.snapshot('chat') as readonly ConversationViewNode[])[0];
+    expect(guest?.data).toMatchObject({ message: { guestReply: true, authorKind: 'bot', speaker: { name: 'Jarvis' } } });
+    expect(guest?.data).not.toHaveProperty('message.childSessionId');
     off(); const b = new api.ConversationNodeAssembler(events, views); b.activateTarget('chat'); b.replaceWindow([row(0, source)], false); b.flush();
     expect((b.snapshot('chat') as readonly ConversationViewNode[]).map(node => node.kind)).toEqual(['native']);
   } finally { await ctx.fiber.dispose(); }

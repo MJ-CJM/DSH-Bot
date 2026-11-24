@@ -1,10 +1,13 @@
 import { previewText, relativeTime } from '../activity-view.js';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { GroupAvatar } from '../components/GroupAvatar.js';
+import { GroupDeleteDialog } from '../components/GroupDeleteDialog.js';
+import type { GroupRecord } from '../../shared/groups.js';
 import { BotIdentity } from '../components/BotIdentity.js';
 import { SearchField } from '../components/SearchField.js';
-import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
-import { recentPreferences, setRecentPreference, updateRecentPreference } from './recent-conversations.js';
+import { Button, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+import { SupergroupSettingsPanel, supergroupStatusLabel, useSupergroupSettings } from '../supergroup-settings.js';
+import { conversationKey, recentPreferences, setRecentPreference, updateRecentPreference } from './recent-conversations.js';
 import { directoryWindow, filterNativeDirectory, migrateLegacyDirectory, nativeDirectoryRows, readDirectoryWindow, writeDirectoryWindow, type NativeDirectoryRow } from './native-directory.js';
 import type { BotsPageProps } from './bots-page-types.js';
 import type { BotsPageModel } from './use-bots-page.js';
@@ -13,6 +16,10 @@ const emptyGroups = { groups: [], loading: false, loaded: true, pollIntervalMs: 
 const noSubscribe = () => () => {};
 export function RecentConversations({ page, model, mode = 'recent' }: { page: BotsPageProps; model: BotsPageModel; mode?: 'bots' | 'recent' }) {
   const { groups, t } = page;
+  const settings = mode === 'bots' ? page.supergroupSettings : undefined;
+  const settingsSnapshot = useSupergroupSettings(model.directoryVisible ? settings : undefined);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsId = useId();
   const text = (key: string) => t(key as Parameters<typeof t>[0]);
   const snapshot = useSyncExternalStore(groups?.catalog.subscribe ?? noSubscribe, groups?.catalog.getSnapshot ?? (() => emptyGroups));
   const saved = model.pageState?.lists[mode];
@@ -25,6 +32,9 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
   const [windowState] = useState(directoryWindow);
   const [selection, setSelection] = useState(() => readDirectoryWindow(windowState.storage, windowState.path, 'selection').selected);
   const [menu, setMenu] = useState<string>();
+  const [deleting, setDeleting] = useState<GroupRecord>();
+  const [deletedName, setDeletedName] = useState<string>();
+  const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const update = (key: string, field: 'hidden' | 'pinned') => {
     setRecentPreference(key, field); setRevision(value => value + 1);
   };
@@ -61,10 +71,20 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
   return <section aria-label={text(mode === 'bots' ? 'navigation.myBots' : 'chat.recent')} data-bots-list={mode}>
     <div className={styles.listTools}>
       {mode === 'bots' && model.entries.length > 0 && <button type="button" className={styles.button} disabled={model.busy || !model.snapshot.loaded} onClick={() => model.open({ kind: 'create' })}>{t('bots.create')}</button>}
-      {mode === 'bots' && page.onOpenAutomaticCollaboration && <Button variant="ghost" onClick={page.onOpenAutomaticCollaboration}>{t('supergroup.settingsTitle')}</Button>}
+      {settings && <Button variant="ghost" data-supergroup-disclosure="" aria-controls={settingsId} aria-expanded={settingsOpen}
+        onClick={() => {
+          if (!settingsOpen) void settings.refresh();
+          setSettingsOpen(!settingsOpen);
+        }}>
+        {t('supergroup.settingsTitle')} · {t(supergroupStatusLabel(settingsSnapshot))}
+        <IconChevronDownOutlineRegular className={styles.settingsChevron} size={14} />
+      </Button>}
       <SearchField className={styles.recentSearch} label={text(mode === 'bots' ? 'navigation.searchBots' : 'chat.search')} clearLabel={t('detail.clearSearch')} value={query} onChange={setQuery} />
       {mode === 'recent' && <button type="button" className={styles.button} aria-pressed={hidden} onClick={() => setHidden(!hidden)}>{text(hidden ? 'chat.recent' : 'chat.hidden')}</button>}
     </div>
+    {settings && <div id={settingsId} hidden={!settingsOpen} className={styles.directorySettings}>
+      {settingsOpen && <SupergroupSettingsPanel source={settings} snapshot={settingsSnapshot} t={t} />}
+    </div>}
     <ul className={styles.recentList}>
       {rows.map(row => <li key={row.key} className={styles.recentRow} data-directory-kind={row.kind} data-directory-id={row.id} data-directory-created-at={row.createdAt} data-directory-selected={selection === row.key ? '' : undefined}>
         <button type="button" data-directory-open="" data-bot-id={row.entry?.bot.id} aria-label={row.name} className={styles.recentOpen} disabled={model.busy || model.navigating} onClick={() => { void open(row); }}>
@@ -73,24 +93,33 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
           {!!row.unread && <span data-unread="" role="img" aria-label={t('activity.unreadCount', { count: row.unread })}>●</span>}
           {!!row.at && <time className={styles.relativeTime} dateTime={new Date(row.at).toISOString()}>{relativeTime(row.at, t('activity.locale'))}</time>}
         </button>
-        <Button variant="ghost" className={styles.quietAction} data-directory-pin="" aria-pressed={Boolean(recentPreferences.get(row.key)?.pinned)} aria-label={`${text(recentPreferences.get(row.key)?.pinned ? 'chat.unpin' : 'chat.pin')} · ${row.name}`} title={text(recentPreferences.get(row.key)?.pinned ? 'chat.unpin' : 'chat.pin')} onClick={() => update(row.key, 'pinned')}><span aria-hidden="true">⌖</span></Button>
-        <Button variant="ghost" className={styles.quietAction} aria-label={`${text('chat.profile')} · ${row.name}`} onClick={() => profile(row)}>{text('chat.profile')}</Button>
-        <Menu open={menu === row.key} onClose={() => setMenu(undefined)} align="end"
-          anchor={<Button variant="ghost" className={styles.quietAction} aria-label={`${t('card.more')} ${row.name}`} aria-haspopup="menu" aria-expanded={menu === row.key} onClick={() => setMenu(menu === row.key ? undefined : row.key)}>···</Button>}
+        {recentPreferences.get(row.key)?.pinned && <span className={styles.directoryPinned} data-directory-pinned="">{t('chat.pinned')}</span>}
+        <Menu open={menu === row.key} onClose={() => setMenu(undefined)} align="end" autoFocus
+          anchor={<Button variant="ghost" className={styles.quietAction} aria-label={`${t('card.more')} ${row.name}`} aria-haspopup="menu" aria-expanded={menu === row.key} onClick={event => {
+            menuTrigger.current = event.currentTarget;
+            setMenu(menu === row.key ? undefined : row.key);
+          }}><IconEllipsisOutlineRegular size={18} /></Button>}
           items={[
             { id: 'pinned', label: text(recentPreferences.get(row.key)?.pinned ? 'chat.unpin' : 'chat.pin') },
             ...(mode === 'recent' ? [{ id: 'hidden', label: text(hidden ? 'chat.restore' : 'chat.hide') }] : []),
             { id: 'profile', label: text('chat.profile') },
-            ...(row.entry ? [{ id: 'delete', label: t('actions.delete') }] : []),
+            { id: 'delete', label: t(row.entry ? 'actions.delete' : 'groups.delete') },
           ]}
-          onSelect={id => { setMenu(undefined);
+          onSelect={id => { setMenu(undefined); menuTrigger.current?.focus({ preventScroll: true });
             if (id === 'pinned' || id === 'hidden') update(row.key, id);
             else if (id === 'delete' && row.entry) model.open({ kind: 'delete', bot: row.entry.bot });
+            else if (id === 'delete' && row.group) { setDeletedName(undefined); setDeleting(row.group.group); }
             else profile(row);
           }} />
 
       </li>)}
     </ul>
+    {deleting && groups && <GroupDeleteDialog group={deleting} actions={groups} section="recent" t={t} onClose={() => setDeleting(undefined)}
+      onDeleted={group => {
+        setDeletedName(group.name);
+        if (selection === conversationKey('group', group.id, group.createdAt)) setSelection(undefined);
+      }} />}
+    {deletedName && <p role="status">{t('groups.deleted', { name: deletedName })}</p>}
     {rows.length === 0 && (mode !== 'bots' || Boolean(query)) && !model.snapshot?.error && <p className={styles.hint}>{text(query ? mode === 'bots' ? 'navigation.noBotsMatch' : 'chat.noMatches' : mode === 'bots' ? 'bots.empty' : hidden ? 'navigation.noHidden' : 'navigation.noRecent')}</p>}
   </section>;
 }

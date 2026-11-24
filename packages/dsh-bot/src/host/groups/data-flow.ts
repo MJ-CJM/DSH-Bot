@@ -1,10 +1,12 @@
+import { guestContext } from './guest-question.js';
+import { digest } from '../common/operations.js';
 import { groupContextSession, autoExportAllowed, assertGroupAudience } from './context-flow.js';
 import { OperationError } from '../common/operations.js';
 import { randomUUID } from 'node:crypto';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { BotKey } from '../../shared/identity.js';
-import type { GroupRecord } from '../../shared/groups.js';
+import type { GroupRecord, GroupTurn, GroupDelivery } from '../../shared/groups.js';
 import type { GroupState } from './state.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { checkSupergroup, groupReaders } from './supergroup-admission.js';
@@ -35,6 +37,23 @@ export async function groupInput(state: GroupState, g: GroupRecord, root: Agent,
   try { return await flow.admit(envelope); }
   catch { throw new OperationError('group-data-blocked'); }
 }
+/** A guest receives a fresh projection of one explicitly addressed human question. No group copy or root history is relabelled. */
+export async function guestQuestionInput(state: GroupState, group: GroupRecord, root: Agent, turn: GroupTurn,
+  delivery: GroupDelivery, text: string, signal: AbortSignal) {
+  const prompt = guestContext(state, group, root, turn, delivery);
+  if (prompt.text !== text) throw new OperationError('group-data-blocked');
+  const flow = outlets(state.registry);
+  if (!flow) return;
+  const context = `guest-question-${digest([turn.group, turn.id, turn.inputMessageId, turn.guestQuestion, text])}`;
+  await flow.inherit(context, { readers: [...groupReaders(state, group), delivery.bot], originTrust: 'candidate',
+    sourceVersions: [], restrictions: ['no-egress'], grants: [] });
+  const envelope = flow.draft('group-input', delivery.bot, context, delivery.id, { kind: 'bot', bot: delivery.bot }, text);
+  const id = await flow.admit(envelope, undefined, signal), childId = SessionId(randomUUID());
+  await flow.inherit(childId, envelope.label);
+  await state.queue.run(() => persistInput(state, delivery.id, id, context, childId));
+  await checkGroupDispatch(state, group);
+  return { id, childId };
+}
 export async function groupChild(state: GroupState, g: GroupRecord, root: Agent, bot: BotKey, content: string,
   call: string, signal: AbortSignal, messageIds?: readonly string[], messageDigests?: ReadonlyMap<string, string>) {
   const flow = outlets(state.registry); if (!flow) return;
@@ -50,14 +69,18 @@ export async function groupChild(state: GroupState, g: GroupRecord, root: Agent,
   return { id, childId };
 }
 export async function groupResult<T>(state: GroupState, g: GroupRecord, bot: BotKey, childId: string,
-  root: Agent, content: string, call: string, send: () => T | Promise<T>, signal: AbortSignal, holdForReview = false): Promise<T> {
-  const flow = outlets(state.registry); if (!flow) return send();
+  root: Agent, content: string, call: string, send: (flowId?: string) => T | Promise<T>, signal: AbortSignal, holdForReview = false, useSavedApproval = true, relayRecipient?: BotKey): Promise<T> {
+  const flow = outlets(state.registry);
+  if (!flow) {
+    if (relayRecipient || !useSavedApproval) throw new GroupExportError('export-blocked');
+    return send();
+  }
   await checkSupergroup(state, g);
   let envelope: FlowEnvelope | undefined;
   let id: string;
   try {
-    envelope = flow.draft('group-result', bot, childId, call, audience(state, g), content);
-    const grant = autoExportAllowed(state, g, bot) ? flow.checker.grants.issue(envelope.binding, envelope.content) : undefined;
+    envelope = flow.draft('group-result', bot, childId, call, relayRecipient ? { kind: 'bot', bot: relayRecipient } : audience(state, g), content);
+    const grant = useSavedApproval && autoExportAllowed(state, g, bot) ? flow.checker.grants.issue(envelope.binding, envelope.content) : undefined;
     id = await flow.admit(envelope, grant, signal);
   } catch (error) {
     signal.throwIfAborted();
@@ -69,7 +92,7 @@ export async function groupResult<T>(state: GroupState, g: GroupRecord, bot: Bot
   }
   try {
     if (g.supergroup) await flow.inherit(root.session.id, envelope.label);
-    return await flow.dispatch(id, send, signal, () => checkGroupDispatch(state, g));
+    return await flow.dispatch(id, () => send(id), signal, () => checkGroupDispatch(state, g));
   } catch (error) {
     signal.throwIfAborted();
     if (['admitted', 'cancelled'].includes(flow.get(id).state)) throw new GroupExportError('export-blocked');

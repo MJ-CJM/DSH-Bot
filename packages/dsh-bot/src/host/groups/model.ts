@@ -14,7 +14,6 @@ import {
   type GroupSpeaker,
   type GroupFailure,
 } from '../../shared/groups.js';
-import type { BotKey } from '../../shared/integrations.js';
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -29,6 +28,8 @@ declare module '@deepseek-ai/dsh-llm' {
     };
     'dsh-bot-group-owner-followup': {
       kind: 'dsh-bot-group-owner-followup'; group: GroupKey; turnId: string; cardId: string; predecessorTurnId: string;
+      /** Present on the published group input only. Child prompts use the same source kind. */
+      groupRootSessionId?: string;
     };
     'dsh-bot-group-followup': { kind: 'dsh-bot-group-followup'; group: GroupKey; turnId: string; deliveryId: string; replyTo: string };
     'dsh-bot-group': {
@@ -37,7 +38,9 @@ declare module '@deepseek-ai/dsh-llm' {
       turnId: string;
       memberId: string;
       speaker: GroupSpeaker;
-      childSessionId: string;
+      childSessionId?: string;
+      guestReply?: true;
+      relayReply?: true;
       stopReason: string;
       /** Native failure facts for a failed run; older messages omit it. */
       failure?: GroupFailure;
@@ -46,11 +49,16 @@ declare module '@deepseek-ai/dsh-llm' {
     };
   }
 }
+const groupDeletionSchema = z.strictObject({
+  group: groupKeySchema, revision: z.number().int().positive(), rootSessionId: z.string().min(1), complete: z.boolean(),
+});
+export type GroupDeletion = z.infer<typeof groupDeletionSchema>;
 export const groupsDomain = defineDomain({
   name: 'dsh_bot_groups',
   version: 1,
   tables: {
     groups: domainTable(groupRecordSchema),
+    deletions: domainTable(groupDeletionSchema),
     team_recipes: domainTable(savedTeamRecipeSchema),
     members: domainTable(groupMemberSchema),
     turns: domainTable(groupTurnSchema),
@@ -67,13 +75,7 @@ export const groupExportReviewsDomain = defineDomain({
     closures: domainTable(z.strictObject({ closedAtByDeliveryId: z.record(resourceId, z.number().int().nonnegative()) })),
   },
 });
-export const sameBot = (a: BotKey, b: BotKey) => a.botId === b.botId && a.botCreatedAt === b.botCreatedAt;
-export function sameGroupReaders(left: readonly BotKey[], right: readonly BotKey[]) {
-  const key = (bot: BotKey) => JSON.stringify([bot.botId, bot.botCreatedAt]);
-  const readers = new Set(right.map(key));
-  return readers.size === right.length && new Set(left.map(key)).size === left.length &&
-    left.length === right.length && left.every(bot => readers.has(key(bot)));
-}
+export { sameBot, sameGroupReaders } from '../../shared/identity.js';
 export const blocks = (text: string) => [{ type: 'text' as const, text }];
 export const textOf = (content: readonly { type: string; text?: unknown }[]) =>
   content

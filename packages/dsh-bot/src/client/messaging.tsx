@@ -6,6 +6,8 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import { IconChevronDownOutlineRegular, IconRightUpOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
 import { useId, useState } from 'react';
+import { RelayDetails } from './components/RelayDetails.js';
+import type { GroupActions } from './groups-state.js';
 import { messageSourceSchema, type MessageSource } from '../shared/messaging.js';
 import { BotAvatar, avatarColors, defaultAvatarColor } from './components/BotAvatar.js';
 import styles from './styles/messages.module.css';
@@ -52,24 +54,27 @@ export function messageLabel(source: MessageSource): MessageLabel {
   return sent ? (reply ? 'messages.repliedTo' : 'messages.sentTo') : (reply ? 'messages.replyFrom' : 'messages.receivedFrom');
 }
 export interface MessageCardActions {
+  groups?: GroupActions;
   /** Open a Bot's details beside the conversation. */
   onOpenBot?(botId: string): void;
   /** Show this conversation's Bot with its delivery and reply status. */
   onShowStatus?(botId: string): void;
 }
 /** Centered marker for one teammate message; the content stays folded until asked for. */
-export function MessageCard({ node, t, onOpenBot, onShowStatus }: { node: ChatNode<'dsh-bot-message'> } & MessageCardActions & PropsLocale<'dsh-bot'>) {
+export function MessageCard({ node, sessionId, t, onOpenBot, onShowStatus, groups }: { sessionId?: string; node: ChatNode<'dsh-bot-message'> } & MessageCardActions & PropsLocale<'dsh-bot'>) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   const { source: s, text, time } = node.data;
   const content = messageText(text, s);
   const sent = s.kind === 'dsh-bot-message-sent', peer = sent ? s.to : s.from;
+  const receipt = s.groupRelayReceipt && groups && sessionId === (sent ? s.fromSessionId : s.toSessionId) ?
+    { kind: 'receipt' as const, messageId: s.messageId, nativeId: node.id, sessionId } : undefined;
   const display = sent ? s.displaySnapshots.to : s.displaySnapshots.from;
   const bot = { id: peer.botId, ...display };
   const color = avatarColors[display.avatarColor ?? defaultAvatarColor(peer.botId)].color;
   const name = <><BotAvatar bot={bot} size={18} /><span className={styles.chipName} style={{ color }}>{display.name}</span></>;
   const label = t('badge.open', { name: display.name });
-  return <article className={styles.card} data-bot-message={s.messageId} data-message-direction={sent ? 'sent' : 'received'} data-message-mode={s.mode}>
+  return <article className={styles.card} data-bot-message={s.messageId} data-group-relay-receipt={s.groupRelayReceipt ? '' : undefined} data-message-direction={sent ? 'sent' : 'received'} data-message-mode={s.mode}>
     <style>{css}</style>
     <div className={styles.marker} data-bot-message-marker="">
       <span className={sent ? styles.direction : `${styles.direction} ${styles.received}`} aria-hidden="true"><IconRightUpOutlineRegular size={14} /></span>
@@ -77,15 +82,17 @@ export function MessageCard({ node, t, onOpenBot, onShowStatus }: { node: ChatNo
       {onOpenBot
         ? <button type="button" className={styles.chip} data-bot-chip={peer.botId} aria-label={label} title={label} onClick={() => onOpenBot(peer.botId)}>{name}</button>
         : <span className={styles.chip} data-bot-chip={peer.botId}>{name}</span>}
-      {s.mode !== 'reply' && <span className={styles.meta}>{t(`messages.${s.mode}`)}</span>}
+      {s.groupRelayReceipt && <span className={styles.meta}>{t('groups.relay.marker')}</span>}
+      {!s.groupRelayReceipt && s.mode !== 'reply' && <span className={styles.meta}>{t(`messages.${s.mode}`)}</span>}
       {s.priority === 'interrupt' && <span className={styles.meta}>{t('messages.interrupt')}</span>}
       <time className={styles.meta} dateTime={new Date(time).toISOString()}>{new Date(time).toLocaleTimeString(t('activity.locale'), { hour: '2-digit', minute: '2-digit' })}</time>
-      <button type="button" className={styles.toggle} aria-expanded={open} aria-controls={open ? bodyId : undefined} onClick={() => setOpen(!open)}>
+      {(!s.groupRelayReceipt || receipt) && <button type="button" className={styles.toggle} aria-expanded={open} aria-controls={open ? bodyId : undefined} onClick={() => setOpen(!open)}>
         <span>{t(open ? 'messages.hideContent' : 'messages.showContent')}</span>
         <IconChevronDownOutlineRegular size={14} className={open ? styles.chevronOpen : undefined} />
-      </button>
+      </button>}
     </div>
-    {open && <div id={bodyId} className={styles.body}>
+    {open && receipt && groups && <div id={bodyId} className={styles.body}><RelayDetails actions={groups} request={receipt} t={t} /></div>}
+    {open && !s.groupRelayReceipt && <div id={bodyId} className={styles.body}>
       <p className={styles.content}>{content}</p>
       <p className={styles.caption}>{t('messages.data')}</p>
       <p className={styles.caption} title={`${s.threadId}${s.replyTo ? ` · replyTo: ${s.replyTo}` : ''}`} data-message-thread={s.threadId}>

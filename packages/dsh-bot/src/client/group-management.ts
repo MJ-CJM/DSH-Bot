@@ -1,3 +1,6 @@
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
+import { sameBot } from '../shared/identity.js';
+import { groupExportReviewStatus } from '../shared/group-export-review.js';
 import { rankByName } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { GroupDelivery, GroupMember, GroupModelSelection, GroupSummary, GroupTurn, GroupView } from '../shared/groups.js';
 import type { BotRecord } from '../shared/schema.js';
@@ -16,6 +19,46 @@ export function groupMemoryWriteCounts(deliveries: readonly GroupDelivery[]) {
   return { saved: [...members.values()].filter(status => status === 'saved').length,
     failed: [...members.values()].filter(status => status === 'failed').length,
     unverified: [...members.values()].filter(status => status === 'unverified').length };
+}
+
+/** A guest's delivery receipt stays meaningful even when its reply has paged out. */
+export function guestQuestionStatus(view: GroupView, turn: GroupTurn, t: PropsLocale<'dsh-bot'>['t']) {
+  const guest = turn.guestQuestion;
+  if (!guest) return;
+  const receipt = view.deliveries.find(row => row.turnId === turn.id && sameBot(row.bot, guest.bot));
+  if (guest.via) {
+    const via = guest.via;
+    const answer = view.deliveries.find(row => row.turnId === turn.id && row.memberId === via.memberId && sameBot(row.bot, via.bot));
+    const markerIssue = [receipt?.relayMarker, answer?.relayMarker].find(issue => issue !== undefined);
+    const label = (status: 'queued' | 'delivered' | 'answered' | 'replied' | 'notSent' | 'noReply' | 'unconfirmed' | 'unpublished' | 'review' | 'withheld' | 'awaiting' | 'guestReview' | 'guestWithheld' | 'cancelled') =>
+      [t(`groups.relay.${status}`, { sender: via.name, guest: guest.name }),
+        markerIssue && t(markerIssue === 'unavailable' ? 'groups.relay.markerUnavailable' : 'groups.relay.markerUnconfirmed')].filter(Boolean).join(' · ');
+    if (answer?.state === 'completed' && answer.outputMessageId && answer.outputSeq !== undefined) return label('replied');
+    if (receipt && groupExportReviewStatus(view.group, turn, receipt) === 'pending') return label('guestReview');
+    if (receipt && (receipt.reasonCode === 'export-rejected' || receipt.reasonCode === 'export-blocked' ||
+        receipt.staleExportClosedAt !== undefined || groupExportReviewStatus(view.group, turn, receipt) === 'stale')) return label('guestWithheld');
+    if (answer && groupExportReviewStatus(view.group, turn, answer) === 'pending') return label('review');
+    if (answer && (answer.reasonCode === 'export-rejected' || answer.reasonCode === 'export-blocked' ||
+        answer.staleExportClosedAt !== undefined || groupExportReviewStatus(view.group, turn, answer) === 'stale')) return label('withheld');
+    if (turn.state === 'cancelled' || receipt?.state === 'cancelled' || answer?.state === 'cancelled') return label('cancelled');
+    if (receipt?.answeredAt !== undefined) return label(answer?.state === 'failed' || answer?.state === 'unknown' ||
+      answer?.state === 'skipped' || ['partial', 'recovery_needed', 'idle', 'completed'].includes(turn.state) ? 'unpublished' : answer?.acceptedAt !== undefined ? 'answered' : 'awaiting');
+    if (receipt?.state === 'failed' || receipt?.state === 'skipped') return label(receipt.acceptedAt !== undefined ? 'noReply' : 'notSent');
+    if (receipt?.state === 'unknown' || ['partial', 'recovery_needed', 'idle', 'completed'].includes(turn.state)) return label('unconfirmed');
+    return label(receipt?.acceptedAt !== undefined ? 'delivered' : 'queued');
+  }
+  const label = (status: 'queued' | 'delivered' | 'replied' | 'notSent' | 'noReply' | 'replyUnconfirmed' | 'unconfirmed' | 'review' | 'withheld' | 'cancelled') =>
+    t(`groups.guest.${status}`, { name: guest.name });
+  if (receipt?.state === 'completed' && receipt.outputMessageId) return label('replied');
+  if (receipt?.reasonCode === 'export-approval-required' && groupExportReviewStatus(view.group, turn, receipt) === 'pending') return label('review');
+  if (receipt?.reasonCode === 'export-rejected' || receipt?.reasonCode === 'export-blocked' || receipt?.staleExportClosedAt !== undefined ||
+      receipt && groupExportReviewStatus(view.group, turn, receipt) === 'stale') return label('withheld');
+  const unconfirmed = receipt?.acceptedAt !== undefined ? 'replyUnconfirmed' : 'unconfirmed';
+  if (receipt?.state === 'unknown' || turn.state === 'recovery_needed') return label(unconfirmed);
+  if (receipt?.state === 'cancelled' || turn.state === 'cancelled') return label('cancelled');
+  if (receipt?.state === 'failed' || receipt?.state === 'skipped') return label(receipt.acceptedAt !== undefined ? 'noReply' : 'notSent');
+  if (receipt?.state === 'completed' || ['completed', 'idle', 'partial'].includes(turn.state)) return label(unconfirmed);
+  return label(receipt?.acceptedAt !== undefined ? 'delivered' : 'queued');
 }
 
 export function filterGroupDirectory(rows: readonly GroupSummary[], query: string, filter: GroupDirectoryFilter) {
