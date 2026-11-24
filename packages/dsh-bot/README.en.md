@@ -8,11 +8,13 @@ English · [中文](README.md)
 
 **Your personal agent workspace.** Create Bots with their own roles, memory and tools in DeepSeek Harness. Keep working in ongoing conversations, collaborate, and receive results in the original chat.
 
-**Current source: 0.7.3 candidate (npm package: `dsh-botgroup`).** See the [0.7.3 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.3.md) for candidate features. The published stable release is [0.7.2](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.2). [Changelog](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md).
+**Download and install:** [DSH plugin community](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/) · [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) · [Installation guide](#installation-and-compatibility)
+
+**Published stable release: [0.7.3](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.3) (npm package: `dsh-botgroup`).** See the [0.7.3 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.3.md) for features and verification. [Changelog](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md).
 
 ![Personal Bot workspace example](https://raw.githubusercontent.com/MJ-CJM/DSH-Bot/main/packages/dsh-bot/assets/showcase/en-bots.png)
 
-Screenshots show basic workflows from an earlier version in a real, isolated DSH environment, with fictional data and scripted replies. Current candidate entry points are described below. Screenshots do not establish real-model task quality.
+Screenshots show basic workflows from an earlier version in a real, isolated DSH environment, with fictional data and scripted replies. Current entry points are described below. Screenshots do not establish real-model task quality.
 
 ## Start with one Bot
 
@@ -27,13 +29,19 @@ Chat requires an available DSH model, and model services may charge for usage. F
 
 ## Find everyday features
 
+0.7.3 focuses on group relays, reviewing replies together, memory input and simpler group management. See the [0.7.3 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.3.md) for details.
+
 | What you want to do | Where and what happens |
 | --- | --- |
+| Ask a Bot outside the group | In an ordinary group, ask the Bot directly or ask a member to consult it and report back. Expand the relay to inspect the actual exchange. |
+| Review and read group replies | Preview and select replies from the same round, then approve this send. Fold individual replies or the whole round while keeping your reading position. |
+| Record a group message as memory | Use “Just note this down: …” or select **Record memory only** from `+`. Members save separate private memories; the group receives status only. |
+| Set up automatic collaboration | Bots → My Bots → Automatic collaboration. View the current state and expand the setting to change it. |
 | View tasks and follow-up | Bots → the Bot/group → Tasks. Explicitly enable follow-up for that Bot/group. |
 | Add materials and continue | The Bot/group → Materials. Select the exact task and text file; the original question is kept by default, with optional additional requirements. |
 | Find pending work | Bots → Tasks needing your attention. Return to the original conversation to provide input, verify results or use native questions/approvals. |
 | Manage roles and memory | Bots → the Bot’s details, then full settings or Manage saved memories. |
-| Change group preferences and reuse teams | Bots → the group’s settings, including Team recipes. |
+| Manage groups and reuse teams | Bots → the group. Add members from management or the member sidebar, check capacity, pin or delete the group, and use Team recipes in settings. |
 | Configure optional services | Advanced settings in Bots. Continue everyday tasks in the Bot/group conversation. |
 
 ### Automatic collaboration, results in the original chat
@@ -82,16 +90,18 @@ Native background tasks, result review, ordinary schedules, Bot messages, and op
 
 | Scope | Current status |
 | --- | --- |
-| Published stable release | [0.7.2 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.2), with its own release notes and assets. |
-| Development candidate | `dsh-botgroup-0.7.3.tgz`. Use the acceptance record for the exact frozen package. |
-| Recommended target | Official macOS arm64 **DSH 0.2.2-rc.5 + official web-app + one dsh-botgroup product package**. Stock rc.3 is the upgrade regression baseline; support depends on this iteration's same-package acceptance. |
+| Published stable release | [0.7.3 Release](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.3), with its own release notes and assets. |
+| Plugin archive | `dsh-botgroup-0.7.3.tgz`; the fixed download name `dsh-bot.tgz` contains the same bytes. |
+| Recommended target | Official macOS arm64 **DSH 0.2.2-rc.5 + official web-app + one dsh-botgroup product package**. See the release notes for package-specific verification and upgrade results. |
 | Other hosts | Declared range: `>=0.2.1-rc.2 <0.3.0`; development dependencies remain pinned to `0.2.1-rc.2`. This does not establish testing on every version or platform. |
 
 The native design needs no replacement web-app, three-Client adapter package or Bot-mode switch. The previous rc.3-specific `dsh-bot-web-app` belongs to the older delivery. Active legacy installations must be migrated to the official composition in a staged copy, retaining current settings and data. Never select both web-app bundles or exempt the old adapter for an unreviewed host version.
 
 ### Published releases
 
-The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The stable versioned archive is `dsh-botgroup-0.7.2.tgz`. The fixed download name `dsh-bot.tgz` is an alias for the same package.
+Open [DSH-Bot in the DSH plugin community](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/) for the plugin listing, download entry and npm installation information. Check the version shown there against the matching GitHub Release before installing.
+
+The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The stable versioned archive is `dsh-botgroup-0.7.3.tgz`. The fixed download name `dsh-bot.tgz` is an alias for the same package.
 
 Open the relevant [Release](https://github.com/MJ-CJM/DSH-Bot/releases), read its compatibility notes, and download the plugin tgz and checksum file from that same release. On macOS, for example:
 
@@ -99,9 +109,9 @@ Open the relevant [Release](https://github.com/MJ-CJM/DSH-Bot/releases), read it
 shasum -a 256 -c dsh-bot.tgz.sha256
 ```
 
-In DSH, use **Plugins → Add plugin → Install third-party plugin**, select the tgz, enable it as instructed, then fully quit and reopen DSH. Source-code archives are not prebuilt plugins. Community markets or `latest` URLs may still point to the stable release; they do not provide an unpublished candidate or prove current candidate compatibility.
+In DSH, use **Plugins → Add plugin → Install third-party plugin**, select the tgz, enable it as instructed, then fully quit and reopen DSH. Source-code archives are not prebuilt plugins. Community listings may update later than a release. Check the displayed version and use the matching archive and checksum.
 
-### Current candidate
+### Upgrade and migration
 
 See the [0.7.3 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.3.md) for installation and migration requirements. Verify the download using the matching checksum and install in the validated host configuration.
 
@@ -111,7 +121,7 @@ Before upgrading, back up the original profile and complete data and keep the st
 
 ## Validation and limits
 
-See the [0.7.3 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.3.md) for the exact candidate, isolated Host and browser checks, and upgrade validation.
+See the [0.7.3 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.3.md) for the published archive checksum, isolated Host and browser checks, and upgrade validation.
 
 These checks do not establish real paid-model quality, external account authentication, external IM messaging or automatic compatibility with future hosts. Tasks need a running local Host. Cloud hosting, execution after system exit, and system/mobile push are not provided. Uncertain execution outcomes are not automatically replayed.
 
