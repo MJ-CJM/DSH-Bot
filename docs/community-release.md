@@ -1,6 +1,6 @@
 # 社区发布与候选准备
 
-当前公开稳定版为 [v0.7.2](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.2)。当前工作树准备 [0.7.3 候选](releases/v0.7.3.md)，npm 包名为 `dsh-botgroup`。
+当前公开稳定版为 [v0.7.3](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.3)（2026-11-23），npm 包为 [dsh-botgroup@0.7.3](https://www.npmjs.com/package/dsh-botgroup/v/0.7.3)。下载入口见 [DSH 插件社区](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/)，精确原包、校验和与验收范围见 [0.7.3 发布说明](releases/v0.7.3.md)。
 
 ## 本地检查与唯一候选
 
@@ -14,7 +14,7 @@ scripts/pnpm check:format
 scripts/pnpm check
 ```
 
-随后选择一个尚不存在的候选目录打包；不要覆盖已有包：
+后续版本先更新版本号，再选择一个尚不存在的候选目录打包；不要覆盖已发布原包。以下保留 0.7.3 的历史准备命令用于核查，不用于重新发布同一版本：
 
 ```sh
 release_candidate_dir=$(mktemp -d "$PWD/.dsh-dev/release-0.7.3-XXXXXX")
@@ -31,7 +31,7 @@ MIT 许可证及第三方告知须保留。包内只包含 files 白名单；不
 
 开发依赖参考锁定 DSH `0.2.1-rc.2`。使用仓库隔离 `DSH_HOME="$PWD/.dsh-dev"` 和 `scripts/dsh`；各实际运行器进一步隔离 profile／存储，完整 Host 串行运行。源码检查、真实 Host＋合成模型、Browser、桌面及真实模型质量分别报告。
 
-当前原生工作区候选只打包 `dsh-botgroup` 产品，目标为官方 rc.5 + 官方 web-app；用同一冻结包验证 Host、浏览器、冷启动和旧组合迁移。隔离 profile 安装/定向回退工具见[迁移说明](verification/native-workspace-migration.md)。缺少最终同包证据时保持未验收，不因打包成功公布支持。
+当前原生工作区版本只打包 `dsh-botgroup` 产品，目标为官方 rc.5 + 官方 web-app；0.7.3 的同包 Host、浏览器、冷启动与公开 0.7.2 升级结果见[发版验收](verification/v073-release.md)。后续候选继续使用同一冻结包验证相应组合。隔离 profile 安装/定向回退工具见[迁移说明](verification/native-workspace-migration.md)。缺少最终同包证据时保持未验收，不因打包成功公布支持。
 
 以下是 11 月 16 日 0.7.0 旧候选的历史复现流程，保留旧适配构建工具以便核查，不作为新候选的安装前提。该候选使用 `scripts/openmaus-regression.mjs --include-review` 验证精确产品／适配 tgz；通过明确的 `--artifact`、`--compat`、`--app` 及两个 SHA 参数输入。官方 rc.3 适配使用独立 `dsh-bot-web-app`；普通产品包不替代原生 Client。新适配构建使用下列完整命令（先将官方应用放入仓库隔离目录，output 必须是新目录），记录精确 ASAR SHA，保留原生许可证及完整文件清单。
 
@@ -54,7 +54,7 @@ scripts/pnpm -C .dsh-dev/release-0.7.0/compat-package pack --pack-destination ..
 
 正常停止 Host、完整备份 profile 与数据。`dsh-botgroup` 用户可同名升级；旧 `dsh-bot` 用户移除旧包后装新包，将原 `id: dsh-bot` 覆盖行存在的 `name: dsh-bot` 改为 `name: dsh-botgroup`，保留其余配置。不能同时启用两份产品或两份 web-app。
 
-新候选保持官方 web-app。旧替代包按原顺序恢复官方选择；当前 profile 的暂存副本是迁移基线，保留最新通用 ID 配置。回退须保留新增数据及设置，不能恢复历史整库备份或重新选择目标版本不支持的适配。旧名专用桌面更新脚本不用于跨包名安装；原生迁移工具当前只开放仓库隔离演练，日常切换需另行审阅。
+当前版本保持官方 web-app。旧替代包按原顺序恢复官方选择；当前 profile 的暂存副本是迁移基线，保留最新通用 ID 配置。回退须保留新增数据及设置，不能恢复历史整库备份或重新选择目标版本不支持的适配。旧名专用桌面更新脚本不用于跨包名安装；原生迁移工具当前只开放仓库隔离演练，日常切换需另行审阅。
 
 ## 正式发布时执行
 
