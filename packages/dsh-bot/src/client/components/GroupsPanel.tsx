@@ -15,7 +15,8 @@ import type { ModelActions } from '../model-catalog-state.js';
 import { GroupTimeline, groupMessagePreview } from './GroupTimeline.js';
 import { GroupDirectory } from './GroupDirectory.js';
 import { GroupDeleteDialog } from './GroupDeleteDialog.js';
-import { GroupOverview } from './GroupOverview.js';
+import { GroupMembersView, GroupOverview } from './GroupOverview.js';
+import { RosterManagement } from './RosterManagement.js';
 import { memoryOnlyIntent, singleMemoryReference } from '../../shared/group-memory-intent.js';
 import { isGroupDelegation, matchAddressedBot, matchGroupAddress, relayNeedsTopic } from '../../shared/addressed-bot.js';
 import { resolveGroupMentions } from '../group-mentions.js';
@@ -415,21 +416,10 @@ export function GroupEditor({
     </form>
   );
 }
-/** Use the roster and revision that the user actually reviewed, even after a peer window edits it. */
-export function GroupRosterEditor({ initial, actions, bots, onClose, t }: {
+/** Compatibility export: all existing routes open the same native modal. */
+export function GroupRosterEditor(props: {
   initial: GroupView; actions: GroupActions; bots: BotRecord[]; onClose(): void;
-} & Localized) {
-  const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  return <GroupEditor initial={initial} bots={bots} onCancel={onClose} t={t} onSave={async input => {
-    const { operationId: _operation, cwd: _cwd, ...edit } = input;
-    const key = groupKey(initial.group);
-    unwrapGroup(await actions.remote().edit(key, { ...edit, expectedRevision: initial.group.revision,
-      expectedMembershipRevision: initial.group.membershipRevision }));
-    await actions.refreshRoster(key);
-    if (alive.current) onClose();
-  }} />;
-}
+} & Localized) { return <RosterManagement {...props} />; }
 
 export function GroupConversation({
   workspace = false,
@@ -802,7 +792,7 @@ export function GroupConversation({
       <div className={styles.bar}>
         <span>{t(`groups.${view.group.mode}`)}</span>
         <button type="button" disabled={view.group.archived || view.group.state !== 'ready' || !!view.group.supergroup} onClick={() => setEditing(view)}>
-          {t('groups.edit')}
+          {t('groups.roster.manage')}
         </button>
         <button
           type="button"
@@ -816,18 +806,8 @@ export function GroupConversation({
           {t('groups.archive')}
         </button>
       </div>
-      <section className={styles.members} aria-label={t('groups.members')}>
-        {members.map((m) => {
-          const b = lookup(m.id);
-          return (
-            <span key={m.id}>
-              {b && <BotAvatar bot={b} size={28} />}
-              {b?.name ?? t('groups.unavailable')} ({m.bot.botId}){' '}
-              {view.unavailableMemberIds.includes(m.id) && t('groups.unavailable')}
-            </span>
-          );
-        })}
-      </section>
+      <p>{t('navigation.memberCount', { count: view.members.filter(member => member.removedAt === undefined).length })}</p>
+      <GroupMembersView view={view} bots={bots} actions={actions} executionBridge={executionBridge} t={t} />
       {editing && (
         <GroupRosterEditor bots={bots} actions={actions} initial={editing} t={t} onClose={() => setEditing(undefined)} />
       )}
@@ -978,7 +958,7 @@ function GroupManager({ summary, actions, bots, t, onOpenBot, visible, onDelete 
   onOpenBot?(bot: BotRecord): void; visible?: boolean; onDelete(group: GroupRecord): void;
 }) {
   const [editing, setEditing] = useState<GroupView>();
-  if (editing) return <GroupRosterEditor bots={bots} actions={actions} initial={editing} t={t} onClose={() => setEditing(undefined)} />;
-  return <GroupOverview summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
-    onEdit={setEditing} onDelete={onDelete} visible={visible} t={t} />;
+  return <><GroupOverview summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
+    onEdit={setEditing} onDelete={onDelete} visible={visible} t={t} />
+    {editing && <GroupRosterEditor bots={bots} actions={actions} initial={editing} t={t} onClose={() => setEditing(undefined)} />}</>;
 }

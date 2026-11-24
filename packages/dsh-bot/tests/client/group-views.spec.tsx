@@ -7,7 +7,7 @@ import type { GroupTurn } from '../../src/shared/groups.js';
 import { GROUP_MANAGEMENT_VIEW } from '../../src/client/group-views.js';
 import styles from '../../src/client/styles/groups.module.css';
 import { bots, configure, summary, view } from './group-fixture.js';
-import { bot, button, click, field, fill, mountClient } from './helpers.js';
+import { bot, button, click, mountClient } from './helpers.js';
 import en from '../../locale/en.json';
 
 const rootA = 'group-root-one';
@@ -97,20 +97,18 @@ it('confirms closing an edited group form in the conversation view', async () =>
     try {
       const { container } = workspace;
       await click(button(container, en.ui['groups.view.settings']));
-      await click(button(container, en.ui['groups.edit']));
-      const editor = container.querySelector('form');
-      if (!editor) throw new Error('Group editor is missing');
-      const name = field(editor, en.ui['groups.name']);
-      await fill(name, 'Edited group name');
-      await click(button(editor, en.ui['groups.close']));
-      expect(container.querySelector('dialog')?.getAttribute('aria-label')).toBe(en.ui['navigation.unsaved']);
+      await click(button(container, en.ui['groups.roster.manage']));
+      const editor = container.querySelector('dialog');
+      if (!editor) throw new Error('Member modal is missing');
+      await click(editor.querySelector('[data-roster-member="beta"] button') as HTMLButtonElement);
+      await click(button(editor, en.ui['actions.cancel']));
+      expect(container.querySelectorAll('dialog')).toHaveLength(2);
       await click(button(container, en.ui['navigation.keepEditing']));
-      expect(container.querySelector('dialog')).toBeNull();
-      expect(name.value).toBe('Edited group name');
-      await click(button(editor, en.ui['groups.close']));
+      expect(container.querySelectorAll('dialog')).toHaveLength(1);
+      await click(button(editor, en.ui['actions.cancel']));
       await click(button(container, en.ui['navigation.discardLeave']));
-      expect(container.querySelector('form')).toBeNull();
-      expect(app.remote.groups.edit).not.toHaveBeenCalled();
+      expect(container.querySelector('dialog')).toBeNull();
+      expect(app.remote.groups.editMembers).not.toHaveBeenCalled();
     } finally { await workspace.unmount(); }
   } finally { await app.dispose(); }
 });
@@ -122,13 +120,13 @@ it.each(['management', 'sidebar'] as const)('adds a member from the %s roster, r
   const app = await mountClient([...bots, newcomer, reserve], 'en', remote => {
     configure(remote);
     remote.data.groupView = original;
-    remote.groups.edit.mockImplementation(async () => {
+    remote.groups.editMembers.mockImplementation(async (_key, input) => {
       const group = { ...original.group, revision: original.group.revision + 1, membershipRevision: original.group.membershipRevision + 1 };
       const members = [...original.members, { id: 'new-member', group: key, enabled: true, joinedAt: 415, order: 2,
         bot: { botId: newcomer.id, botCreatedAt: newcomer.createdAt } }];
       remote.data.groupView = { ...original, group, members };
       remote.data.groups = [{ ...summary(), group, members }];
-      return { ok: true, value: group };
+      return { ok: true, value: { operationId: input.operationId, status: 'saved', group } };
     });
   }, {}, undefined, true, ownedSession(rootA));
   try {
@@ -142,34 +140,36 @@ it.each(['management', 'sidebar'] as const)('adds a member from the %s roster, r
     try {
       await click(button(sidebar.container, en.ui['groups.members']));
       const surface = source === 'management' ? management.container : sidebar.container;
-      await click(button(surface, en.ui['groups.addMembers']));
-      const form = surface.querySelector('form');
-      if (!form) throw new Error('Member editor is missing from the selected roster');
-      const option = [...form.querySelectorAll('fieldset label')].find(row => row.textContent?.includes(newcomer.name))?.querySelector('input');
+      const trigger = button(surface, en.ui['groups.roster.manage']);
+      const priorRow = surface.querySelector('[data-group-member]');
+      trigger.focus();
+      await click(trigger);
+      expect(surface.querySelector('[data-group-member]')).toBe(priorRow);
+      const modal = surface.querySelector('dialog');
+      if (!modal) throw new Error('Member modal is missing from the selected roster');
+      const option = [...modal.querySelectorAll('li')].find(row => row.textContent?.includes(newcomer.name))?.querySelector('button');
       if (!option) throw new Error('Eligible Bot is missing from the roster editor');
       await click(option);
-      const save = button(form, en.ui['integrations.save']);
-      expect(save.disabled).toBe(true);
-      await click(field(form, en.ui['groups.historyConsent']));
-      await click(save);
-      expect(app.remote.groups.edit).toHaveBeenCalledExactlyOnceWith(key, expect.objectContaining({
+      expect(modal.querySelector('input[type="checkbox"]')).toBeNull();
+      await click(button(modal, en.ui['groups.roster.confirmAddSave']));
+      expect(app.remote.groups.editMembers).toHaveBeenCalledExactlyOnceWith(key, expect.objectContaining({
         expectedRevision: original.group.revision, expectedMembershipRevision: original.group.membershipRevision, historyConfirmed: true,
         members: [...original.members.map(member => member.bot), { botId: newcomer.id, botCreatedAt: newcomer.createdAt }],
       }));
       await vi.waitFor(() => {
-        expect(surface.querySelector('form')).toBeNull();
+        expect(surface.querySelector('dialog')).toBeNull();
         for (const panel of [management, sidebar]) {
           expect(panel.container.querySelector('[data-group-member="new-member"]')?.textContent).toContain(newcomer.name);
-          expect(panel.container.querySelector('[data-group-edit-members]')?.textContent).toBe(en.ui['groups.edit']);
+          expect(panel.container.querySelector('[data-group-edit-members]')?.textContent).toBe(en.ui['groups.roster.manage']);
         }
       });
-      await click(button(surface, en.ui['groups.edit']));
-      const fullEditor = surface.querySelector('form');
+      expect(document.activeElement).toBe(trigger);
+      await click(button(surface, en.ui['groups.roster.manage']));
+      const fullEditor = surface.querySelector('dialog');
       if (!fullEditor) throw new Error('Full groups must still support editing the roster');
-      expect(fullEditor.querySelector('fieldset [role="status"]')?.textContent).toBe(en.ui['groups.memberLimit'].replace('{count}', '3').replace('{limit}', '3'));
-      const fourthOption = [...fullEditor.querySelectorAll('fieldset label')].find(row => row.textContent?.includes(reserve.name))?.querySelector('input');
+      expect(fullEditor.textContent).toContain(en.ui['groups.memberCapacity'].replace('{count}', '3').replace('{limit}', '3'));
+      const fourthOption = [...fullEditor.querySelectorAll('li')].find(row => row.textContent?.includes(reserve.name))?.querySelector('button');
       expect(fourthOption?.disabled).toBe(true);
-      expect(fourthOption?.checked).toBe(false);
       expect(app.openSession).not.toHaveBeenCalled();
     } finally { await sidebar.unmount(); await management.unmount(); }
   } finally { await app.dispose(); }
@@ -213,16 +213,16 @@ it('registers group views only for the active group root and focuses runs throug
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(completeViewRequest).toHaveBeenCalledTimes(2);
     await click(button(runs.container, en.ui['groups.view.settings']));
-    const edit = button(runs.container, en.ui['groups.edit']);
+    const edit = button(runs.container, en.ui['groups.roster.manage']);
     expect(edit.getAttribute('data-platform-variant')).toBe('outline');
     await click(edit);
-    const editor = panel?.querySelector('form');
-    if (!editor) throw new Error('Group editor is missing');
-    expect(Array.from(editor.classList)).toContain(styles.editor);
-    expect(editor.querySelector('input:not([type])')?.getAttribute('value')).toBe(view().group.name);
-    await click(button(editor, en.ui['groups.close']));
-    expect(panel?.querySelector('form')).toBeNull();
-    expect(app.remote.groups.edit).not.toHaveBeenCalled();
+    const editor = panel?.querySelector('dialog');
+    if (!editor) throw new Error('Member modal is missing');
+    expect(editor.querySelector('[data-roster-management]')).toBeTruthy();
+    expect(editor.textContent).toContain(view().group.name);
+    await click(button(editor, en.ui['actions.cancel']));
+    expect(panel?.querySelector('dialog')).toBeNull();
+    expect(app.remote.groups.editMembers).not.toHaveBeenCalled();
     await runs.unmount();
     await app.setSessions({ byId: { normal: { id: 'normal', retainedBy: { mainView: 1 } } } } as unknown as SessionListState);
     await vi.waitFor(() => expect(app.core.entries('conversation.view')).toHaveLength(0));

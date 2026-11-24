@@ -398,6 +398,9 @@ describe('Groups portable recipe Remote contract', () => {
   const mappings = bots.map((bot, index) => ({ roleId: `role-${index}`, bot }));
   const saved = { id: 'team:test', savedAt: 1, recipe };
   const cases: Record<string, { args: Record<string, unknown>; valid: unknown; invalid: unknown }> = {
+    editMembers: { args: { group: key, input: { operationId: 'edit-op', expectedRevision: 1, expectedMembershipRevision: 1, members: bots } }, valid: { operationId: 'edit-op', status: 'saved', group }, invalid: { operationId: 'edit-op', status: 'saved' } },
+    getMemberEditResult: { args: { group: key, operationId: 'edit-op' }, valid: { operationId: 'edit-op', status: 'unknown' }, invalid: { operationId: 'edit-op', status: 'unknown', group } },
+    teamApplyMembers: { args: { group: key, recipe, mappings, expectedRevision: 1, expectedMembershipRevision: 1, options: { operationId: 'edit-op' } }, valid: { operationId: 'edit-op', status: 'saved', group }, invalid: { operationId: 'edit-op', status: 'not-found', group } },
     deleteGroup: { args: { group: key, expectedRevision: 1 }, valid: true, invalid: { deleted: true } },
     getExportApprovalSettings: { args: { group: key }, valid: { groupRevision: 1, membershipRevision: 1,
       readers: bots.map(bot => ({ bot, name: bot.botId })), eligibleBots: bots, enabledBots: [], canEnable: true }, invalid: { canEnable: true } },
@@ -418,7 +421,7 @@ describe('Groups portable recipe Remote contract', () => {
     expect(GROUPS_REMOTE.descriptors.map(row => `${row.namespace}/${row.method}`)).toEqual(Object.keys(groupsSpec.methods));
     expect(GROUPS_REMOTE.descriptors.map(row => row.method).sort()).toEqual(['archive', 'cancel', 'continueTurn', 'create', 'deleteGroup', 'edit', 'list', 'markRead',
       'open', 'openAttachment', 'recallForBot', 'send', 'setModel', 'stopMember', 'view',
-      'getRelayDetails', 'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].sort());
+      'getRelayDetails', 'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply', 'teamApplyMembers', 'editMembers', 'getMemberEditResult'].sort());
     for (const [name, value] of Object.entries(cases)) {
       const method = GROUPS_REMOTE.methods[`dshBot.groups/${name}`];
       if (!method) throw new Error(`Missing Groups method ${name}`);

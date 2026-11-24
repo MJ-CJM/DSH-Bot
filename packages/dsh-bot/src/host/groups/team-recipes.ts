@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { teamMappingSchema, teamPreviewMappingSchema, teamRecipeSchema, type TeamPreview } from '../../shared/team-recipes.js';
-import type { GroupKey } from '../../shared/groups.js';
-import { OperationError, parse } from '../common/operations.js';
+import { groupMemberEditOptionsSchema, type GroupKey } from '../../shared/groups.js';
+import { OperationError, parse, need } from '../common/operations.js';
 import type { GroupState } from './state.js';
 import type { GroupMembers } from './members.js';
 import { sameBot } from './model.js';
@@ -65,20 +65,28 @@ export class TeamRecipes {
     });
     return { recipe, roles };
   }
-  async apply(key: GroupKey, value: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number) {
+  async apply(key: GroupKey, value: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number, historyConfirmed?: boolean) {
+    const input = await this.applyInput(key, value, mappings, expectedRevision, expectedMembershipRevision, historyConfirmed);
+    return this.members.edit(key, input);
+  }
+  async applyMembers(key: GroupKey, value: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number, valueOptions: unknown) {
+    const options = parse(groupMemberEditOptionsSchema, valueOptions);
+    const input = await this.applyInput(key, value, mappings, expectedRevision, expectedMembershipRevision, options.historyConfirmed);
+    return this.members.editRecipe(key, input, options.operationId,
+      { source: 'team', recipe: parse(teamRecipeSchema, value), mappings: parse(teamMappingSchema, mappings), expectedRevision, expectedMembershipRevision, options });
+  }
+  private async applyInput(key: GroupKey, value: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number, historyConfirmed?: boolean) {
     const recipe = parse(teamRecipeSchema, value);
-    if (recipe.roles.length > this.state.memberLimit()) throw new OperationError('member-limit');
+    const group = await this.state.queue.run(async () => this.state.record(key));
+    if (recipe.roles.length > this.state.memberLimit() && this.state.members(group).filter(member => member.removedAt === undefined).length <= this.state.memberLimit()) throw new OperationError('member-limit');
     const mapping = parse(teamMappingSchema, mappings);
     if (mapping.length !== recipe.roles.length || new Set(mapping.map(row => row.roleId)).size !== recipe.roles.length ||
         mapping.some(row => !recipe.roles.some(role => role.id === row.roleId)) ||
-        new Set(mapping.map(row => JSON.stringify(row.bot))).size !== mapping.length) throw new OperationError('invalid');
-    const preview = await this.preview(recipe, mapping);
-    const group = await this.state.queue.run(async () => this.state.record(key));
+        new Set(mapping.map(row => row.bot.botId)).size !== mapping.length) throw new OperationError('invalid');
+    const roles = recipe.roles.map(role => ({ bot: need(mapping.find(row => row.roleId === role.id)).bot, role: role.role }));
     if (group.supergroup) throw new OperationError('approval-denied');
-    return this.members.edit(key, { expectedRevision, expectedMembershipRevision, name: group.name,
-      mode: recipe.mode, onDemand: recipe.onDemand, historyConfirmed: true,
-      members: preview.roles.map(row => row.bot),
-      memberRoles: preview.roles.map(row => ({ bot: row.bot, role: recipe.roles.find(role => role.id === row.roleId)?.role })),
-    });
+    return { expectedRevision, expectedMembershipRevision, name: group.name,
+      mode: recipe.mode, onDemand: recipe.onDemand, ...(historyConfirmed !== undefined ? { historyConfirmed } : {}),
+      members: roles.map(row => row.bot), memberRoles: roles };
   }
 }

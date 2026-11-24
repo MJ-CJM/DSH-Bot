@@ -75,7 +75,7 @@ export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onDel
     {failed && <p role="alert">{t('activity.openError')}</p>}
     {visible.length > 0 ? <ul className={styles.directoryList}>
       {visible.map(row => {
-        const active = row.members.filter(member => member.enabled && member.removedAt === undefined);
+        const active = row.members.filter(member => member.removedAt === undefined);
         const latest = row.latest;
         const key = conversationKey('group', row.group.id, row.group.createdAt);
         const pinned = Boolean(recentPreferences.get(key)?.pinned);

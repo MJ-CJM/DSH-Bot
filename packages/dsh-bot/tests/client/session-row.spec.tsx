@@ -120,7 +120,7 @@ it.each(['en', 'zh'] as const)('%s decorates exact group roots with a whale, wit
  expect(container.querySelector('[data-group-session-hover]')?.textContent).toContain('Research group');
 });
 
-it('renders four compact member colors in roster order and updates when the active roster and avatars change', async () => {
+it('renders compact colors for the full roster and counts disabled and unavailable members in the badge', async () => {
   const colors = ['teal', 'rose', 'orange', 'indigo', 'olive', 'cyan'] as const;
   const records = colors.map((avatarColor, order) => ({
     ...bot({ id: `member-bot-${order}`, name: `Member ${order}`, avatarColor }), createdAt: 2,
@@ -134,9 +134,13 @@ it('renders four compact member colors in roster order and updates when the acti
   const app = await mountClient(records, 'en', remote => { remote.data.groups = [{ ...initial, members }]; });
   cleanups.push(app.dispose);
   const { container } = await mountRows(app, [initial.group.rootSessionId]);
+  const badge = await app.mountEntry('conversation.session.header.utilities', options => options.id === 'dsh-bot-group', { sessionId: initial.group.rootSessionId });
+  cleanups.push(badge.unmount);
+  const badgeLabel = () => badge.container.querySelector('[data-group-details-opener] > span:last-child')?.textContent;
   const groupIcon = () => container.querySelector<HTMLElement>('[data-group-session-leading] [data-group-avatar="members"]');
   const tiles = () => [...(groupIcon()?.querySelectorAll<HTMLElement>('[data-bot-avatar]') ?? [])];
   await vi.waitFor(() => expect(tiles().map(tile => tile.dataset.avatarColor)).toEqual(colors.slice(0, 4)));
+  expect(badgeLabel()).toBe(`${initial.group.name} · 6`);
   expect(groupIcon()?.style.width).toBe('16px');
   expect(groupIcon()?.style.height).toBe('16px');
   expect(tiles().every(tile => tile.style.width === '7px' && tile.style.height === '7px')).toBe(true);
@@ -155,8 +159,13 @@ it('renders four compact member colors in roster order and updates when the acti
     }) }];
   app.remote.data.records = records.map(record => record.id === 'member-bot-3' ? { ...record, avatarColor: 'purple' } : record);
   await act(async () => app.ctx.emit('connection/reset'));
-  await vi.waitFor(() => expect(tiles().map(tile => tile.dataset.avatarColor)).toEqual(['purple']));
-  expect(tiles().map(tile => [tile.dataset.botId, tile.style.width, tile.style.height])).toEqual([['member-bot-3', '16px', '16px']]);
+  await vi.waitFor(() => expect(tiles().map(tile => tile.dataset.avatarColor)).toEqual(['teal', 'purple']));
+  // Disabled members retain their places and faces. A stale Bot incarnation has
+  // no current face, but still occupies a roster place until explicitly removed.
+  expect(tiles().map(tile => [tile.dataset.botId, tile.style.width, tile.style.height])).toEqual([
+    ['member-bot-0', '7px', '7px'], ['member-bot-3', '7px', '7px'],
+  ]);
+  expect(badgeLabel()).toBe(`${initial.group.name} · 3`);
 });
 
 describe('Bot identity in public native session row seats', () => {

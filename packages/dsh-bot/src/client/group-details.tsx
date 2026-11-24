@@ -12,7 +12,7 @@ import type { BotCatalog } from './state.js';
 import { GroupAvatar } from './components/GroupAvatar.js';
 import { GroupMembersList, GroupOverview } from './components/GroupOverview.js';
 import { GroupRosterEditor } from './components/GroupsPanel.js';
-import { SettingsDrafts, useSettingsNavigation } from './components/SettingsNavigation.js';
+import { useSettingsNavigation } from './components/SettingsNavigation.js';
 import { WorkMaterials, type WorkMaterialsActions } from './work-materials.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
@@ -101,7 +101,7 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
   const tabs = sections.map(value => ({ value, label: t(labels[value]), id: `${uid}-${value}`, panelId: `${uid}-panel` })) as [SegmentedTab<Section>, ...SegmentedTab<Section>[]];
   return <section className={`${styles.panel} ${styles.overview} ${styles.groupDetails}`} data-group-details={group.id} aria-label={t('botMode.detailsAndMaterials')}>
     <style>{css}</style>
-    <header className={styles.overviewHeader}><GroupAvatar size={40} members={members} bots={records} />
+    <header className={styles.overviewHeader}><GroupAvatar size={40} members={members.filter(member => member.removedAt === undefined)} bots={records} />
       <div className={styles.overviewIdentity}><h3>{group.name}</h3><p>{t('navigation.memberCount', { count: members.filter(member => member.removedAt === undefined).length })}</p></div>
       <Button variant="ghost" size="sm" onClick={() => navigation.leave(close)}>{t('actions.close')}</Button>
     </header>
@@ -126,13 +126,12 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
         {group.supergroup && <WorkMaterials scope={{ group: groupKey(group) }} sessionId={group.rootSessionId} actions={work} bots={records} t={t} />}
         <GroupMaterials summary={summary} actions={actions} t={t} />
       </>}
-      {section === 'members' && (editing ? <SettingsDrafts.Provider value={navigation.registry}>
-        <GroupRosterEditor bots={records} initial={editing} actions={actions} onClose={() => setEditing(undefined)} t={t} />
-      </SettingsDrafts.Provider> : <GroupMembersList summary={summary} actions={actions} bots={records} onEdit={setEditing} openBotLabel={t('chat.openChat')}
-        onOpenBot={bot => { setFailed(false); void openBot(bot).catch(() => setFailed(true)); }} t={t} />)}
+      {section === 'members' && <GroupMembersList summary={summary} actions={actions} bots={records} onEdit={setEditing} openBotLabel={t('chat.openChat')}
+        onOpenBot={bot => { setFailed(false); void openBot(bot).catch(() => setFailed(true)); }} t={t} />}
       {(section === 'activity' || section === 'settings') && <GroupOverview summary={summary} actions={actions} bots={records}
-        section={section} showHeader={false} showTabs={false} compactSettings executionBridge={executionBridge} onDeleted={close} t={t} />}
+        section={section} showHeader={false} showTabs={false} compactSettings executionBridge={executionBridge} onEdit={setEditing} onDeleted={close} t={t} />}
     </div>
+    {editing && <GroupRosterEditor bots={records} initial={editing} actions={actions} onClose={() => setEditing(undefined)} t={t} />}
     {navigation.confirmation}
   </section>;
 }

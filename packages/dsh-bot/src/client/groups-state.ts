@@ -38,7 +38,16 @@ export class GroupRouteUnavailable extends Error {
 }
 type GroupRunSource = { messageId: string; seq: number };
 export interface GroupRunRequest { sessionId: string; turnId: string; requestId: number; source?: GroupRunSource }
+export interface MemberEditPending {
+  operationId: string;
+  phase: 'pending' | 'saved';
+  view: GroupView;
+  target: import('../shared/identity.js').BotKey[];
+}
 export interface GroupActions {
+  /** Outstanding member writes survive modal navigation; released with the plugin session. */
+  memberEdits?: Map<string, MemberEditPending>;
+  canAddBot?(bot: import('../shared/schema.js').BotRecord): boolean;
   /** Keep the originating directory visible if archiving its native session closed the panel. */
   returnAfterDeletion?(group: GroupKey, rootSessionId: string, section: 'groups' | 'recent'): void;
   followUp?: import('./proactive/follow-up-state.js').FollowUpSource;
@@ -80,6 +89,8 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
   };
   const supergroupOperations = new Map<string, { workId: string; revision: number }>();
   ctx.effect(() => () => supergroupOperations.clear(), 'dsh-bot: group input operation receipts');
+  const memberEdits = new Map<string, MemberEditPending>();
+  ctx.effect(() => () => memberEdits.clear(), 'dsh-bot: outstanding roster receipts');
   const turnExpansion = new Map<string, boolean>();
   const replyFolds = new GroupReplyFolds();
   const modelMetadata = new Map<string, Awaited<ReturnType<ModelActions['modelInfo']>>>();
@@ -110,7 +121,7 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
     ctx.uiWorkspace.openSession(receipt.sessionId as SessionId);
   };
   const result: GroupActions = {
-    drafts, draft, patchDraft,
+    drafts, draft, patchDraft, memberEdits,
     draftUpdates: { subscribe(listener) { draftListeners.add(listener); return () => { draftListeners.delete(listener); }; }, getSnapshot: () => draftRevision },
     consumeReply(sessionId) { if (reply?.sessionId === sessionId) { reply = undefined; for (const listener of replyListeners) listener(); } },
     replies: { subscribe(listener) { replyListeners.add(listener); return () => { replyListeners.delete(listener); }; }, getSnapshot: () => reply },
@@ -242,13 +253,16 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
       };
     },
     async refreshRoster(key) {
+      const views: PollingCatalog<{ view?: GroupView }>[] = [];
       const reads = [result.catalog.refresh()];
       const messages = messageViews.get(JSON.stringify(key));
-      if (messages) reads.push(messages.refresh());
+      if (messages) { views.push(messages); reads.push(messages.refresh()); }
       for (const [view, target] of openViews) {
-        if (key.groupId === target.groupId && key.groupCreatedAt === target.groupCreatedAt) reads.push(view.refresh());
+        if (key.groupId === target.groupId && key.groupCreatedAt === target.groupCreatedAt) { views.push(view); reads.push(view.refresh()); }
       }
       await Promise.all(reads);
+      if (result.catalog.getSnapshot().error || views.some(view => view.getSnapshot().error))
+        throw new Error('Roster updated; refresh incomplete');
     },
   };
   return result;

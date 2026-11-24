@@ -2,13 +2,16 @@ import { relayDetailsRequestSchema, relayDetailsSchema } from './group-relay-det
 import { z } from 'zod';
 import { teamRecipeSchema, savedTeamRecipeSchema, teamPreviewSchema, teamMappingSchema, teamPreviewMappingSchema } from './team-recipes.js';
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info';
-import { botKeySchema } from './identity.js';
+import { botKeySchema, resourceId } from './identity.js';
 import { groupRecallInputSchema, groupRecallPageSchema } from './group-recall.js';
 import type { RemoteResult, TypertRemoteSpec } from '@deepseek-ai/dsh-typert-protocol';
 import {
   groupKeySchema,
   groupCreateSchema,
   groupEditSchema,
+  groupMemberEditSchema,
+  groupMemberEditOptionsSchema,
+  groupMemberEditResultSchema,
   groupSendSchema,
   groupSetModelSchema,
   groupExportApprovalSettingsSchema,
@@ -58,6 +61,10 @@ export const groupsSpec = {
     'dshBot.groups/teamPreview': { ...base, parameters: [param('recipe', teamRecipeSchema), param('mappings', teamPreviewMappingSchema)], result: codec('TeamPreview', teamPreviewSchema) },
     'dshBot.groups/teamApply': { ...base, parameters: [param('group', groupKeySchema), param('recipe', teamRecipeSchema), param('mappings', teamMappingSchema),
       param('expectedRevision', z.number().int().positive()), param('expectedMembershipRevision', z.number().int().positive())], result: codec('Group', groupRecordSchema) },
+    'dshBot.groups/teamApplyMembers': { ...base, parameters: [param('group', groupKeySchema), param('recipe', teamRecipeSchema), param('mappings', teamMappingSchema),
+      param('expectedRevision', z.number().int().positive()), param('expectedMembershipRevision', z.number().int().positive()), param('options', groupMemberEditOptionsSchema)], result: codec('MemberEditResult', groupMemberEditResultSchema) },
+    'dshBot.groups/editMembers': { ...base, parameters: [param('group', groupKeySchema), param('input', groupMemberEditSchema)], result: codec('MemberEditResult', groupMemberEditResultSchema) },
+    'dshBot.groups/getMemberEditResult': { ...base, parameters: [param('group', groupKeySchema), param('operationId', resourceId)], result: codec('MemberEditResult', groupMemberEditResultSchema) },
     'dshBot.groups/recallForBot': {
       ...base, parameters: [param('bot', botKeySchema), param('input', groupRecallInputSchema)],
       result: codec('GroupRecallPage', groupRecallPageSchema),

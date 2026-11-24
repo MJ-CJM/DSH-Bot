@@ -206,10 +206,22 @@ export const groupEditSchema = z.strictObject({
   name,
   mode: groupModeSchema,
   members: z.array(botKeySchema).min(2).max(16),
-  historyConfirmed: z.literal(true),
+  historyConfirmed: z.boolean().optional(),
   onDemand: z.boolean().optional(),
   memberRoles: groupRoleSchema.optional(),
 });
+export const groupMemberEditSchema = z.strictObject({
+  operationId: resourceId,
+  expectedRevision: rev,
+  expectedMembershipRevision: rev,
+  members: z.array(botKeySchema).min(2).max(16),
+  historyConfirmed: z.boolean().optional(),
+});
+export const groupMemberEditOptionsSchema = z.strictObject({ operationId: resourceId, historyConfirmed: z.boolean().optional() });
+export const groupMemberEditResultSchema = z.strictObject({
+  operationId: resourceId, status: z.enum(['saved', 'unknown', 'not-found']), group: groupRecordSchema.optional(),
+}).refine(row => row.status === 'saved' ? Boolean(row.group) : row.group === undefined);
+export type GroupMemberEditResult = z.infer<typeof groupMemberEditResultSchema>;
 export const groupSendSchema = z.strictObject({
   expectedGuest: botKeySchema.optional(),
   expectedRelay: botKeySchema.optional(),

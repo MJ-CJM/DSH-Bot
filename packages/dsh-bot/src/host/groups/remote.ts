@@ -58,6 +58,11 @@ export class GroupsRemote extends TypertRemoteService {
   @Remote async teamApply(group: GroupKey, recipe: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number) {
     this.owner(); return this.groups.teamRecipes.apply(group, recipe, mappings, expectedRevision, expectedMembershipRevision);
   }
+  @Remote async teamApplyMembers(group: GroupKey, recipe: unknown, mappings: unknown, expectedRevision: number, expectedMembershipRevision: number, options: unknown) {
+    this.owner(); return this.groups.teamRecipes.applyMembers(group, recipe, mappings, expectedRevision, expectedMembershipRevision, options);
+  }
+  @Remote async editMembers(group: GroupKey, input: unknown) { this.owner(); return this.groups.editMembers(group, input); }
+  @Remote async getMemberEditResult(group: GroupKey, operationId: string) { this.owner(); return this.groups.getMemberEditResult(group, operationId); }
   @Remote async recallForBot(bot: BotKey, input: GroupRecallInput) {
     const invocation = this.ctx.invocation;
     if (invocation?.peer.principal.kind !== 'owner') throw new Error('Owner access required');

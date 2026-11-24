@@ -334,7 +334,7 @@ describe('built bundle contract', () => {
         'dshBot.connectors/applyIdle', 'dshBot.connectors/catalog', 'dshBot.connectors/importLegacy', 'dshBot.connectors/saveAssignment',
           'dshBot.connectors/saveDefinition',
         'dshBot.groups/getExportApprovalSettings', 'dshBot.groups/setExportApproval',
-        'dshBot.groups/getRelayDetails', 'dshBot.groups/reviewExport', 'dshBot.groups/decideExport', 'dshBot.groups/discardExport', 'dshBot.groups/closeStaleExports', 'dshBot.groups/revokeExport', 'dshBot.groups/teamList', 'dshBot.groups/teamCapture', 'dshBot.groups/teamSave', 'dshBot.groups/teamRemove', 'dshBot.groups/teamPreview', 'dshBot.groups/teamApply',
+        'dshBot.groups/getRelayDetails', 'dshBot.groups/reviewExport', 'dshBot.groups/decideExport', 'dshBot.groups/discardExport', 'dshBot.groups/closeStaleExports', 'dshBot.groups/revokeExport', 'dshBot.groups/teamList', 'dshBot.groups/teamCapture', 'dshBot.groups/teamSave', 'dshBot.groups/teamRemove', 'dshBot.groups/teamPreview', 'dshBot.groups/teamApply', 'dshBot.groups/teamApplyMembers', 'dshBot.groups/editMembers', 'dshBot.groups/getMemberEditResult',
         'dshBot.groups/archive', 'dshBot.groups/cancel', 'dshBot.groups/continueTurn', 'dshBot.groups/create', 'dshBot.groups/deleteGroup', 'dshBot.groups/edit', 'dshBot.groups/list', 'dshBot.groups/markRead',
           'dshBot.groups/open', 'dshBot.groups/openAttachment', 'dshBot.groups/recallForBot', 'dshBot.groups/send', 'dshBot.groups/setModel', 'dshBot.groups/stopMember', 'dshBot.groups/view',
         'dshBot.im/status', 'dshBot.memory/count', 'dshBot.memory/delete', 'dshBot.memory/list', 'dshBot.memory/quarantineCount', 'dshBot.memory/save',

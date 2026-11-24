@@ -126,7 +126,7 @@ export async function mountClient(
       const endpoints = contribution.descriptors?.map(row => `${row.namespace}/${row.method}`).sort();
       if (JSON.stringify(endpoints) !== JSON.stringify(['archive', 'cancel', 'continueTurn', 'create', 'deleteGroup', 'edit', 'list', 'markRead',
         'open', 'openAttachment', 'recallForBot', 'send', 'setModel', 'stopMember', 'view',
-        'getRelayDetails', 'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply'].map(method => `dshBot.groups/${method}`).sort()))
+        'getRelayDetails', 'getExportApprovalSettings', 'setExportApproval', 'reviewExport', 'decideExport', 'discardExport', 'closeStaleExports', 'revokeExport', 'teamList', 'teamCapture', 'teamSave', 'teamRemove', 'teamPreview', 'teamApply', 'teamApplyMembers', 'editMembers', 'getMemberEditResult'].map(method => `dshBot.groups/${method}`).sort()))
         throw new Error('Unexpected Groups fixture Remote contract');
       return ctx.provide('remote.dshBot.groups', remote.groups);
     }

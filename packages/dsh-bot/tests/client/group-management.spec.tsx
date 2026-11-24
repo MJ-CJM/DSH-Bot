@@ -237,12 +237,12 @@ it('offers editing in headerless settings and prevents editing archived groups',
   try {
     await act(async () => root.render(<GroupOverview summary={summary()} actions={actions} bots={bots}
       showHeader={false} section="settings" onEdit={onEdit} t={t} />));
-    await click(button(element, en.ui['groups.edit']));
+    await click(button(element, en.ui['groups.roster.manage']));
     expect(onEdit).toHaveBeenCalledWith(data);
     data.group.archived = true;
     await act(async () => root.render(<GroupOverview key="archived" summary={summary()} actions={actions} bots={bots}
       showHeader={false} section="settings" onEdit={onEdit} t={t} />));
-    expect(button(element, en.ui['groups.edit']).disabled).toBe(true);
+    expect(button(element, en.ui['groups.roster.manage']).disabled).toBe(true);
   } finally { await act(async () => root.unmount()); await ctx.fiber.dispose(); }
 });
 
@@ -324,4 +324,29 @@ it('shows disabled members and queued or starting executions with the correct st
     expect(element.textContent).toContain(en.ui['navigation.memberDisabled']);
     expect(element.querySelector('[data-state-dot]')?.getAttribute('data-state-dot')).toBe('idle');
   } finally { await act(async () => root.unmount()); }
+});
+
+it('on-demand settings preserve disabled members and header counts and avatars include them', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const data = view(), ctx = new Context();
+  data.group.mode = 'natural';
+  const disabled = data.members[1];
+  if (!disabled) throw new Error('Missing disabled member fixture');
+  disabled.enabled = false;
+  const edit = vi.fn<GroupMethods['edit']>(async () => ({ ok: true, value: data.group }));
+  ctx.provide('remote.dshBot.groups', { view: async () => ({ ok: true, value: data }), list: async () => ({ ok: true, value: [] }), edit,
+    getExportApprovalSettings: async () => exportSettings(data) } as unknown as GroupMethods);
+  const actions = createGroupActions(ctx, {}), element = document.createElement('div'), root = createRoot(element);
+  try {
+    await act(async () => root.render(<GroupOverview summary={data} actions={actions} bots={bots} section="settings" t={t} />));
+    expect(element.querySelector('header')?.textContent).toContain(t('navigation.memberCount', { count: 2 }));
+    expect(element.querySelector('header [data-group-avatar-count]')?.getAttribute('data-group-avatar-count')).toBe('2');
+    const onDemand = [...element.querySelectorAll('label')].find(label => label.textContent === t('teams.onDemand'))?.querySelector('input');
+    if (!onDemand) throw new Error('Missing on-demand setting');
+    await click(onDemand);
+    expect(edit).toHaveBeenCalledExactlyOnceWith({ groupId: data.group.id, groupCreatedAt: data.group.createdAt }, expect.objectContaining({
+      members: data.members.map(member => member.bot), onDemand: true,
+    }));
+    expect(edit.mock.calls[0]?.[1]).not.toHaveProperty('historyConfirmed');
+  } finally { await act(async () => root.unmount()); await ctx.fiber.dispose(); }
 });
