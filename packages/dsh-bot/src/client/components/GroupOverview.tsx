@@ -1,10 +1,12 @@
 import { TeamRecipes } from './TeamRecipes.js';
+import { MemberRemovalDialog } from './MemberRemovalDialog.js';
+import { memberEditingReason, rosterMemberName } from './RosterManagement.js';
 import { GroupExportSettings } from './GroupExportSettings.js';
 import { GroupDeleteDialog } from './GroupDeleteDialog.js';
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Menu, PathLabel, SegmentedTabs, StateDot } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import type { GroupRecord, GroupSummary, GroupView } from '../../shared/groups.js';
+import type { GroupMember, GroupRecord, GroupSummary, GroupView } from '../../shared/groups.js';
 import { groupKey } from '../../shared/groups.js';
 import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
@@ -35,7 +37,7 @@ function canEditMembers(view: GroupView) {
 function MemberEditAction({ view, onEdit, disabled, t }: { view: GroupView; onEdit(view: GroupView): void; disabled?: boolean } & PropsLocale<'dsh-bot'>) {
   const count = view.members.filter(member => member.removedAt === undefined).length;
   const limit = view.memberLimit ?? GROUP_MEMBER_LIMIT;
-  const label = t(count < limit ? 'groups.addMembers' : 'groups.edit');
+  const label = t('groups.roster.manage');
   return <div className={styles.rosterHeading}>
     <strong>{t('groups.memberCapacity', { count, limit })}</strong>
     <Button variant="outline" size="sm" disabled={disabled} data-group-edit-members="" onClick={() => onEdit(view)}>{label}</Button>
@@ -52,6 +54,9 @@ export function GroupMembersList({ summary, actions, bots, onOpenBot, onEdit, op
   /** Describe the caller's actual destination; ordinary management opens a profile. */
   openBotLabel?: string;
 } & PropsLocale<'dsh-bot'>) {
+  const [removing, setRemoving] = useState<{ view: GroupView; member: GroupMember }>();
+  const [memberMenu, setMemberMenu] = useState<string>();
+  const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const { id, createdAt } = summary.group;
   const [owned, setOwned] = useState<{ id: string; createdAt: number; source: ReturnType<GroupActions['createView']> }>();
   useEffect(() => {
@@ -67,16 +72,19 @@ export function GroupMembersList({ summary, actions, bots, onOpenBot, onEdit, op
     <style>{css}</style><p role={snapshot?.error || view ? 'alert' : 'status'}>{t(snapshot?.error || view ? 'groups.disconnected' : 'groups.loading')}</p>
     {(snapshot?.error || view) && <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button>}
   </section>;
+  const editingReason = memberEditingReason(view);
   const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
   return <section className={styles.compactMembers} aria-label={t('groups.members')} data-group-members-list={id}>
     <style>{css}</style>
     {onEdit && canEditMembers(view) && <MemberEditAction view={view} onEdit={onEdit} disabled={Boolean(snapshot?.error)} t={t} />}
     {snapshot?.error && <p role="alert">{t('groups.disconnected')} <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button></p>}
     {members.length === 0 && <p>{t('navigation.memberCount', { count: 0 })}</p>}
+    {editingReason && <p role="status">{t(editingReason)}</p>}
     {members.map(member => {
       const bot = bots.find(row => row.id === member.bot.botId && row.createdAt === member.bot.botCreatedAt);
       const speaker = view.messages.find(message => message.speaker?.bot.botId === member.bot.botId && message.speaker.bot.botCreatedAt === member.bot.botCreatedAt)?.speaker;
-      const name = bot?.name ?? speaker?.name ?? member.bot.botId;
+      const baseName = bot?.name ?? speaker?.name ?? member.bot.botId;
+      const name = members.some(peer => peer.id !== member.id && rosterMemberName(view, peer.bot, bots) === baseName) ? `${baseName} · ${member.bot.botId}` : baseName;
       const unavailable = !bot || view.unavailableMemberIds.includes(member.id);
       const delivery = latestMemberDelivery(view, member.id, row => row.bot.botId === member.bot.botId && row.bot.botCreatedAt === member.bot.botCreatedAt);
       const model = groupMemberModel(view.group, member, bot);
@@ -96,8 +104,14 @@ export function GroupMembersList({ summary, actions, bots, onOpenBot, onEdit, op
             <span className={styles.compactMemberModelValue}>{t('groups.model')}: {modelText}</span>{model.selection && <span className={styles.compactMemberModelSource}>{t(model.source)}</span>}
           </p>
         </div>
+        {canEditMembers(view) && <Menu open={memberMenu === member.id} onClose={() => setMemberMenu(undefined)} align="end" portal autoFocus
+          anchor={<Button variant="ghost" size="sm" aria-label={t('execution.memberActions', { name })} aria-haspopup="menu" aria-expanded={memberMenu === member.id}
+            onClick={event => { menuTrigger.current = event.currentTarget; setMemberMenu(memberMenu === member.id ? undefined : member.id); }}>···</Button>}
+          items={[{ id: 'remove', label: t('groups.roster.remove'), disabled: Boolean(snapshot?.error) }]}
+          onSelect={() => { setMemberMenu(undefined); menuTrigger.current?.focus({ preventScroll: true }); setRemoving({ view, member }); }} />}
       </article>;
     })}
+    {removing && <MemberRemovalDialog view={removing.view} member={removing.member} bots={bots} actions={actions} onClose={() => setRemoving(undefined)} t={t} />}
   </section>;
 }
 
@@ -163,6 +177,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     } catch { setError(true); }
     finally { setBusy(false); }
   };
+  const editingReason = memberEditingReason(view);
   const members = view.members.filter(member => member.removedAt === undefined);
   const active = members.filter(member => member.enabled);
   const subject = { kind: 'group' as const, group: groupKey(view.group) };
@@ -195,15 +210,15 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
   return <article className={styles.overview} aria-label={view.group.name} data-group-overview={view.group.id}>
     <style>{css}</style>
     {showHeader && <header className={styles.overviewHeader}>
-      <GroupAvatar size={48} members={active} bots={bots} label={view.group.name} />
+      <GroupAvatar size={48} members={members} bots={bots} label={view.group.name} />
       <div className={styles.overviewIdentity}>
         <h3>{view.group.name}</h3>
-        <p>{t('navigation.memberCount', { count: active.length })} · {t(`groups.${view.group.mode}`)}</p>
+        <p>{t('navigation.memberCount', { count: members.length })} · {t(`groups.${view.group.mode}`)}</p>
         <PathLabel path={view.group.cwd} />
       </div>
       <div className={styles.overviewActions}>
         <Button variant="primary" disabled={busy} onClick={() => { void open(); }}>{t('groups.open')}</Button>
-        {onEdit && <Button variant="outline" disabled={busy || !!snapshot.error || !canEditMembers(view)} onClick={() => onEdit(view)}>{t('groups.edit')}</Button>}
+        {onEdit && <Button variant="outline" disabled={busy || !!snapshot.error || !canEditMembers(view)} onClick={() => onEdit(view)}>{t('groups.roster.manage')}</Button>}
         <Menu open={menu} onClose={() => setMenu(false)} align="end"
           anchor={<Button variant="ghost" aria-label={t('card.more')} aria-haspopup="menu" aria-expanded={menu} onClick={event => { menuTrigger.current = event.currentTarget; setMenu(!menu); }}>···</Button>}
           items={[{ id: 'teams', label: t('teams.title') }, { id: 'archive', label: t('groups.archive'), disabled: busy || view.group.archived },
@@ -217,7 +232,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
           }} />
       </div>
     </header>}
-    {teamsOpen && <TeamRecipes view={view} actions={actions} onClose={() => setTeamsOpen(false)} onSaved={() => Promise.all([catalog.refresh(), actions.catalog.refresh()])} t={t} />}
+    {teamsOpen && <TeamRecipes view={view} bots={bots} actions={actions} onClose={() => setTeamsOpen(false)} onSaved={() => Promise.all([catalog.refresh(), actions.catalog.refresh()])} t={t} />}
     {(error || snapshot.error) && <p role="alert">{t(error ? 'groups.conflict' : 'groups.disconnected')}</p>}
     {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit })}</p>}
     <div className={styles.overviewFacts}>
@@ -248,17 +263,17 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     </RetainedPanel>
     <RetainedPanel active={currentSection === 'settings'} id={`${uid}-settings-panel`} labelledBy={`${uid}-settings`}>
       {visible && currentSection === 'settings' && <GroupExportSettings group={view.group} actions={actions} bots={bots} onSaved={catalog.refresh} t={t} />}
+      {onEdit && <MemberEditAction view={view} onEdit={onEdit} disabled={busy || !!snapshot.error || !canEditMembers(view)} t={t} />}
+      {editingReason && <p role="status">{t(editingReason)}</p>}
       {compactSettings ? <details><summary>{t('botMode.advanced')}</summary><GroupSettingsView view={view} bots={bots} t={t} /></details> : <GroupSettingsView view={view} bots={bots} t={t} />}
       {!view.group.supergroup && <label><input type="checkbox" checked={view.group.onDemand ?? false} disabled={busy || view.group.archived || view.group.mode !== 'natural'} onChange={event => {
         const onDemand = event.currentTarget.checked; setBusy(true); setError(false);
         void actions.remote().edit(groupKey(view.group), { expectedRevision: view.group.revision, expectedMembershipRevision: view.group.membershipRevision,
-          name: view.group.name, mode: view.group.mode, members: active.map(member => member.bot), historyConfirmed: true, onDemand,
+          name: view.group.name, mode: view.group.mode, members: members.map(member => member.bot), onDemand,
         }).then(result => { unwrapGroup(result); return Promise.all([catalog.refresh(), actions.catalog.refresh()]); }).catch(() => setError(true)).finally(() => setBusy(false));
       }} />{t('teams.onDemand')}</label>}
       <p>{t(view.group.supergroup ? 'simple.automaticTeam' : 'teams.onDemandHint')}</p>
       {!showHeader && <Button variant="outline" onClick={() => setTeamsOpen(true)}>{t('teams.title')}</Button>}
-      {!showHeader && onEdit && <Button variant="outline" disabled={busy || !!snapshot.error || !canEditMembers(view)}
-        onClick={() => onEdit(view)}>{t('groups.edit')}</Button>}
       {!showHeader && <Button variant="outline" disabled={busy} onClick={() => (onDelete ?? setDeleting)(view.group)}>{t('groups.delete')}</Button>}
     </RetainedPanel>
     {deleting && <GroupDeleteDialog group={deleting} actions={actions} onClose={() => setDeleting(undefined)} onDeleted={onDeleted} t={t} />}
@@ -283,8 +298,11 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
   active?: boolean;
   executionBridge?: ExecutionBridge;
 } & PropsLocale<'dsh-bot'>) {
+  const editingReason = memberEditingReason(view);
   const members = view.members.filter(member => member.removedAt === undefined);
   const [menu, setMenu] = useState<string>();
+  const [removing, setRemoving] = useState<GroupMember>();
+  const memberMenuTrigger = useRef<HTMLButtonElement | null>(null);
   const [asking, setAsking] = useState<string>();
   const [askError, setAskError] = useState<string>();
   const pendingAsk = useRef<AbortController | undefined>(undefined);
@@ -323,9 +341,12 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
     }
   };
   return <section className={styles.memberOverview} aria-label={t('groups.members')}>
+    {editingReason && <p role="status">{t(editingReason)}</p>}
+    {removing && actions && <MemberRemovalDialog view={view} member={removing} bots={bots} actions={actions} onClose={() => setRemoving(undefined)} t={t} />}
     {members.map(member => {
       const bot = bots.find(row => row.id === member.bot.botId && row.createdAt === member.bot.botCreatedAt);
-      const name = bot?.name ?? member.bot.botId;
+      const baseName = rosterMemberName(view, member.bot, bots);
+      const name = members.some(peer => peer.id !== member.id && rosterMemberName(view, peer.bot, bots) === baseName) ? `${baseName} · ${member.bot.botId}` : baseName;
       const unavailable = !bot || view.unavailableMemberIds.includes(member.id);
       const delivery = latestMemberDelivery(view, member.id);
       const model = groupMemberModel(view.group, member, bot);
@@ -337,6 +358,7 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
         ...(bot && onOpenBot ? [{ id: 'profile', label: t('chat.profile') }] : []),
         ...(delivery?.childSessionId && executionBridge ? [{ id: 'execution', label: t('execution.viewDetails') }] : []),
         ...(bot && onAskBot ? [{ id: 'ask', label: t('groups.askInChat'), disabled: unavailable || !!asking }] : []),
+        ...(actions && canEditMembers(view) ? [{ id: 'remove', label: t('groups.roster.remove') }] : []),
       ];
       return <article key={member.id} className={styles.memberOverviewRow} data-group-member={member.id}>
         {bot ? <BotAvatar bot={bot} size={36} /> : <GroupAvatar size={36} />}
@@ -355,10 +377,12 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
         {items.length > 0 && <div className={styles.memberOverviewActions}>
           <Menu open={menu === member.id} onClose={() => setMenu(undefined)} align="end" items={items}
             anchor={<Button variant="ghost" className={styles.quietAction} aria-label={t('execution.memberActions', { name })}
-              aria-haspopup="menu" aria-expanded={menu === member.id} onClick={() => setMenu(menu === member.id ? undefined : member.id)}>···</Button>}
+              aria-haspopup="menu" aria-expanded={menu === member.id} onClick={event => { memberMenuTrigger.current = event.currentTarget; setMenu(menu === member.id ? undefined : member.id); }}>···</Button>}
             onSelect={id => {
               setMenu(undefined);
-              if (id === 'profile' && bot) onOpenBot?.(bot);
+              memberMenuTrigger.current?.focus({ preventScroll: true });
+              if (id === 'remove') setRemoving(member);
+              else if (id === 'profile' && bot) onOpenBot?.(bot);
               else if (id === 'execution' && delivery?.childSessionId) executionBridge?.open(delivery.childSessionId as string);
               else if (id === 'ask' && bot) void ask(bot, member.id);
             }} />

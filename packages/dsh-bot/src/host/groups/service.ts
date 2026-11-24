@@ -80,6 +80,8 @@ export class Groups {
   deleteGroup(key: GroupKey, expectedRevision: number) { return this.deletion.remove(key, expectedRevision); }
   create(value: unknown) { return this.membership.create(value); }
   createSupergroup(value: unknown, authority: SupergroupAuthority) { return this.membership.create(value, authority); }
+  editMembers(key: GroupKey, value: unknown) { return this.membership.editMembers(key, value); }
+  getMemberEditResult(key: GroupKey, operationId: string) { return this.membership.getMemberEditResult(key, operationId); }
   edit(key: GroupKey, value: unknown) { return this.membership.edit(key, value); }
   editSupergroup(key: GroupKey, value: unknown, authority: SupergroupAuthority) { return this.membership.edit(key, value, authority); }
   refreshSupergroupAuthority(key: GroupKey, authority: SupergroupAuthority) {

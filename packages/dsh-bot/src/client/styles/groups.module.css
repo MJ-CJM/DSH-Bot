@@ -1141,7 +1141,7 @@
 .compactMembers { min-width: 0; font-size: 13px; line-height: 1.5; }
 .compactMembers > p { margin: 8px 0; color: var(--dsw-alias-label-secondary); }
 .compactMembers > [role="alert"] { color: var(--dsw-alias-state-error-primary); }
-.compactMember { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; min-width: 0; padding-block: 14px; border-bottom: 1px solid var(--dsw-alias-border-l3); }
+.compactMember { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; min-width: 0; padding-block: 14px; border-bottom: 1px solid var(--dsw-alias-border-l3); }
 .compactMember:first-of-type { padding-top: 4px; }
 .compactMember:last-of-type { border-bottom: 0; }
 .compactMemberBody { min-width: 0; }

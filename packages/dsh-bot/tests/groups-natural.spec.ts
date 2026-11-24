@@ -766,3 +766,33 @@ describe('per-member group model overrides', () => {
     } finally { release?.(); await s.close(); }
   }));
 });
+
+it('member-only removal aborts precisely its active worker and cancels its pending work while retained workers continue', () => withIntegrations(async f => {
+  const s = await fixture(f, 30_000);
+  try {
+    const base = need(f.bots.get('alpha'));
+    f.bots.set('gamma', { ...base, id: 'gamma', name: 'Gamma' });
+    f.bots.set('delta', { ...base, id: 'delta', name: 'Delta' });
+    f.registry.config.groupConcurrentMembers = 2;
+    const gamma = { botId: 'gamma', botCreatedAt: 1 }, delta = { botId: 'delta', botCreatedAt: 1 };
+    const g = await s.groups.create({ operationId: 'member-removal-running', name: 'Running', mode: 'mention',
+      members: [alpha, beta, gamma, delta], historyConfirmed: true }), key = groupKey(g);
+    s.setBehavior('hold');
+    const turn = await s.groups.send(key, { operationId: 'four-running', text: 'All work', round: true, expectedMembershipRevision: 1 });
+    await vi.waitFor(() => expect(s.calls).toHaveLength(2));
+    const originalBots = structuredClone([...f.bots.values()]);
+    const result = await s.groups.editMembers(key, { operationId: 'remove-running-and-pending',
+      expectedRevision: g.revision, expectedMembershipRevision: g.membershipRevision, members: [beta, delta] });
+    expect(result.status).toBe('saved');
+    expect(s.calls.find(call => call.preset === 'bot-alpha')?.signal.aborted).toBe(true);
+    expect(s.calls.find(call => call.preset === 'bot-beta')?.signal.aborted).toBe(false);
+    expect(s.calls.some(call => call.preset === 'bot-gamma')).toBe(false);
+    const view = await s.groups.view(key);
+    expect(view.deliveries.find(delivery => delivery.turnId === turn.id && delivery.bot.botId === 'gamma'))
+      .toMatchObject({ state: 'cancelled', reasonCode: 'member-removed' });
+    expect(view.turns.some(row => row.id === turn.id)).toBe(true);
+    expect(view.messages.some(message => message.text === 'All work')).toBe(true);
+    expect([...f.bots.values()]).toEqual(originalBots);
+    expect(view.members.filter(member => member.removedAt === undefined).map(member => member.bot)).toEqual([beta, delta]);
+  } finally { await s.close(); }
+}));

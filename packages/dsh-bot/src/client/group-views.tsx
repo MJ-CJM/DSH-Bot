@@ -11,7 +11,6 @@ import type { ExecutionBridge } from './group-execution.js';
 import type { GroupOverviewSection } from './components/GroupOverview.js';
 import { GroupRosterEditor } from './components/GroupsPanel.js';
 import { GroupOverview } from './components/GroupOverview.js';
-import { SettingsDrafts, useSettingsNavigation } from './components/SettingsNavigation.js';
 import styles from './styles/groups.module.css';
 import css from './styles/groups.module.css?inline';
 
@@ -28,7 +27,6 @@ type ViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'dsh-bot'> & {
 
 export function GroupWorkspaceView({ summary, actions, bots, executionBridge, onOpenBot, onAskBot,
   viewRequest, openView, completeViewRequest, t }: ViewProps) {
-  const navigation = useSettingsNavigation(t);
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
   const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
   const [editing, setEditing] = useState<GroupView>();
@@ -54,17 +52,15 @@ export function GroupWorkspaceView({ summary, actions, bots, executionBridge, on
   }, [viewRequest, completeViewRequest, focusRun]);
   return <section className={`${styles.panel} ${styles.managementPanel}`} data-group-view={GROUP_MANAGEMENT_VIEW}>
     <style>{css}</style>
-    {editing ? <SettingsDrafts.Provider value={navigation.registry}>
-      <GroupRosterEditor bots={botState.entries.map(row => row.bot)} initial={editing} actions={actions} t={t}
-        onClose={() => setEditing(undefined)} />
-      {navigation.confirmation}
-    </SettingsDrafts.Provider> : <GroupOverview summary={summary} actions={actions}
+    <GroupOverview summary={summary} actions={actions}
       bots={botState.entries.map(row => row.bot)} onOpenBot={onOpenBot} onAskBot={onAskBot}
       onEdit={setEditing}
       onOpenRun={(_view, turnId) => openView(GROUP_MANAGEMENT_VIEW, turnId)}
       executionBridge={executionBridge}
       section={section} onSectionChange={setSection} showHeader={false}
-      focusRequest={focus.request} t={t} />}
+      focusRequest={focus.request} t={t} />
+    {editing && <GroupRosterEditor bots={botState.entries.map(row => row.bot)} initial={editing} actions={actions} t={t}
+      onClose={() => setEditing(undefined)} />}
   </section>;
 }
 

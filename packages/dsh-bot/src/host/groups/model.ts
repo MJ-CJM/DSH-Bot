@@ -58,6 +58,11 @@ export const groupsDomain = defineDomain({
   version: 1,
   tables: {
     groups: domainTable(groupRecordSchema),
+    // Intent precedes multi-table membership writes; unknown intents are never replayed.
+    member_edits: domainTable(z.strictObject({
+      group: groupKeySchema, operationId: resourceId, requestDigest: z.string().length(64),
+      status: z.enum(['saved', 'unknown']), result: groupRecordSchema.optional(),
+    })),
     deletions: domainTable(groupDeletionSchema),
     team_recipes: domainTable(savedTeamRecipeSchema),
     members: domainTable(groupMemberSchema),

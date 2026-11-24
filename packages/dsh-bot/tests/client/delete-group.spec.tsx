@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { JSDOM } from 'jsdom';
 import type { BotsPageInjected } from '../../src/client/pages/bots-page-types.js';
 import { conversationKey, recentPreferences, setRecentPreference } from '../../src/client/pages/recent-conversations.js';
 import { readDirectoryWindow, writeDirectoryWindow } from '../../src/client/pages/native-directory.js';
@@ -28,7 +29,22 @@ async function mount(lang: 'en' | 'zh' = 'en', archived = false) {
   });
   return requireValue((requireValue(app.main.inject)() as unknown as BotsPageInjected).groups);
 }
-afterEach(async () => { await app.dispose(); window.localStorage.clear(); sessionStorage.clear(); recentPreferences.clear(); });
+// Node 25 exposes a process localStorage object without Storage methods when no
+// storage file is configured. Vitest preserves existing Node globals, so bind
+// the actual browser Storage instances from this suite's JSDOM environment.
+beforeEach(() => {
+  const browser = (globalThis as typeof globalThis & { jsdom: JSDOM }).jsdom.window;
+  vi.stubGlobal('localStorage', browser.localStorage);
+  vi.stubGlobal('sessionStorage', browser.sessionStorage);
+  localStorage.clear(); sessionStorage.clear(); recentPreferences.clear();
+});
+afterEach(async () => {
+  try { await app.dispose(); }
+  finally {
+    localStorage.clear(); sessionStorage.clear(); recentPreferences.clear();
+    vi.unstubAllGlobals();
+  }
+});
 
 const target = summary().group;
 const row = () => requireValue(app.container.querySelector<HTMLElement>('[data-directory-id="group:one"]'));

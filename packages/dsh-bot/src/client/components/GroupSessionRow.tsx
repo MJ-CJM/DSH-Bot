@@ -19,7 +19,7 @@ export function GroupSessionLeading({ sessionId, useGroups, useCatalog, t }: Pro
       title={t('row.group', { name: group.group.name })}
     >
       <GroupAvatar size={16}
-        members={group.members.filter(member => member.enabled && member.removedAt === undefined)}
+        members={group.members.filter(member => member.removedAt === undefined)}
         bots={entries?.map(entry => entry.bot)} />
     </span>
   ) : null;

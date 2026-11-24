@@ -281,6 +281,9 @@ export function remoteDouble(initial: BotRecord[] = []) {
     teamRemove: vi.fn<GroupMethods["teamRemove"]>(),
     teamPreview: vi.fn<GroupMethods["teamPreview"]>(),
     teamApply: vi.fn<GroupMethods["teamApply"]>(),
+    teamApplyMembers: vi.fn<GroupMethods["teamApplyMembers"]>(),
+    editMembers: vi.fn<GroupMethods["editMembers"]>(),
+    getMemberEditResult: vi.fn<GroupMethods["getMemberEditResult"]>(),
     getRelayDetails: vi.fn<GroupMethods['getRelayDetails']>(),
     closeStaleExports: vi.fn<GroupMethods['closeStaleExports']>(),
 		open: vi.fn<GroupMethods["open"]>(async () => {

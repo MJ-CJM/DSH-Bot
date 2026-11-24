@@ -23,6 +23,9 @@ it('does not expose private previews or change export work without an owner invo
   await expect(remote.deleteGroup(group, 1)).rejects.toThrow('Owner access required');
   expect(deleteGroup).not.toHaveBeenCalled();
   expect(review).not.toHaveBeenCalled(); expect(decide).not.toHaveBeenCalled();
+  await expect(remote.editMembers(group, {})).rejects.toThrow('Owner access required');
+  await expect(remote.getMemberEditResult(group, 'op')).rejects.toThrow('Owner access required');
+  await expect(remote.teamApplyMembers(group, {}, [], 1, 1, { operationId: 'op' })).rejects.toThrow('Owner access required');
   const signal = new AbortController().signal;
   Object.defineProperty(remote, 'ctx', { value: { invocation: { peer: { principal: { kind: 'owner' } }, signal } } });
   await remote.reviewExport(group, 'delivery');

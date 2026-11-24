@@ -27,7 +27,7 @@ export function GroupSessionBadge({
       className={styles.sessionBadge}
     >
       <style>{css}</style><GroupAvatar size={20} />
-      <span className={styles.sessionBadgeText}>{group.group.name} · {group.members.filter(member => member.enabled && member.removedAt === undefined).length}</span>
+      <span className={styles.sessionBadgeText}>{group.group.name} · {group.members.filter(member => member.removedAt === undefined).length}</span>
     </button>
   ) : null;
 }

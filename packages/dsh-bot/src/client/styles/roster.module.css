@@ -1,0 +1,17 @@
+.body { display: grid; gap: 20px; padding: 20px 24px; }
+.heading, .row, .rowActions, .footerActions { display: flex; align-items: center; gap: 10px; }
+.heading { justify-content: space-between; flex-wrap: wrap; }
+.heading span, .identity span, .review, .search { color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 1.5; }
+.body h3 { margin: 0 0 10px; font-size: 14px; }
+.list { list-style: none; padding: 0; margin: 0; }
+.row { min-height: 62px; padding: 10px 0; border-bottom: 1px solid var(--dsw-alias-border-l3); }
+.identity { display: grid; gap: 3px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.identity strong { font-size: 14px; }
+.rowActions { flex-wrap: wrap; justify-content: flex-end; }
+.search { display: grid; gap: 6px; margin-bottom: 10px; }
+.search input { min-height: 36px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 6px; padding: 6px 10px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.footer { position: sticky; bottom: 0; display: grid; gap: 12px; background: var(--dsw-alias-bg-layer-1); }
+.summary { min-width: 0; max-height: min(30dvh, 220px); overflow-y: auto; font-size: 13px; }
+.summary p, .review p { margin: 5px 0; overflow-wrap: anywhere; }
+.footerActions { justify-content: flex-end; }
+@media (max-width: 520px) { .body { padding: 16px; } .rowActions { max-width: 120px; } .heading { align-items: flex-start; } }

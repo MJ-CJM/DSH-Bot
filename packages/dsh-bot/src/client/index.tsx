@@ -143,6 +143,9 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
   const followUp = createFollowUpSource(ctx, config);
   const pageNavigation = createPageNavigation(ctx);
   const groups = { ...createGroupActions(ctx, config), followUp,
+    canAddBot(bot: BotRecord) {
+      return catalog.getSnapshot().entries.some(entry => entry.bot.id === bot.id && entry.bot.createdAt === bot.createdAt && entry.status?.preset.state === 'ok');
+    },
     returnAfterDeletion(group: GroupKey, rootSessionId: string, section: 'groups' | 'recent') {
       if (!active) return;
       if (pageNavigation.group?.id === group.groupId && pageNavigation.group.createdAt === group.groupCreatedAt) delete pageNavigation.group;

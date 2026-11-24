@@ -1089,3 +1089,116 @@ it('routes an owner handoff through the quoted member, sends only the authorized
     });
   } finally { await x.close(); }
 }, 20000);
+
+describe('member management — durable intent, exact audience and safe removal', () => {
+  const gamma = { botId: 'gamma', botCreatedAt: 1 };
+  const seedGamma = (f: Parameters<typeof fixture>[0]) => f.bots.set('gamma', { ...need(f.bots.get('alpha')), id: 'gamma', name: 'Gamma' });
+  const draft = (g: GroupRecord, operationId: string, members = [alpha, beta]) => ({ operationId,
+    expectedRevision: g.revision, expectedMembershipRevision: g.membershipRevision, members });
+  it('permits removal/settings/reordering without consent and preserves disabled or deleted retained members', () => withIntegrations(async f => {
+    const s = await fixture(f, true); seedGamma(f);
+    try {
+      const g = await s.groups.create({ operationId: 'three', name: 'Three', mode: 'mention', members: [alpha, beta, gamma], historyConfirmed: true });
+      const key = groupKey(g), betaMember = need((await s.groups.view(key)).members.find(m => m.bot.botId === beta.botId));
+      await s.domain.table('members').put(betaMember.id, { ...betaMember, enabled: false });
+      f.bots.delete('beta');
+      const removed = await s.groups.editMembers(key, draft(g, 'remove-only'));
+      expect(removed.status).toBe('saved');
+      const current = need(removed.group), rows = (await s.groups.view(key)).members;
+      expect(rows.find(m => m.id === betaMember.id)).toMatchObject({ enabled: false, bot: beta });
+      expect(rows.find(m => m.bot.botId === 'gamma')?.removedAt).toBeTypeOf('number');
+      expect(current.membershipRevision).toBe(g.membershipRevision + 1);
+      const approval = { bot: alpha, membershipRevision: current.membershipRevision, members: [alpha], enabledAt: 1 };
+      await s.domain.table('groups').put(g.id, { ...current, exportApprovals: [approval] });
+      const reordered = await s.groups.editMembers(key, draft(current, 'reorder-only', [beta, alpha]));
+      expect(reordered.group).toMatchObject({ membershipRevision: current.membershipRevision, exportApprovals: [approval] });
+      const setting = await s.groups.edit(key, { name: 'Renamed', mode: 'natural', onDemand: true, members: [beta, alpha],
+        expectedRevision: need(reordered.group).revision, expectedMembershipRevision: current.membershipRevision });
+      expect(setting).toMatchObject({ onDemand: true, exportApprovals: [approval], membershipRevision: current.membershipRevision });
+      expect(f.bots.has('alpha')).toBe(true); expect(f.bots.has('gamma')).toBe(true);
+    } finally { await s.close(); }
+  }));
+  it('requires explicit consent for newly added generations and for rejoining; enforces both revisions and minimum size', () => withIntegrations(async f => {
+    const s = await fixture(f, true); seedGamma(f);
+    try {
+      const g = await s.createGroup(), key = groupKey(g);
+      for (const historyConfirmed of [undefined, false]) await expect(s.groups.editMembers(key, { ...draft(g, 'no-consent', [alpha, beta, gamma]), historyConfirmed }))
+        .rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+      expect((await s.groups.getMemberEditResult(key, 'no-consent')).status).toBe('not-found');
+      await expect(s.groups.editMembers(key, { ...draft(g, 'small'), members: [alpha] })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+      const added = need((await s.groups.editMembers(key, { ...draft(g, 'consented', [alpha, beta, gamma]), historyConfirmed: true })).group);
+      const removed = need((await s.groups.editMembers(key, draft(added, 'removed'))).group);
+      await expect(s.groups.editMembers(key, { ...draft(removed, 'rejoin', [alpha, beta, gamma]), historyConfirmed: false })).rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+      f.bots.set('gamma', { ...need(f.bots.get('gamma')), createdAt: 2 });
+      await expect(s.groups.editMembers(key, { ...draft(removed, 'old-birthday', [alpha, beta, gamma]), historyConfirmed: true })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      const generation = { ...gamma, botCreatedAt: 2 };
+      Object.assign(f.registry, { status: async () => ['alpha', 'beta', 'gamma'].map(id => ({ id, preset: { state: id === 'gamma' ? 'broken' : 'ok' } })) });
+      await expect(s.groups.editMembers(key, { ...draft(removed, 'broken-add', [alpha, beta, generation]), historyConfirmed: true })).rejects.toMatchObject({ code: 'dsh-bot/unavailable' });
+      await expect(s.groups.editMembers(key, { ...draft(removed, 'stale-roster'), expectedMembershipRevision: 1 })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      await expect(s.groups.editMembers(key, draft(g, 'stale-window'))).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    } finally { await s.close(); }
+  }));
+  it('returns the original durable result for duplicate/ABA operations and never overwrites a newer roster', () => withIntegrations(async f => {
+    const s = await fixture(f, true); seedGamma(f);
+    try {
+      const g = await s.createGroup(), key = groupKey(g), input = { ...draft(g, 'stable-op', [alpha, beta, gamma]), historyConfirmed: true };
+      const [a, b] = await Promise.all([s.groups.editMembers(key, input), s.groups.editMembers(key, input)]);
+      expect(a).toEqual(b); expect(a.status).toBe('saved');
+      expect((await s.groups.view(key)).members).toHaveLength(3);
+      const removed = need((await s.groups.editMembers(key, draft(need(a.group), 'next-roster'))).group);
+      await expect(s.groups.editMembers(key, { ...input, expectedRevision: removed.revision })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      const old = await s.groups.editMembers(key, input);
+      expect(old.group?.revision).toBe(a.group?.revision);
+      expect((await s.groups.view(key)).group.revision).toBe(removed.revision);
+      await s.reopen();
+      expect(await s.groups.getMemberEditResult(key, 'stable-op')).toEqual(a);
+      expect(await s.groups.editMembers(key, input)).toEqual(a);
+      await expect(s.groups.getMemberEditResult({ ...key, groupCreatedAt: key.groupCreatedAt + 1 }, 'stable-op')).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      await s.groups.deleteGroup(key, removed.revision);
+      await expect(s.groups.getMemberEditResult(key, 'stable-op')).rejects.toMatchObject({ code: 'dsh-bot/not-found' });
+    } finally { await s.close(); }
+  }));
+  it('persists unknown after partial failure, refuses all automatic replay or new edits across restart', () => withIntegrations(async f => {
+    const s = await fixture(f, true); seedGamma(f);
+    try {
+      const g = await s.createGroup(), key = groupKey(g), input = { ...draft(g, 'failed-partway', [alpha, beta, gamma]), historyConfirmed: true };
+      const put = vi.spyOn(s.domain.table('members'), 'put').mockRejectedValueOnce(new Error('disk unavailable'));
+      expect(await s.groups.editMembers(key, input)).toEqual({ operationId: input.operationId, status: 'unknown' });
+      put.mockRestore();
+      expect((await s.groups.view(key)).group.state).toBe('recovery_needed');
+      expect(await s.groups.editMembers(key, input)).toEqual({ operationId: input.operationId, status: 'unknown' });
+      await s.reopen();
+      const group = (await s.groups.view(key)).group;
+      expect(await s.groups.getMemberEditResult(key, input.operationId)).toEqual({ operationId: input.operationId, status: 'unknown' });
+      await expect(s.groups.editMembers(key, draft(group, 'new-operation'))).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+      await expect(s.groups.edit(key, { name: group.name, mode: group.mode, expectedRevision: group.revision,
+        expectedMembershipRevision: group.membershipRevision, members: [alpha, beta] })).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+      expect((await s.groups.view(key)).members).toHaveLength(2);
+    } finally { await s.close(); }
+  }));
+  it('rejects archived/managed/recovering edits before recording an operation and applies recipe consent to the actual new audience', () => withIntegrations(async f => {
+    const s = await fixture(f, true); seedGamma(f);
+    try {
+      const g = await s.createGroup(), key = groupKey(g), recipe = await s.groups.teamRecipes.capture(key, 'Team');
+      const mapping = recipe.roles.map((role, index) => ({ roleId: role.id, bot: index ? gamma : alpha }));
+      await expect(s.groups.teamRecipes.apply(key, recipe, mapping, g.revision, g.membershipRevision)).rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+      await expect(s.groups.teamRecipes.applyMembers(key, recipe, mapping, g.revision, g.membershipRevision, { operationId: 'team-unconfirmed' })).rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+      expect((await s.groups.getMemberEditResult(key, 'team-unconfirmed')).status).toBe('not-found');
+      const result = await s.groups.teamRecipes.applyMembers(key, recipe, mapping, g.revision, g.membershipRevision, { operationId: 'team-confirmed', historyConfirmed: true });
+      expect(result.status).toBe('saved');
+      await expect(s.groups.teamRecipes.applyMembers(key, { ...recipe, mode: 'natural' }, mapping, g.revision, g.membershipRevision,
+        { operationId: 'team-confirmed', historyConfirmed: true })).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      expect(await s.groups.teamRecipes.applyMembers(key, recipe, mapping, g.revision, g.membershipRevision, { operationId: 'team-confirmed', historyConfirmed: true })).toEqual(result);
+      let latest = need(result.group);
+      await s.domain.table('groups').put(g.id, { ...latest, state: 'recovery_needed' });
+      await expect(s.groups.editMembers(key, draft(latest, 'recovering'))).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+      await s.domain.table('groups').put(g.id, { ...latest, supergroup: { workId: 'work', originSessionId: 'origin', originMessageId: 'source', owner: alpha, readers: [alpha, gamma], expiresAt: Date.now() + 10_000 } });
+      await expect(s.groups.editMembers(key, draft(latest, 'managed'))).rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+      await s.domain.table('groups').put(g.id, latest);
+      latest = await s.groups.archive(key, latest.revision);
+      await expect(s.groups.editMembers(key, draft(latest, 'archived'))).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+      expect((await s.groups.getMemberEditResult(key, 'managed')).status).toBe('not-found');
+      expect((await s.groups.getMemberEditResult(key, 'archived')).status).toBe('not-found');
+    } finally { await s.close(); }
+  }));
+});

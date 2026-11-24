@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { auditArtifact, auditInstalled, sha256 } from '../p34-artifact.mjs';
 
 /** Real DSH Web profile and shipped Client; all data and credentials paths are isolated under .dsh-dev. */
-export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig = [], { offline = true, mockRoute, mockModel = true, artifactAudit, preserveProfile = false, compatArtifact } = {}) {
+export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig = [], { offline = true, mockRoute, mockModel = true, artifactAudit, preserveProfile = false, compatArtifact, hostTimeoutMs = 300000 } = {}) {
   const root = process.cwd(), commands = [], children = new Set(), profile = 'b4-browser';
   const env = { PATH: process.env.PATH, USER: 'synthetic', SHELL: process.env.SHELL,
     ...(process.env.DSH_BOT_DSH_BIN ? { DSH_BOT_DSH_BIN: process.env.DSH_BOT_DSH_BIN } : {}),
@@ -40,7 +40,7 @@ export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig =
     const done = new Promise((accept, reject) => {
       child.on('error', reject); child.on('close', code => { children.delete(child); closed = true; accept(code); });
     });
-    const timer = setTimeout(() => child.kill('SIGKILL'), live ? 300000 : 90000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), live ? hostTimeoutMs : 90000);
     const save = async () => {
       const code = await done; clearTimeout(timer);
       await writeFile(resolve(dir, `${label}.log`), output.replace(/([?&]token=)[^\s&"'<>]+/g, '$1[redacted]'));
@@ -52,7 +52,7 @@ export async function webHost(dir, suite, artifact, fixturePath, fixtureConfig =
     const deadline = Date.now() + 60000;
     while (!closed && !/B4_WEB_(READY|FAILED)/.test(output) && Date.now() < deadline) await delay(50);
     startupMs = Date.now() - started;
-    assert.match(output, /B4_WEB_READY/, `Host fixture failed: ${dir}`);
+    assert.match(output.replace(/([?&]token=)[^\s&"'<>]+/g, '$1[redacted]'), /B4_WEB_READY/, `Host fixture failed: ${dir}`);
     const url = output.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+)/)?.[1];
     assert.ok(url); return url;
   }

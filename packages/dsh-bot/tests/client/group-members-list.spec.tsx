@@ -53,7 +53,7 @@ it('uses all six roster places and hides roster edits on archived or automatic g
     for (let n = 2; n < 6; n++) data.members.push({ ...owner, id: `member-${n}`, bot: { ...owner.bot, botId: `bot-${n}` }, order: n, enabled: false });
     await f.render();
     const entry = () => f.element.querySelector<HTMLButtonElement>('[data-group-edit-members]');
-    expect(entry()?.textContent).toBe(f.t('groups.edit'));
+    expect(entry()?.textContent).toBe(f.t('groups.roster.manage'));
     await click(entry()!);
     expect(onEdit).toHaveBeenCalledExactlyOnceWith(data);
     data.group.archived = true;
@@ -89,8 +89,8 @@ it.each(['en', 'zh'] as const)('%s compact members preserve real roles, state an
     expect(f.element.querySelector('[data-group-member="member:beta"]')?.textContent).toContain(f.t('groups.modelSourceDsh'));
     const navigate = row?.querySelector('button');
     if (!navigate) throw new Error('Missing existing Bot navigation');
-    expect(navigate.getAttribute('aria-label')).toBe(`${f.bots()[0]!.name} · ${f.t('chat.profile')}`);
-    expect(navigate.title).toBe(`${f.bots()[0]!.name} · ${f.t('chat.profile')}`);
+    expect(navigate.getAttribute('aria-label')).toBe(`${f.bots()[0]!.name} · ${f.bots()[0]!.id} · ${f.t('chat.profile')}`);
+    expect(navigate.title).toBe(`${f.bots()[0]!.name} · ${f.bots()[0]!.id} · ${f.t('chat.profile')}`);
     await click(navigate);
     expect(f.onOpenBot).toHaveBeenCalledExactlyOnceWith(f.bots()[0]);
     expect(f.followup.summary).not.toHaveBeenCalled(); expect(f.followup.page).not.toHaveBeenCalled();
@@ -117,7 +117,8 @@ it('a recreated Bot cannot supply a removed incarnation’s face, role, model or
     expect(row?.textContent).not.toContain('private-model');
     expect(row?.getAttribute('data-group-member-state')).toBe('unavailable');
     expect(row?.querySelector('[data-bot-avatar]')?.textContent).toBe('🧪');
-    expect(row?.querySelector('button')).toBeNull();
+    expect(row?.querySelector('button[aria-label$="Profile"]')).toBeNull();
+    expect(row?.querySelector('button[aria-haspopup="menu"]')).toBeTruthy();
   } finally { await f.close(); }
 });
 
@@ -147,4 +148,26 @@ it('recreates a usable view after a strict effect replay and releases every view
     expect(f.stores[1]?.dispose).not.toHaveBeenCalled();
   } finally { await f.close(); }
   expect(f.stores[1]?.dispose).toHaveBeenCalledOnce();
+});
+
+it('compact member menu opens one direct removal dialog even for an unavailable member', async () => {
+  const f = await fixture();
+  try {
+    const data = f.data(), owner = data.members[0];
+    if (!owner) throw new Error('Missing member fixture');
+    data.members.push({ ...owner, id: 'missing-member', bot: { botId: 'deleted-bot', botCreatedAt: 1 }, order: 2 });
+    await f.render();
+    const row = f.element.querySelector('[data-group-member="missing-member"]');
+    const menu = row?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
+    expect(menu).toBeTruthy();
+    if (!menu || !row) throw new Error('Missing member action menu');
+    await click(menu);
+    const remove = [...row.querySelectorAll('button')].find(button => button.textContent === f.t('groups.roster.remove'));
+    expect(remove).toBeTruthy();
+    if (!remove) throw new Error('Missing remove action');
+    await click(remove);
+    expect(f.element.querySelectorAll('[data-member-removal]')).toHaveLength(1);
+    expect(f.element.querySelectorAll('dialog')).toHaveLength(1);
+    expect(f.element.querySelector('[data-member-removal]')?.textContent).toContain('deleted-bot');
+  } finally { await f.close(); }
 });
