@@ -2,18 +2,13 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol';
 import { botChangeSchema, type BotChange, type DshBotRemoteMethods } from '../shared/remote-contract.js';
 
-/** Optional push invalidations over the public raw Remote stream. The shared
- * scheduler owns retry timing and foreground leases; this owns cancellation.
- * Every generation's opening triggers an authoritative refetch, so neither a
- * disconnected interval nor a coalesced burst needs a durable event cursor.
- */
-export function createChangeStream(
-  ctx: Context,
-  changed: () => void,
-): {
+interface StreamRunner {
   start(): void;
   stop(): Promise<void>;
-} {
+  isOpen(): boolean;
+}
+
+function createStreamRunner(ctx: Context, changed: () => void, label?: string): StreamRunner {
   type Run = { abort: AbortController; handle: RemoteStreamHandle<BotChange, never>; done: Promise<void> };
   let current: Run | undefined;
   let disposed = false;
@@ -25,15 +20,18 @@ export function createChangeStream(
     previous.handle.dispose();
     await previous.done;
   };
-  ctx.effect(
-    () => async () => {
-      disposed = true;
-      await stop();
-    },
-    'dsh-bot: Client change stream',
-  );
+  if (label) {
+    ctx.effect(
+      () => async () => {
+        disposed = true;
+        await stop();
+      },
+      label,
+    );
+  }
   return {
     stop,
+    isOpen: () => !disposed && current !== undefined,
     start() {
       if (disposed || current) return;
       const remote = ctx.get('remote.dshBot') as DshBotRemoteMethods | undefined;
@@ -66,4 +64,88 @@ export function createChangeStream(
       })();
     },
   };
+}
+
+/** Optional push invalidations over the public raw Remote stream. The shared
+ * scheduler owns retry timing and foreground leases; this owns cancellation.
+ * Every generation's opening triggers an authoritative refetch, so neither a
+ * disconnected interval nor a coalesced burst needs a durable event cursor.
+ */
+export function createChangeStream(
+  ctx: Context,
+  changed: () => void,
+): {
+  start(): void;
+  stop(): Promise<void>;
+} {
+  const runner = createStreamRunner(ctx, changed, 'dsh-bot: Client change stream');
+  return { start: runner.start, stop: runner.stop };
+}
+
+export interface ChangeStreamLease {
+  start(): void;
+  stop(): Promise<void>;
+  dispose(): Promise<void>;
+}
+
+export interface SharedChangeStream {
+  lease(changed: () => void): ChangeStreamLease;
+  restart(): Promise<void>;
+  isActive(): boolean;
+}
+
+const sharedStreams = new WeakMap<Context, SharedChangeStream>();
+
+/** One raw Remote change stream broadcaster per Client context shared across
+ * polling-scheduler, Supergroup, and task-support consumers.
+ */
+export function sharedChangeStream(ctx: Context): SharedChangeStream {
+  const existing = sharedStreams.get(ctx);
+  if (existing) return existing;
+  const activeLeases = new Set<() => void>();
+  let disposed = false;
+  const runner = createStreamRunner(ctx, () => {
+    for (const listener of [...activeLeases]) listener();
+  });
+  ctx.effect(
+    () => async () => {
+      disposed = true;
+      activeLeases.clear();
+      sharedStreams.delete(ctx);
+      await runner.stop();
+    },
+    'dsh-bot: shared Client change stream',
+  );
+  const shared: SharedChangeStream = {
+    lease(changed) {
+      let leaseDisposed = false;
+      const listener = () => {
+        if (!leaseDisposed) changed();
+      };
+      const stop = async () => {
+        activeLeases.delete(listener);
+        if (!activeLeases.size) await runner.stop();
+      };
+      return {
+        start() {
+          if (disposed || leaseDisposed) return;
+          activeLeases.add(listener);
+          runner.start();
+        },
+        stop,
+        async dispose() {
+          if (leaseDisposed) return;
+          leaseDisposed = true;
+          await stop();
+        },
+      };
+    },
+    async restart() {
+      await runner.stop();
+      if (!disposed && activeLeases.size) runner.start();
+    },
+    isActive: () => !disposed && runner.isOpen(),
+  };
+  sharedStreams.set(ctx, shared);
+  return shared;
 }

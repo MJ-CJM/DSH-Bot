@@ -9,7 +9,7 @@ import { hasCredential } from '../../shared/secrets.js';
 import { Config } from './config.js';
 import { ciSourceId } from '../proactive/sources/ci.js';
 import { isNativeAmbientSource } from '../common/native-ambient-source.js';
-import { OperationError } from '../common/operations.js';
+import { OperationError, redactedErrorMetadata } from '../common/operations.js';
 import type { DshBotRegistry } from '../registry.js';
 import { committedBot } from '../registry/snapshot.js';
 import { outlets } from '../data-flow/tool-guard.js';
@@ -154,7 +154,16 @@ export class TaskSupport {
     let { work, agent } = await this.current(input.workId);
     if (!this.owner.valid(work)) throw new OperationError('approval-denied');
     const prior = work.materials?.find(row => row.operationId === input.operationId);
-    if (prior) { if (prior.requestDigest !== requestDigest) throw new OperationError('conflict'); return this.view(work.id); }
+    if (prior) {
+      if (prior.requestDigest !== requestDigest) throw new OperationError('conflict');
+      try { return await this.view(work.id); }
+      catch (error) {
+        this.ctx.logger?.warn?.('[dsh-bot] Task material already persisted; confirmation failed', {
+          workId: work.id, phase: 'view', ...redactedErrorMetadata(error),
+        });
+        throw new OperationError('recovery-needed');
+      }
+    }
     if (work.revision !== input.expectedRevision || !['completed', 'partial'].includes(work.state) || (work.materials?.length ?? 0) >= limits.taskMaterialMaxCount) throw new OperationError('conflict');
     let name: string, text: string, sourceId: string, sourceVersion: string, citation: string;
     if (input.source.kind === 'file') {
@@ -187,13 +196,25 @@ export class TaskSupport {
       const envelope = flow.draft('delegate-input', work.owner, sourceSessionId, material.id, { kind: 'bot', bot: reader }, text);
       flow.checker.check(envelope);
     }
-    work = await this.owner.change(work.id, undefined, current => {
-      const prior = current.materials?.find(row => row.operationId === input.operationId);
-      if (prior) { if (prior.requestDigest !== requestDigest) throw new OperationError('conflict'); return current; }
-      if (current.revision !== input.expectedRevision) throw new OperationError('conflict');
-      return { ...current, materials: [...current.materials ?? [], material] };
-    });
-    return this.view(work.id);
+    let persisted = false;
+    let phase: 'persist' | 'view' = 'persist';
+    try {
+      work = await this.owner.change(work.id, undefined, current => {
+        const prior = current.materials?.find(row => row.operationId === input.operationId);
+        if (prior) { if (prior.requestDigest !== requestDigest) throw new OperationError('conflict'); return current; }
+        if (current.revision !== input.expectedRevision) throw new OperationError('conflict');
+        return { ...current, materials: [...current.materials ?? [], material] };
+      });
+      persisted = true;
+      phase = 'view';
+      return await this.view(work.id);
+    } catch (error) {
+      if (!persisted) throw error;
+      this.ctx.logger?.warn?.('[dsh-bot] Task material persisted; confirmation failed', {
+        workId: work.id, phase, ...redactedErrorMetadata(error),
+      });
+      throw new OperationError('recovery-needed');
+    }
   }
   async text(work: SupergroupWork, original: string, snapshot = false) {
     const materials = work.materials ?? [];
@@ -223,7 +244,16 @@ export class TaskSupport {
     let { work, agent } = await this.current(input.workId);
     if (!this.owner.valid(work)) throw new OperationError('approval-denied');
     const prior = work.resumes?.find(row => row.operationId === input.operationId);
-    if (prior) { if (prior.digest !== requestDigest) throw new OperationError('conflict'); return this.view(work.id); }
+    if (prior) {
+      if (prior.digest !== requestDigest) throw new OperationError('conflict');
+      try { return await this.view(work.id); }
+      catch (error) {
+        this.ctx.logger?.warn?.('[dsh-bot] Task resume already persisted; confirmation failed', {
+          workId: work.id, phase: 'view', ...redactedErrorMetadata(error),
+        });
+        throw new OperationError('recovery-needed');
+      }
+    }
     if (work.revision !== input.expectedRevision || (!work.group && !work.initialPending) || !['completed', 'partial'].includes(work.state)
       || agent.status !== 'idle' || (work.resumes?.length ?? 0) >= 32 || work.resumes?.some(row => row.state !== 'queued' || !work.inputMessageIds.includes(row.messageId))) throw new OperationError('conflict');
     if (hasCredential(input.text)) throw new OperationError('invalid');
@@ -241,26 +271,47 @@ export class TaskSupport {
     const receipt = { operationId: input.operationId, digest: requestDigest, messageId: message.id, contentDigest: hash(message.content), originalDigest: original.digest, previousMessageId: latest.data.id, expectedRevision: input.expectedRevision,
       state: 'dispatching' as const, blockerIds: input.blockerIds, createdAt: Date.now() };
     const acceptedRevision = work.revision;
-    work = await this.owner.change(work.id, undefined, current => {
-      const prior = current.resumes?.find(row => row.operationId === input.operationId);
-      if (prior) { if (prior.digest !== requestDigest) throw new OperationError('conflict'); return current; }
-      const currentLatest = agent.session.snapshotEvents().findLast(row => row.type === 'user/message' && !isNativeAmbientSource(row.data.source.kind) && !messaging?.isDisplayMessage(agent, row.data));
-      if (currentLatest?.type !== 'user/message' || currentLatest.data.id !== latest.data.id || hash(currentLatest.data.content) !== hash(latest.data.content)) throw new OperationError('conflict');
-      if (current.revision !== acceptedRevision || current.resumes?.some(row => row.state !== 'queued' || !current.inputMessageIds.includes(row.messageId))) throw new OperationError('conflict');
-      return { ...current, expiresAt: Date.now() + Config(this.registry.config.supergroup).timeoutMs, resumes: [...current.resumes ?? [], receipt] };
-    });
-    if (work.resumes?.find(row => row.operationId === input.operationId)?.messageId !== message.id) return this.view(work.id);
+    let persisted = false;
+    let phase: 'persist' | 'dispatch' | 'finalize' | 'mark-unknown' | 'view' = 'persist';
     try {
-      await this.owner.agent(work);
-      this.assertConnectionsReady(work);
-      // Native followup owns dispatch. Its void return proves queuing only, never execution or delivery.
-      await agent.followup(message);
-      await this.owner.change(work.id, undefined, current => ({ ...current,
-        ...(current.initialPending ? { inputMessageIds: [...new Set([...current.inputMessageIds, message.id])] } : {}), blockers: current.blockers?.map(row => input.blockerIds.includes(row.id) ? { ...row, state: 'continued' } : row),
-        resumes: current.resumes?.map(row => row.operationId === input.operationId ? { ...row, state: 'queued' } : row) }));
-    } catch {
-      await this.owner.change(work.id, undefined, current => ({ ...current, resumes: current.resumes?.map(row => row.operationId === input.operationId ? { ...row, state: 'unknown' } : row) }));
+      work = await this.owner.change(work.id, undefined, current => {
+        const prior = current.resumes?.find(row => row.operationId === input.operationId);
+        if (prior) { if (prior.digest !== requestDigest) throw new OperationError('conflict'); return current; }
+        const currentLatest = agent.session.snapshotEvents().findLast(row => row.type === 'user/message' && !isNativeAmbientSource(row.data.source.kind) && !messaging?.isDisplayMessage(agent, row.data));
+        if (currentLatest?.type !== 'user/message' || currentLatest.data.id !== latest.data.id || hash(currentLatest.data.content) !== hash(latest.data.content)) throw new OperationError('conflict');
+        if (current.revision !== acceptedRevision || current.resumes?.some(row => row.state !== 'queued' || !current.inputMessageIds.includes(row.messageId))) throw new OperationError('conflict');
+        return { ...current, expiresAt: Date.now() + Config(this.registry.config.supergroup).timeoutMs, resumes: [...current.resumes ?? [], receipt] };
+      });
+      persisted = true;
+      if (work.resumes?.find(row => row.operationId === input.operationId)?.messageId !== message.id) {
+        phase = 'view';
+        return await this.view(work.id);
+      }
+      try {
+        phase = 'dispatch';
+        await this.owner.agent(work);
+        this.assertConnectionsReady(work);
+        // Native followup owns dispatch. Its void return proves queuing only, never execution or delivery.
+        await agent.followup(message);
+        phase = 'finalize';
+        await this.owner.change(work.id, undefined, current => ({ ...current,
+          ...(current.initialPending ? { inputMessageIds: [...new Set([...current.inputMessageIds, message.id])] } : {}), blockers: current.blockers?.map(row => input.blockerIds.includes(row.id) ? { ...row, state: 'continued' } : row),
+          resumes: current.resumes?.map(row => row.operationId === input.operationId ? { ...row, state: 'queued' } : row) }));
+      } catch (dispatchError) {
+        this.ctx.logger?.warn?.('[dsh-bot] Task resume dispatch failed; marking unknown', {
+          workId: work.id, phase, ...redactedErrorMetadata(dispatchError),
+        });
+        phase = 'mark-unknown';
+        await this.owner.change(work.id, undefined, current => ({ ...current, resumes: current.resumes?.map(row => row.operationId === input.operationId ? { ...row, state: 'unknown' } : row) }));
+      }
+      phase = 'view';
+      return await this.view(work.id);
+    } catch (error) {
+      if (!persisted) throw error;
+      this.ctx.logger?.warn?.('[dsh-bot] Task resume persisted; confirmation failed', {
+        workId: work.id, phase, ...redactedErrorMetadata(error),
+      });
+      throw new OperationError('recovery-needed');
     }
-    return this.view(work.id);
   }
 }

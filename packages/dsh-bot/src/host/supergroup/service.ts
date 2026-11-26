@@ -50,6 +50,9 @@ interface Runtime {
   authority: SupergroupAuthority;
   text: string;
   revisions: Map<string, number>;
+  generation: number;
+  configEpoch: number;
+  settledCleanup?: boolean;
   inputOperationId?: string;
   memberIds?: string[];
   /** Last roster observed before dispatch, including disabled, unremoved members. */
@@ -68,6 +71,9 @@ export class Supergroup {
   private readonly groupInputTails = new Map<string, Promise<unknown>>();
   private readonly capabilities = new Set<() => void>();
   private readonly returns = new Set<string>();
+  private readonly workRevocations = new Map<string, { generation: number; reason: string }>();
+  private configEpoch = 0;
+  private revocationGeneration = 0;
   private stopped = false;
   private offExpert?: () => void;
   private closing?: Promise<void>;
@@ -267,38 +273,21 @@ export class Supergroup {
     // arguments cannot select a second recipient for the same human permission.
     const id = peer ? `peer:${hash([origin.id, human.messageId])}`
       : parent?.scope.workId ?? `supergroup:${hash([origin.id, human.messageId])}`;
-    let runtime!: Runtime, operationId!: string;
+    let runtime!: Runtime, operationId!: string, projectedText!: string, hadGroup = false;
     await this.serial.run(async () => {
       const config = this.config(), pool = peer ? [human.bot, await this.registry.get(targetId)] : await this.pool(human.owner);
       const target = pool.find(bot => bot.id === targetId);
       if (!target || peer && target.createdAt !== peer.target.botCreatedAt ||
         parent && !parent.scope.readers.some(key => key.botId === target.id && key.botCreatedAt === target.createdAt))
         throw new OperationError('approval-denied');
-      let work = this.domain.table('works').get(id);
-      if (work && (work.inputMessageId !== human.messageId || ['cancelled', 'unknown'].includes(work.state) ||
-        work.configDigest !== this.configDigest() || Date.now() >= work.expiresAt ||
-        peer && !work.readers.some(key => same(key, peer.target)))) throw new OperationError('approval-denied');
-      if (!work) {
-        const now = Date.now();
-        work = await this.put({ id, revision: 0, owner: human.owner, originSessionId: origin.id, inputMessageId: human.messageId,
-          inputMessageIds: [human.messageId], configDigest: this.configDigest(), readers: pool.map(bot => ({ botId: bot.id, botCreatedAt: bot.createdAt })),
-          createdAt: now, updatedAt: now, expiresAt: now + config.timeoutMs, turnIds: [], groupInputs: [], experts: [], state: 'running' });
-      }
-      if (work.readers.some(key => !pool.some(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt))) throw new OperationError('approval-denied');
-      runtime = this.active.get(id)!;
-      if (!runtime) {
-        runtime = this.runtime(work, origin, peer?.text ?? await this.support.project(work, origin, human.messageId, human.text), human.messageId,
-          new Map(pool.map(bot => [bot.id, bot.updatedAt])), new AbortController().signal, undefined, peer?.inputDigest);
-        this.active.set(id, runtime);
-        runtime.timer = setTimeout(() => {
-          if (this.read(id).state === 'completed') {
-            runtime.controller.abort('deadline'); runtime.detach(); this.active.delete(id);
-          } else void this.cancelCurrent(id, 'deadline').catch(() => {});
-        }, Math.max(1, work.expiresAt - Date.now()));
-      }
-      await runtime.authority.check();
+      const existingWork = this.domain.table('works').get(id);
+      if (existingWork && (existingWork.inputMessageId !== human.messageId || ['cancelled', 'unknown'].includes(existingWork.state) ||
+        existingWork.configDigest !== this.configDigest() || Date.now() >= existingWork.expiresAt ||
+        peer && !existingWork.readers.some(key => same(key, peer.target)))) throw new OperationError('approval-denied');
+      if (existingWork && existingWork.readers.some(key => !pool.some(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt)))
+        throw new OperationError('approval-denied');
       operationId = hash([agent.session.id, callId]);
-      const collaboration = work.collaboration ?? { requests: 0, operations: [] };
+      const collaboration = existingWork?.collaboration ?? { requests: 0, operations: [] };
       const prior = collaboration.operations.find(row => row.id === operationId);
       if (prior) {
         if (prior.digest !== argumentDigest || prior.target.botId !== target.id || prior.target.botCreatedAt !== target.createdAt)
@@ -308,14 +297,102 @@ export class Supergroup {
         if (collaboration.operations.length >= config.maxRequests) throw new OperationError('budget-exhausted');
         if (new Set([...collaboration.operations.map(row => row.target.botId), targetId, human.owner.botId]).size > config.maxMembers)
           throw new OperationError('member-limit');
-        await this.put({ ...work, state: 'running', collaboration: { ...collaboration, operations: [...collaboration.operations,
-          { id: operationId, digest: argumentDigest, target: { botId: target.id, botCreatedAt: target.createdAt }, state: 'prepared' }] } });
+      }
+      const now = Date.now();
+      const draftWork: SupergroupWork = existingWork ?? {
+        id, revision: 0, owner: human.owner, originSessionId: origin.id, inputMessageId: human.messageId,
+        inputMessageIds: [human.messageId], configDigest: this.configDigest(),
+        readers: pool.map(bot => ({ botId: bot.id, botCreatedAt: bot.createdAt })),
+        createdAt: now, updatedAt: now, expiresAt: now + config.timeoutMs,
+        turnIds: [], groupInputs: [], experts: [], state: 'running',
+      };
+      hadGroup = Boolean(draftWork.group);
+      projectedText = peer?.text ?? (existingWork ? await this.support.project(existingWork, origin, human.messageId, human.text) : human.text);
+      const revisions = new Map(pool.map(bot => [bot.id, bot.updatedAt]));
+      const existingRuntime = this.active.get(id);
+      const candidate = existingRuntime ?? this.runtime(draftWork, origin, projectedText, human.messageId,
+        revisions, new AbortController().signal, undefined, peer?.inputDigest);
+      try {
+        if (existingWork) await candidate.authority.check();
+        else await this.verifyAuthority(draftWork, origin, human.messageId, revisions, candidate.controller.signal, undefined, peer?.inputDigest);
+        const nextOperations = prior ? collaboration.operations : [
+          ...collaboration.operations,
+          { id: operationId, digest: argumentDigest, target: { botId: target.id, botCreatedAt: target.createdAt }, state: 'prepared' as const },
+        ];
+        if (!existingWork || !prior) {
+          await this.put({ ...draftWork, state: 'running', collaboration: { ...collaboration, operations: nextOperations } });
+        }
+        if (!existingRuntime) {
+          this.active.set(id, candidate);
+          candidate.timer = setTimeout(() => {
+            try {
+              if (this.read(id).state === 'completed') {
+                candidate.controller.abort('deadline');
+                candidate.detach();
+                if (this.active.get(id) === candidate) this.active.delete(id);
+              } else {
+                void this.cancelCurrent(id, 'deadline').catch(error => {
+                  this.ctx.logger?.warn?.('[dsh-bot] Supergroup collaboration deadline cancel failed', {
+                    workId: id, phase: 'collaboration-deadline', ...redactedErrorMetadata(error),
+                  });
+                });
+              }
+            } catch (error) {
+              this.ctx.logger?.warn?.('[dsh-bot] Supergroup collaboration deadline check failed', {
+                workId: id, phase: 'collaboration-deadline', ...redactedErrorMetadata(error),
+              });
+              candidate.controller.abort('deadline');
+              candidate.detach();
+              if (this.active.get(id) === candidate) this.active.delete(id);
+            }
+          }, Math.max(1, draftWork.expiresAt - Date.now()));
+        }
+        runtime = candidate;
+      } catch (error) {
+        if (!existingRuntime) {
+          clearTimeout(candidate.timer);
+          candidate.timer = undefined;
+          candidate.detach();
+          if (this.active.get(id) === candidate) this.active.delete(id);
+        }
+        throw error;
       }
     });
     const work = this.read(id);
-    return { workId: id, operationId, origin, messageId: human.messageId, text: peer?.text ?? await this.support.project(work, origin, human.messageId, human.text), owner: work.owner,
+    const checkReceiptRevocation = () => {
+      const revoked = this.workRevocations.get(id);
+      if (revoked && revoked.generation > runtime.generation) throw revoked.reason;
+      if (this.configEpoch !== runtime.configEpoch) throw 'mode-or-scope-changed';
+      if (!hadGroup && this.read(id).group) throw 'group-handoff';
+    };
+    const checkReceipt = async (receiptSignal?: AbortSignal) => {
+      receiptSignal?.throwIfAborted();
+      checkReceiptRevocation();
+      const current = this.read(id);
+      const op = current.collaboration?.operations.find(row => row.id === operationId);
+      if (!op) throw new OperationError('conflict');
+      if (op.state === 'prepared') {
+        await runtime.authority.check();
+        await peer?.validate?.();
+        receiptSignal?.throwIfAborted();
+        return;
+      }
+      if (runtime.controller.signal.aborted && !runtime.settledCleanup) {
+        runtime.controller.signal.throwIfAborted();
+      }
+      if (op.state !== 'completed' && op.state !== 'failed') {
+        throw new OperationError('approval-denied');
+      }
+      await this.verifyAuthority(current, origin, human.messageId, runtime.revisions,
+        receiptSignal ?? new AbortController().signal, undefined, peer?.inputDigest, true);
+      await peer?.validate?.();
+      receiptSignal?.throwIfAborted();
+      checkReceiptRevocation();
+    };
+    return { workId: id, operationId, origin, messageId: human.messageId, text: projectedText, owner: work.owner,
       readers: work.readers, expiresAt: work.expiresAt, signal: runtime.controller.signal,
-      check: async () => { await runtime.authority.check(); await peer?.validate?.(); } };
+      check: async () => { await runtime.authority.check(); await peer?.validate?.(); },
+      checkReceipt };
   }
   continuationInstruction(agent: Agent): string {
     if (this.stopped || !this.config().enabled || this.ctx.agents.get(agent.id) !== agent) return '';
@@ -405,6 +482,19 @@ export class Supergroup {
         : operations.some(row => row.state === 'prepared') ? 'running' : operations.some(row => row.state === 'unknown') ? 'unknown'
           : operations.every(row => row.state === 'completed') ? 'completed' : 'partial';
       await this.put({ ...work, state, ...(result.errorCode ? { reason: result.errorCode } : {}), collaboration: { ...collaboration, operations } });
+      if (!work.group && !operations.some(row => row.state === 'prepared')) {
+        const runtime = this.active.get(scope.workId);
+        if (runtime) {
+          clearTimeout(runtime.timer);
+          runtime.timer = undefined;
+          if (!runtime.controller.signal.aborted && (state === 'completed' || state === 'partial')) {
+            runtime.settledCleanup = true;
+          }
+          runtime.controller.abort(state);
+          runtime.detach();
+          this.active.delete(scope.workId);
+        }
+      }
     });
   }
   private async pool(owner: BotKey) {
@@ -422,6 +512,35 @@ export class Supergroup {
   private workEnabled(work: SupergroupWork) {
     return !this.stopped && (work.id.startsWith('peer:') ? this.registry.config.messagingEnabled : this.config().enabled);
   }
+  private async verifyAuthority(current: SupergroupWork, agent: Agent, messageId: string,
+    revisions: Map<string, number>, signal: AbortSignal, groupInput?: SupergroupAuthority['groupInput'], peerInputDigest?: string, snapshot = false) {
+    signal.throwIfAborted();
+    const input = groupInput ? { owner: current.owner, messageId } : await this.human(agent, snapshot);
+    if (peerInputDigest && (!('text' in input) || hash(input.text) !== peerInputDigest)) throw new OperationError('conflict');
+    if (groupInput) {
+      await this.ownerAgent(current, agent, snapshot);
+      const receipt = current.groupInputs.find(row => row.messageId === groupInput.messageId);
+      const event = groupInput.root.session.snapshotEvents().find(row => row.type === 'user/message' && row.data.id === groupInput.messageId);
+      if (!receipt || !['queued', 'running', 'completed'].includes(receipt.state) || receipt.seq !== groupInput.seq ||
+        event?.type !== 'user/message' || hash(event.data.content) !== groupInput.digest || event.data.source.kind !== 'user' || hash({ group: current.group, workId: current.id, expectedRevision: receipt.expectedRevision,
+          text: event.data.content.map(block => block.type === 'text' ? block.text : '').join('\n'), memberIds: receipt.memberIds ?? [], replyTo: receipt.replyTo }) !== receipt.digest)
+        throw new OperationError('approval-denied');
+    }
+    if (!this.workEnabled(current) || current.state === 'cancelled' || current.state === 'unknown' ||
+      current.configDigest !== this.configDigest() || Date.now() >= current.expiresAt || input.messageId !== messageId ||
+      !same(input.owner, current.owner)) throw new OperationError('approval-denied');
+    for (const key of current.readers) {
+      if (snapshot) {
+        const bot = await committedBot(this.registry, key);
+        if (!bot || bot.updatedAt !== revisions.get(key.botId)) throw new OperationError('conflict');
+      } else {
+        const bot = await this.registry.get(key.botId);
+        if (bot.createdAt !== key.botCreatedAt || bot.updatedAt !== revisions.get(key.botId)) throw new OperationError('conflict');
+      }
+    }
+    await this.support.text(current, '', snapshot);
+    signal.throwIfAborted();
+  }
   private runtime(work: SupergroupWork, agent: Agent, text: string, messageId: string,
     revisions: Map<string, number>, signal: AbortSignal, groupInput?: SupergroupAuthority['groupInput'], peerInputDigest?: string): Runtime {
     const controller = new AbortController();
@@ -429,31 +548,8 @@ export class Supergroup {
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) abort();
     controller.signal.addEventListener('abort', () => signal.removeEventListener('abort', abort), { once: true });
-    const check = async () => {
-      controller.signal.throwIfAborted();
-      const current = this.read(work.id);
-      const input = groupInput ? { owner: work.owner, messageId } : await this.human(agent, true);
-      if (peerInputDigest && (!('text' in input) || hash(input.text) !== peerInputDigest)) throw new OperationError('conflict');
-      if (groupInput) {
-        await this.ownerAgent(current, agent, true);
-        const receipt = current.groupInputs.find(row => row.messageId === groupInput.messageId);
-        const event = groupInput.root.session.snapshotEvents().find(row => row.type === 'user/message' && row.data.id === groupInput.messageId);
-        if (!receipt || !['queued', 'running', 'completed'].includes(receipt.state) || receipt.seq !== groupInput.seq ||
-          event?.type !== 'user/message' || hash(event.data.content) !== groupInput.digest || event.data.source.kind !== 'user' || hash({ group: current.group, workId: current.id, expectedRevision: receipt.expectedRevision,
-            text: event.data.content.map(block => block.type === 'text' ? block.text : '').join('\n'), memberIds: receipt.memberIds ?? [], replyTo: receipt.replyTo }) !== receipt.digest)
-          throw new OperationError('approval-denied');
-      }
-      if (!this.workEnabled(current) || current.state === 'cancelled' || current.state === 'unknown' ||
-        current.configDigest !== this.configDigest() || Date.now() >= current.expiresAt || input.messageId !== messageId ||
-        !same(input.owner, current.owner)) throw new OperationError('approval-denied');
-      for (const key of current.readers) {
-        const bot = await committedBot(this.registry, key);
-        if (!bot || bot.updatedAt !== revisions.get(key.botId)) throw new OperationError('conflict');
-      }
-      await this.support.text(current, '', true);
-      controller.signal.throwIfAborted();
-    };
-    return { controller, text, revisions, turnIds: [], detach: () => signal.removeEventListener('abort', abort), authority: { workId: work.id, origin: agent, messageId, ...(groupInput ? { groupInput } : {}), owner: work.owner,
+    const check = () => this.verifyAuthority(this.read(work.id), agent, messageId, revisions, controller.signal, groupInput, peerInputDigest, true);
+    return { controller, text, revisions, generation: this.revocationGeneration, configEpoch: this.configEpoch, turnIds: [], detach: () => signal.removeEventListener('abort', abort), authority: { workId: work.id, origin: agent, messageId, ...(groupInput ? { groupInput } : {}), owner: work.owner,
       ...((work.materials?.length || work.resumes?.some(row => row.messageId === messageId)) ? { projectInput: (value: string) => this.support.project(this.read(work.id), agent, messageId, value) } : {}),
       readers: work.readers, expiresAt: work.expiresAt, check, maxRequests: this.config().maxRequests,
       reserveRequest: () => this.reserveWorkRequest(work.id), requestsUsed: () => this.read(work.id).collaboration?.requests ?? 0 } };
@@ -503,6 +599,7 @@ export class Supergroup {
           input.memberIds.some(id => !pool.some(bot => bot.id === id))) throw new OperationError('approval-denied');
         if (prior && input.memberIds.some(id => !prior.readers.some(reader => reader.botId === id))) throw new OperationError('approval-denied');
         const now = Date.now();
+        const projected = prior ? await this.support.project(prior, agent, human.messageId, human.text) : human.text;
         work = prior ?? await this.put({ id, revision: 0, owner: human.owner, originSessionId: agent.id,
           inputMessageId: human.messageId, inputMessageIds: [human.messageId], configDigest: this.configDigest(),
           readers: pool.map(bot => ({ botId: bot.id, botCreatedAt: bot.createdAt })), createdAt: now, updatedAt: now,
@@ -511,7 +608,11 @@ export class Supergroup {
           expiresAt: Date.now() + config.timeoutMs, inputMessageIds: [...new Set([...work.inputMessageIds, human.messageId])] });
         const existing = this.active.get(work.id);
         if (existing) { clearTimeout(existing.timer); existing.controller.abort('group-handoff'); existing.detach(); }
-        runtime = this.runtime(work, agent, await this.support.project(work, agent, human.messageId, human.text), human.messageId, new Map(pool.map(bot => [bot.id, bot.updatedAt])), signal);
+        if (prior?.collaboration?.operations.length) {
+          this.revocationGeneration++;
+          this.workRevocations.set(work.id, { generation: this.revocationGeneration, reason: 'group-handoff' });
+        }
+        runtime = this.runtime(work, agent, projected, human.messageId, new Map(pool.map(bot => [bot.id, bot.updatedAt])), signal);
       } else {
         work = this.chosen(agent, input.workId);
         if (work.inputMessageIds.includes(human.messageId)) { runtime = this.active.get(work.id); return; }
@@ -520,9 +621,10 @@ export class Supergroup {
         const pool = await this.pool(human.owner);
         if (work.readers.some(key => !pool.some(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt)))
           throw new OperationError('approval-denied');
+        const projected = await this.support.project(work, agent, human.messageId, human.text);
         work = await this.put({ ...work, state: 'running', reason: undefined, expiresAt: Date.now() + this.config().timeoutMs,
           inputMessageIds: [...work.inputMessageIds, human.messageId] });
-        runtime = this.runtime(work, agent, await this.support.project(work, agent, human.messageId, human.text), human.messageId, new Map(pool.map(bot => [bot.id, bot.updatedAt])), signal);
+        runtime = this.runtime(work, agent, projected, human.messageId, new Map(pool.map(bot => [bot.id, bot.updatedAt])), signal);
       }
       this.active.set(work!.id, runtime!);
       const id = work!.id;
@@ -591,6 +693,10 @@ export class Supergroup {
       if (runtime.inputOperationId) await this.serial.run(() => this.updateInput(work.id, runtime.inputOperationId!, row => ({ ...row, state: 'completed' })));
       return result;
     } catch (error) {
+      this.ctx.logger?.warn?.('[dsh-bot] Supergroup execution failed; marking unknown', {
+        workId: initial.id, ...(initial.group ? { groupId: initial.group.groupId } : {}),
+        phase: 'execute', ...redactedErrorMetadata(error),
+      });
       runtime.controller.abort('execution-or-delivery-unconfirmed');
       const current = this.read(initial.id);
       if (runtime.inputOperationId) await this.serial.run(() => this.updateInput(initial.id, runtime.inputOperationId!, row => ({ ...row, state: current.state === 'cancelled' ? 'cancelled' : 'unknown', reason: 'execution-or-delivery-unconfirmed' })));
@@ -797,6 +903,10 @@ export class Supergroup {
         if (this.stopped || !this.config().enabled || !['completed', 'partial', 'running'].includes(work.state) || !work.group) {
           await this.updateInput(id, operationId, input => ({ ...input, state: work.state === 'cancelled' ? 'cancelled' : 'unknown', reason: 'work-not-resumable' })); return;
         }
+        const groupId = work.group.groupId;
+        const previousWorkState = work.state;
+        let persistedRunning = false;
+        let selected: Runtime | undefined;
         try {
           if (!view || view.group.id !== work.group.groupId || view.group.createdAt !== work.group.groupCreatedAt)
             throw new OperationError('approval-denied');
@@ -806,20 +916,49 @@ export class Supergroup {
           if (!root || event?.type !== 'user/message' || row.seq !== Number(event.seq)) throw new OperationError('approval-denied');
           const pool = await this.pool(work.owner);
           if (work.readers.some(reader => !pool.some(bot => bot.id === reader.botId && bot.createdAt === reader.botCreatedAt))) throw new OperationError('approval-denied');
+          const rawText = event.data.content.map(block => block.type === 'text' ? block.text : '').join('\n');
+          const text = await this.support.text(work, rawText);
           work = await this.put({ ...work, state: 'running', reason: undefined, expiresAt: Date.now() + this.config().timeoutMs,
             inputMessageIds: [...work.inputMessageIds, row.messageId], groupInputs: work.groupInputs.map(input => input.operationId === operationId ? { ...input, state: 'running' } : input) });
-          runtime = this.runtime(work, agent, await this.support.text(work, event.data.content.map(block => block.type === 'text' ? block.text : '').join('\n')), row.messageId,
+          persistedRunning = true;
+          selected = this.runtime(work, agent, text, row.messageId,
             new Map(pool.map(bot => [bot.id, bot.updatedAt])), new AbortController().signal,
             { root, group: work.group!, messageId: row.messageId, seq: row.seq!, digest: hash(event.data.content), originMainMessageId: work.inputMessageId });
-          runtime.inputOperationId = operationId; runtime.memberIds = row.memberIds; runtime.replyTo = row.replyTo;
-          this.active.set(id, runtime);
-          const selected = runtime;
-          selected.timer = setTimeout(() => { void this.cancelCurrent(id, 'deadline').catch(() => {}); }, this.config().timeoutMs);
-          selected.task = this.execute(work, selected).finally(() => {
-            clearTimeout(selected.timer); selected.detach(); if (this.active.get(id) === selected) this.active.delete(id);
+          selected.inputOperationId = operationId; selected.memberIds = row.memberIds; selected.replyTo = row.replyTo;
+          this.active.set(id, selected);
+          const activeRuntime = selected;
+          activeRuntime.timer = setTimeout(() => { void this.cancelCurrent(id, 'deadline').catch(() => {}); }, this.config().timeoutMs);
+          activeRuntime.task = this.execute(work, activeRuntime).finally(() => {
+            clearTimeout(activeRuntime.timer); activeRuntime.detach(); if (this.active.get(id) === activeRuntime) this.active.delete(id);
           });
-        } catch {
-          await this.updateInput(id, operationId, input => ({ ...input, state: 'unknown', reason: 'owner-or-input-unavailable' }));
+          runtime = activeRuntime;
+        } catch (error) {
+          this.ctx.logger?.warn?.('[dsh-bot] Supergroup scheduled group input failed before execution', {
+            workId: id, groupId, phase: 'schedule-group-input', ...redactedErrorMetadata(error),
+          });
+          if (selected) {
+            clearTimeout(selected.timer);
+            selected.timer = undefined;
+            selected.detach();
+            if (this.active.get(id) === selected) this.active.delete(id);
+          }
+          runtime = undefined;
+          try {
+            const current = this.read(id);
+            await this.put({
+              ...current,
+              ...(persistedRunning && current.state === 'running' ? {
+                state: previousWorkState === 'running' ? 'unknown' as const : previousWorkState,
+                reason: 'owner-or-input-unavailable',
+              } : {}),
+              groupInputs: current.groupInputs.map(input => input.operationId === operationId
+                ? { ...input, state: 'unknown' as const, reason: 'owner-or-input-unavailable' } : input),
+            });
+          } catch (markError) {
+            this.ctx.logger?.warn?.('[dsh-bot] Supergroup could not persist failed scheduled group input state', {
+              workId: id, groupId, phase: 'schedule-group-input', ...redactedErrorMetadata(markError),
+            });
+          }
         }
       });
       if (runtime?.task) await runtime.task;
@@ -892,6 +1031,8 @@ export class Supergroup {
     const work = await this.serial.run(async () => {
       const current = this.read(id);
       if (expectedRevision !== undefined && current.revision !== expectedRevision) throw new OperationError('conflict');
+      this.revocationGeneration++;
+      this.workRevocations.set(id, { generation: this.revocationGeneration, reason });
       runtime?.controller.abort(reason);
       clearTimeout(runtime?.timer);
       runtime?.detach();
@@ -913,11 +1054,27 @@ export class Supergroup {
     }
   }
   async configChanged() {
+    this.configEpoch++;
     const ids = new Set([...this.active.keys(), ...this.groupInputTails.keys(),
       ...[...this.domain.table('works').entries()].filter(([, work]) => work.groupInputs.some(input =>
         input.delivery && ['prepared', 'dispatching', 'queued'].includes(input.delivery.state))).map(([id]) => id)]);
-    await Promise.all([...ids].map(id => this.cancelCurrent(id, 'mode-or-scope-changed')));
+    const results = await Promise.allSettled([...ids].map(async id => {
+      try {
+        await this.cancelCurrent(id, 'mode-or-scope-changed');
+      } catch (error) {
+        this.ctx.logger?.warn?.('[dsh-bot] Supergroup work cancellation failed during config update', {
+          workId: id, phase: 'config-changed', ...redactedErrorMetadata(error),
+        });
+        throw error;
+      }
+    }));
     this.registry.invalidate();
+    const failedCount = results.filter(row => row.status === 'rejected').length;
+    if (failedCount > 0) {
+      this.ctx.logger?.warn?.('[dsh-bot] Supergroup config update completed with cancellation failures', {
+        phase: 'config-changed', failedCount,
+      });
+    }
   }
   close() {
     this.closing ??= (async () => {
@@ -930,6 +1087,7 @@ export class Supergroup {
       await Promise.allSettled(operations.map(([id]) => this.cancelCurrent(id, 'host-unloaded')));
       await Promise.allSettled(operations.map(([, runtime]) => runtime.task));
       await Promise.allSettled([...this.groupInputTails.values()]);
+      this.workRevocations.clear();
       await this.serial.close(); await this.domain.close();
     })();
     return this.closing;

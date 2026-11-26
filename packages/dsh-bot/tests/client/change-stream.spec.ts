@@ -3,7 +3,11 @@ import * as Gateway from '@deepseek-ai/dsh-api-gateway/client';
 import { installConnection } from '@deepseek-ai/dsh-client-connection/client';
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry';
 import { describe, expect, it, vi } from 'vitest';
-import { createChangeStream } from '../../src/client/change-stream.js';
+import { createChangeStream, sharedChangeStream } from '../../src/client/change-stream.js';
+import { createGroupActions } from '../../src/client/groups-state.js';
+import { createSupergroupUiBridge } from '../../src/client/supergroup.js';
+import { createTaskSupportActions } from '../../src/client/task-support.js';
+import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import TYPERT_REMOTE from '../../src/typert.remote-client.js';
 
 /** Only the transport is doubled. Published Connection + Gateway mounting,
@@ -102,5 +106,96 @@ describe('public Remote change invalidations', () => {
       expect(f.changed).toHaveBeenCalledTimes(2);
       expect(f.runs).toHaveLength(2);
     } finally { await f.ctx.fiber.dispose(); }
+  });
+
+  it('shares one remote.watch stream across scheduler, supergroup, and task-support without duplicate refreshes, and cleans up on dispose', async () => {
+    const runs: { signal: AbortSignal; push(revision: number): void; stopped: boolean }[] = [];
+    const watch = vi.fn((signal: AbortSignal) => {
+      const queue: Array<{ revision: number }> = [{ revision: 0 }];
+      let wake: (() => void) | undefined;
+      const run = { signal, stopped: false, push(revision: number) { queue.push({ revision }); wake?.(); } };
+      runs.push(run);
+      const iterable = (async function* () {
+        const abort = () => wake?.();
+        signal.addEventListener('abort', abort, { once: true });
+        try {
+          while (!signal.aborted) {
+            const next = queue.shift();
+            if (next) { yield next; continue; }
+            await new Promise<void>(resolve => { wake = resolve; });
+          }
+        } finally { run.stopped = true; signal.removeEventListener('abort', abort); }
+      })();
+      return Object.assign(iterable, { dispose() { wake?.(); } });
+    });
+
+    const ctx = new Context();
+    let groupVersion = 0;
+    const groupList = vi.fn(async () => ({
+      ok: true as const,
+      value: [{
+        group: {
+          id: `g-${++groupVersion}`, name: 'Team', cwd: '/tmp', rootSessionId: 'root', mode: 'natural' as const,
+          createdAt: 1, updatedAt: groupVersion, revision: groupVersion, membershipRevision: 1,
+          schemaVersion: 1, archived: false, state: 'ready' as const,
+        },
+        members: [],
+        running: false,
+      }],
+    }));
+    const forSession = vi.fn(async () => ({ ok: true as const, value: null }));
+    ctx.provide('remote.dshBot', { watch } as never);
+    ctx.provide('remote.dshBot.groups', { list: groupList } as unknown as GroupMethods);
+    ctx.provide('remote.dshBotSupergroup', { forSession } as never);
+
+    try {
+      const groups = createGroupActions(ctx, {});
+      const supergroup = createSupergroupUiBridge(ctx, groups);
+      const taskSupport = createTaskSupportActions(ctx, listener => groups.catalog.watch?.(listener) ?? (() => {}));
+      const taskListener = vi.fn();
+
+      const offCatalog = groups.catalog.subscribe(() => {});
+      const offSupergroup = supergroup.source('origin', 'msg-1').subscribe(() => {});
+      const offTask = taskSupport.subscribe?.(taskListener);
+
+      // Wait for initial mount reads AND the opening `{ revision: 0 }` frame to settle.
+      await vi.waitFor(() => expect(taskListener).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(groupList.mock.calls.length).toBeGreaterThanOrEqual(2));
+      await vi.waitFor(() => expect(forSession.mock.calls.length).toBeGreaterThanOrEqual(2));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+      expect(watch).toHaveBeenCalledTimes(1);
+      expect(sharedChangeStream(ctx).isActive()).toBe(true);
+
+      const supergroupCallsBefore = forSession.mock.calls.length;
+      const taskCallsBefore = taskListener.mock.calls.length;
+      const listCallsBefore = groupList.mock.calls.length;
+
+      runs[0]?.push(1);
+      await vi.waitFor(() => expect(groupList).toHaveBeenCalledTimes(listCallsBefore + 1));
+      await vi.waitFor(() => expect(forSession).toHaveBeenCalledTimes(supergroupCallsBefore + 1));
+      await vi.waitFor(() => expect(taskListener).toHaveBeenCalledTimes(taskCallsBefore + 1));
+      // Allow catalog.watch to settle and confirm neither supergroup nor task-support double-refreshed.
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+      expect(watch).toHaveBeenCalledTimes(1);
+      expect(forSession).toHaveBeenCalledTimes(supergroupCallsBefore + 1);
+      expect(taskListener).toHaveBeenCalledTimes(taskCallsBefore + 1);
+
+      offCatalog();
+      offSupergroup();
+      offTask?.();
+      await vi.waitFor(() => expect(runs[0]?.stopped).toBe(true));
+      expect(runs[0]?.signal.aborted).toBe(true);
+
+      // Re-subscribe and verify ctx.fiber.dispose() cleans up the active shared stream.
+      groups.catalog.subscribe(() => {});
+      supergroup.source('origin', 'msg-1').subscribe(() => {});
+      taskSupport.subscribe?.(taskListener);
+      await vi.waitFor(() => expect(watch).toHaveBeenCalledTimes(2));
+      await ctx.fiber.dispose();
+      expect(runs[1]?.signal.aborted).toBe(true);
+      expect(runs[1]?.stopped).toBe(true);
+    } finally {
+      await ctx.fiber.dispose();
+    }
   });
 });

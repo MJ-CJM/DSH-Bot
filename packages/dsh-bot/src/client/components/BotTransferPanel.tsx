@@ -48,18 +48,21 @@ export function TransferPanel({ bot, actions, t }: { bot?: BotRecord; actions: W
     }
   };
   const review = preview?.kind === 'preview' ? preview.preview : undefined;
-  const invalidate = () => setPreview(undefined);
+  const invalidate = () => {
+    setPreview(undefined);
+    setError(false);
+  };
   return (
     <div>
       <p>{t('manage.portableHint')}</p>
-      <SegmentedTabs label={t('manage.transfer')} value={section} onChange={setSection} items={[{ value: 'export', id: `${uid}-export`, panelId: `${uid}-export-panel`, label: t('manage.export') }, { value: 'import', id: `${uid}-import`, panelId: `${uid}-import-panel`, label: t('manage.import') }]} />
+      <SegmentedTabs label={t('manage.transfer')} value={section} onChange={next => { setSection(next); setError(false); }} items={[{ value: 'export', id: `${uid}-export`, panelId: `${uid}-export-panel`, label: t('manage.export') }, { value: 'import', id: `${uid}-import`, panelId: `${uid}-import-panel`, label: t('manage.import') }]} />
       <section role="tabpanel" id={`${uid}-export-panel`} aria-labelledby={`${uid}-export`} hidden={section !== 'export'} aria-label={t('manage.export')}>
       <p>{t('manage.textSkills')}</p>
       {bot && (
         <fieldset disabled={busy}>
           <legend>{t('manage.export')}</legend>
-          <Checkbox checked={skills} onChange={setSkills} label={t('manage.includeSkills')} />
-          <Checkbox checked={memories} onChange={setMemories} label={t('manage.includeMemories')} />
+          <Checkbox checked={skills} onChange={next => { setSkills(next); setError(false); }} label={t('manage.includeSkills')} />
+          <Checkbox checked={memories} onChange={next => { setMemories(next); setError(false); }} label={t('manage.includeMemories')} />
           <Button
             type="button"
             onClick={() => {
@@ -185,6 +188,7 @@ export function TransferPanel({ bot, actions, t }: { bot?: BotRecord; actions: W
                   }),
                 );
                 if (alive.current) { setPreview(r); setAcceptedDraft(JSON.stringify([document, newId])); }
+                await Promise.allSettled([actions.refreshBots?.()]);
               } catch (error) {
                 const r = unwrap(
                   await actions.workspace({
@@ -193,6 +197,9 @@ export function TransferPanel({ bot, actions, t }: { bot?: BotRecord; actions: W
                   }),
                 );
                 if (alive.current) setPreview(r);
+                if (r.kind === 'preview' && r.preview.phase === 'committed') {
+                  await Promise.allSettled([actions.refreshBots?.()]);
+                }
                 throw error;
               }
             });

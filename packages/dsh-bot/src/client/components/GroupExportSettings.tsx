@@ -24,6 +24,8 @@ export function GroupExportSettings({ group, actions, bots, onSaved, t }: {
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const lock = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const confirmation = useRef<HTMLFieldSetElement>(null);
   const trigger = useRef<HTMLButtonElement>();
   const { id, createdAt, revision, membershipRevision } = group;
@@ -32,7 +34,10 @@ export function GroupExportSettings({ group, actions, bots, onSaved, t }: {
     let current = true;
     setSettings(undefined);
     void actions.remote().getExportApprovalSettings({ groupId: id, groupCreatedAt: createdAt }).then(unwrapGroup).then(value => {
-      if (current) setSettings(value);
+      if (current) {
+        setSettings(value);
+        setProblem(previous => previous === 'load' ? undefined : previous);
+      }
     }).catch(() => {
       if (current) setProblem(value => value ?? 'load');
     });
@@ -50,12 +55,12 @@ export function GroupExportSettings({ group, actions, bots, onSaved, t }: {
     try {
       unwrapGroup(await actions.remote().setExportApproval(groupKey(group), bot, enabled, snapshot.groupRevision, snapshot.membershipRevision));
     } catch (error) {
-      setProblem(hasOperationCode(error, 'conflict') ? 'changed' : 'save');
+      if (mounted.current) setProblem(hasOperationCode(error, 'conflict') ? 'changed' : 'save');
     } finally {
-      setAttempt(value => value + 1);
+      if (mounted.current) setAttempt(value => value + 1);
       await Promise.allSettled([onSaved(), actions.catalog.refresh(), actions.messageView(groupKey(group)).refresh()]);
       lock.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   const confirm = selected && settings && selected.settings.groupRevision === settings.groupRevision &&

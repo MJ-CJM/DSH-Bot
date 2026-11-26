@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { RecentConversations } from './RecentConversations.js';
 import { DirectoryPending } from './DirectoryPending.js';
 import { Button, Toast } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/bots.module.css';
 import identityCss from '../styles/identity.module.css?inline';
 import css from '../styles/bots.module.css?inline';
@@ -45,6 +46,8 @@ export function BotsPage(page: BotsPageProps) {
   const { snapshot, pageElement, compact, tab, setTab, section, busy, open, entries, unavailable, toast, setToast } = model;
   const selectedGroup = groups?.catalog.getSnapshot().groups.find(row => row.group.id === model.selectedGroup?.id && row.group.createdAt === model.selectedGroup.createdAt);
   const sectionLabel = section === 'bots' ? t('navigation.myBots') : section === 'groups' ? (selectedGroup?.group.name ?? t('groups.title')) : t('chat.recent');
+  useStyleSheet('bots', css);
+  useStyleSheet('identity', identityCss);
   return (
     <SettingsDrafts.Provider value={settings.registry}><section
       ref={pageElement}
@@ -52,7 +55,6 @@ export function BotsPage(page: BotsPageProps) {
       data-bots-page=""
       aria-label={t('bots.title')}
     >
-      <style data-dsh-bot-styles="">{css + identityCss}</style>
       <div className={styles.pageScroll} ref={model.scrollElement} onScroll={event => model.rememberScroll(event.currentTarget.scrollTop)}>
         <div className={styles.pageContent}>
           <header hidden={model.showDetail && tab !== 'management'} className={styles.header}>
@@ -61,15 +63,15 @@ export function BotsPage(page: BotsPageProps) {
               <p className={styles.subtitle}>{tab === 'management' ? t('navigation.settingsFrom', { name: sectionLabel }) : t('bots.subtitle')}</p>
             </div>
             <div className={styles.actions}>
-              <button type="button" ref={model.settingsButton} className={styles.button} data-settings-navigation="" onClick={() => tab === 'management' ? settings.leave(model.returnFromSettings) : setTab('management')}>{tab === 'management' ? t('navigation.returnTo', { name: sectionLabel }) : text('chat.settings')}</button>
+              <button type="button" ref={model.settingsButton} className={styles.button} data-settings-navigation="" onClick={() => settings.leave(() => { if (tab === 'management') model.returnFromSettings(); else setTab('management'); })}>{tab === 'management' ? t('navigation.returnTo', { name: sectionLabel }) : text('chat.settings')}</button>
             </div>
           </header>
           <nav hidden={model.showDetail && tab !== 'management'} className={styles.sectionNavigation} aria-label={t('navigation.sections')}>
             {(['bots', 'groups', 'recent'] as const).filter(key => key !== 'groups' || groups).map(key => <button
               type="button" key={key} className={styles.button} aria-current={tab !== 'management' && section === key ? 'page' : undefined}
               onClick={() => {
-                const go = () => { setTab(key); setCreatingGroup(false); model.setShowDetail(false); };
-                if (tab === 'management') settings.leave(go); else go();
+                if (tab === key && !creatingGroup && !model.showDetail) return;
+                settings.leave(() => { setTab(key); setCreatingGroup(false); model.setShowDetail(false); });
               }}>
               {t(key === 'bots' ? 'navigation.myBots' : key === 'groups' ? 'groups.title' : 'chat.recent')}
             </button>)}

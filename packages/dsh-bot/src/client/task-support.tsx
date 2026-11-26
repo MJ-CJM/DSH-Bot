@@ -5,7 +5,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { taskSupportSchema, type TaskMaterialInput, type TaskResumeInput, type TaskSupport } from '../shared/task-materials.js';
 import type { BotRecord } from '../shared/schema.js';
 import type { IntegrationActions } from './integrations-state.js';
-import { createChangeStream } from './change-stream.js';
+import { sharedChangeStream } from './change-stream.js';
 import { ConnectorsPanel } from './components/ConnectorsPanel.js';
 
 export interface TaskSupportActions {
@@ -19,11 +19,30 @@ export function createTaskSupportActions(ctx: Context, subscribe?: TaskSupportAc
   const remote = () => { const service = ctx.get('remote.dshBotSupergroup'); if (!service) throw new Error('Unavailable'); return service; };
   const unwrap = <T,>(result: { ok: true; value: T } | { ok: false; error: unknown }) => { if (!result.ok) throw result.error; return result.value; };
   const listeners = new Set<() => void>();
-  const stream = createChangeStream(ctx, () => { for (const listener of listeners) listener(); });
-  ctx.effect(() => () => { listeners.clear(); void stream.stop(); }, 'dsh-bot: task support invalidation');
+  const notify = () => { for (const listener of [...listeners]) listener(); };
+  const sharedStream = sharedChangeStream(ctx);
+  const stream = sharedStream.lease(notify);
+  let offFallback: (() => void) | undefined;
+  const start = () => {
+    stream.start();
+    // Avoid double refresh per Host push while the shared change stream is live;
+    // keep the catalog watcher as fallback when no watch stream is open.
+    offFallback ??= subscribe?.(() => { if (!sharedStream.isActive()) notify(); });
+  };
+  const stop = () => {
+    offFallback?.();
+    offFallback = undefined;
+    void stream.stop();
+  };
+  ctx.effect(() => async () => {
+    listeners.clear();
+    offFallback?.();
+    offFallback = undefined;
+    await stream.dispose();
+  }, 'dsh-bot: task support invalidation');
   return { subscribe(listener) {
-    listeners.add(listener); stream.start(); const off = subscribe?.(listener);
-    return () => { listeners.delete(listener); off?.(); if (!listeners.size) void stream.stop(); };
+    listeners.add(listener); start();
+    return () => { listeners.delete(listener); if (!listeners.size) stop(); };
   },
     view: async workId => taskSupportSchema.parse(unwrap(await remote().taskSupport({ workId }))),
     add: async input => taskSupportSchema.parse(unwrap(await remote().addMaterial(input))),

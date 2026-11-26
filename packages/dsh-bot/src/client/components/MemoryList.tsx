@@ -1,6 +1,7 @@
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { MemoryRecord } from '../../shared/schema.js';
 import type { MemoryPanelProps } from './MemoryPanel.js';
+import { formatDateTime } from '../format.js';
 import { kindKeys } from './MemoryEditor.js';
 import styles from '../styles/bots.module.css';
 import panel from '../styles/memory.module.css';
@@ -27,7 +28,7 @@ export function MemoryList({ records, busy, draft, pendingDelete, t, onOpenSessi
     const valid = Number.isFinite(date.getTime());
     return (
         <time dateTime={valid ? date.toISOString() : undefined}>
-          {t(label, { time: valid ? date.toLocaleString() : t('memory.timeUnavailable') })}
+          {t(label, { time: valid ? formatDateTime(date, t('activity.locale')) : t('memory.timeUnavailable') })}
         </time>
       );
     }

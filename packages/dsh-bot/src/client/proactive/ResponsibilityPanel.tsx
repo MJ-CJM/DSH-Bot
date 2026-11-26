@@ -1,6 +1,7 @@
 import { Button, Input } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useSettingsDraft } from "../components/SettingsNavigation.js";
 import { sameBot, type BotKey } from "../../shared/identity.js";
 import {
 	responsibilityDraftSchema,
@@ -14,6 +15,8 @@ import {
 	type ResponsibilitySource,
 	type ResponsibilityView,
 } from "../../shared/proactive/responsibility.js";
+import { formatDateTime } from "../format.js";
+import { useStyleSheet } from "../use-style-sheet.js";
 import styles from "./responsibility.module.css";
 import styleText from "./responsibility.module.css?inline";
 
@@ -98,6 +101,7 @@ export function ResponsibilityPanel({
 	const [editing, setEditing] = useState<Responsibility>();
 	const [createdId, setCreatedId] = useState<string>();
 	const [busy, setBusy] = useState(false);
+	useSettingsDraft(Boolean(draft) || busy);
 	const [status, setStatus] = useState<"loading" | "ready" | "unavailable">(
 		"loading",
 	);
@@ -254,10 +258,10 @@ export function ResponsibilityPanel({
 	const changeLimit = (key: keyof ResponsibilityLimits, value: string) => {
 		if (draft) change({ limits: { ...draft.limits, [key]: Number(value) } });
 	};
+	useStyleSheet('proactive-responsibility', styleText);
 	const disabled = busy || !!pendingRequest.current || status !== "ready";
 	return (
 		<section className={styles.panel} aria-label={t("responsibility.title")}>
-			<style>{styleText}</style>
 			<div className={styles.actions}>
 				<h2>{t("responsibility.title")}</h2>
 				<Button variant="ghost" disabled={busy} onClick={() => void refresh()}>
@@ -323,7 +327,7 @@ export function ResponsibilityPanel({
 					</p>
 					<p>
 						{t("responsibility.reset", {
-							at: new Date(usage.resetsAt).toLocaleString(),
+							at: formatDateTime(usage.resetsAt, t("activity.locale")),
 						})}
 					</p>
 					{!usage.measurementComplete && (

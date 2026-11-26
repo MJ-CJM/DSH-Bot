@@ -10,6 +10,7 @@ import { RelayDetails } from './components/RelayDetails.js';
 import type { GroupActions } from './groups-state.js';
 import { messageSourceSchema, type MessageSource } from '../shared/messaging.js';
 import { BotAvatar, avatarColors, defaultAvatarColor } from './components/BotAvatar.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import styles from './styles/messages.module.css';
 export interface MessageCardData { source: MessageSource; text: string; time: number; seq: number }
 declare module '@deepseek-ai/dsh-client-ui-chat/client' {
@@ -62,6 +63,7 @@ export interface MessageCardActions {
 }
 /** Centered marker for one teammate message; the content stays folded until asked for. */
 export function MessageCard({ node, sessionId, t, onOpenBot, onShowStatus, groups }: { sessionId?: string; node: ChatNode<'dsh-bot-message'> } & MessageCardActions & PropsLocale<'dsh-bot'>) {
+  useStyleSheet('messages', css);
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   const { source: s, text, time } = node.data;
@@ -75,7 +77,6 @@ export function MessageCard({ node, sessionId, t, onOpenBot, onShowStatus, group
   const name = <><BotAvatar bot={bot} size={18} /><span className={styles.chipName} style={{ color }}>{display.name}</span></>;
   const label = t('badge.open', { name: display.name });
   return <article className={styles.card} data-bot-message={s.messageId} data-group-relay-receipt={s.groupRelayReceipt ? '' : undefined} data-message-direction={sent ? 'sent' : 'received'} data-message-mode={s.mode}>
-    <style>{css}</style>
     <div className={styles.marker} data-bot-message-marker="">
       <span className={sent ? styles.direction : `${styles.direction} ${styles.received}`} aria-hidden="true"><IconRightUpOutlineRegular size={14} /></span>
       <span>{t(messageLabel(s))}</span>
@@ -95,8 +96,8 @@ export function MessageCard({ node, sessionId, t, onOpenBot, onShowStatus, group
     {open && !s.groupRelayReceipt && <div id={bodyId} className={styles.body}>
       <p className={styles.content}>{content}</p>
       <p className={styles.caption}>{t('messages.data')}</p>
-      <p className={styles.caption} title={`${s.threadId}${s.replyTo ? ` · replyTo: ${s.replyTo}` : ''}`} data-message-thread={s.threadId}>
-        {t('messages.thread')}: {s.threadId.slice(0, 8)}{s.replyTo ? ` · replyTo: ${s.replyTo.slice(0, 8)}` : ''}
+      <p className={styles.caption} title={`${s.threadId}${s.replyTo ? ` · ${t('messages.replyTo')}: ${s.replyTo}` : ''}`} data-message-thread={s.threadId}>
+        {t('messages.thread')}: {s.threadId.slice(0, 8)}{s.replyTo ? ` · ${t('messages.replyTo')}: ${s.replyTo.slice(0, 8)}` : ''}
       </p>
       {onShowStatus && <button type="button" className={styles.link} onClick={() => onShowStatus(sent ? s.from.botId : s.to.botId)}>{t('messages.status')}</button>}
     </div>}

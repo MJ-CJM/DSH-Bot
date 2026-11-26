@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { MemoryChangesPage, MemoryRestore } from '../../shared/memory-management.js';
+import { formatDateTime } from '../format.js';
 import styles from '../styles/bots.module.css';
 import panel from '../styles/memory.module.css';
 
@@ -45,7 +46,7 @@ export function MemoryChanges({ binding, t }: { binding: MemoryChangesBinding; t
     {page && !page.rows.length && <p>{t('memory.changes.empty')}</p>}
     {page && <ul>{page.rows.map(row => <li key={row.version.versionId} data-memory-change={row.version.versionId}>
       <p>{t(`memory.changes.source.${row.version.provenance.channel}`)} · <time dateTime={new Date(row.version.recordedAt).toISOString()}>
-        {new Date(row.version.recordedAt).toLocaleString()}</time> · {t('memory.changes.revision', { revision: row.version.revision })}</p>
+        {formatDateTime(row.version.recordedAt, t('activity.locale'))}</time> · {t('memory.changes.revision', { revision: row.version.revision })}</p>
       <p>{t('memory.changes.bot', { id: row.version.provenance.bot.botId })}</p>
       {binding.openSession && [...new Set(row.version.sourceRefs.flatMap(ref => ref.sessionId ? [ref.sessionId] : []))].map(id =>
         <button key={id} type="button" className={styles.button} onClick={() => { void Promise.resolve(binding.openSession?.(id)).catch(() => setError(true)); }}>

@@ -16,15 +16,26 @@ const fold = (text: string) => text.normalize('NFKC').toLocaleLowerCase();
  * A command pick first removes its typed token, then runs.
  */
 export function createGroupTrigger(sessionId: string, targets: () => MentionTarget[], insert: (span: Span, memberId: string | undefined, text: string) => boolean,
-  commands?: () => GroupCommandSource | undefined) {
+  commands?: () => GroupCommandSource | undefined, everyoneLabel: () => string = () => 'everyone') {
   const scope = new Context();
   let pending: { kind: 'member'; memberId: string } | { kind: 'command'; name: string } | undefined;
   const members: InputTriggerSource = { trigger: '@', name: 'dsh-bot-group-members',
     async candidates(_session, request) {
       const query = fold(request.query);
-      return [{ id: 'everyone', name: 'everyone', botId: 'everyone' }, ...targets()].filter(target => fold(`${target.name} ${target.botId}`).includes(query)).map(target => ({ name: target.id, label: target.name, description: target.botId === target.name ? undefined : target.botId, value: target.id }));
+      const label = everyoneLabel();
+      return [{ id: 'everyone', name: label, botId: 'everyone' }, ...targets()].filter(target => fold(`${target.name} ${target.botId}`).includes(query)).map(target => ({
+        name: target.id,
+        label: target.name,
+        description: target.id === 'everyone'
+          ? (fold(target.name) === 'everyone' ? undefined : '@everyone')
+          : (target.botId === target.name ? undefined : target.botId),
+        value: target.id,
+      }));
     },
-    onPick(pick) { pending = { kind: 'member', memberId: pick.candidate.value ?? '' }; return { text: `@${pick.candidate.label ?? pick.candidate.name} ` }; },
+    onPick(pick) {
+      pending = { kind: 'member', memberId: pick.candidate.value ?? '' };
+      return { text: pick.candidate.value === 'everyone' ? '@everyone ' : `@${pick.candidate.label ?? pick.candidate.name} ` };
+    },
   };
   const slash: InputTriggerSource = { trigger: '/', name: GROUP_COMMAND_SOURCE, showGroupTitle: false,
     async candidates(_session, request) {

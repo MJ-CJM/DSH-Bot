@@ -30,6 +30,7 @@ import { activitySessionIdSchema } from '../shared/activity.js';
 import type { ActivityStore } from './store.js';
 import { RegistryMutations } from './registry/mutations.js';
 import { messageOf } from './registry/identity.js';
+import { redactedErrorMetadata } from './common/operations.js';
 import type { BotChanged } from './registry/types.js';
 export type { BotChanged } from './registry/types.js';
 export { Config } from './registry-config.js';
@@ -212,13 +213,19 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
   protected changed(id: string, action: BotChanged['action']): void {
     for (const listener of this.personaListeners) {
       try { listener(); }
-      catch (error) { this.ctx.logger.warn(`[dsh-bot] persona listener failed: ${messageOf(error)}`); }
+      catch (error) {
+        this.ctx.logger.warn('[dsh-bot] persona listener failed', {
+          botId: id, action, phase: 'persona-listener', ...redactedErrorMetadata(error),
+        });
+      }
     }
     this.invalidate();
     // Host-only event. Do not await listeners inside the writer queue: listeners
     // may themselves read the registry. Their failures cannot undo a commit.
     void this.ctx.parallel('dsh-bot/changed', { id, action }).catch((error: unknown) => {
-      this.ctx.logger.warn(`[dsh-bot] changed listener failed: ${messageOf(error)}`);
+      this.ctx.logger.warn('[dsh-bot] changed listener failed', {
+        botId: id, action, phase: 'changed-listener', ...redactedErrorMetadata(error),
+      });
     });
   }
 
@@ -440,7 +447,13 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
       this.changed(id, 'update');
       return record;
     }, true);
-    await this.mainSessions?.find(id);
+    try {
+      await this.mainSessions?.find(id);
+    } catch (error) {
+      this.ctx.logger.warn('[dsh-bot] main session refresh after Bot update failed', {
+        botId: id, phase: 'update-main-session', ...redactedErrorMetadata(error),
+      });
+    }
     return updated;
   }
 
@@ -457,12 +470,18 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
         ...fields
       } = original;
       const duplicate = await this.createRecord({ ...fields, id: newId }, 'duplicate');
-      await this.ctx
-        .get('dshBotConnectors')
-        ?.copyDisabled(
-          { botId: original.id, botCreatedAt: original.createdAt },
-          { botId: duplicate.id, botCreatedAt: duplicate.createdAt },
-        );
+      try {
+        await this.ctx
+          .get('dshBotConnectors')
+          ?.copyDisabled(
+            { botId: original.id, botCreatedAt: original.createdAt },
+            { botId: duplicate.id, botCreatedAt: duplicate.createdAt },
+          );
+      } catch (error) {
+        this.ctx.logger.warn('[dsh-bot] connector copy after Bot duplicate failed', {
+          sourceBotId: original.id, botId: duplicate.id, phase: 'duplicate-copy-connectors', ...redactedErrorMetadata(error),
+        });
+      }
       return duplicate;
     }, true);
   }

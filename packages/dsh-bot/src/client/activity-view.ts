@@ -14,7 +14,7 @@ export function relativeTime(at: number, locale: string, now = Date.now()): stri
   if (!Number.isFinite(at) || at <= 0) return '';
   const seconds = Math.min(0, Math.round((at - now) / 1_000));
   const format = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'short' });
-  if (seconds > -60) return format.format(0, 'second');
+  if (seconds > -60) return /^zh\b/i.test(locale) ? '刚刚' : format.format(0, 'second');
   for (const [unit, size] of [
     ['year', 31_536_000],
     ['month', 2_592_000],

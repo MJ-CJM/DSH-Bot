@@ -23,22 +23,38 @@ function fixture() {
     dshBotConnectors: { definitions: () => [], assignments: () => [{ id: 'assignment', bot: work.owner, enabled: true, desiredRevision: generation }], runtime: () => runtime, applyIdle },
     dshBotProactive: { ciCheckpoint: async () => { ciReads++; await ciGate; return { generation: 5, revoked: ciRevoked }; }, suggestions: async () => [ci] },
   };
+  let failChangeAt = Number.POSITIVE_INFINITY, changeCalls = 0, changeError: Error | undefined;
+  let failGetAt = Number.POSITIVE_INFINITY, getCalls = 0, getError: Error | undefined;
+  const warn = vi.fn();
   const registry = { config: { proactiveCiFeed: { scope: { repository: 'owner/repo', branch: 'main', generation: 5 }, github: {} } },
-    get: async () => ({ createdAt: botCreatedAt }), memoryKernel: {}, memoryOutlets: {
+    get: async () => {
+      getCalls++;
+      if (getError && getCalls >= failGetAt) throw getError;
+      return { createdAt: botCreatedAt };
+    }, memoryKernel: {}, memoryOutlets: {
       inherit, draft: (_outlet: unknown, _owner: unknown, _source: unknown, _id: unknown, target: unknown, content: string) => ({ target, content }), checker: { check },
     } } as unknown as DshBotRegistry;
-  const ctx = { get: (key: keyof typeof services) => services[key] } as unknown as Context;
+  const ctx = { get: (key: keyof typeof services) => services[key], logger: { warn } } as unknown as Context;
   const support = new TaskSupport(ctx, registry, { read: () => structuredClone(work), enabled: () => enabled, valid: () => enabled,
     agent: async () => agent as unknown as Agent,
-    change: async (_id, expected, update) => { if (expected !== undefined && expected !== work.revision) throw new Error('CAS'); const value = update(work); if (value !== work) work = structuredClone({ ...value, revision: work.revision + 1 }); return work; } });
-  return { support, agent, events, check, inherit, applyIdle, ci,
+    change: async (_id, expected, update) => {
+      changeCalls++;
+      if (changeError && changeCalls >= failChangeAt) throw changeError;
+      if (expected !== undefined && expected !== work.revision) throw new Error('CAS');
+      const value = update(work);
+      if (value !== work) work = structuredClone({ ...value, revision: work.revision + 1 });
+      return work;
+    } });
+  return { support, agent, events, check, inherit, applyIdle, ci, warn,
     work: () => structuredClone(work), mutate: (patch: Partial<SupergroupWork>) => { work = { ...work, ...patch }; },
     ready: () => { runtime = [{ ...runtime[0]!, state: 'ready', appliedRevision: generation, desiredRevision: generation }]; },
     generation: (value: number) => { generation = value; runtime = [{ ...runtime[0]!, desiredRevision: value }]; },
     pauseCi: (gate: Promise<void>) => { ciGate = gate; }, ciReads: () => ciReads,
     missingRuntime: () => { runtime = []; },
     disconnect: () => { runtime = [{ ...runtime[0]!, state: 'unavailable', reasonCode: 'missing-credential' }]; },
-    revoke: () => { ciRevoked = true; }, replaceBot: () => { botCreatedAt++; }, disable: () => { enabled = false; } };
+    revoke: () => { ciRevoked = true; }, replaceBot: () => { botCreatedAt++; }, disable: () => { enabled = false; },
+    failNextChangeAfter: (after: number, error: Error) => { changeCalls = 0; failChangeAt = after + 1; changeError = error; },
+    failRegistryGetAfter: (after: number, error: Error) => { getCalls = 0; failGetAt = after + 1; getError = error; } };
 }
 const file = (revision: number) => ({ workId: 'work', expectedRevision: revision, operationId: 'file-op', question: 'Compare the documented options',
   source: { kind: 'file' as const, name: 'options.md', text: 'Option A: cost 10\nOption B: cost 20' } });
@@ -166,4 +182,59 @@ test('unknown continuation only reconciles exact native user-message evidence an
   f.events.push({ type: 'user/message', data: { id: receipt.messageId, source: { kind: 'user' }, content: [{ type: 'text', text: input.text }] } });
   expect((await f.support.view('work')).resumes[0]?.state).toBe('queued');
   await f.support.view('work'); expect(f.agent.followup).toHaveBeenCalledTimes(1);
+});
+
+test('post-persistence view/change errors in add() and resume() normalize to recovery-needed with redacted logs (#57)', async () => {
+  const sentinel = 'TASK-SUPPORT-SECRET-SENTINEL';
+  const poisoned = Object.assign(new Error(`storage failed: ${sentinel}`), {
+    name: `Poisoned-${sentinel}`,
+    code: `POISONED-${sentinel}`,
+  });
+
+  // add(): material persists, then post-commit view() fails.
+  const fAdd = fixture();
+  const initial = await fAdd.support.view('work');
+  // 1st owner.change persists material; view() calls owner.change right after.
+  fAdd.failNextChangeAfter(1, poisoned);
+  await expect(fAdd.support.add(file(initial.revision))).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+  expect(fAdd.work().materials).toHaveLength(1);
+  expect(fAdd.warn).toHaveBeenCalledWith('[dsh-bot] Task material persisted; confirmation failed', {
+    workId: 'work', phase: 'view', errorName: 'unknown',
+  });
+  expect(JSON.stringify(fAdd.warn.mock.calls)).not.toContain(sentinel);
+  // Idempotent replay while view() still fails also normalizes to recovery-needed.
+  fAdd.failNextChangeAfter(0, poisoned);
+  await expect(fAdd.support.add(file(initial.revision))).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+  expect(fAdd.work().materials).toHaveLength(1);
+
+  // resume(): receipt persists, dispatch fails, and marking unknown fails.
+  const fResume = fixture();
+  fResume.ready();
+  const ready = await fResume.support.view('work');
+  fResume.agent.followup.mockRejectedValueOnce(poisoned);
+  // view() inside resume() performs 2 owner.change calls, then persist is the 3rd; fail the 4th (mark-unknown).
+  fResume.failNextChangeAfter(3, poisoned);
+  await expect(fResume.support.resume({
+    workId: 'work', expectedRevision: ready.revision, operationId: 'resume-post-persist',
+    text: 'Continue safely', blockerIds: ready.blockers.map(r => r.id),
+  })).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+  expect(fResume.work().resumes).toHaveLength(1);
+  expect(fResume.agent.followup).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(fResume.warn.mock.calls)).not.toContain(sentinel);
+  expect(fResume.warn).toHaveBeenCalledWith('[dsh-bot] Task resume persisted; confirmation failed', {
+    workId: 'work', phase: 'mark-unknown', errorName: 'unknown',
+  });
+
+  // resume(): dispatch succeeds and queued persists, then final view() fails.
+  const fResumeView = fixture();
+  fResumeView.ready();
+  const readyView = await fResumeView.support.view('work');
+  // 2 changes in pre-resume view, 1 persist, 1 finalize -> fail 5th (final view()).
+  fResumeView.failNextChangeAfter(4, poisoned);
+  await expect(fResumeView.support.resume({
+    workId: 'work', expectedRevision: readyView.revision, operationId: 'resume-view-fail',
+    text: 'Continue safely', blockerIds: readyView.blockers.map(r => r.id),
+  })).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+  expect(fResumeView.work().resumes?.[0]?.state).toBe('queued');
+  expect(JSON.stringify(fResumeView.warn.mock.calls)).not.toContain(sentinel);
 });

@@ -23,8 +23,20 @@ async function mount(language: 'en' | 'zh') {
   const actions = { inspect, readSkill, writeSkill, freshConversation, openConversation } as unknown as ModelActions;
   const t = (key: CapabilityKey) => locales[language][key];
   await act(async () => root.render(<CapabilitiesPanel bot={bot} actions={actions} t={t} />));
-  const click = async (key: CapabilityKey) => { const label = t(key); const button = [...element.querySelectorAll('button')].find(item => item.textContent === label); if (!button) throw new Error(label); await act(async () => button.click()); };
-  return { element, root, t, actions, inspect, readSkill, writeSkill, freshConversation, openConversation, click };
+  const click = async (key: CapabilityKey, rootNode: ParentNode = element) => { const label = t(key); const button = [...rootNode.querySelectorAll('button')].find(item => item.textContent === label); if (!button) throw new Error(label); await act(async () => button.click()); };
+  const confirmModal = async (action: 'fresh' | 'remove-skill') => {
+    const button = element.querySelector<HTMLButtonElement>(`dialog [data-capability-confirm="${action}"]`);
+    if (!button) throw new Error(`Missing confirmation button for ${action}`);
+    await act(async () => button.click());
+  };
+  const cancelModal = async () => {
+    const dialog = element.querySelector('dialog');
+    if (!dialog) throw new Error('Missing confirmation dialog');
+    const button = [...dialog.querySelectorAll('button')].find(item => item.textContent === t('capabilities.cancel'));
+    if (!button) throw new Error('Missing cancel button');
+    await act(async () => button.click());
+  };
+  return { element, root, t, actions, inspect, readSkill, writeSkill, freshConversation, openConversation, click, confirmModal, cancelModal };
 }
 describe('capability panel explicit skill actions', () => {
   it.each(['en', 'zh'] as const)('requires explicit recovery confirmation and keeps the skill draft after CAS failure in %s', async language => {
@@ -35,44 +47,49 @@ describe('capability panel explicit skill actions', () => {
     const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(false);
     try {
       await f.click('capabilities.freshConversation');
-      expect(confirmation).toHaveBeenCalledWith(f.t('capabilities.freshConfirm'));
+      expect(confirmation).not.toHaveBeenCalled();
+      expect(f.element.querySelector('dialog')?.textContent).toContain(f.t('capabilities.freshConfirm'));
+      await f.cancelModal();
+      expect(f.element.querySelector('dialog')).toBeNull();
       expect(f.freshConversation).not.toHaveBeenCalled();
       await f.click('capabilities.edit');
       const textarea = f.element.querySelector('textarea'); if (!textarea) throw new Error('Missing editor');
       await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textarea, 'Recovery must keep this draft');
         textarea.dispatchEvent(new Event('input', { bubbles: true })); });
-      confirmation.mockReturnValue(true); f.freshConversation.mockRejectedValueOnce(new Error('CAS conflict'));
+      f.freshConversation.mockRejectedValueOnce(new Error('CAS conflict'));
       await f.click('capabilities.freshConversation');
+      await f.confirmModal('fresh');
       expect(f.freshConversation).toHaveBeenCalledWith(bot, 'old-main');
       expect(textarea.value).toBe('Recovery must keep this draft');
       expect(f.element.textContent).toContain(f.t('capabilities.freshError'));
       expect(f.inspect).toHaveBeenCalledTimes(1);
       await f.click('capabilities.freshConversation');
+      await f.confirmModal('fresh');
       expect(f.freshConversation).toHaveBeenCalledTimes(2);
       expect(f.openConversation).toHaveBeenCalledExactlyOnceWith('new-main');
       expect(f.inspect).toHaveBeenCalledTimes(2);
       expect(f.element.textContent).not.toContain(f.t('capabilities.freshError'));
       expect(textarea.value).toBe('Recovery must keep this draft');
+      expect(confirmation).not.toHaveBeenCalled();
     } finally { confirmation.mockRestore(); }
   });
 
   it.each(['switch', 'unmount'] as const)('does not navigate on a late recovery receipt after %s', async scope => {
-    const f = await mount('en'), confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const f = await mount('en');
     let settle!: (sessionId: string) => void;
     f.freshConversation.mockReturnValueOnce(new Promise(resolve => { settle = resolve; }));
-    try {
-      await f.click('capabilities.freshConversation');
-      if (scope === 'switch') await act(async () => f.root.render(<CapabilitiesPanel
-        bot={{ ...bot, id: 'beta', createdAt: 2 }} actions={f.actions} t={f.t} />));
-      else {
-        await act(async () => f.root.unmount());
-        mounted.splice(mounted.findIndex(row => row.root === f.root), 1); f.element.remove();
-      }
-      const reads = f.inspect.mock.calls.length;
-      await act(async () => settle('late-main'));
-      expect(f.openConversation).not.toHaveBeenCalled();
-      expect(f.inspect).toHaveBeenCalledTimes(reads);
-    } finally { confirmation.mockRestore(); }
+    await f.click('capabilities.freshConversation');
+    await f.confirmModal('fresh');
+    if (scope === 'switch') await act(async () => f.root.render(<CapabilitiesPanel
+      bot={{ ...bot, id: 'beta', createdAt: 2 }} actions={f.actions} t={f.t} />));
+    else {
+      await act(async () => f.root.unmount());
+      mounted.splice(mounted.findIndex(row => row.root === f.root), 1); f.element.remove();
+    }
+    const reads = f.inspect.mock.calls.length;
+    await act(async () => settle('late-main'));
+    expect(f.openConversation).not.toHaveBeenCalled();
+    expect(f.inspect).toHaveBeenCalledTimes(reads);
   });
 
   it('catalog refresh of the same Bot preserves the skill draft; late reads cannot replace a new Bot', async () => {

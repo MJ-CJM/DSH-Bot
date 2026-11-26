@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { groupKey, groupMemberEditResultSchema, type GroupView } from '../../shared/groups.js';
@@ -7,13 +7,16 @@ import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
+import { formatList } from '../format.js';
 import { BotAvatar } from './BotAvatar.js';
-import { SettingsDrafts, useSettingsDraft, useSettingsNavigation } from './SettingsNavigation.js';
+import { SettingsDrafts, useSettingsNavigation } from './SettingsNavigation.js';
 import type { GroupMethods } from '../../shared/groups-contract.js';
 import { Modal } from './Modal.js';
+import { SearchField } from './SearchField.js';
 import styles from '../styles/roster.module.css';
 import css from '../styles/roster.module.css?inline';
 import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 
 type Localized = PropsLocale<'dsh-bot'>;
 export const rosterMembers = (view: GroupView) => view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
@@ -33,11 +36,11 @@ export function MemberChangeReview({ view, target, bots, t }: {
 } & Localized) {
   const added = rosterAddedMembers(view, target);
   const removed = rosterMembers(view).filter(member => !target.some(key => sameBot(key, member.bot)));
-  const names = (keys: readonly BotKey[]) => keys.map(key => {
+  const names = (keys: readonly BotKey[]) => formatList(keys.map(key => {
     const name = rosterMemberName(view, key, bots);
     const candidates = [...rosterMembers(view).map(member => member.bot), ...target];
     return candidates.some(other => !sameBot(other, key) && rosterMemberName(view, other, bots) === name) ? `${name} · ${key.botId}` : name;
-  }).join('、');
+  }), t('activity.locale'));
   return <div className={styles.review} data-member-change-review="">
     {added.length > 0 && <><p>{t('groups.roster.addSummary', { names: names(added) })}</p>
       <p>{t('groups.roster.historyScope', { names: names(added) })}</p></>}
@@ -93,12 +96,19 @@ export function useRosterSave(actions: GroupActions, view: GroupView, target: re
       throw new Error('Receipt identity mismatch');
     return receipt;
   };
+  const markNotFound = () => {
+    pending.delete(identity);
+    operation.current = undefined;
+    setFailureKey('groups.roster.failed');
+    setPhase('failed');
+  };
   const check = async () => {
     if (!operation.current || lock.current) return;
     lock.current = true; setPhase('saving');
     try {
       const receipt = receiptValue(await actions.remote().getMemberEditResult(key, operation.current));
       if (receipt.status === 'saved') { await markSaved(); }
+      else if (receipt.status === 'not-found') { markNotFound(); }
       else setPhase('unknown');
     } catch { setPhase('unknown'); }
     finally { lock.current = false; }
@@ -115,18 +125,20 @@ export function useRosterSave(actions: GroupActions, view: GroupView, target: re
         expectedMembershipRevision: view.group.membershipRevision, members: [...target],
         ...(rosterAddedMembers(view, target).length ? { historyConfirmed: true as const } : {}),
       })));
+      if (receipt.status === 'not-found') { markNotFound(); return; }
       if (receipt.status !== 'saved') { setPhase('unknown'); return; }
       await markSaved();
     } catch (cause) {
       if (hasOperationCode(cause, 'conflict')) {
-        pending.delete(identity); setPhase('conflict');
+        pending.delete(identity); operation.current = undefined; setPhase('conflict');
         try { setLatest(unwrapGroup(await actions.remote().view(key, {}))); } catch { /* Keep the reviewed draft. */ }
       } else if ((['member-limit', 'unsupported', 'recovery-needed', 'not-found', 'invalid', 'approval-denied', 'unavailable'] as const).some(code => hasOperationCode(cause, code))) {
-        pending.delete(identity); setFailureKey(hasOperationCode(cause, 'unavailable') ? 'groups.roster.failedUnavailable' : hasOperationCode(cause, 'approval-denied') ? 'groups.roster.failedApproval' : hasOperationCode(cause, 'member-limit') ? 'groups.roster.failedLimit' : hasOperationCode(cause, 'not-found') ? 'groups.roster.failedMissing' : 'groups.roster.failed'); setPhase('failed');
+        pending.delete(identity); operation.current = undefined; setFailureKey(hasOperationCode(cause, 'unavailable') ? 'groups.roster.failedUnavailable' : hasOperationCode(cause, 'approval-denied') ? 'groups.roster.failedApproval' : hasOperationCode(cause, 'member-limit') ? 'groups.roster.failedLimit' : hasOperationCode(cause, 'not-found') ? 'groups.roster.failedMissing' : 'groups.roster.failed'); setPhase('failed');
       } else {
         try {
           const receipt = receiptValue(await actions.remote().getMemberEditResult(key, operation.current));
           if (receipt.status === 'saved') { await markSaved(); }
+          else if (receipt.status === 'not-found') { markNotFound(); }
           else setPhase('unknown');
         } catch { setPhase('unknown'); }
       }
@@ -159,7 +171,11 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
   const added = rosterAddedMembers(baseline, target);
   const removed = current.filter(member => !target.some(key => sameBot(key, member.bot)));
   const changed = JSON.stringify(current.map(member => member.bot)) !== JSON.stringify(target);
-  useSettingsDraft(changed && !['saved', 'unknown'].includes(mutation.phase));
+  const dirty = changed && !['saved', 'unknown'].includes(mutation.phase);
+  useLayoutEffect(() => {
+    navigation.registry.set('roster-local', dirty);
+    return () => navigation.registry.set('roster-local', false);
+  }, [navigation.registry, dirty]);
   const blocked = memberEditingReason(baseline);
   const locked = mutation.phase === 'saving' || mutation.phase === 'saved' || mutation.phase === 'unknown' || mutation.phase === 'conflict';
   const valid = target.length >= 2 && (current.length > limit ? target.length < current.length && !added.length : target.length <= limit);
@@ -172,9 +188,9 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
   const candidates = bots.filter(bot => (actions.canAddBot?.(bot) ?? true) && !allKeys.some(key => key.botId === bot.id && key.botCreatedAt === bot.createdAt) &&
     `${bot.name} ${bot.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const latest = mutation.latest;
-  const leave = () => { navigation.registry.set('roster-local', changed && !['saved', 'unknown'].includes(mutation.phase)); navigation.leave(onClose); };
+  useStyleSheet('roster', css);
+  const leave = () => navigation.leave(onClose);
   return <SettingsDrafts.Provider value={navigation.registry}><Modal title={t('groups.roster.manage')} description={baseline.group.name} busy={mutation.phase === 'saving'} onClose={leave} t={t}>
-    <style>{css}</style>
     <div className={styles.body} data-roster-management="">
       <div className={styles.heading}><strong>{t('groups.memberCapacity', { count: target.length, limit })}</strong><span>{t('groups.roster.minimum')}</span></div>
       {blocked && <p role="status">{t(blocked)}</p>}
@@ -192,11 +208,16 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
             <BotAvatar size={32} bot={bot ?? { id: key.botId, avatar: speaker?.avatar, avatarColor: speaker?.avatarColor, avatarVariant: speaker?.avatarVariant }} />
             <div className={styles.identity}><strong>{name(key)}</strong><span>{pendingAdd ? t('groups.roster.pendingAdd') : !selected ? t('groups.roster.pendingRemove') : unavailable ? t('groups.unavailable') : !member.enabled ? t('navigation.memberDisabled') : t('groups.ready')}</span></div>
             <div className={styles.rowActions}>
-              {selected && <Button variant="ghost" size="sm" disabled={locked || !!blocked || index === 0} aria-label={`${t('groups.moveUp')} ${name(key)}`} onClick={() => {
+              {selected && <Button variant="ghost" size="sm" disabled={locked || !!blocked || index <= 0} aria-label={`${t('groups.moveUp')} ${name(key)}`} onClick={() => {
                 const next = [...target], previous = next[index - 1], item = next[index];
                 if (!previous || !item) return;
                 [next[index - 1], next[index]] = [item, previous]; change(next);
               }}>{t('groups.moveUp')}</Button>}
+              {selected && <Button variant="ghost" size="sm" disabled={locked || !!blocked || index < 0 || index >= target.length - 1} aria-label={`${t('groups.moveDown')} ${name(key)}`} onClick={() => {
+                const next = [...target], following = next[index + 1], item = next[index];
+                if (!following || !item) return;
+                [next[index], next[index + 1]] = [following, item]; change(next);
+              }}>{t('groups.moveDown')}</Button>}
               <Button variant="ghost" size="sm" disabled={locked || !!blocked} aria-label={`${t(pendingAdd || !selected ? 'groups.roster.undo' : 'groups.roster.remove')} ${name(key)}`}
                 onClick={() => change(selected ? target.filter(peer => !sameBot(peer, key)) : [...target, key])}>{t(pendingAdd || !selected ? 'groups.roster.undo' : 'groups.roster.remove')}</Button>
             </div>
@@ -205,14 +226,14 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
       </ul>
       <section aria-label={t('groups.addMembers')}>
         <h3>{t('groups.addMembers')}</h3>
-        <label className={styles.search}>{t('groups.roster.search')}<input value={query} disabled={locked || !!blocked} onChange={event => setQuery(event.target.value)} /></label>
+        <SearchField className={styles.search} label={t('groups.roster.search')} clearLabel={t('detail.clearSearch')} value={query} disabled={locked || !!blocked} onChange={setQuery} />
         <ul className={styles.list}>{candidates.map(bot => <li className={styles.row} key={`${bot.id}:${bot.createdAt}`}>
-          <BotAvatar bot={bot} size={32} /><div className={styles.identity}><strong>{bot.name}</strong>{bots.some(other => other.id !== bot.id && other.name === bot.name) && <span>{bot.id}</span>}</div>
+          <BotAvatar bot={bot} size={32} /><div className={styles.identity}><strong>{bot.name}</strong>{bots.some(other => (other.id !== bot.id || other.createdAt !== bot.createdAt) && other.name === bot.name) && <span>{bot.id}</span>}</div>
           <Button size="sm" variant="ghost" disabled={locked || !!blocked || target.length >= limit || current.length > limit} onClick={() => change([...target, { botId: bot.id, botCreatedAt: bot.createdAt }])}>{t('groups.roster.add')}</Button>
         </li>)}</ul>
         {!candidates.length && <p>{t('groups.roster.noCandidates')}</p>}
       </section>
-      {mutation.phase === 'conflict' && latest && <section data-roster-conflict=""><h3>{t('groups.roster.currentRoster')}</h3><p>{rosterMembers(latest).map(member => rosterMemberName(latest, member.bot, bots)).join('、')}</p>
+      {mutation.phase === 'conflict' && latest && <section data-roster-conflict=""><h3>{t('groups.roster.currentRoster')}</h3><p>{formatList(rosterMembers(latest).map(member => rosterMemberName(latest, member.bot, bots)), t('activity.locale'))}</p>
         <MemberChangeReview view={latest} target={target} bots={bots} t={t} />
         <Button onClick={() => { if (latest) { setBaseline(latest); mutation.reset(); } }}>{t('groups.roster.reviewLatest')}</Button></section>}
       <RosterSaveNotice mutation={mutation} t={t} />

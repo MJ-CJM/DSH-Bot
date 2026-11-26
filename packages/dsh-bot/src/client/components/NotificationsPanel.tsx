@@ -22,12 +22,13 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
   const [limit, setLimit] = useState('');
   const [cooldown, setCooldown] = useState('');
   const [preapproved, setPreapproved] = useState(false);
-  const [confirmation, setConfirmation] = useState<string>();
+  const [policyConfirmation, setPolicyConfirmation] = useState<string>();
+  const [testConfirmation, setTestConfirmation] = useState<string>();
   const [filter, setFilter] = useState('all');
   const [testText, setTestText] = useState('');
   const [retryOf, setRetryOf] = useState<string>();
   const [testRequest, setTestRequest] = useState<{ id: string; text: string; policyId: string }>();
-  const scopeDraft = JSON.stringify([
+  const policyScopeDraft = JSON.stringify([
     owner?.botId,
     owner?.botCreatedAt,
     policyId,
@@ -41,28 +42,42 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
     cooldown,
     preapproved,
     policyEnabled,
+  ]);
+  const testScopeDraft = JSON.stringify([
+    owner?.botId,
+    owner?.botCreatedAt,
+    policy?.id,
+    policy?.scopeDigest,
     testText,
   ]);
   const formValue = JSON.stringify([policyId, policyEnabled, channel, target, timezone, start, end, limit, cooldown, preapproved]);
   const [savedForm, setSavedForm] = useState(formValue);
   useSettingsDraft((editing && formValue !== savedForm) || Boolean(testText));
-  const confirmed = confirmation === scopeDraft;
-  const setConfirmed = (value: boolean) => setConfirmation(value ? scopeDraft : undefined);
-  const editPolicy = (p?: NotificationPolicy) => {
-    setSavedForm(JSON.stringify([p?.id ?? '', p?.enabled ?? true, p?.channel ?? 'in-app', p?.targetRef ?? '', p?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, p?.quietHours?.start ?? '', p?.quietHours?.end ?? '', String(p?.dailyLimit ?? data.defaults.dailyLimit), String(p?.cooldownSec ?? data.defaults.cooldownSec), p?.authorization.mode === 'preapproved']));
-    setSection('policies'); setEditing(true);
+  const policyConfirmed = policyConfirmation === policyScopeDraft;
+  const setPolicyConfirmed = (value: boolean) => setPolicyConfirmation(value ? policyScopeDraft : undefined);
+  const testConfirmed = testConfirmation === testScopeDraft;
+  const setTestConfirmed = (value: boolean) => setTestConfirmation(value ? testScopeDraft : undefined);
+  const loadPolicyFields = (p?: NotificationPolicy) => {
+    const defaultTimezone = p?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    setSavedForm(JSON.stringify([p?.id ?? '', p?.enabled ?? true, p?.channel ?? 'in-app', p?.targetRef ?? '', defaultTimezone, p?.quietHours?.start ?? '', p?.quietHours?.end ?? '', String(p?.dailyLimit ?? data.defaults.dailyLimit), String(p?.cooldownSec ?? data.defaults.cooldownSec), p?.authorization.mode === 'preapproved']));
     setPolicy(p);
     setPolicyEnabled(p?.enabled ?? true);
     setPolicyId(p?.id ?? '');
     setChannel(p?.channel ?? 'in-app');
     setTarget(p?.targetRef ?? '');
-    setTimezone(p?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+    setTimezone(defaultTimezone);
     setStart(p?.quietHours?.start ?? '');
     setEnd(p?.quietHours?.end ?? '');
     setLimit(String(p?.dailyLimit ?? data.defaults.dailyLimit));
     setCooldown(String(p?.cooldownSec ?? data.defaults.cooldownSec));
     setPreapproved(p?.authorization.mode === 'preapproved');
-    setConfirmed(false);
+    setPolicyConfirmed(false);
+    setTestConfirmed(false);
+  };
+  const editPolicy = (p?: NotificationPolicy) => {
+    setSection('policies');
+    setEditing(true);
+    loadPolicyFields(p);
   };
   return (
     <IntegrationFrame
@@ -70,7 +85,11 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
       state={state}
       title="notifications"
       onOwnerChange={() => {
-        editPolicy(); setTestText(''); setTestRequest(undefined); setRetryOf(undefined);
+        setEditing(false);
+        loadPolicyFields();
+        setTestText('');
+        setTestRequest(undefined);
+        setRetryOf(undefined);
       }}
     >
       <div>
@@ -146,7 +165,7 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
           .map((p) => (
             <li key={p.id}>
               <Button type="button" disabled={busy} onClick={() => leave(() => editPolicy(p))}>
-                {p.id} · {p.channel} · v{p.revision}
+                {p.id} · {t(`notifications.channel.${p.channel}`)} · v{p.revision}
               </Button>
             </li>
           ))}
@@ -175,13 +194,13 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
                   authorization: { mode: preapproved ? 'preapproved' : 'ask' },
                 },
                 policy?.revision ?? 0,
-                confirmed,
+                policyConfirmed,
               ),
             );
             setPolicy(p);
             setSavedForm(formValue);
             setEditing(false);
-            setConfirmed(false);
+            setPolicyConfirmed(false);
           });
         }}
       >
@@ -193,8 +212,8 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
         <label>
           {t('notifications.channel')}
           <select value={channel} onChange={(e) => setChannel(e.target.value as typeof channel)}>
-            <option>in-app</option>
-            <option disabled={!data.imSupported}>im</option>
+            <option value="in-app">{t('notifications.channel.in-app')}</option>
+            <option value="im" disabled={!data.imSupported}>{t('notifications.channel.im')}</option>
           </select>
         </label>
         {channel === 'im' && (
@@ -228,12 +247,12 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
         <Checkbox checked={preapproved} onChange={setPreapproved} label={t('notifications.preapproved')} />
         {preapproved && (
           <label>
-            <input type="checkbox" required checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+            <input type="checkbox" required checked={policyConfirmed} onChange={(e) => setPolicyConfirmed(e.target.checked)} />
             {t('notifications.confirmScope')}
           </label>
         )}
         <Button variant="primary" type="submit" disabled={busy || !owner}>{t('integrations.save')}</Button>
-        <Button disabled={busy} onClick={() => leave(() => { setEditing(false); setPolicy(undefined); setTestText(''); })}>{t('actions.cancel')}</Button>
+        <Button disabled={busy} onClick={() => leave(() => { setEditing(false); setPolicy(undefined); setTestText(''); setPolicyConfirmed(false); setTestConfirmed(false); })}>{t('actions.cancel')}</Button>
         </fieldset>
       </form>}
       {policy && owner && (
@@ -244,20 +263,29 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
               value={testText}
               onChange={(e) => {
                 setTestText(e.target.value);
-                setConfirmed(false);
+                setTestConfirmed(false);
               }}
             />
           </label>
-          <p>
-            {policy.targetRef ?? 'in-app'} · {policy.scopeDigest}
+          <p data-notification-test-target="">
+            {t('notifications.testTarget', {
+              target: policy.targetRef ?? t('notifications.channel.in-app'),
+              channel: t(`notifications.channel.${policy.channel}`),
+            })}
           </p>
+          <details data-notification-scope-details="">
+            <summary>{t('settings.diagnostics')}</summary>
+            <p>
+              {t('notifications.scopeDigestLabel')}: <code>{policy.scopeDigest}</code>
+            </p>
+          </details>
           <label>
-            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+            <input type="checkbox" checked={testConfirmed} onChange={(e) => setTestConfirmed(e.target.checked)} />
             {t('notifications.confirmSend')}
           </label>
           <Button
             type="button"
-            disabled={busy || !confirmed || !testText}
+            disabled={busy || !testConfirmed || !testText}
             onClick={() => {
               void perform(async () => {
                 const request =
@@ -278,7 +306,7 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
                     true,
                   ),
                 );
-                setConfirmed(false);
+                setTestConfirmed(false);
               });
             }}
           >
@@ -289,7 +317,7 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
             onClick={() => {
               setRetryOf(testRequest?.id);
               setTestRequest(undefined);
-              setConfirmed(false);
+              setTestConfirmed(false);
             }}
           >
             {t('notifications.newAttempt')}

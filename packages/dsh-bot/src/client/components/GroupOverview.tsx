@@ -20,9 +20,12 @@ import { groupQuestionDraft } from '../group-recall.js';
 import { BotAvatar } from './BotAvatar.js';
 import { GroupAvatar } from './GroupAvatar.js';
 import { GroupStatisticsBar } from './GroupStatistics.js';
+import { Modal } from './Modal.js';
 import { RetainedPanel } from './RetainedPanel.js';
 import { FollowUpPanel, type FollowUpNavigation } from '../proactive/FollowUpPanel.js';
 import { followUpSessionTarget } from '../proactive/follow-up-state.js';
+import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 import css from '../styles/groups.module.css?inline';
 import styles from '../styles/groups.module.css';
 
@@ -66,16 +69,16 @@ export function GroupMembersList({ summary, actions, bots, onOpenBot, onEdit, op
   }, [actions, id, createdAt]);
   const catalog = owned?.id === id && owned.createdAt === createdAt ? owned.source : undefined;
   const snapshot = useSyncExternalStore(catalog?.subscribe ?? subscribeNoMembersView, catalog?.getSnapshot ?? noMembersView, catalog?.getSnapshot ?? noMembersView);
+  useStyleSheet('groups', css);
   const view = snapshot?.view;
   const matched = view?.group.id === id && view.group.createdAt === createdAt && view.group.rootSessionId === summary.group.rootSessionId;
   if (!view || !matched) return <section className={styles.compactMembers} aria-label={t('groups.members')}>
-    <style>{css}</style><p role={snapshot?.error || view ? 'alert' : 'status'}>{t(snapshot?.error || view ? 'groups.disconnected' : 'groups.loading')}</p>
+    <p role={snapshot?.error || view ? 'alert' : 'status'}>{t(snapshot?.error || view ? 'groups.disconnected' : 'groups.loading')}</p>
     {(snapshot?.error || view) && <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button>}
   </section>;
   const editingReason = memberEditingReason(view);
   const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
   return <section className={styles.compactMembers} aria-label={t('groups.members')} data-group-members-list={id}>
-    <style>{css}</style>
     {onEdit && canEditMembers(view) && <MemberEditAction view={view} onEdit={onEdit} disabled={Boolean(snapshot?.error)} t={t} />}
     {snapshot?.error && <p role="alert">{t('groups.disconnected')} <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button></p>}
     {members.length === 0 && <p>{t('navigation.memberCount', { count: 0 })}</p>}
@@ -107,7 +110,7 @@ export function GroupMembersList({ summary, actions, bots, onOpenBot, onEdit, op
         {canEditMembers(view) && <Menu open={memberMenu === member.id} onClose={() => setMemberMenu(undefined)} align="end" portal autoFocus
           anchor={<Button variant="ghost" size="sm" aria-label={t('execution.memberActions', { name })} aria-haspopup="menu" aria-expanded={memberMenu === member.id}
             onClick={event => { menuTrigger.current = event.currentTarget; setMemberMenu(memberMenu === member.id ? undefined : member.id); }}>···</Button>}
-          items={[{ id: 'remove', label: t('groups.roster.remove'), disabled: Boolean(snapshot?.error) }]}
+          items={[{ id: 'remove', label: t('groups.roster.remove'), disabled: Boolean(snapshot?.error), danger: true }]}
           onSelect={() => { setMemberMenu(undefined); menuTrigger.current?.focus({ preventScroll: true }); setRemoving({ view, member }); }} />}
       </article>;
     })}
@@ -137,10 +140,16 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
   focusTurnId?: string;
   focusRequest?: GroupActivityFocus;
 } & PropsLocale<'dsh-bot'>) {
-  const [catalog] = useState(() => actions.createView(groupKey(summary.group)));
-  useEffect(() => () => catalog.dispose(), [catalog]);
-  const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
-  const view = snapshot.view;
+  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
+  const [owned, setOwned] = useState<{ id: string; createdAt: number; source: ReturnType<GroupActions['createView']> }>();
+  useEffect(() => {
+    const source = actions.createView({ groupId, groupCreatedAt });
+    setOwned({ id: groupId, createdAt: groupCreatedAt, source });
+    return () => source.dispose();
+  }, [actions, groupId, groupCreatedAt]);
+  const catalog = owned?.id === groupId && owned.createdAt === groupCreatedAt ? owned.source : undefined;
+  const snapshot = useSyncExternalStore(catalog?.subscribe ?? subscribeNoMembersView, catalog?.getSnapshot ?? noMembersView, catalog?.getSnapshot ?? noMembersView);
+  const view = snapshot?.view;
   const [section, setSection] = useState<GroupOverviewSection>(requestedSection ?? 'members');
   const currentSection = requestedSection ?? section;
   const selectSection = (next: GroupOverviewSection) => {
@@ -152,7 +161,9 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
   const [menu, setMenu] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const [deleting, setDeleting] = useState<GroupRecord>();
+  const [archiving, setArchiving] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
+  useEffect(() => { if (!visible) setTeamsOpen(false); }, [visible]);
   const navigation = useRef(new AbortController());
   useEffect(() => {
     if (navigation.current.signal.aborted) navigation.current = new AbortController();
@@ -160,8 +171,10 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     return () => owner.abort();
   }, []);
   const uid = useId();
-  if (!view) return <p role={snapshot.error ? 'alert' : 'status'}>{t(snapshot.error ? 'groups.disconnected' : 'groups.loading')}</p>;
-  if (view.group.id !== summary.group.id || view.group.createdAt !== summary.group.createdAt || view.group.rootSessionId !== summary.group.rootSessionId)
+  const viewMatched = Boolean(catalog && view && view.group.id === summary.group.id && view.group.createdAt === summary.group.createdAt && view.group.rootSessionId === summary.group.rootSessionId);
+  useStyleSheet('groups', css, viewMatched);
+  if (!catalog || !view) return <p role={snapshot?.error ? 'alert' : 'status'}>{t(snapshot?.error ? 'groups.disconnected' : 'groups.loading')}</p>;
+  if (!viewMatched)
     return <p role="alert">{t('groups.disconnected')}</p>;
   const open = async () => {
     setBusy(true); setError(false);
@@ -173,12 +186,13 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     setMenu(false); setBusy(true); setError(false);
     try {
       unwrapGroup(await actions.remote().archive(groupKey(view.group), view.group.revision));
+      setArchiving(false);
       await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
     } catch { setError(true); }
     finally { setBusy(false); }
   };
   const editingReason = memberEditingReason(view);
-  const members = view.members.filter(member => member.removedAt === undefined);
+  const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
   const active = members.filter(member => member.enabled);
   const subject = { kind: 'group' as const, group: groupKey(view.group) };
   const followUp = actions.followUp;
@@ -208,7 +222,6 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     label: t(`groups.view.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel`,
   })) as [import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>, ...import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>[]];
   return <article className={styles.overview} aria-label={view.group.name} data-group-overview={view.group.id}>
-    <style>{css}</style>
     {showHeader && <header className={styles.overviewHeader}>
       <GroupAvatar size={48} members={members} bots={bots} label={view.group.name} />
       <div className={styles.overviewIdentity}>
@@ -219,16 +232,16 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
       <div className={styles.overviewActions}>
         <Button variant="primary" disabled={busy} onClick={() => { void open(); }}>{t('groups.open')}</Button>
         {onEdit && <Button variant="outline" disabled={busy || !!snapshot.error || !canEditMembers(view)} onClick={() => onEdit(view)}>{t('groups.roster.manage')}</Button>}
-        <Menu open={menu} onClose={() => setMenu(false)} align="end"
+        <Menu open={menu} onClose={() => setMenu(false)} align="end" portal autoFocus
           anchor={<Button variant="ghost" aria-label={t('card.more')} aria-haspopup="menu" aria-expanded={menu} onClick={event => { menuTrigger.current = event.currentTarget; setMenu(!menu); }}>···</Button>}
-          items={[{ id: 'teams', label: t('teams.title') }, { id: 'archive', label: t('groups.archive'), disabled: busy || view.group.archived },
-            { id: 'delete', label: t('groups.delete'), disabled: busy }]}
+          items={[{ id: 'teams', label: t('teams.title') }, { id: 'archive', label: t('groups.archive'), disabled: busy || view.group.archived, danger: true },
+            { id: 'delete', label: t('groups.delete'), disabled: busy, danger: true }]}
           onSelect={id => {
             setMenu(false);
             menuTrigger.current?.focus({ preventScroll: true });
             if (id === 'teams') setTeamsOpen(true);
             else if (id === 'delete') (onDelete ?? setDeleting)(view.group);
-            else if (id === 'archive') void archive();
+            else if (id === 'archive') setArchiving(true);
           }} />
       </div>
     </header>}
@@ -266,17 +279,36 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
       {onEdit && <MemberEditAction view={view} onEdit={onEdit} disabled={busy || !!snapshot.error || !canEditMembers(view)} t={t} />}
       {editingReason && <p role="status">{t(editingReason)}</p>}
       {compactSettings ? <details><summary>{t('botMode.advanced')}</summary><GroupSettingsView view={view} bots={bots} t={t} /></details> : <GroupSettingsView view={view} bots={bots} t={t} />}
-      {!view.group.supergroup && <label><input type="checkbox" checked={view.group.onDemand ?? false} disabled={busy || view.group.archived || view.group.mode !== 'natural'} onChange={event => {
-        const onDemand = event.currentTarget.checked; setBusy(true); setError(false);
-        void actions.remote().edit(groupKey(view.group), { expectedRevision: view.group.revision, expectedMembershipRevision: view.group.membershipRevision,
-          name: view.group.name, mode: view.group.mode, members: members.map(member => member.bot), onDemand,
-        }).then(result => { unwrapGroup(result); return Promise.all([catalog.refresh(), actions.catalog.refresh()]); }).catch(() => setError(true)).finally(() => setBusy(false));
-      }} />{t('teams.onDemand')}</label>}
-      <p>{t(view.group.supergroup ? 'simple.automaticTeam' : 'teams.onDemandHint')}</p>
+      {view.group.supergroup ? (
+        <p>{t('simple.automaticTeam')}</p>
+      ) : view.group.mode === 'natural' ? (
+        <>
+          <label className={styles.onDemandToggle}>
+            <input type="checkbox" checked={view.group.onDemand ?? false} disabled={busy || view.group.archived} onChange={event => {
+              const onDemand = event.currentTarget.checked; setBusy(true); setError(false);
+              void actions.remote().edit(groupKey(view.group), { expectedRevision: view.group.revision, expectedMembershipRevision: view.group.membershipRevision,
+                name: view.group.name, mode: view.group.mode, members: members.map(member => member.bot), onDemand,
+              }).then(result => { unwrapGroup(result); return Promise.all([catalog.refresh(), actions.catalog.refresh()]); }).catch(() => setError(true)).finally(() => setBusy(false));
+            }} />{t('teams.onDemand')}</label>
+          <p>{t('teams.onDemandHint')}</p>
+        </>
+      ) : (
+        <p className={styles.modeHint} data-group-ondemand-note="">{t('teams.onDemandNaturalOnly')}</p>
+      )}
       {!showHeader && <Button variant="outline" onClick={() => setTeamsOpen(true)}>{t('teams.title')}</Button>}
       {!showHeader && <Button variant="outline" disabled={busy} onClick={() => (onDelete ?? setDeleting)(view.group)}>{t('groups.delete')}</Button>}
     </RetainedPanel>
     {deleting && <GroupDeleteDialog group={deleting} actions={actions} onClose={() => setDeleting(undefined)} onDeleted={onDeleted} t={t} />}
+    {archiving && <Modal title={t('groups.archiveConfirmTitle')} busy={busy} onClose={() => setArchiving(false)} t={t}>
+      <div className={dialogStyles.editorBody}>
+        <p>{t('groups.archiveConfirm', { name: view.group.name })}</p>
+        {error && <p role="alert" className={dialogStyles.error}>{t('groups.conflict')}</p>}
+      </div>
+      <footer className={dialogStyles.dialogFooter}>
+        <Button disabled={busy} onClick={() => setArchiving(false)}>{t('actions.cancel')}</Button>
+        <Button className={dialogStyles.dangerButton} disabled={busy || view.group.archived} onClick={() => { void archive(); }}>{t('groups.archive')}</Button>
+      </footer>
+    </Modal>}
   </article>;
 }
 
@@ -286,7 +318,7 @@ function GroupPermissionLabel({ state, t }: { state: GroupPermissionState } & Pr
   const key = snapshot.currentValue === 'read-only' ? 'groups.permissionReadOnly' : snapshot.currentValue === 'workspace-write'
     ? 'groups.permissionWorkspaceWrite' : snapshot.currentValue === 'danger-full-access' ? 'groups.permissionFull'
     : snapshot.currentValue === 'auto' ? 'groups.permissionAuto' : undefined;
-  return <span>{t(key ?? 'groups.permission')}: {key ? t(key) : snapshot.currentValue}</span>;
+  return <span>{t('groups.permission')}: {key ? t(key) : snapshot.currentValue}</span>;
 }
 
 export function GroupMembersView({ view, bots, actions, active = true, onOpenBot, onAskBot, executionBridge, t }: {
@@ -299,7 +331,7 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
   executionBridge?: ExecutionBridge;
 } & PropsLocale<'dsh-bot'>) {
   const editingReason = memberEditingReason(view);
-  const members = view.members.filter(member => member.removedAt === undefined);
+  const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
   const [menu, setMenu] = useState<string>();
   const [removing, setRemoving] = useState<GroupMember>();
   const memberMenuTrigger = useRef<HTMLButtonElement | null>(null);
@@ -358,7 +390,7 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
         ...(bot && onOpenBot ? [{ id: 'profile', label: t('chat.profile') }] : []),
         ...(delivery?.childSessionId && executionBridge ? [{ id: 'execution', label: t('execution.viewDetails') }] : []),
         ...(bot && onAskBot ? [{ id: 'ask', label: t('groups.askInChat'), disabled: unavailable || !!asking }] : []),
-        ...(actions && canEditMembers(view) ? [{ id: 'remove', label: t('groups.roster.remove') }] : []),
+        ...(actions && canEditMembers(view) ? [{ id: 'remove', label: t('groups.roster.remove'), danger: true }] : []),
       ];
       return <article key={member.id} className={styles.memberOverviewRow} data-group-member={member.id}>
         {bot ? <BotAvatar bot={bot} size={36} /> : <GroupAvatar size={36} />}
@@ -375,7 +407,7 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
           {askError === member.id && <p role="alert">{t('groups.askFailed')}</p>}
         </div>
         {items.length > 0 && <div className={styles.memberOverviewActions}>
-          <Menu open={menu === member.id} onClose={() => setMenu(undefined)} align="end" items={items}
+          <Menu open={menu === member.id} onClose={() => setMenu(undefined)} align="end" portal autoFocus items={items}
             anchor={<Button variant="ghost" className={styles.quietAction} aria-label={t('execution.memberActions', { name })}
               aria-haspopup="menu" aria-expanded={menu === member.id} onClick={event => { memberMenuTrigger.current = event.currentTarget; setMenu(menu === member.id ? undefined : member.id); }}>···</Button>}
             onSelect={id => {

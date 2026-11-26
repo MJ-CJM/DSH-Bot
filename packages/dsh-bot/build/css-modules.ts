@@ -2,8 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { build, type Plugin } from 'esbuild';
 
-/** Compile-time only: exports a class map and ?inline CSS string. BotsPage renders
- * that string in its own style element; this plugin never touches the DOM.
+/** Compile-time only: exports a class map and ?inline CSS string. Client views
+ * mount each stylesheet through the ref-counted useStyleSheet helper; this
+ * plugin never touches the DOM.
  */
 export function cssModules(): Plugin {
   const cache = new Map<string, Promise<{ js: string; css: string }>>();
@@ -29,6 +30,10 @@ export function cssModules(): Plugin {
                 resolveDir: root, loader: 'js',
               },
               bundle: true, write: false, format: 'esm', outdir: 'css-output',
+              // Minify CSS whitespace & syntax without minifyIdentifiers: each
+              // .module.css builds independently, so identifier minification would
+              // collapse local class names to colliding `.a`/`.b` across modules.
+              minifyWhitespace: true, minifySyntax: true, charset: 'utf8',
               plugins: [{ name: 'read-owned-css', setup(nested) {
                 nested.onLoad({ filter: /\.module\.css$/ }, async ({ path: cssPath }) => ({
                   contents: await readFile(cssPath, 'utf8'), loader: 'local-css',

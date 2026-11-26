@@ -83,6 +83,22 @@ const SAFE_ERROR_CODES = new Set<string>([
   'ABORT_ERR',
   'ERR_ABORTED',
   'ERR_STREAM_DESTROYED',
+  'NO_ADAPTER',
+  'MISSING_CREDENTIAL',
+  'INVALID_CREDENTIAL',
+  'AUTH',
+  'RATE_LIMIT',
+  'QUOTA',
+  'ACCOUNT_QUOTA',
+  'CONTEXT_WINDOW_EXCEEDED',
+  'EMPTY_RESPONSE',
+  'IMAGE_OFFLOAD_REQUIRED',
+  'INVALID_REQUEST',
+  'SERVER',
+  'TIMEOUT',
+  'TRANSPORT',
+  'UNKNOWN',
+  'ABORTED',
 ]);
 
 /** Redacted diagnostic metadata for Host logs: never emits error.message, stack, or arbitrary strings. */

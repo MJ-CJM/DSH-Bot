@@ -1,8 +1,8 @@
-import { mkdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
+import { build, type Plugin } from 'esbuild';
 
 // This build entry runs as native TypeScript in Node; retain bundler-mode types.
 const { assertClientInput }: typeof import('./client-policy.js') =
@@ -37,6 +37,30 @@ const bundledDependencies = new Set([
   await realpath(createRequire(schemaEntry).resolve('@deepseek-ai/cosmokit')),
 ]);
 
+/** Ship only the client `.ui` dictionary keys into lib/client.js while leaving
+ * locale/*.json files on disk untouched for Host tools/config/meta reads. */
+async function clientLocale(root: string): Promise<Plugin> {
+  const localeDir = `${await realpath(resolve(root, 'locale'))}${sep}`;
+  return {
+    name: 'client-locale-ui-only',
+    setup(builder) {
+      builder.onLoad({ filter: /\.json$/ }, async (args) => {
+        const canonical = await realpath(args.path);
+        if (!canonical.startsWith(localeDir)) return null;
+        const parsed = JSON.parse(await readFile(canonical, 'utf8')) as { ui?: unknown };
+        if (!parsed || typeof parsed.ui !== 'object' || parsed.ui === null || Array.isArray(parsed.ui)) {
+          throw new Error(`Client locale file is missing a ui dictionary: ${canonical}`);
+        }
+        return {
+          contents: JSON.stringify({ ui: parsed.ui }),
+          loader: 'json',
+          watchFiles: [canonical],
+        };
+      });
+    },
+  };
+}
+
 // These are shared entries in the DSH 0.2.1-rc.2 browser module table.
 // They must resolve through the factory's require, never a private copy.
 const external = [
@@ -57,12 +81,14 @@ const result = await build({
   entryPoints: ['src/client/index.tsx'],
   outfile,
   bundle: true,
+  minify: true,
+  charset: 'utf8',
   format: 'cjs',
   platform: 'browser',
   target: 'es2023',
   jsx: 'automatic',
   external,
-  plugins: [cssModules()],
+  plugins: [cssModules(), await clientLocale(packageRoot)],
   metafile: true,
   write: false,
   // DSH's combo-map route reads the adjacent client.js.map on its first GET.

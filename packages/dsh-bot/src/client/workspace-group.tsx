@@ -19,11 +19,20 @@ import { GroupMemberJoins, PublishedGroupMessage } from './components/GroupTimel
 import { autoFoldLongReplies } from './group-reply-folds.js';
 import { GroupReplyTools } from './components/GroupReplyFolds.js';
 import { GroupTurnExecution } from './components/GroupTurnExecution.js';
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import { registerGroupExecution, type ExecutionBridge } from './group-execution.js';
-import { registerGroupViews } from './group-views.js';
+import { createGroupManagementViewStore, defaultGroupManagementViews, registerGroupViews, type GroupManagementViewStore } from './group-views.js';
 import type { BotRecord } from '../shared/schema.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
+
+const EMPTY_PROCESS_ROW_CSS = `
+  [data-conversation-content]:has([data-workspace-group-composer])
+  [data-chat-flow-kind="turn-process"]:has([data-turn-process-messages="0"][data-turn-process-tool-calls="0"][data-turn-process-subagents="0"]) {
+    display: none;
+  }
+`;
 const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: groupKeySchema, turnId: z.string().min(1),
   memberId: z.string().min(1), speaker: speakerSchema, guestReply: z.literal(true).optional(), relayReply: z.literal(true).optional(), childSessionId: z.string().optional(), stopReason: z.string().optional(),
   // A malformed failure drops only the detail, never the claimed message.
@@ -83,34 +92,44 @@ export function selectGroupComposer(owner: Pick<ComposerChainProps, 'sessionId'>
   return actions.catalog.getSnapshot().groups.some(row => row.group.rootSessionId === id) ||
     preset === GROUP_ROOT_PRESET ? { sessionId: id } : null;
 }
-export function WorkspaceGroupComposer({ matched, actions, bots, models, createPermissionState, commandServices, executionBridge, onOpenSession, t }: {
-  executionBridge?: ExecutionBridge; commandServices?: GroupCommandServices;
+export function WorkspaceGroupComposer({ matched, actions, bots, models, createPermissionState, commandServices, executionBridge, managementViews = defaultGroupManagementViews, onOpenSession, t }: {
+  executionBridge?: ExecutionBridge; commandServices?: GroupCommandServices; managementViews?: GroupManagementViewStore;
   matched: { sessionId: string }; actions: GroupActions; bots: BotCatalog; models?: ModelActions;
   createPermissionState?(rootSessionId: string): GroupPermissionState; onOpenSession(id: string): Promise<void>;
 } & PropsLocale<'dsh-bot'>) {
   const state = useSyncExternalStore(actions.catalog.subscribe, actions.catalog.getSnapshot);
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
+  const managementActive = useSyncExternalStore(
+    managementViews.subscribe,
+    () => managementViews.isActive(matched.sessionId),
+    () => managementViews.isActive(matched.sessionId),
+  );
   useEffect(() => { void actions.catalog.refresh(); }, [actions]);
   const group = state.groups.find(row => row.group.rootSessionId === matched.sessionId);
   const rootId = group?.group.rootSessionId;
   const [permissionState, setPermissionState] = useState<GroupPermissionState>();
+  useStyleSheet('workspace-group-composer', EMPTY_PROCESS_ROW_CSS, Boolean(group) && !managementActive);
+  useStyleSheet('groups', css, !group && !managementActive);
   useEffect(() => {
-    if (!rootId || !createPermissionState) { setPermissionState(undefined); return; }
+    if (managementActive || !rootId || !createPermissionState) { setPermissionState(undefined); return; }
     const bridge = createPermissionState(rootId); setPermissionState(bridge);
     return () => bridge.dispose();
-  }, [createPermissionState, rootId]);
-  if (!group) return <section><p role="status">{t(state.error || state.loaded ? 'groups.routeUnavailable' : 'groups.loading')}</p>
-    <textarea disabled aria-label={t('groups.message')} /><button type="button" disabled>{t('groups.send')}</button></section>;
+  }, [createPermissionState, managementActive, rootId]);
+  if (managementActive) return null;
+  if (!group) return <section className={`${styles.panel} ${styles.workspace} ${styles.fallbackComposer}`}>
+    <div className={styles.fallbackCard}>
+      <p role="status" className={styles.fallbackMessage}>{t(state.error || state.loaded ? 'groups.routeUnavailable' : 'groups.loading')}</p>
+      <div className={styles.fallbackInputRow}>
+        <textarea disabled aria-label={t('groups.message')} />
+        <Button variant="primary" size="sm" disabled>{t('groups.send')}</Button>
+      </div>
+    </div>
+  </section>;
   // Group roots run native setup with no model content. Hide only the empty
   // process row in this conversation. Member/standard chats keep native details.
-  return <><style>{`
-    [data-conversation-content]:has([data-workspace-group-composer])
-    [data-chat-flow-kind="turn-process"]:has([data-turn-process-messages="0"][data-turn-process-tool-calls="0"][data-turn-process-subagents="0"]) {
-      display: none;
-    }
-  `}</style><GroupConversation key={matched.sessionId} workspace executionBridge={executionBridge} summary={group} actions={actions} models={models} commandServices={commandServices}
+  return <GroupConversation key={matched.sessionId} workspace executionBridge={executionBridge} summary={group} actions={actions} models={models} commandServices={commandServices}
     permissionState={permissionState?.rootSessionId === matched.sessionId ? permissionState : undefined}
-    bots={botState.entries.map(row => row.bot)} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={onOpenSession} t={t} /></>;
+    bots={botState.entries.map(row => row.bot)} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={onOpenSession} t={t} />;
 }
 export function WorkspaceMessage({ node, sessionId, actions, bots, executionBridge, renderFactorySlot, onOpenSession, t }: { node: ChatNode<'dsh-bot-group'>; sessionId?: string; actions: GroupActions;
   bots?: BotCatalog; executionBridge?: ExecutionBridge; onOpenSession(id: string): Promise<void> } & Partial<PropsRenderFactories> & PropsLocale<'dsh-bot'>) {
@@ -139,9 +158,18 @@ export function WorkspaceMessage({ node, sessionId, actions, bots, executionBrid
   const quoted = snapshot.view?.messages.find(message => message.id === node.data.message.replyTo) ?? (historicQuote?.id === node.data.message.replyTo ? historicQuote : undefined);
   const quotedLoading = Boolean(node.data.message.replyTo && !quoted && quoteResolvedId !== node.data.message.replyTo);
   useEffect(() => {
-    let active = true;
-    if (publicInput && node.data.message.replyTo && !quoted) void actions.quotedMessage(node.data.group, node.data.message.replyTo).then(message => { if (active) { setHistoricQuote(message); setQuoteResolvedId(node.data.message.replyTo); } }).catch(() => { if (active) setQuoteResolvedId(node.data.message.replyTo); });
-    return () => { active = false; };
+    if (!publicInput || !node.data.message.replyTo || quoted) return;
+    const controller = new AbortController();
+    const replyTo = node.data.message.replyTo;
+    void actions.quotedMessage(node.data.group, replyTo, controller.signal).then(message => {
+      if (!controller.signal.aborted) {
+        setHistoricQuote(message);
+        setQuoteResolvedId(replyTo);
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setQuoteResolvedId(replyTo);
+    });
+    return () => { controller.abort(); };
   }, [actions, node.data.group, node.data.message.replyTo, quoted, publicInput]);
   const [jumpUnavailable, setJumpUnavailable] = useState(false);
   const jump = (id: string) => {
@@ -155,19 +183,23 @@ export function WorkspaceMessage({ node, sessionId, actions, bots, executionBrid
   };
   const labels = useMemo(() => ({ code: { copyLabel: t('groups.markdownCopy'), copiedLabel: t('groups.markdownCopied') }, footnotes: t('groups.markdownFootnotes') }), [t]);
   const message = node.data.message;
-  if (!publicInput) return null;
-  if (message.authorKind === 'bot') {
-    if (!snapshot.view) return null;
-    const guest = messageTurn?.guestQuestion;
-    if (message.guestReply || message.relayReply || guest) {
-      const author = guest?.via ? message.relayReply && !message.guestReply && guest.via.bot : message.guestReply && !message.relayReply && guest?.bot;
-      const committed = author && message.speaker && sameBot(message.speaker.bot, author) &&
-        snapshot.view.deliveries.some(row => row.turnId === message.turnId && sameBot(row.bot, author) &&
-          row.state === 'completed' && row.outputMessageId === message.id && row.outputSeq === message.seq);
-      if (!committed) return null;
+  let visible = publicInput;
+  if (visible && message.authorKind === 'bot') {
+    if (!snapshot.view) visible = false;
+    else {
+      const guest = messageTurn?.guestQuestion;
+      if (message.guestReply || message.relayReply || guest) {
+        const author = guest?.via ? message.relayReply && !message.guestReply && guest.via.bot : message.guestReply && !message.relayReply && guest?.bot;
+        const committed = Boolean(author && message.speaker && sameBot(message.speaker.bot, author) &&
+          snapshot.view.deliveries.some(row => row.turnId === message.turnId && sameBot(row.bot, author) &&
+            row.state === 'completed' && row.outputMessageId === message.id && row.outputSeq === message.seq));
+        if (!committed) visible = false;
+      }
     }
   }
-  return <div className={`dsh-bot-group-workspace ${styles.panel} ${styles.workspaceMessage}`} data-workspace-group-message={node.data.message.id} data-workspace-group={`${node.data.group.groupId}:${node.data.group.groupCreatedAt}`} tabIndex={-1}><style>{css}</style>
+  useStyleSheet('groups', css, visible);
+  if (!visible) return null;
+  return <div className={`dsh-bot-group-workspace ${styles.panel} ${styles.workspaceMessage}`} data-workspace-group-message={node.data.message.id} data-workspace-group={`${node.data.group.groupId}:${node.data.group.groupCreatedAt}`} tabIndex={-1}>
     {snapshot.view && <GroupMemberJoins view={snapshot.view} message={node.data.message} bots={memberBots} position="before" t={t} />}
     <PublishedGroupMessage round={messageRound} autoFold={autoFoldLongReplies(messageTurn)} message={node.data.message} allowExecutionSource={!messageTurn?.guestQuestion} quoted={quoted} quotedLoading={quotedLoading} sourceLabel={sourceLabel} onJump={jump} labels={labels} t={t}
     onOpenSession={onOpenSession} onReply={message => { const row = actions.catalog.getSnapshot().groups.find(group =>
@@ -192,16 +224,18 @@ export function WorkspaceMessage({ node, sessionId, actions, bots, executionBrid
 export function registerWorkspaceGroups(ctx: Context, actions: GroupActions, bots: BotCatalog, onOpenSession: (id: string) => Promise<void>, models?: ModelActions,
   onOpenBot?: (bot: BotRecord) => void, onAskBot?: (bot: BotRecord, prompt: string, signal?: AbortSignal) => void | Promise<void>) {
   const executionBridge = registerGroupExecution(ctx);
+  const managementViews = createGroupManagementViewStore();
+  ctx.effect(() => () => managementViews.clear(), 'dsh-bot: group management view state');
   const createPermissionState = (rootSessionId: string) => createGroupPermissionState(ctx, rootSessionId);
   const commandServices = createGroupCommandServices(ctx);
-  registerGroupViews(ctx, actions, bots, executionBridge, onOpenBot, onAskBot);
+  registerGroupViews(ctx, actions, bots, executionBridge, onOpenBot, onAskBot, managementViews);
   ctx.effect(() => ctx.slots.inject('conversation.composer', () => ctx.slots.register({ name: 'conversation.composer',
     priority: -20, locale: 'dsh-bot', select: owner => {
       const sessions = ctx.get('sessions') as unknown as ISessions | undefined;
       const preset = owner.sessionId ? sessions?.list?.getSnapshot().byId[owner.sessionId]?.projectionValues?.agentPreset : undefined;
       return selectGroupComposer(owner, actions, preset ?? undefined);
     },
-  }, (props: { matched: { sessionId: string } } & PropsLocale<'dsh-bot'>) => <WorkspaceGroupComposer {...props} executionBridge={executionBridge} actions={actions} bots={bots} models={models} createPermissionState={createPermissionState} commandServices={commandServices} onOpenSession={onOpenSession} />)), 'dsh-bot: group workspace composer');
+  }, (props: { matched: { sessionId: string } } & PropsLocale<'dsh-bot'>) => <WorkspaceGroupComposer {...props} executionBridge={executionBridge} managementViews={managementViews} actions={actions} bots={bots} models={models} createPermissionState={createPermissionState} commandServices={commandServices} onOpenSession={onOpenSession} />)), 'dsh-bot: group workspace composer');
   ctx.inject(['uiConversation'], scope => {
     if (typeof scope.uiConversation.events?.register !== 'function') return;
     scope.effect(() => scope.slots.inject('conversation.chat.node', () => scope.effect(function* () {

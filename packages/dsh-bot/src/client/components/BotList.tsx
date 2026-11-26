@@ -1,8 +1,10 @@
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import { type RefObject, useEffect, useId, useRef } from 'react';
 import type { BotActivity } from '../../shared/activity.js';
 import { previewText, relativeTime } from '../activity-view.js';
 import type { BotCatalogEntry } from '../state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import identityCss from '../styles/identity.module.css?inline';
 import styles from '../styles/bots.module.css';
 import { BotIdentity } from './BotIdentity.js';
@@ -17,6 +19,7 @@ export interface BotListProps {
   onShowDetail?(id: string): void;
   onActivate(id: string): void;
   compact?: boolean;
+  showActivateAction?: boolean;
   disabled?: boolean;
   listRef?: RefObject<HTMLDivElement>;
   idPrefix?: string;
@@ -32,6 +35,7 @@ export function BotList({
   onShowDetail,
   onActivate,
   compact = false,
+  showActivateAction = false,
   disabled = false,
   listRef,
   idPrefix,
@@ -44,6 +48,7 @@ export function BotList({
   const activeId = selected?.bot.id;
   const locale = t('activity.locale');
   const activityByBot = new Map(activities.map((row) => [row.botId, row]));
+  useStyleSheet('identity', identityCss);
   useEffect(() => {
     if (activeId && element.current)
       document.getElementById(`${listId}-${activeId}`)?.scrollIntoView?.({ block: 'nearest' });
@@ -59,6 +64,14 @@ export function BotList({
       aria-activedescendant={activeId ? `${listId}-${activeId}` : undefined}
       onKeyDown={(event) => {
         if (disabled || !entries.length) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (
+          target &&
+          target !== event.currentTarget &&
+          target.closest('button:not([role="option"]), a, input, select, textarea, [data-bot-open-chat]')
+        ) {
+          return;
+        }
         const current = entries.findIndex(({ bot }) => bot.id === activeId);
         let next = current;
         if (event.key === 'ArrowDown') next = Math.min(entries.length - 1, current + 1);
@@ -75,17 +88,17 @@ export function BotList({
         if (id) onSelect(id);
       }}
     >
-      <style>{identityCss}</style>{entries.map(({ bot, status }) => {
+      {entries.map(({ bot, status }) => {
         const latest = activityByBot.get(bot.id);
         const preview = latest?.mainSessionState === 'unavailable' || status?.mainSessionState === 'unavailable' ? t('activity.mainUnavailable') : latest?.latest
           ? previewText(latest.latest.preview, t)
           : bot.description || t('bots.noSessions');
-        return (
+        const option = (
           <button
             type="button"
             role="option"
             tabIndex={-1}
-            key={bot.id}
+            key={showActivateAction ? undefined : bot.id}
             id={`${listId}-${bot.id}`}
             data-bot-id={bot.id}
             aria-selected={bot.id === activeId}
@@ -105,6 +118,27 @@ export function BotList({
               trailing={<>{!!latest?.lastActivityAt && <time className={styles.relativeTime} dateTime={new Date(latest.lastActivityAt).toISOString()}>{relativeTime(latest.lastActivityAt, locale)}</time>}
                 {!!latest?.unreadCount && <span className={styles.unreadDot} data-unread="" role="img" aria-label={t('activity.unreadCount', { count: latest.unreadCount })} />}</>} />
           </button>
+        );
+        if (!showActivateAction) return option;
+        return (
+          <div key={bot.id} role="presentation" className={styles.botOptionRow}>
+            {option}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={styles.botOpenAction}
+              data-bot-open-chat={bot.id}
+              disabled={disabled}
+              aria-label={t('sidebar.newSession', { name: bot.name })}
+              title={t('chat.openChat')}
+              onClick={() => {
+                onSelect(bot.id);
+                if (!disabled) onActivate(bot.id);
+              }}
+            >
+              {t('rightTab.openChat')}
+            </Button>
+          </div>
         );
       })}
     </div>

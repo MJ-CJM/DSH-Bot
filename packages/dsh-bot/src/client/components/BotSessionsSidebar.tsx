@@ -5,7 +5,6 @@ import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-sess
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import { useState } from 'react';
-import { Button, Menu, IconEllipsisOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { BotCatalog, BotCatalogEntry } from '../state.js';
 import type { ActivityCatalog } from '../activity-state.js';
 import { botSessionRows, previewText, relativeTime, sortBotEntries } from '../activity-view.js';
@@ -13,6 +12,7 @@ import { type ChatLauncherActions, useChatLauncher } from '../chat-launcher.js';
 import { BotIdentity } from './BotIdentity.js';
 import { WhaleGlyph } from './WhaleGlyph.js';
 import { Modal } from './Modal.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/sidebar.module.css';
 import identityCss from '../styles/identity.module.css?inline';
 import css from '../styles/sidebar.module.css?inline';
@@ -78,7 +78,6 @@ export function BotSessionsSidebar({
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [limits, setLimits] = useState<Record<string, number>>({});
-  const [moreBot, setMoreBot] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const chat = useChatLauncher({
@@ -114,19 +113,21 @@ export function BotSessionsSidebar({
     onManage();
     setOpen(false);
   };
-  const start = (id: string, inWorkspace = false) => {
+  const start = (id: string) => {
     if (busy) return;
     setBusy(true);
     setError(undefined);
-    void (inWorkspace ? chat.startInWorkspace(id) : chat.start(id))
+    void chat.start(id)
       .catch((reason: unknown) => {
         setError(`${t('errors.start')} ${reason instanceof Error ? reason.message : ''}`.trim());
       })
       .finally(() => setBusy(false));
   };
+  useStyleSheet('sidebar', css);
+  useStyleSheet('identity', identityCss);
+  useStyleSheet('bots', modalCss, open || Boolean(chat.dialog));
   return (
     <>
-      <style data-dsh-bot-sidebar-styles="">{css + identityCss}</style>
       <button
         type="button"
         className={styles.trigger}
@@ -167,7 +168,6 @@ export function BotSessionsSidebar({
           />
         )}
       </button>
-      {(open || chat.dialog) && <style data-dsh-bot-sidebar-dialog-styles="">{modalCss}</style>}
       {open && !chat.dialog && (
         <Modal
           title={t('sidebar.sessions')}
@@ -273,36 +273,6 @@ export function BotSessionsSidebar({
                     >
                       +
                     </button>
-                    <Menu
-                      open={moreBot === bot.id}
-                      onClose={() => setMoreBot(undefined)}
-                      align="end"
-                      anchor={
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          aria-label={t('sidebar.moreActions', { name: bot.name })}
-                          aria-haspopup="menu"
-                          aria-expanded={moreBot === bot.id}
-                          onClick={() => setMoreBot(moreBot === bot.id ? undefined : bot.id)}
-                        >
-                          <IconEllipsisOutlineRegular size={14} />
-                        </Button>
-                      }
-                      items={[
-                        {
-                          id: 'workspace',
-                          label: t('chat.inWorkspace'),
-                          disabled:
-                            busy || snapshot.loading || Boolean(snapshot.error) || status?.preset.state !== 'ok',
-                        },
-                      ]}
-                      onSelect={() => {
-                        setMoreBot(undefined);
-                        start(bot.id, true);
-                      }}
-                    />
                   </div>
                   {expanded && (
                     <div className={styles.sessions}>

@@ -5,7 +5,7 @@ import { GroupDeleteDialog } from '../components/GroupDeleteDialog.js';
 import type { GroupRecord } from '../../shared/groups.js';
 import { BotIdentity } from '../components/BotIdentity.js';
 import { SearchField } from '../components/SearchField.js';
-import { Button, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import { SupergroupSettingsPanel, supergroupStatusLabel, useSupergroupSettings } from '../supergroup-settings.js';
 import { conversationKey, recentPreferences, setRecentPreference, updateRecentPreference } from './recent-conversations.js';
 import { directoryWindow, filterNativeDirectory, migrateLegacyDirectory, nativeDirectoryRows, readDirectoryWindow, writeDirectoryWindow, type NativeDirectoryRow } from './native-directory.js';
@@ -70,7 +70,19 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
   }, row.entry ? 'errors.start' : 'activity.openError');
   return <section aria-label={text(mode === 'bots' ? 'navigation.myBots' : 'chat.recent')} data-bots-list={mode}>
     <div className={styles.listTools}>
-      {mode === 'bots' && model.entries.length > 0 && <button type="button" className={styles.button} disabled={model.busy || !model.snapshot.loaded} onClick={() => model.open({ kind: 'create' })}>{t('bots.create')}</button>}
+      {mode === 'bots' && model.entries.length > 0 && (
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<IconPlusOutlineRegular size={14} />}
+          className={styles.createButton}
+          data-bots-create-cta=""
+          disabled={model.busy || !model.snapshot.loaded}
+          onClick={() => model.open({ kind: 'create' })}
+        >
+          {t('bots.create')}
+        </Button>
+      )}
       {settings && <Button variant="ghost" data-supergroup-disclosure="" aria-controls={settingsId} aria-expanded={settingsOpen}
         onClick={() => {
           if (!settingsOpen) void settings.refresh();
@@ -94,7 +106,7 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
           {!!row.at && <time className={styles.relativeTime} dateTime={new Date(row.at).toISOString()}>{relativeTime(row.at, t('activity.locale'))}</time>}
         </button>
         {recentPreferences.get(row.key)?.pinned && <span className={styles.directoryPinned} data-directory-pinned="">{t('chat.pinned')}</span>}
-        <Menu open={menu === row.key} onClose={() => setMenu(undefined)} align="end" autoFocus
+        <Menu open={menu === row.key} onClose={() => setMenu(undefined)} align="end" portal autoFocus
           anchor={<Button variant="ghost" className={styles.quietAction} aria-label={`${t('card.more')} ${row.name}`} aria-haspopup="menu" aria-expanded={menu === row.key} onClick={event => {
             menuTrigger.current = event.currentTarget;
             setMenu(menu === row.key ? undefined : row.key);
@@ -103,7 +115,7 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
             { id: 'pinned', label: text(recentPreferences.get(row.key)?.pinned ? 'chat.unpin' : 'chat.pin') },
             ...(mode === 'recent' ? [{ id: 'hidden', label: text(hidden ? 'chat.restore' : 'chat.hide') }] : []),
             { id: 'profile', label: text('chat.profile') },
-            { id: 'delete', label: t(row.entry ? 'actions.delete' : 'groups.delete') },
+            { id: 'delete', label: t(row.entry ? 'actions.delete' : 'groups.delete'), danger: true },
           ]}
           onSelect={id => { setMenu(undefined); menuTrigger.current?.focus({ preventScroll: true });
             if (id === 'pinned' || id === 'hidden') update(row.key, id);

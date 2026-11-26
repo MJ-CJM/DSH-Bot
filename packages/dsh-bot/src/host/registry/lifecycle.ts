@@ -14,6 +14,7 @@ import type { MainSessions } from '../main-session.js';
 import { Config } from '../registry-config.js';
 import type { Lease } from './types.js';
 import { messageOf } from './identity.js';
+import { redactedErrorMetadata } from '../common/operations.js';
 import { MemoryConfirmation } from '../memory/confirmation.js';
 import { ManagedOutlets } from '../data-flow/outlets.js';
 import { EgressChecker } from '../data-flow/egress.js';
@@ -95,7 +96,9 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
     })().catch((error: unknown) => {
       this.startupError = messageOf(error);
       this.memoryAdmission.markStartupFailed();
-      this.ctx.logger.error(`[dsh-bot] startup failed bot=*: ${this.startupError}`);
+      this.ctx.logger.error('[dsh-bot] startup failed', {
+        botId: '*', phase: 'startup', ...redactedErrorMetadata(error),
+      });
     });
     // Publish the service before Loader settlement. Never join the Loader from
     // its own teardown; once initialization starts, all resources are joined.
@@ -197,7 +200,9 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
         try {
           await this.ensureWorkspace();
         } catch (error) {
-          this.ctx.logger.warn(`[dsh-bot] Bots workspace startup failed: ${messageOf(error)}`);
+          this.ctx.logger.warn('[dsh-bot] Bots workspace startup failed', {
+            phase: 'workspace-startup', ...redactedErrorMetadata(error),
+          });
         }
         for (const id of this.stores.bots.avatarWarnings())
           this.ctx.logger.warn(
@@ -211,7 +216,9 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
             await this.acquire(await composeBotPreset(bot, this.ctx, this.config), bot);
           } catch (error) {
             this.diagnostics.set(bot.id, messageOf(error));
-            this.ctx.logger.error(`[dsh-bot] preset startup failed bot=${bot.id}: ${messageOf(error)}`);
+            this.ctx.logger.error('[dsh-bot] preset startup failed', {
+              botId: bot.id, phase: 'preset-startup', ...redactedErrorMetadata(error),
+            });
           }
         }
         this.ctx.logger.info(`[dsh-bot] registered ${this.leases.size} presets: ${[...this.leases.keys()].join(', ')}`);

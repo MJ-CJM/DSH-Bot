@@ -65,7 +65,8 @@ import type {
 	ProactiveWork,
 	ReviewWork,
 } from "../../shared/proactive/work.js";
-import { Serial } from "../common/operations.js";
+import { groupContext, groupParticipantLabel } from "../groups/routing.js";
+import { redactedErrorMetadata, Serial } from "../common/operations.js";
 import { AutomaticAdmissionQueue } from "./auto-admission.js";
 import type { Groups } from "../groups/service.js";
 import type {
@@ -1371,10 +1372,58 @@ export class ProactiveService {
 					)
 			: work.title;
 		const text = JSON.stringify({ context: taskHandoff(work), evidence: artifactText });
+		const contextMaxBytes = this.ctx.dshBots.config?.groupContextMaxBytes;
 		if (Buffer.byteLength(text, "utf8") > GROUP_TEXT_MAX_BYTES)
 			throw new Error(
 				"Full artifact exceeds group review size; narrow the approved workspace scope",
 			);
+		if (typeof contextMaxBytes === "number" && Number.isFinite(contextMaxBytes)) {
+			const enabledMembers = row.members.filter(
+				(member) => member.enabled && member.removedAt === undefined,
+			);
+			const participantNames = await Promise.all(
+				enabledMembers.map(async (member) => {
+					try {
+						const bot = await this.ctx.dshBots.get(member.bot.botId);
+						return groupParticipantLabel(bot, member.id);
+					} catch {
+						return member.bot.botId;
+					}
+				}),
+			);
+			const preflightMessage = {
+				id: "00000000-0000-4000-8000-000000000000",
+				seq: 0,
+				at: 0,
+				text,
+				turnId: `proactive:${work.assignmentId}`,
+				authorKind: "proactive" as const,
+			};
+			try {
+				for (const reviewer of [first, second]) {
+					const targetRole = row.group.memberRoles?.find((item) =>
+						sameBot(item.bot, {
+							botId: reviewer.id,
+							botCreatedAt: reviewer.createdAt,
+						}),
+					)?.role;
+					groupContext(
+						row.group.name,
+						reviewer.name,
+						participantNames,
+						preflightMessage,
+						[],
+						[],
+						contextMaxBytes,
+						targetRole,
+					);
+				}
+			} catch {
+				throw new Error(
+					"Full artifact exceeds group review size; narrow the approved workspace scope",
+				);
+			}
+		}
 		const approval = digest([
 			work.ticketId,
 			work.assignmentId,
@@ -1457,7 +1506,18 @@ export class ProactiveService {
 					await this.verifyGroupDispatch(work, approval);
 				},
 			)
-			.catch(() => undefined);
+			.catch((error) => {
+				this.ctx.logger?.warn?.(
+					"[dsh-bot] proactive group review dispatch failed",
+					{
+						ticketId: work.ticketId,
+						groupId: choice.group.groupId,
+						phase: "start-proactive-review",
+						...redactedErrorMetadata(error),
+					},
+				);
+				return undefined;
+			});
 		const settled = await this.change(randomUUID(), {
 			kind: "settle-group-review",
 			ticketId: work.ticketId,
@@ -1675,7 +1735,18 @@ export class ProactiveService {
 				},
 				() => this.verifyGroupDispatch(work, review.digest, fact.id),
 			)
-			.catch(() => undefined);
+			.catch((error) => {
+				this.ctx.logger?.warn?.(
+					"[dsh-bot] proactive group follow-up dispatch failed",
+					{
+						ticketId: work.ticketId,
+						groupId: review.group.groupId,
+						phase: "start-proactive-follow-up",
+						...redactedErrorMetadata(error),
+					},
+				);
+				return undefined;
+			});
 		await this.change(randomUUID(), {
 			kind: "settle-group-follow-up",
 			ticketId: work.ticketId,

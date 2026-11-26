@@ -1,6 +1,7 @@
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupSummary } from '../../shared/groups.js';
 import type { GroupActions } from '../groups-state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import { GroupAvatar } from './GroupAvatar.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
@@ -17,6 +18,7 @@ export function GroupSessionBadge({
   InjectFace<GroupSessionBadgeInjected> &
   PropsLocale<'dsh-bot'>) {
   const group = useGroups((s) => s.groups.find((g) => g.group.rootSessionId === sessionId));
+  useStyleSheet('groups', css, Boolean(group));
   return group ? (
     <button
       type="button"
@@ -26,7 +28,7 @@ export function GroupSessionBadge({
       aria-label={`${t('botMode.detailsAndMaterials')} · ${group.group.name}`}
       className={styles.sessionBadge}
     >
-      <style>{css}</style><GroupAvatar size={20} />
+      <GroupAvatar size={20} />
       <span className={styles.sessionBadgeText}>{group.group.name} · {group.members.filter(member => member.removedAt === undefined).length}</span>
     </button>
   ) : null;

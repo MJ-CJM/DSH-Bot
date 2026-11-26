@@ -56,7 +56,7 @@ export function GroupPermissionControl({ state, cwd, disabled = false, openReque
     { type: 'label', id: 'approval', text: t('groups.permissionApprovalScope') },
   ];
   return <span className={styles.modelControl}>
-    <Menu open={open && available} portal side="top" selectedId={snapshot.currentValue} className={styles.modelMenuAnchor} listClassName={styles.permissionMenu}
+    <Menu open={open && available} portal autoFocus side="top" selectedId={snapshot.currentValue} className={styles.modelMenuAnchor} listClassName={styles.permissionMenu}
       items={snapshot.catalog?.options.map(option => ({ id: option.value, label: label(option.value, option.name) })) ?? []}
       footer={guidance}
       onSelect={choose} onClose={() => setOpen(false)} anchor={<Button variant="ghost" size="sm" className={styles.modelTrigger}

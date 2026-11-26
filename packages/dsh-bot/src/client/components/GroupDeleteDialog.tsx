@@ -32,11 +32,29 @@ export function GroupDeleteDialog({ group, actions, section = 'groups', onClose,
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const mounted = useRef(false);
+  const running = Boolean(current?.running);
+  const wasRunning = useRef(running);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (wasRunning.current && !running && error === 'groups.deleteBusy') setError(undefined);
+    wasRunning.current = running;
+  }, [running, error]);
   const callbacks = useRef({ onDeleted, onClose });
   callbacks.current = { onDeleted, onClose };
   const reason = group.supergroup ? 'groups.deleteManaged' : changed ? 'groups.deleteChanged'
-    : current?.running ? 'groups.deleteBusy' : list.error ? 'groups.disconnected' : error;
+    : running ? 'groups.deleteBusy' : list.error ? 'groups.disconnected' : error;
+  const recheck = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+    setBusy(true);
+    try {
+      await actions.catalog.refresh();
+      if (mounted.current && error === 'groups.deleteBusy') setError(undefined);
+    } finally {
+      submitting.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
   const confirm = async () => {
     if (submitting.current || reason || !list.loaded) return;
     submitting.current = true;
@@ -44,9 +62,9 @@ export function GroupDeleteDialog({ group, actions, section = 'groups', onClose,
     try {
       if (!unwrapGroup(await actions.remote().deleteGroup(groupKey(group), group.revision))) throw new Error();
     } catch (cause) {
+      submitting.current = false;
       if (mounted.current) {
         setError(deleteError(cause));
-        submitting.current = false;
         setBusy(false);
       }
       await actions.catalog.refresh();
@@ -56,6 +74,7 @@ export function GroupDeleteDialog({ group, actions, section = 'groups', onClose,
     forgetRecentPreference(key);
     const { storage, path } = directoryWindow();
     if (readDirectoryWindow(storage, path, 'selection').selected === key) writeDirectoryWindow(storage, path, 'selection', {});
+    submitting.current = false;
     if (mounted.current) {
       callbacks.current.onDeleted?.(group);
       callbacks.current.onClose();
@@ -67,7 +86,7 @@ export function GroupDeleteDialog({ group, actions, section = 'groups', onClose,
     <div className={styles.editorBody}>
       {list.groups.some(row => row.group.name === group.name && row.group.id !== group.id) && <p>{group.id}</p>}
       {group.supergroup ? null : <p>{t('groups.deleteImpact')}</p>}
-      {reason && <p role="alert">{t(reason)}</p>}
+      {reason && <p role="alert">{t(reason)}{(reason === 'groups.deleteBusy' || reason === 'groups.disconnected') && <> <Button variant="ghost" size="sm" disabled={busy} onClick={() => void recheck()}>{t('bots.refresh')}</Button></>}</p>}
     </div>
     <footer className={styles.dialogFooter}>
       <Button disabled={busy} onClick={onClose}>{t('actions.cancel')}</Button>

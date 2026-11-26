@@ -14,6 +14,7 @@ type Locale = PropsLocale<'dsh-bot'>;
 import type { graphSchema } from '../../shared/reference-memory.js';
 import { CopyView } from './MemoryCopySteps.js';
 import { GraphTools } from './GraphTools.js';
+import { formatDateTime } from '../format.js';
 const inactiveSubscription = () => () => {};
 export function GraphPanel({
   bot,
@@ -244,7 +245,7 @@ function GraphView({
         {status?.copies.map((c) => (
           <li key={c.id}>
             <Button type="button" onClick={() => setCopyId(c.id)}>
-              {t(`graph.phase-${c.phase}`)} · {new Date(c.startedAt).toLocaleString()} · {c.records.length}
+              {t(`graph.phase-${c.phase}`)} · {formatDateTime(c.startedAt, t('activity.locale'))} · {c.records.length}
             </Button>
           </li>
         ))}

@@ -143,6 +143,7 @@ export function BotDialogs({ page, model }: { page: BotsPageProps; model: BotsPa
           >
             <div className={styles.editorBody}>
               <p>{t('duplicate.description', { name: dialog.bot.name })}</p>
+              {toast?.error && <p role="alert" className={styles.error}>{toast.text}</p>}
               <label className={styles.field} htmlFor={copyInput}>
                 {t('duplicate.id')}
                 <Input
@@ -151,7 +152,11 @@ export function BotDialogs({ page, model }: { page: BotsPageProps; model: BotsPa
                   disabled={busy}
                   aria-invalid={copyInvalid}
                   aria-describedby={copyInvalid ? `${copyInput}-error` : undefined}
-                  onChange={(event) => setCopyId(event.target.value)}
+                  onChange={(event) => {
+                    setCopyId(event.target.value);
+                    setCopyInvalid(false);
+                    if (toast?.error) model.setToast(undefined);
+                  }}
                 />
               </label>
               {copyInvalid && (

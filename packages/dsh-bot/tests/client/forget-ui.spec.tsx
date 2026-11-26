@@ -57,7 +57,7 @@ describe('I19/I20 DOM evidence, separate from Chromium', () => {
       await app.click('actions.delete'); await app.click('actions.cancel');
       expect(app.actions.preview).not.toHaveBeenCalled(); expect(app.actions.choose).not.toHaveBeenCalled();
       await app.click('actions.delete'); await app.click('forget.preview');
-      const css = app.container.querySelector('style[data-dsh-bot-forget-styles]')?.textContent;
+      const css = document.head.querySelector('style[data-dsh-bot-style="forget"]')?.textContent;
       expect(css).toContain("input[type='radio']");
       expect(css).toContain('appearance: auto');
       expect(css).toContain('width: 16px');
