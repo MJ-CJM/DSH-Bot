@@ -223,10 +223,28 @@ export function RoutinePanel({
     </section>
   );
 }
+const emptyHistory: ReturnType<ReturnType<RoutineActions['history']>['getSnapshot']> = {
+  records: [],
+  more: false,
+  unavailable: false,
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const subscribeEmptyHistory = () => () => {};
+const getEmptyHistory = () => emptyHistory;
+
 function DeliveryHistory({ actions, record, t }: { actions: RoutineActions; record: NativeTask; t: T }) {
-  const [source] = useState(() => actions.history(record));
-  const data = useSyncExternalStore(source.subscribe, source.getSnapshot);
-  useEffect(() => () => source.dispose(), [source]);
+  const recordRef = useRef(record);
+  recordRef.current = record;
+  const [owned, setOwned] = useState<{ id: string; sessionId: string; source: ReturnType<RoutineActions['history']> }>();
+  useEffect(() => {
+    const created = actions.history(recordRef.current);
+    setOwned({ id: record.id, sessionId: record.sessionId, source: created });
+    return () => created.dispose();
+  }, [actions, record.id, record.sessionId]);
+  const source = owned?.id === record.id && owned.sessionId === record.sessionId ? owned.source : undefined;
+  const data = useSyncExternalStore(source?.subscribe ?? subscribeEmptyHistory, source?.getSnapshot ?? getEmptyHistory, source?.getSnapshot ?? getEmptyHistory);
   return (
     <section className={styles.history} data-routine-history="">
       <h4>
@@ -253,7 +271,7 @@ function DeliveryHistory({ actions, record, t }: { actions: RoutineActions; reco
         <button
           type="button"
           onClick={() => {
-            void source.loadMore();
+            void source?.loadMore();
           }}
         >
           {t('routine.more')}

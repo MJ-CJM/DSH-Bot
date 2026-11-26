@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { groupKey, groupMemberEditResultSchema, type GroupView } from '../../shared/groups.js';
@@ -8,7 +8,7 @@ import { hasOperationCode } from '../../shared/operation-errors.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
 import { BotAvatar } from './BotAvatar.js';
-import { SettingsDrafts, useSettingsDraft, useSettingsNavigation } from './SettingsNavigation.js';
+import { SettingsDrafts, useSettingsNavigation } from './SettingsNavigation.js';
 import type { GroupMethods } from '../../shared/groups-contract.js';
 import { Modal } from './Modal.js';
 import styles from '../styles/roster.module.css';
@@ -94,12 +94,19 @@ export function useRosterSave(actions: GroupActions, view: GroupView, target: re
       throw new Error('Receipt identity mismatch');
     return receipt;
   };
+  const markNotFound = () => {
+    pending.delete(identity);
+    operation.current = undefined;
+    setFailureKey('groups.roster.failed');
+    setPhase('failed');
+  };
   const check = async () => {
     if (!operation.current || lock.current) return;
     lock.current = true; setPhase('saving');
     try {
       const receipt = receiptValue(await actions.remote().getMemberEditResult(key, operation.current));
       if (receipt.status === 'saved') { await markSaved(); }
+      else if (receipt.status === 'not-found') { markNotFound(); }
       else setPhase('unknown');
     } catch { setPhase('unknown'); }
     finally { lock.current = false; }
@@ -116,18 +123,20 @@ export function useRosterSave(actions: GroupActions, view: GroupView, target: re
         expectedMembershipRevision: view.group.membershipRevision, members: [...target],
         ...(rosterAddedMembers(view, target).length ? { historyConfirmed: true as const } : {}),
       })));
+      if (receipt.status === 'not-found') { markNotFound(); return; }
       if (receipt.status !== 'saved') { setPhase('unknown'); return; }
       await markSaved();
     } catch (cause) {
       if (hasOperationCode(cause, 'conflict')) {
-        pending.delete(identity); setPhase('conflict');
+        pending.delete(identity); operation.current = undefined; setPhase('conflict');
         try { setLatest(unwrapGroup(await actions.remote().view(key, {}))); } catch { /* Keep the reviewed draft. */ }
       } else if ((['member-limit', 'unsupported', 'recovery-needed', 'not-found', 'invalid', 'approval-denied', 'unavailable'] as const).some(code => hasOperationCode(cause, code))) {
-        pending.delete(identity); setFailureKey(hasOperationCode(cause, 'unavailable') ? 'groups.roster.failedUnavailable' : hasOperationCode(cause, 'approval-denied') ? 'groups.roster.failedApproval' : hasOperationCode(cause, 'member-limit') ? 'groups.roster.failedLimit' : hasOperationCode(cause, 'not-found') ? 'groups.roster.failedMissing' : 'groups.roster.failed'); setPhase('failed');
+        pending.delete(identity); operation.current = undefined; setFailureKey(hasOperationCode(cause, 'unavailable') ? 'groups.roster.failedUnavailable' : hasOperationCode(cause, 'approval-denied') ? 'groups.roster.failedApproval' : hasOperationCode(cause, 'member-limit') ? 'groups.roster.failedLimit' : hasOperationCode(cause, 'not-found') ? 'groups.roster.failedMissing' : 'groups.roster.failed'); setPhase('failed');
       } else {
         try {
           const receipt = receiptValue(await actions.remote().getMemberEditResult(key, operation.current));
           if (receipt.status === 'saved') { await markSaved(); }
+          else if (receipt.status === 'not-found') { markNotFound(); }
           else setPhase('unknown');
         } catch { setPhase('unknown'); }
       }
@@ -160,7 +169,11 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
   const added = rosterAddedMembers(baseline, target);
   const removed = current.filter(member => !target.some(key => sameBot(key, member.bot)));
   const changed = JSON.stringify(current.map(member => member.bot)) !== JSON.stringify(target);
-  useSettingsDraft(changed && !['saved', 'unknown'].includes(mutation.phase));
+  const dirty = changed && !['saved', 'unknown'].includes(mutation.phase);
+  useLayoutEffect(() => {
+    navigation.registry.set('roster-local', dirty);
+    return () => navigation.registry.set('roster-local', false);
+  }, [navigation.registry, dirty]);
   const blocked = memberEditingReason(baseline);
   const locked = mutation.phase === 'saving' || mutation.phase === 'saved' || mutation.phase === 'unknown' || mutation.phase === 'conflict';
   const valid = target.length >= 2 && (current.length > limit ? target.length < current.length && !added.length : target.length <= limit);
@@ -174,7 +187,7 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
     `${bot.name} ${bot.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const latest = mutation.latest;
   useStyleSheet('roster', css);
-  const leave = () => { navigation.registry.set('roster-local', changed && !['saved', 'unknown'].includes(mutation.phase)); navigation.leave(onClose); };
+  const leave = () => navigation.leave(onClose);
   return <SettingsDrafts.Provider value={navigation.registry}><Modal title={t('groups.roster.manage')} description={baseline.group.name} busy={mutation.phase === 'saving'} onClose={leave} t={t}>
     <div className={styles.body} data-roster-management="">
       <div className={styles.heading}><strong>{t('groups.memberCapacity', { count: target.length, limit })}</strong><span>{t('groups.roster.minimum')}</span></div>

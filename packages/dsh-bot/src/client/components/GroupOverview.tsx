@@ -138,10 +138,16 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
   focusTurnId?: string;
   focusRequest?: GroupActivityFocus;
 } & PropsLocale<'dsh-bot'>) {
-  const [catalog] = useState(() => actions.createView(groupKey(summary.group)));
-  useEffect(() => () => catalog.dispose(), [catalog]);
-  const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
-  const view = snapshot.view;
+  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
+  const [owned, setOwned] = useState<{ id: string; createdAt: number; source: ReturnType<GroupActions['createView']> }>();
+  useEffect(() => {
+    const source = actions.createView({ groupId, groupCreatedAt });
+    setOwned({ id: groupId, createdAt: groupCreatedAt, source });
+    return () => source.dispose();
+  }, [actions, groupId, groupCreatedAt]);
+  const catalog = owned?.id === groupId && owned.createdAt === groupCreatedAt ? owned.source : undefined;
+  const snapshot = useSyncExternalStore(catalog?.subscribe ?? subscribeNoMembersView, catalog?.getSnapshot ?? noMembersView, catalog?.getSnapshot ?? noMembersView);
+  const view = snapshot?.view;
   const [section, setSection] = useState<GroupOverviewSection>(requestedSection ?? 'members');
   const currentSection = requestedSection ?? section;
   const selectSection = (next: GroupOverviewSection) => {
@@ -154,6 +160,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
   const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const [deleting, setDeleting] = useState<GroupRecord>();
   const [teamsOpen, setTeamsOpen] = useState(false);
+  useEffect(() => { if (!visible) setTeamsOpen(false); }, [visible]);
   const navigation = useRef(new AbortController());
   useEffect(() => {
     if (navigation.current.signal.aborted) navigation.current = new AbortController();
@@ -161,9 +168,9 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     return () => owner.abort();
   }, []);
   const uid = useId();
-  const viewMatched = Boolean(view && view.group.id === summary.group.id && view.group.createdAt === summary.group.createdAt && view.group.rootSessionId === summary.group.rootSessionId);
+  const viewMatched = Boolean(catalog && view && view.group.id === summary.group.id && view.group.createdAt === summary.group.createdAt && view.group.rootSessionId === summary.group.rootSessionId);
   useStyleSheet('groups', css, viewMatched);
-  if (!view) return <p role={snapshot.error ? 'alert' : 'status'}>{t(snapshot.error ? 'groups.disconnected' : 'groups.loading')}</p>;
+  if (!catalog || !view) return <p role={snapshot?.error ? 'alert' : 'status'}>{t(snapshot?.error ? 'groups.disconnected' : 'groups.loading')}</p>;
   if (!viewMatched)
     return <p role="alert">{t('groups.disconnected')}</p>;
   const open = async () => {
@@ -181,7 +188,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     finally { setBusy(false); }
   };
   const editingReason = memberEditingReason(view);
-  const members = view.members.filter(member => member.removedAt === undefined);
+  const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
   const active = members.filter(member => member.enabled);
   const subject = { kind: 'group' as const, group: groupKey(view.group) };
   const followUp = actions.followUp;
@@ -301,7 +308,7 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
   executionBridge?: ExecutionBridge;
 } & PropsLocale<'dsh-bot'>) {
   const editingReason = memberEditingReason(view);
-  const members = view.members.filter(member => member.removedAt === undefined);
+  const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
   const [menu, setMenu] = useState<string>();
   const [removing, setRemoving] = useState<GroupMember>();
   const memberMenuTrigger = useRef<HTMLButtonElement | null>(null);

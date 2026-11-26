@@ -33,6 +33,7 @@ export function useBotsPage({
   onUpdate,
   onStart,
   onRefresh,
+  getCatalogSnapshot,
   t,
 }: BotsPageProps) {
   const snapshot = useCatalog((value) => value);
@@ -320,7 +321,8 @@ export function useBotsPage({
           if (onCreateForChat) throw error;
           // Reconcile an unknown response before offering another create attempt.
           await onRefresh();
-          if (!catalogRef.current.entries.some(entry => entry.bot.id === id && matchesCreation(input as BotCreateInput, entry.bot))) throw error;
+          const latestSnapshot = getCatalogSnapshot?.() ?? catalogRef.current;
+          if (!latestSnapshot.entries.some(entry => entry.bot.id === id && matchesCreation(input as BotCreateInput, entry.bot))) throw error;
         }
         acceptedCreation.current = id; setCreatedId(id);
       }

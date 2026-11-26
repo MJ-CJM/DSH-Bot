@@ -63,15 +63,15 @@ export function BotsPage(page: BotsPageProps) {
               <p className={styles.subtitle}>{tab === 'management' ? t('navigation.settingsFrom', { name: sectionLabel }) : t('bots.subtitle')}</p>
             </div>
             <div className={styles.actions}>
-              <button type="button" ref={model.settingsButton} className={styles.button} data-settings-navigation="" onClick={() => tab === 'management' ? settings.leave(model.returnFromSettings) : setTab('management')}>{tab === 'management' ? t('navigation.returnTo', { name: sectionLabel }) : text('chat.settings')}</button>
+              <button type="button" ref={model.settingsButton} className={styles.button} data-settings-navigation="" onClick={() => settings.leave(() => { if (tab === 'management') model.returnFromSettings(); else setTab('management'); })}>{tab === 'management' ? t('navigation.returnTo', { name: sectionLabel }) : text('chat.settings')}</button>
             </div>
           </header>
           <nav hidden={model.showDetail && tab !== 'management'} className={styles.sectionNavigation} aria-label={t('navigation.sections')}>
             {(['bots', 'groups', 'recent'] as const).filter(key => key !== 'groups' || groups).map(key => <button
               type="button" key={key} className={styles.button} aria-current={tab !== 'management' && section === key ? 'page' : undefined}
               onClick={() => {
-                const go = () => { setTab(key); setCreatingGroup(false); model.setShowDetail(false); };
-                if (tab === 'management') settings.leave(go); else go();
+                if (tab === key && !creatingGroup && !model.showDetail) return;
+                settings.leave(() => { setTab(key); setCreatingGroup(false); model.setShowDetail(false); });
               }}>
               {t(key === 'bots' ? 'navigation.myBots' : key === 'groups' ? 'groups.title' : 'chat.recent')}
             </button>)}

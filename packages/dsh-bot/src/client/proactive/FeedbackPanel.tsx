@@ -2,6 +2,7 @@ import { methodPlan } from "../../shared/proactive/method-evaluation.js";
 import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
 import { useState } from "react";
+import { useSettingsDraft } from "../components/SettingsNavigation.js";
 import {
 	feedbackDataset, feedbackProposal,
 	type FeedbackCandidate, type FeedbackProposal, type FeedbackWorkflowAction, type FeedbackWorkflowView, type FeedbackContext,
@@ -40,6 +41,7 @@ export function FeedbackPanel({ view, contexts, pending, onAction, onMore, onHis
 	const [error, setError] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [histories, setHistories] = useState<Record<string, FeedbackCandidate[]>>({});
+	useSettingsDraft(Boolean(reason.trim() || content.trim() || skill.trim() || problem.trim() || reproducer.trim() || scope.trim() || counterexample.trim() || datasetText.trim() || methodPlanText.trim() || busy));
 	const context = contexts.find(row => row.origin.taskId === selected) ?? contexts[0];
 	const locked = pending || busy;
 	async function run(action: () => Promise<void>) {
