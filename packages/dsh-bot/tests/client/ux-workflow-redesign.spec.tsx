@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Context } from '@deepseek-ai/cordis';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import en from '../../locale/en.json';
 import zh from '../../locale/zh.json';
 import { BotEditor } from '../../src/client/components/BotEditor.js';
+import { BotList } from '../../src/client/components/BotList.js';
 import { GroupConversation, GroupEditor } from '../../src/client/components/GroupsPanel.js';
 import { GroupOverview } from '../../src/client/components/GroupOverview.js';
 import { GroupMessageCard } from '../../src/client/components/GroupTimeline.js';
@@ -26,7 +27,7 @@ import type { NotificationPolicy } from '../../src/shared/integrations.js';
 import type { ManagedMemoryPage } from '../../src/shared/memory-management.js';
 import type { DshBotMemoryRemoteMethods } from '../../src/shared/remote-contract.js';
 import { annotatedFact } from '../deepening/shared-fixtures.js';
-import { openProfile, openSettings } from './bot-ui-helpers.js';
+import { openProfile, openSettings, refreshBots } from './bot-ui-helpers.js';
 import { bots as fixtureBots, summary, view } from './group-fixture.js';
 import { bot, button, click, field, fill, mountClient, submit } from './helpers.js';
 
@@ -167,6 +168,140 @@ describe('BotEditor hierarchy, custom model toggle, and BotsTab direct profile e
     await click(button(app.container, 'Back to My Bots'));
     expect(app.container.querySelector('dialog')).toBeNull();
     expect(app.container.querySelector('[data-bot-detail]')).toBeNull();
+  });
+
+  it('syncs a permanently mounted clean BotEditor after save and external catalog refresh without clobbering updated fields', async () => {
+    const app = await mountClient([
+      bot({
+        id: 'alpha-bot',
+        name: 'Alpha Bot',
+        description: 'Initial description',
+        model: { provider: 'first', model: 'one' },
+      }),
+    ]);
+    cleanups.push(() => app.dispose());
+    await openProfile(app);
+    await click(button(app.container, en.ui['detail.settings']));
+
+    const profilePanel = app.container.querySelector('[data-bot-profile-editor]')!;
+    const desc = () => field(profilePanel, en.ui['editor.description']) as HTMLTextAreaElement;
+    const providerInput = () => field(profilePanel, en.ui['manage.provider']) as HTMLInputElement;
+    const modelInput = () => field(profilePanel, en.ui['manage.modelId']) as HTMLInputElement;
+
+    expect(providerInput().value).toBe('first');
+    expect(modelInput().value).toBe('one');
+
+    // First save keeps BotEditor mounted and returns it to a clean baseline
+    await fill(desc(), 'First save');
+    await submit(profilePanel);
+    expect(app.remote.methods.update).toHaveBeenCalledTimes(1);
+    expect(app.remote.methods.update).toHaveBeenLastCalledWith('alpha-bot', { description: 'First save' });
+    expect(button(profilePanel, en.ui['editor.reset']).disabled).toBe(true);
+
+    // Another settings surface / client updates the Bot's model externally and refreshes catalog
+    await app.remote.methods.update('alpha-bot', { model: { provider: 'second', model: 'two' } });
+    await refreshBots(app);
+
+    // The permanently mounted clean editor syncs immediately to the refreshed config
+    expect(providerInput().value).toBe('second');
+    expect(modelInput().value).toBe('two');
+    expect(button(profilePanel, en.ui['editor.reset']).disabled).toBe(true);
+
+    // Editing only description and saving again must preserve model second/two (never overwrite with first/one)
+    await fill(desc(), 'Second save');
+    await submit(profilePanel);
+    expect(app.remote.methods.update).toHaveBeenCalledTimes(3);
+    const secondSavePatch = app.remote.methods.update.mock.calls[2]?.[1];
+    expect(secondSavePatch).toEqual({ description: 'Second save' });
+    expect(secondSavePatch).not.toHaveProperty('model');
+    expect(app.remote.data.records[0]?.description).toBe('Second save');
+    expect(app.remote.data.records[0]?.model).toEqual({ provider: 'second', model: 'two' });
+  });
+
+  it('preserves dirty unsaved edits across background catalog refresh and syncs clean custom model toggle state', async () => {
+    const app = await mountClient([
+      bot({
+        id: 'alpha-bot',
+        name: 'Alpha Bot',
+        description: 'Initial description',
+        model: { provider: 'first', model: 'one' },
+      }),
+    ]);
+    cleanups.push(() => app.dispose());
+    await openProfile(app);
+    await click(button(app.container, en.ui['detail.settings']));
+
+    const profilePanel = app.container.querySelector('[data-bot-profile-editor]')!;
+    const desc = () => field(profilePanel, en.ui['editor.description']) as HTMLTextAreaElement;
+    const providerInput = () => field(profilePanel, en.ui['manage.provider']) as HTMLInputElement;
+    const modelInput = () => field(profilePanel, en.ui['manage.modelId']) as HTMLInputElement;
+
+    // User has unsaved edits in description
+    await fill(desc(), 'Unsaved user draft');
+    expect(button(profilePanel, en.ui['editor.reset']).disabled).toBe(false);
+
+    // Background catalog refresh brings external changes to both model and description
+    await app.remote.methods.update('alpha-bot', {
+      description: 'External description',
+      model: { provider: 'second', model: 'two' },
+    });
+    await refreshBots(app);
+
+    // Dirty draft must NOT be clobbered by background refresh
+    expect(desc().value).toBe('Unsaved user draft');
+    expect(button(profilePanel, en.ui['editor.reset']).disabled).toBe(false);
+
+    // Saving the dirty description must only submit description (not revert model to first/one),
+    // and once clean after save the editor syncs to the refreshed second/two model
+    await submit(profilePanel);
+    const savePatch = app.remote.methods.update.mock.calls.at(-1)?.[1];
+    expect(savePatch).toEqual({ description: 'Unsaved user draft' });
+    expect(app.remote.data.records[0]?.model).toEqual({ provider: 'second', model: 'two' });
+    expect(providerInput().value).toBe('second');
+    expect(modelInput().value).toBe('two');
+    expect(button(profilePanel, en.ui['editor.reset']).disabled).toBe(true);
+
+    // Also verify dirty draft reset pulls the latest refreshed config
+    await fill(desc(), 'Discardable draft');
+    await app.remote.methods.update('alpha-bot', { model: { provider: 'third', model: 'three' } });
+    await refreshBots(app);
+    expect(desc().value).toBe('Discardable draft');
+    await click(button(profilePanel, en.ui['editor.reset']));
+    expect(desc().value).toBe('Unsaved user draft');
+    expect(providerInput().value).toBe('third');
+    expect(modelInput().value).toBe('three');
+    expect(button(profilePanel, en.ui['editor.reset']).disabled).toBe(true);
+
+    // Verify clean sync also recalculates custom model disclosure when refreshed model enters/leaves catalog
+    const t = makeT('en');
+    const models = {
+      catalog: {
+        getSnapshot: () => ({
+          providers: [{ id: 'mock', name: 'Mock Provider', available: true, models: [{ provider: 'mock', id: 'small', name: 'Small Model' }] }],
+        }),
+        observe: () => () => {},
+      },
+      modelInfo: vi.fn(async () => ({ reasoning: { efforts: [] } })),
+    } as unknown as ModelActions;
+    const catalogBot = bot({ id: 'sync-bot', name: 'Sync Bot', model: { provider: 'mock', model: 'small' } });
+    const standalone = await mountNode(
+      <BotEditor embedded bot={catalogBot} models={models} onSave={async () => {}} onCancel={() => {}} t={t} />,
+    );
+    expect(standalone.container.querySelector<HTMLInputElement>('[data-bot-custom-model-toggle]')?.checked).toBe(false);
+
+    const customModelBot = { ...catalogBot, updatedAt: 2, model: { provider: 'legacy', model: 'private-v1' } };
+    await standalone.render(
+      <BotEditor embedded bot={customModelBot} models={models} onSave={async () => {}} onCancel={() => {}} t={t} />,
+    );
+    expect(standalone.container.querySelector<HTMLInputElement>('[data-bot-custom-model-toggle]')?.checked).toBe(true);
+    expect((field(standalone.container, t('manage.provider')) as HTMLInputElement).value).toBe('legacy');
+    expect((field(standalone.container, t('manage.modelId')) as HTMLInputElement).value).toBe('private-v1');
+
+    const backToCatalogBot = { ...catalogBot, updatedAt: 3, model: { provider: 'mock', model: 'small' } };
+    await standalone.render(
+      <BotEditor embedded bot={backToCatalogBot} models={models} onSave={async () => {}} onCancel={() => {}} t={t} />,
+    );
+    expect(standalone.container.querySelector<HTMLInputElement>('[data-bot-custom-model-toggle]')?.checked).toBe(false);
   });
 });
 
@@ -396,6 +531,103 @@ describe('BotsRightTab direct chat trigger & BotsPage CTA hierarchy', () => {
     await click(directChat);
     expect(app.remote.methods.openConversation).toHaveBeenCalledExactlyOnceWith('alpha-bot');
     expect(app.openSession).toHaveBeenCalledExactlyOnceWith('test-created-session');
+  });
+
+  it('activates the focused independent chat button own Bot on Enter, Space, and click even when another Bot is selected', async () => {
+    const t = makeT('en');
+    const entries = [
+      { bot: bot({ id: 'alpha', name: 'Alpha' }) },
+      { bot: bot({ id: 'beta', name: 'Beta' }) },
+    ];
+    const onSelectSpy = vi.fn();
+    const onActivate = vi.fn();
+    function ControlledBotList() {
+      const [selectedId, setSelectedId] = useState('alpha');
+      return (
+        <BotList
+          entries={entries}
+          activities={[]}
+          selectedId={selectedId}
+          onSelect={(id) => {
+            onSelectSpy(id);
+            setSelectedId(id);
+          }}
+          onActivate={onActivate}
+          compact
+          showActivateAction
+          t={t}
+        />
+      );
+    }
+
+    const app = await mountNode(<ControlledBotList />);
+    const listbox = app.container.querySelector<HTMLElement>('[role="listbox"]')!;
+    const alphaOption = app.container.querySelector<HTMLButtonElement>('[role="option"][data-bot-id="alpha"]')!;
+    const betaChatButton = app.container.querySelector<HTMLButtonElement>('[data-bot-open-chat="beta"]')!;
+
+    expect(alphaOption.getAttribute('aria-selected')).toBe('true');
+
+    // Focus beta's standalone chat button while alpha remains selected: Enter must NOT be intercepted by listbox
+    betaChatButton.focus();
+    expect(document.activeElement).toBe(betaChatButton);
+    const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    await act(async () => {
+      betaChatButton.dispatchEvent(enterEvent);
+    });
+    expect(enterEvent.defaultPrevented).toBe(false);
+    expect(onActivate).not.toHaveBeenCalled();
+    // Native button Enter activation fires click on beta's button once
+    await click(betaChatButton);
+    expect(onActivate).toHaveBeenCalledExactlyOnceWith('beta');
+    expect(onSelectSpy).toHaveBeenLastCalledWith('beta');
+
+    // Re-select alpha, focus beta's standalone chat button, and verify Space behaves identically
+    await click(alphaOption);
+    onActivate.mockClear();
+    onSelectSpy.mockClear();
+    expect(alphaOption.getAttribute('aria-selected')).toBe('true');
+
+    betaChatButton.focus();
+    expect(document.activeElement).toBe(betaChatButton);
+    const spaceEvent = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    await act(async () => {
+      betaChatButton.dispatchEvent(spaceEvent);
+    });
+    expect(spaceEvent.defaultPrevented).toBe(false);
+    expect(onActivate).not.toHaveBeenCalled();
+    await act(async () => {
+      betaChatButton.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true, cancelable: true }));
+    });
+    await click(betaChatButton);
+    expect(onActivate).toHaveBeenCalledExactlyOnceWith('beta');
+    expect(onSelectSpy).toHaveBeenLastCalledWith('beta');
+
+    // Arrow navigation keys on the independent button must also be ignored by listbox
+    await click(alphaOption);
+    onActivate.mockClear();
+    onSelectSpy.mockClear();
+    betaChatButton.focus();
+    const arrowEvent = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
+    await act(async () => {
+      betaChatButton.dispatchEvent(arrowEvent);
+    });
+    expect(arrowEvent.defaultPrevented).toBe(false);
+    expect(onSelectSpy).not.toHaveBeenCalled();
+
+    // Direct mouse click on beta's chat button while alpha is selected activates beta once
+    await click(betaChatButton);
+    expect(onActivate).toHaveBeenCalledExactlyOnceWith('beta');
+
+    // Listbox Enter/Space still activates the selected row when the listbox itself is focused
+    await click(alphaOption);
+    onActivate.mockClear();
+    expect(document.activeElement).toBe(listbox);
+    const listEnter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    await act(async () => {
+      listbox.dispatchEvent(listEnter);
+    });
+    expect(listEnter.defaultPrevented).toBe(true);
+    expect(onActivate).toHaveBeenCalledExactlyOnceWith('alpha');
   });
 });
 

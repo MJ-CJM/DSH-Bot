@@ -62,6 +62,14 @@ export function BotList({
       aria-activedescendant={activeId ? `${listId}-${activeId}` : undefined}
       onKeyDown={(event) => {
         if (disabled || !entries.length) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (
+          target &&
+          target !== event.currentTarget &&
+          target.closest('button:not([role="option"]), a, input, select, textarea, [data-bot-open-chat]')
+        ) {
+          return;
+        }
         const current = entries.findIndex(({ bot }) => bot.id === activeId);
         let next = current;
         if (event.key === 'ArrowDown') next = Math.min(entries.length - 1, current + 1);

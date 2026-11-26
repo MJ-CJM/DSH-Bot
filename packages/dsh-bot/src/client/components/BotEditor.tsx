@@ -3,7 +3,7 @@ import { Input } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { ModelActions, ModelCatalogData } from '../model-catalog-state.js';
 import type { CapabilityKey } from './CapabilitiesPanel.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import {
   type BotCreateInput,
   type BotPatch,
@@ -15,6 +15,73 @@ import styles from '../styles/bots.module.css';
 import { AvatarPicker } from './AvatarPicker.js';
 import { BotAvatar } from './BotAvatar.js';
 import { Modal } from './Modal.js';
+
+interface BotDraft {
+  name: string;
+  avatar: BotRecord['avatar'];
+  avatarColor: BotRecord['avatarColor'];
+  avatarVariant: NonNullable<BotRecord['avatarVariant']>;
+  defaultCwd: string;
+  description: string;
+  persona: string;
+  suffix: string;
+  complete: boolean;
+  template: BotRecord['template'];
+  modelEnabled: boolean;
+  provider: string;
+  modelId: string;
+  reasoning: string;
+  extraDirs: string;
+  memory: boolean;
+  injectLimit: string;
+  deny: string;
+}
+
+function draftFromBot(bot: BotRecord | undefined, duplicate: boolean, copyName?: string): BotDraft {
+  return {
+    name: duplicate && bot ? (copyName ?? bot.name) : (bot?.name ?? ''),
+    avatar: bot?.avatar,
+    avatarColor: bot?.avatarColor,
+    avatarVariant: bot?.avatarVariant ?? (bot ? 'classic' : 'auto'),
+    defaultCwd: bot?.defaultCwd ?? '',
+    description: bot?.description ?? '',
+    persona: bot?.persona.prefix ?? '',
+    suffix: bot?.persona.suffix ?? '',
+    complete: bot?.persona.complete ?? false,
+    template: bot?.template ?? 'standard',
+    modelEnabled: Boolean(bot?.model),
+    provider: bot?.model?.provider ?? '',
+    modelId: bot?.model?.model ?? '',
+    reasoning: bot?.model?.reasoningEffort ?? '',
+    extraDirs: bot?.skills.extraDirs.join('\n') ?? '',
+    memory: bot?.memory.enabled ?? true,
+    injectLimit: String(bot?.memory.injectLimit ?? 20),
+    deny: bot?.tools.deny.join('\n') ?? '',
+  };
+}
+
+function serializeDraft(draft: BotDraft): string {
+  return JSON.stringify([
+    draft.name,
+    draft.avatar,
+    draft.avatarColor,
+    draft.avatarVariant,
+    draft.description,
+    draft.defaultCwd,
+    draft.persona,
+    draft.suffix,
+    draft.complete,
+    draft.template,
+    draft.modelEnabled,
+    draft.provider,
+    draft.modelId,
+    draft.reasoning,
+    draft.extraDirs,
+    draft.memory,
+    draft.injectLimit,
+    draft.deny,
+  ]);
+}
 
 export interface BotEditorProps {
   bot?: BotRecord;
@@ -56,11 +123,13 @@ export function BotEditor({
   const [id] = useState(() => duplicate && bot ? `${bot.id.slice(0, 27)}-copy` : (bot?.id ?? `bot-${crypto.randomUUID().replaceAll('-', '').slice(0, 20)}`));
   const [avatarOpen, setAvatarOpen] = useState(false);
   const text = (key: string) => t(key as Parameters<typeof t>[0]);
-  const [name, setName] = useState(duplicate && bot ? t('editor.copyName', { name: bot.name }) : (bot?.name ?? ''));
-  const [avatar, setAvatar] = useState(bot?.avatar);
-  const [avatarColor, setAvatarColor] = useState(bot?.avatarColor);
-  const [avatarVariant, setAvatarVariant] = useState(bot?.avatarVariant ?? (bot ? 'classic' : 'auto'));
-  const [defaultCwd, setDefaultCwd] = useState(bot?.defaultCwd ?? '');
+  const copyName = duplicate && bot ? t('editor.copyName', { name: bot.name }) : undefined;
+  const initialBotDraft = draftFromBot(bot, duplicate, copyName);
+  const [name, setName] = useState(initialBotDraft.name);
+  const [avatar, setAvatar] = useState(initialBotDraft.avatar);
+  const [avatarColor, setAvatarColor] = useState(initialBotDraft.avatarColor);
+  const [avatarVariant, setAvatarVariant] = useState(initialBotDraft.avatarVariant);
+  const [defaultCwd, setDefaultCwd] = useState(initialBotDraft.defaultCwd);
   const [home, setHome] = useState<string>();
   const [homeFailed, setHomeFailed] = useState(false);
   const [botsPath, setBotsPath] = useState<string>();
@@ -68,12 +137,12 @@ export function BotEditor({
   const [homeAttempt, setHomeAttempt] = useState(0);
   const [picking, setPicking] = useState(false);
   const [pickFailed, setPickFailed] = useState(false);
-  const [description, setDescription] = useState(bot?.description ?? '');
-  const [persona, setPersona] = useState(bot?.persona.prefix ?? '');
-  const [modelEnabled, setModelEnabled] = useState(Boolean(bot?.model));
-  const [provider, setProvider] = useState(bot?.model?.provider ?? '');
-  const [modelId, setModelId] = useState(bot?.model?.model ?? '');
-  const [reasoning, setReasoning] = useState(bot?.model?.reasoningEffort ?? '');
+  const [description, setDescription] = useState(initialBotDraft.description);
+  const [persona, setPersona] = useState(initialBotDraft.persona);
+  const [modelEnabled, setModelEnabled] = useState(initialBotDraft.modelEnabled);
+  const [provider, setProvider] = useState(initialBotDraft.provider);
+  const [modelId, setModelId] = useState(initialBotDraft.modelId);
+  const [reasoning, setReasoning] = useState(initialBotDraft.reasoning);
   const [customModelMode, setCustomModelMode] = useState<'auto' | 'on' | 'off'>('auto');
   const [modelCatalog, setModelCatalog] = useState<{ providers: ModelCatalogData['providers']; error?: unknown }>();
   const [efforts, setEfforts] = useState<{ id: string; name: string }[]>([]);
@@ -97,64 +166,91 @@ export function BotEditor({
     }, () => {});
     return () => { active = false; };
   }, [models, provider, modelId]);
-  const [extraDirs, setExtraDirs] = useState(bot?.skills.extraDirs.join('\n') ?? '');
-  const [suffix, setSuffix] = useState(bot?.persona.suffix ?? '');
-  const [complete, setComplete] = useState(bot?.persona.complete ?? false);
-  const [template, setTemplate] = useState<'standard' | 'minimal'>(bot?.template ?? 'standard');
-  const [memory, setMemory] = useState(bot?.memory.enabled ?? true);
-  const [injectLimit, setInjectLimit] = useState(String(bot?.memory.injectLimit ?? 20));
-  const [deny, setDeny] = useState(bot?.tools.deny.join('\n') ?? '');
+  const [extraDirs, setExtraDirs] = useState(initialBotDraft.extraDirs);
+  const [suffix, setSuffix] = useState(initialBotDraft.suffix);
+  const [complete, setComplete] = useState(initialBotDraft.complete);
+  const [template, setTemplate] = useState(initialBotDraft.template);
+  const [memory, setMemory] = useState(initialBotDraft.memory);
+  const [injectLimit, setInjectLimit] = useState(initialBotDraft.injectLimit);
+  const [deny, setDeny] = useState(initialBotDraft.deny);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState(false);
   const [saving, setSaving] = useState(false);
   const disabled = busy || saving || picking;
-  const draftValue = JSON.stringify([name, avatar, avatarColor, avatarVariant, description, defaultCwd, persona, suffix, complete, template, modelEnabled, provider, modelId, reasoning, extraDirs, memory, injectLimit, deny]);
-  const initialDraft = useRef(draftValue);
-  const dirty = draftValue !== initialDraft.current;
+  const [baseline, setBaseline] = useState<BotDraft>(initialBotDraft);
+  const syncedBotKey = useRef(bot ? `${bot.updatedAt}:${serializeDraft(initialBotDraft)}` : '');
+  const currentDraft: BotDraft = {
+    name,
+    avatar,
+    avatarColor,
+    avatarVariant,
+    defaultCwd,
+    description,
+    persona,
+    suffix,
+    complete,
+    template,
+    modelEnabled,
+    provider,
+    modelId,
+    reasoning,
+    extraDirs,
+    memory,
+    injectLimit,
+    deny,
+  };
+  const draftValue = serializeDraft(currentDraft);
+  const baselineValue = serializeDraft(baseline);
+  const dirty = draftValue !== baselineValue;
   useSettingsDraft(embedded && (dirty || disabled));
 
-  const resetDraft = () => {
-    const nextName = duplicate && bot ? t('editor.copyName', { name: bot.name }) : (bot?.name ?? '');
-    const nextAvatar = bot?.avatar;
-    const nextAvatarColor = bot?.avatarColor;
-    const nextAvatarVariant = bot?.avatarVariant ?? (bot ? 'classic' : 'auto');
-    const nextDefaultCwd = bot?.defaultCwd ?? '';
-    const nextDescription = bot?.description ?? '';
-    const nextPersona = bot?.persona.prefix ?? '';
-    const nextModelEnabled = Boolean(bot?.model);
-    const nextProvider = bot?.model?.provider ?? '';
-    const nextModelId = bot?.model?.model ?? '';
-    const nextReasoning = bot?.model?.reasoningEffort ?? '';
-    const nextExtraDirs = bot?.skills.extraDirs.join('\n') ?? '';
-    const nextSuffix = bot?.persona.suffix ?? '';
-    const nextComplete = bot?.persona.complete ?? false;
-    const nextTemplate = bot?.template ?? 'standard';
-    const nextMemory = bot?.memory.enabled ?? true;
-    const nextInjectLimit = String(bot?.memory.injectLimit ?? 20);
-    const nextDeny = bot?.tools.deny.join('\n') ?? '';
-    setName(nextName);
-    setAvatar(nextAvatar);
-    setAvatarColor(nextAvatarColor);
-    setAvatarVariant(nextAvatarVariant);
-    setDefaultCwd(nextDefaultCwd);
-    setDescription(nextDescription);
-    setPersona(nextPersona);
-    setModelEnabled(nextModelEnabled);
-    setProvider(nextProvider);
-    setModelId(nextModelId);
-    setReasoning(nextReasoning);
+  const applyDraft = useCallback((next: BotDraft, resetUiState = false) => {
+    setName(next.name);
+    setAvatar(next.avatar);
+    setAvatarColor(next.avatarColor);
+    setAvatarVariant(next.avatarVariant);
+    setDefaultCwd(next.defaultCwd);
+    setDescription(next.description);
+    setPersona(next.persona);
+    setModelEnabled(next.modelEnabled);
+    setProvider(next.provider);
+    setModelId(next.modelId);
+    setReasoning(next.reasoning);
     setCustomModelMode('auto');
-    setExtraDirs(nextExtraDirs);
-    setSuffix(nextSuffix);
-    setComplete(nextComplete);
-    setTemplate(nextTemplate);
-    setMemory(nextMemory);
-    setInjectLimit(nextInjectLimit);
-    setDeny(nextDeny);
-    setErrors({});
-    setFailure(false);
-    setPickFailed(false);
-    initialDraft.current = JSON.stringify([nextName, nextAvatar, nextAvatarColor, nextAvatarVariant, nextDescription, nextDefaultCwd, nextPersona, nextSuffix, nextComplete, nextTemplate, nextModelEnabled, nextProvider, nextModelId, nextReasoning, nextExtraDirs, nextMemory, nextInjectLimit, nextDeny]);
+    setExtraDirs(next.extraDirs);
+    setSuffix(next.suffix);
+    setComplete(next.complete);
+    setTemplate(next.template);
+    setMemory(next.memory);
+    setInjectLimit(next.injectLimit);
+    setDeny(next.deny);
+    setBaseline(next);
+    if (resetUiState) {
+      setErrors({});
+      setFailure(false);
+      setPickFailed(false);
+    }
+  }, []);
+
+  // Keep a permanently mounted clean editor aligned with external catalog updates
+  // while leaving any in-progress dirty draft untouched.
+  useLayoutEffect(() => {
+    if (!editing || !bot || dirty || saving || picking) return;
+    const next = draftFromBot(bot, false);
+    const nextSnapshot = serializeDraft(next);
+    const nextKey = `${bot.updatedAt}:${nextSnapshot}`;
+    if (nextKey === syncedBotKey.current) return;
+    syncedBotKey.current = nextKey;
+    if (nextSnapshot !== draftValue || nextSnapshot !== baselineValue) {
+      applyDraft(next);
+      setErrors({});
+    }
+  }, [editing, bot, dirty, saving, picking, draftValue, baselineValue, applyDraft]);
+
+  const resetDraft = () => {
+    const next = draftFromBot(bot, duplicate, copyName);
+    syncedBotKey.current = bot ? `${bot.updatedAt}:${serializeDraft(next)}` : '';
+    applyDraft(next, true);
   };
 
   useEffect(() => {
@@ -256,19 +352,26 @@ export function BotEditor({
         ],
       },
     };
-    // Compare the draft representation, not normalized record values: untouched arrays,
-    // optional flags and whitespace must survive an unrelated rename exactly.
+    // Compare the draft representation against the form baseline, not normalized record values:
+    // untouched arrays, optional flags, whitespace and concurrent external edits must survive intact.
     if (editing && bot) {
       const changed: Record<string, boolean> = {
-        name: name !== bot.name, avatar: avatar !== bot.avatar, avatarColor: avatarColor !== bot.avatarColor,
-        avatarVariant: avatarVariant !== (bot.avatarVariant ?? 'classic'),
-        description: description !== (bot.description ?? ''), defaultCwd: defaultCwd !== (bot.defaultCwd ?? ''),
-        persona: persona !== (bot.persona.prefix ?? '') || suffix !== (bot.persona.suffix ?? '') || complete !== (bot.persona.complete ?? false),
-        template: template !== bot.template,
-        model: modelEnabled !== Boolean(bot.model) || provider !== (bot.model?.provider ?? '') || modelId !== (bot.model?.model ?? '') || reasoning !== (bot.model?.reasoningEffort ?? ''),
-        skills: extraDirs !== bot.skills.extraDirs.join('\n'),
-        memory: memory !== bot.memory.enabled || injectLimit !== String(bot.memory.injectLimit),
-        tools: deny !== bot.tools.deny.join('\n'),
+        name: name !== baseline.name,
+        avatar: avatar !== baseline.avatar,
+        avatarColor: avatarColor !== baseline.avatarColor,
+        avatarVariant: avatarVariant !== baseline.avatarVariant,
+        description: description !== baseline.description,
+        defaultCwd: defaultCwd !== baseline.defaultCwd,
+        persona: persona !== baseline.persona || suffix !== baseline.suffix || complete !== baseline.complete,
+        template: template !== baseline.template,
+        model:
+          modelEnabled !== baseline.modelEnabled ||
+          provider !== baseline.provider ||
+          modelId !== baseline.modelId ||
+          reasoning !== baseline.reasoning,
+        skills: extraDirs !== baseline.extraDirs,
+        memory: memory !== baseline.memory || injectLimit !== baseline.injectLimit,
+        tools: deny !== baseline.deny,
       };
       for (const key of Object.keys(fields) as Array<keyof BotPatch>) if (!changed[key]) delete fields[key];
     }
@@ -316,7 +419,7 @@ export function BotEditor({
     setSaving(true);
     try {
       await onSave(result.data);
-      if (embedded && mounted.current) initialDraft.current = draftValue;
+      if (embedded && mounted.current) setBaseline(currentDraft);
     } catch {
       if (mounted.current) setFailure(true);
     } finally {
