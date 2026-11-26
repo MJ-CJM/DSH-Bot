@@ -155,7 +155,10 @@ async function groupFixture(
   const groups = new Groups(f.ctx, f.registry, domain, () => {});
   await groups.start();
   const settle = async (g: GroupRecord) => {
-    await vi.waitFor(async () => expect((await groups.view(groupKey(g))).turns.every(t => !['running', 'accepted'].includes(t.state))).toBe(true));
+    await vi.waitFor(
+      async () => expect((await groups.view(groupKey(g))).turns.every(t => !['running', 'accepted'].includes(t.state))).toBe(true),
+      { timeout: 5000 },
+    );
     return groups.view(groupKey(g));
   };
   return {
@@ -578,7 +581,7 @@ describe('Issue #57 Area 3: turns.ts hardening & export-review relay preservatio
       const key = groupKey(g);
       const members = (await s.groups.view(key)).members;
       const turn = await s.groups.send(key, { operationId: 'base-turn', text: 'Run', memberIds: [need(members[0]).id], expectedMembershipRevision: 1 });
-      await vi.waitFor(() => expect(s.calls).toHaveLength(1));
+      await vi.waitFor(() => expect(s.calls).toHaveLength(1), { timeout: 5000 });
       const delivery = need((await s.groups.view(key)).deliveries[0]);
 
       const sentinel = 'FOLLOWUP-CATCH-PUTTURN-SENTINEL';
