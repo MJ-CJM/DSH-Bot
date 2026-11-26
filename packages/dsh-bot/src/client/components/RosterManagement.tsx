@@ -12,6 +12,7 @@ import { BotAvatar } from './BotAvatar.js';
 import { SettingsDrafts, useSettingsNavigation } from './SettingsNavigation.js';
 import type { GroupMethods } from '../../shared/groups-contract.js';
 import { Modal } from './Modal.js';
+import { SearchField } from './SearchField.js';
 import styles from '../styles/roster.module.css';
 import css from '../styles/roster.module.css?inline';
 import dialogStyles from '../styles/bots.module.css';
@@ -207,11 +208,16 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
             <BotAvatar size={32} bot={bot ?? { id: key.botId, avatar: speaker?.avatar, avatarColor: speaker?.avatarColor, avatarVariant: speaker?.avatarVariant }} />
             <div className={styles.identity}><strong>{name(key)}</strong><span>{pendingAdd ? t('groups.roster.pendingAdd') : !selected ? t('groups.roster.pendingRemove') : unavailable ? t('groups.unavailable') : !member.enabled ? t('navigation.memberDisabled') : t('groups.ready')}</span></div>
             <div className={styles.rowActions}>
-              {selected && <Button variant="ghost" size="sm" disabled={locked || !!blocked || index === 0} aria-label={`${t('groups.moveUp')} ${name(key)}`} onClick={() => {
+              {selected && <Button variant="ghost" size="sm" disabled={locked || !!blocked || index <= 0} aria-label={`${t('groups.moveUp')} ${name(key)}`} onClick={() => {
                 const next = [...target], previous = next[index - 1], item = next[index];
                 if (!previous || !item) return;
                 [next[index - 1], next[index]] = [item, previous]; change(next);
               }}>{t('groups.moveUp')}</Button>}
+              {selected && <Button variant="ghost" size="sm" disabled={locked || !!blocked || index < 0 || index >= target.length - 1} aria-label={`${t('groups.moveDown')} ${name(key)}`} onClick={() => {
+                const next = [...target], following = next[index + 1], item = next[index];
+                if (!following || !item) return;
+                [next[index], next[index + 1]] = [following, item]; change(next);
+              }}>{t('groups.moveDown')}</Button>}
               <Button variant="ghost" size="sm" disabled={locked || !!blocked} aria-label={`${t(pendingAdd || !selected ? 'groups.roster.undo' : 'groups.roster.remove')} ${name(key)}`}
                 onClick={() => change(selected ? target.filter(peer => !sameBot(peer, key)) : [...target, key])}>{t(pendingAdd || !selected ? 'groups.roster.undo' : 'groups.roster.remove')}</Button>
             </div>
@@ -220,9 +226,9 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
       </ul>
       <section aria-label={t('groups.addMembers')}>
         <h3>{t('groups.addMembers')}</h3>
-        <label className={styles.search}>{t('groups.roster.search')}<input value={query} disabled={locked || !!blocked} onChange={event => setQuery(event.target.value)} /></label>
+        <SearchField className={styles.search} label={t('groups.roster.search')} clearLabel={t('detail.clearSearch')} value={query} disabled={locked || !!blocked} onChange={setQuery} />
         <ul className={styles.list}>{candidates.map(bot => <li className={styles.row} key={`${bot.id}:${bot.createdAt}`}>
-          <BotAvatar bot={bot} size={32} /><div className={styles.identity}><strong>{bot.name}</strong>{bots.some(other => other.id !== bot.id && other.name === bot.name) && <span>{bot.id}</span>}</div>
+          <BotAvatar bot={bot} size={32} /><div className={styles.identity}><strong>{bot.name}</strong>{bots.some(other => (other.id !== bot.id || other.createdAt !== bot.createdAt) && other.name === bot.name) && <span>{bot.id}</span>}</div>
           <Button size="sm" variant="ghost" disabled={locked || !!blocked || target.length >= limit || current.length > limit} onClick={() => change([...target, { botId: bot.id, botCreatedAt: bot.createdAt }])}>{t('groups.roster.add')}</Button>
         </li>)}</ul>
         {!candidates.length && <p>{t('groups.roster.noCandidates')}</p>}

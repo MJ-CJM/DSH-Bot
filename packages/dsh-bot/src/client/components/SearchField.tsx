@@ -4,17 +4,19 @@ import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/search-field.module.css';
 import css from '../styles/search-field.module.css?inline';
 
-export function SearchField({ label, clearLabel, value, onChange, className }: {
+export function SearchField({ label, clearLabel, value, onChange, disabled = false, className }: {
   label: string;
   clearLabel: string;
   value: string;
   onChange(value: string): void;
+  disabled?: boolean;
   className?: string;
 }) {
   useStyleSheet('search-field', css);
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const clear = () => {
+    if (disabled) return;
     onChange('');
     input.current?.focus();
   };
@@ -23,15 +25,15 @@ export function SearchField({ label, clearLabel, value, onChange, className }: {
       <label className={styles.label} htmlFor={id}>
         <span className={styles.srOnly}>{label}</span>
         <Input id={id} ref={input} className={styles.input} icon={<IconSearchOutlineRegular size={14} />}
-          type="search" placeholder={label} value={value} onChange={event => onChange(event.target.value)}
+          type="search" placeholder={label} value={value} disabled={disabled} onChange={event => onChange(event.target.value)}
           onKeyDown={event => {
-            if (event.key !== 'Escape' || !value || event.nativeEvent.isComposing || event.keyCode === 229) return;
+            if (disabled || event.key !== 'Escape' || !value || event.nativeEvent.isComposing || event.keyCode === 229) return;
             event.preventDefault();
             event.stopPropagation();
             clear();
           }} />
       </label>
-      {value && <Button variant="ghost" size="sm" className={styles.clear} aria-label={clearLabel} title={clearLabel} onClick={clear}>
+      {value && !disabled && <Button variant="ghost" size="sm" className={styles.clear} aria-label={clearLabel} title={clearLabel} onClick={clear}>
         <IconCloseOutlineRegular size={14} />
       </Button>}
     </div>

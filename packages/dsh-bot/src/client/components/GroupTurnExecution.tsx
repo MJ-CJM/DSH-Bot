@@ -72,6 +72,9 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
       .find(element => element.dataset.workspaceGroupComposer === view.group.rootSessionId);
     composer?.querySelector('textarea')?.focus();
   };
+  const canSupplement = (delivery: GroupView['deliveries'][number]) =>
+    active && delivery.state === 'running' && !turn.guestQuestion && onRequestSupplement !== null;
+  const runningSupplementable = deliveries.filter(canSupplement);
   return <section className={styles.inlineExecution} data-group-turn={turn.id} data-group-turn-state={turn.state}>
     <button type="button" className={styles.turnSummary} aria-expanded={expanded} aria-controls={bodyId} onClick={() => {
       actions.turnExpansion.set(expansionKey, !expanded); setChoice(!expanded);
@@ -80,6 +83,29 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
       <span>{t(turn.guestQuestion?.via ? 'groups.relay.marker' : 'groups.executionDetails')}</span><span className={styles.turnSummaryState} data-group-guest-status={turn.guestQuestion && turn.id}>{guestQuestionStatus(view, turn, t) ?? t('groups.turnSummary', { count: turn.orderedMemberIds.length,
         state: t(exportState ?? `groups.${turn.state}`) })}{!turn.guestQuestion?.via && <GroupTurnAttention group={view.group} turn={turn} deliveries={turnDeliveries} t={t} />}</span>
     </button>
+    {!expanded && runningSupplementable.length > 0 && (
+      <div className={styles.runningSupplementBar} data-group-running-supplement="">
+        {runningSupplementable.map(delivery => {
+          const memberName = nameOf(delivery);
+          const memberBot = botState.entries.find(row => row.bot.id === delivery.bot.botId && row.bot.createdAt === delivery.bot.botCreatedAt)?.bot ?? { id: delivery.bot.botId };
+          return (
+            <Button
+              key={delivery.id}
+              variant="outline"
+              size="sm"
+              className={styles.supplementAction}
+              data-group-supplement-action={delivery.id}
+              disabled={disabled}
+              aria-label={t('groups.supplementMember', { name: memberName })}
+              onClick={() => supplement(delivery.id)}
+            >
+              <BotAvatar bot={memberBot} size={16} />
+              <span>{t('groups.supplementMember', { name: memberName })}</span>
+            </Button>
+          );
+        })}
+      </div>
+    )}
     {latest && !turn.guestQuestion && executionBridge && deliveries.map(delivery => delivery.childSessionId && !['pending', 'starting'].includes(delivery.state) &&
       <GroupPermissionDenialProbe key={delivery.childSessionId} parentId={view.group.rootSessionId} childId={delivery.childSessionId}
         bridge={executionBridge} onChange={reportDenial} />)}
@@ -117,6 +143,19 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
         {delivery.failure && <span className={styles.failureReason}>{groupFailureText(delivery.failure, t)}</span>}
         {delivery.failure?.requestId && <span>{t('groups.failureRequestId')} <code className={styles.failureRequestId}>{delivery.failure.requestId}</code></span>}
         {!turn.guestQuestion && delivery.childSessionId && <Button variant="ghost" onClick={() => { if (delivery.childSessionId) onOpenExecution(delivery.childSessionId); }}>{t('execution.viewDetails')}</Button>}
+        {canSupplement(delivery) && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={styles.supplementAction}
+            data-group-supplement-action={delivery.id}
+            disabled={disabled}
+            aria-label={t('groups.supplementMember', { name: nameOf(delivery) })}
+            onClick={() => supplement(delivery.id)}
+          >
+            {t('groups.supplementShort')}
+          </Button>
+        )}
         {active && (delivery.state === 'running' || (turn.protocol === 2 && ['starting', 'pending'].includes(delivery.state))) && menuItems.length > 0 && <Menu
           open={menu === delivery.id} onClose={() => setMenu(undefined)} align="end" portal autoFocus
           anchor={<Button variant="ghost" disabled={disabled} aria-label={t('execution.memberActions', { name: nameOf(delivery) })} aria-expanded={menu === delivery.id} aria-haspopup="menu" onClick={() => setMenu(menu === delivery.id ? undefined : delivery.id)}>···</Button>}

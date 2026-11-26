@@ -5,7 +5,7 @@ import { GroupDeleteDialog } from '../components/GroupDeleteDialog.js';
 import type { GroupRecord } from '../../shared/groups.js';
 import { BotIdentity } from '../components/BotIdentity.js';
 import { SearchField } from '../components/SearchField.js';
-import { Button, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
 import { SupergroupSettingsPanel, supergroupStatusLabel, useSupergroupSettings } from '../supergroup-settings.js';
 import { conversationKey, recentPreferences, setRecentPreference, updateRecentPreference } from './recent-conversations.js';
 import { directoryWindow, filterNativeDirectory, migrateLegacyDirectory, nativeDirectoryRows, readDirectoryWindow, writeDirectoryWindow, type NativeDirectoryRow } from './native-directory.js';
@@ -70,7 +70,19 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
   }, row.entry ? 'errors.start' : 'activity.openError');
   return <section aria-label={text(mode === 'bots' ? 'navigation.myBots' : 'chat.recent')} data-bots-list={mode}>
     <div className={styles.listTools}>
-      {mode === 'bots' && model.entries.length > 0 && <button type="button" className={styles.button} disabled={model.busy || !model.snapshot.loaded} onClick={() => model.open({ kind: 'create' })}>{t('bots.create')}</button>}
+      {mode === 'bots' && model.entries.length > 0 && (
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<IconPlusOutlineRegular size={14} />}
+          className={styles.createButton}
+          data-bots-create-cta=""
+          disabled={model.busy || !model.snapshot.loaded}
+          onClick={() => model.open({ kind: 'create' })}
+        >
+          {t('bots.create')}
+        </Button>
+      )}
       {settings && <Button variant="ghost" data-supergroup-disclosure="" aria-controls={settingsId} aria-expanded={settingsOpen}
         onClick={() => {
           if (!settingsOpen) void settings.refresh();

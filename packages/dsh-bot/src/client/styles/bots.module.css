@@ -310,6 +310,10 @@
   color: var(--dsw-alias-label-secondary);
   line-height: 1.6;
 }
+.dialogNotice {
+  margin: 0;
+  padding: 0 24px 16px;
+}
 .editorBody {
   display: grid;
   gap: 20px;
@@ -369,7 +373,38 @@
   align-items: center;
   gap: 9px;
   font-size: 13px;
+}
+.formRow > .checkboxField {
   padding-top: 24px;
+}
+.editorBody details {
+  display: grid;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-base);
+}
+.editorBody details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--dsw-alias-label-secondary);
+}
+.editorBody fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 10px;
+}
+.editorBody fieldset > legend {
+  padding-inline: 4px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--dsw-alias-label-secondary);
 }
 .checkboxField input {
   width: 16px;
@@ -390,7 +425,7 @@
   .formRow {
     grid-template-columns: 1fr;
   }
-  .checkboxField {
+  .formRow > .checkboxField {
     padding-top: 0;
   }
   .backdrop {
@@ -520,6 +555,21 @@
 .botListCompact .botOption:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+.botOptionRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.botOptionRow > .botOption {
+  flex: 1;
+  min-width: 0;
+}
+.botOpenAction {
+  flex: none;
+  white-space: nowrap;
+  color: var(--dsw-alias-state-business-primary);
 }
 .botDetail {
   min-width: 0;

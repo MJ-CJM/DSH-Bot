@@ -8,10 +8,10 @@ import { groupExportReviewStatus } from '../../shared/group-export-review.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { BotAvatar } from './BotAvatar.js';
 import { groupFailureCode, groupStopText } from '../group-failure.js';
+import { formatBytes } from '../format-bytes.js';
 import { groupMemoryWriteCounts, guestQuestionStatus } from '../group-management.js';
 import { groupMessagePreview, groupReplyPreview, isLongGroupText } from '../group-reply-preview.js';
 export { groupMessagePreview, isLongGroupReply } from '../group-reply-preview.js';
-import { formatNumber } from '../format.js';
 import styles from '../styles/groups.module.css';
 import type { GroupActions } from '../groups-state.js';
 import { exportStatusKey, GroupTurnAttention, turnExportStatus } from './GroupExportReview.js';
@@ -110,7 +110,7 @@ export function GroupMessageCard({ message: m, quoted, quotedLoading = false, so
       </details> : <MarkdownText text={m.text} labels={labels} />}
       {Boolean(m.attachments?.length) && <ul className={styles.attachments} aria-label={t('groups.attachments')}>
         {[...new Map(m.attachments?.map(block => [`${block.type}:${block.attachment.attachmentId}`, block])).entries()].map(([id, block]) => <li key={id}>
-          <span>{block.attachment.name ?? t('groups.image')} · {formatNumber(block.attachment.bytes, t('activity.locale'))} B</span>
+          <span>{block.attachment.name ?? t('groups.image')} · {formatBytes(block.attachment.bytes, t('activity.locale'))}</span>
           <button type="button" disabled={opening} onClick={() => {
             setOpening(true); setOpenError(false);
             const action = block.type === 'image' && onPreviewAttachment
