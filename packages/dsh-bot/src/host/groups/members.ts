@@ -117,7 +117,7 @@ export class GroupMembers {
   async setModel(key: GroupKey, value: unknown) {
     const input = parse(groupSetModelSchema, value);
     return this.state.queue.run(async () => {
-      const g = this.state.record(key);
+      const g = await this.roots.reconcilePendingRename(this.state.record(key));
       if (g.supergroup) throw new OperationError('approval-denied');
       if (g.archived || input.expectedModelRevision !== (g.modelRevision ?? 0)) throw new OperationError('conflict');
       if (g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
@@ -170,17 +170,16 @@ export class GroupMembers {
   async editMembers(key: GroupKey, value: unknown): Promise<GroupMemberEditResult> {
     const input = parse(groupMemberEditSchema, value);
     return this.state.queue.run(async () => {
-      let g = this.state.record(key);
-      if (g.state === 'recovery_needed') g = await this.roots.reconcilePendingRename(g);
+      const g = await this.roots.reconcilePendingRename(this.state.record(key));
       return this.saveEdit(key, { ...input, name: g.name, mode: g.mode }, undefined,
-        { operationId: input.operationId, requestDigest: digest({ group: key, source: 'members', input }) });
+        { operationId: input.operationId, requestDigest: digest({ group: key, source: 'members', input }) }, g);
     }) as Promise<GroupMemberEditResult>;
   }
   async getMemberEditResult(key: GroupKey, operationId: string): Promise<GroupMemberEditResult> {
     parse(resourceId, operationId);
     return this.state.queue.run(async () => {
       const g = this.state.record(key);
-      if (g.state === 'recovery_needed') await this.roots.reconcilePendingRename(g);
+      await this.roots.reconcilePendingRename(g);
       const row = this.state.table('member_edits').get(this.editId(key, operationId));
       return row ? { operationId, status: row.status, ...(row.result ? { group: row.result } : {}) } : { operationId, status: 'not-found' };
     });
@@ -192,11 +191,10 @@ export class GroupMembers {
   }
   private editId(key: GroupKey, operationId: string) { return digest([key.groupId, key.groupCreatedAt, operationId]); }
   private async saveEdit(key: GroupKey, input: ReturnType<typeof groupEditSchema.parse>, authority?: SupergroupAuthority,
-    operation?: { operationId: string; requestDigest: string }): Promise<GroupRecord | GroupMemberEditResult> {
+    operation?: { operationId: string; requestDigest: string }, reconciledGroup?: GroupRecord): Promise<GroupRecord | GroupMemberEditResult> {
       if (input.memberRoles?.some(row => !input.members.some(bot => sameBot(bot, row.bot))) ||
           new Set(input.memberRoles?.map(row => JSON.stringify(row.bot))).size !== (input.memberRoles?.length ?? 0)) throw new OperationError('invalid');
-      let g = this.state.record(key);
-      if (g.state === 'recovery_needed') g = await this.roots.reconcilePendingRename(g);
+      const g = reconciledGroup ?? await this.roots.reconcilePendingRename(this.state.record(key));
       const operationKey = operation && this.editId(key, operation.operationId);
       const prior = operationKey && this.state.table('member_edits').get(operationKey);
       if (prior) {
@@ -253,7 +251,7 @@ export class GroupMembers {
       };
       if (operation && operationKey) await this.state.table('member_edits').put(operationKey, { group: key, ...operation, status: 'unknown' });
       const nameChanged = next.name !== g.name;
-      let membersCommitted = false;
+      let phase: 'persist' | 'rename' | 'receipt' = 'persist';
       try {
         await this.state.putGroup(next);
         for (const m of old.filter((m) => m.removedAt === undefined && !input.members.some((b) => sameBot(b, m.bot)))) {
@@ -272,7 +270,6 @@ export class GroupMembers {
             : { id: `member:${randomUUID()}`, group: key, bot: b, order, joinedAt: at, enabled: true };
           await this.state.table('members').put(member.id, member);
         }
-        membersCommitted = true;
         for (const turn of this.state.turns(g)) this.state.wakeTurns.get(turn.id)?.();
         let title = next.name;
         if (nameChanged) {
@@ -282,20 +279,31 @@ export class GroupMembers {
             name: next.name,
             ...(operationKey ? { operationKey } : {}),
           });
+          phase = 'rename';
           title = await this.roots.rename(next);
         }
         const ready: GroupRecord = { ...next, name: title, state: 'ready' };
         await this.state.putGroup(ready);
-        if (nameChanged) await this.state.table('pending_renames').delete(g.id);
         if (operation && operationKey) {
+          phase = 'receipt';
           await this.state.table('member_edits').put(operationKey, { group: key, ...operation, status: 'saved', result: ready });
+        }
+        if (nameChanged) {
+          await this.state.table('pending_renames').delete(g.id).catch((error) => {
+            this.state.ctx.logger?.warn?.('[dsh-bot] Group pending rename cleanup failed', {
+              groupId: g.id,
+              ...redactedErrorMetadata(error),
+            });
+          });
+        }
+        if (operation && operationKey) {
           return { operationId: operation.operationId, status: 'saved', group: ready };
         }
         return ready;
       } catch (error) {
         this.state.ctx.logger?.warn?.('[dsh-bot] Group edit failed; recovery required', {
           groupId: g.id,
-          phase: membersCommitted ? 'rename' : 'persist',
+          phase,
           ...redactedErrorMetadata(error),
         });
         this.state.reasons.set(g.id, 'recovery-needed');

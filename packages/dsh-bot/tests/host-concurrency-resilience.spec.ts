@@ -799,6 +799,371 @@ describe('Issue #56 Fix 3: GroupMembers.saveEdit() rename skipping, redacted log
         await s.close();
       }
     }));
+
+  it('retains pending_renames and idempotently finishes member_edits receipt on repeated getMemberEditResult and same-operationId retry after intermediate receipt write failure', () =>
+    withIntegrations(async (f) => {
+      const s = await createNaturalGroupsFixture(f);
+      const warn = vi.spyOn(f.ctx.logger, 'warn');
+      try {
+        const g = await s.groups.create({
+          operationId: 'receipt-retry-group',
+          name: 'Initial Title',
+          members: [alpha, beta],
+          mode: 'mention',
+          historyConfirmed: true,
+        });
+        const key = groupKey(g);
+        const membersService = (s.groups as unknown as {
+          membership: {
+            editRecipe(
+              targetKey: GroupKey,
+              value: unknown,
+              operationId: string,
+              source: unknown,
+            ): Promise<{ operationId: string; status: string; group?: GroupRecord }>;
+          };
+        }).membership;
+
+        // 1) Repeated getMemberEditResult() recovery from ready + unknown receipt + pending_renames.
+        s.rename.mockRejectedValueOnce(new Error('SECRET_INITIAL_RENAME_FAIL'));
+        const firstPending = await membersService.editRecipe(
+          key,
+          {
+            name: 'Recovered Via Poll',
+            mode: 'natural',
+            members: [alpha, beta],
+            expectedRevision: g.revision,
+            expectedMembershipRevision: g.membershipRevision,
+          },
+          'op-poll-recover',
+          { kind: 'poll-test' },
+        );
+        expect(firstPending).toEqual({ operationId: 'op-poll-recover', status: 'unknown' });
+        expect(s.domain.table('pending_renames').get(g.id)).toBeDefined();
+
+        // Inject a single receipt.put rejection AFTER putGroup(ready) succeeds during reconcilePendingRename().
+        const receiptPut1 = vi
+          .spyOn(s.domain.table('member_edits'), 'put')
+          .mockRejectedValueOnce(new Error('SECRET_RECEIPT_PUT_FAIL_1'));
+        const midPoll = await s.groups.getMemberEditResult(key, 'op-poll-recover');
+        receiptPut1.mockRestore();
+
+        expect(midPoll).toEqual({ operationId: 'op-poll-recover', status: 'unknown' });
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET_RECEIPT_PUT_FAIL_1');
+
+        // Disk is now in the exact ready + unknown receipt + pending_renames intermediate state.
+        const readyAfterRename = need(s.domain.table('groups').get(g.id));
+        expect(readyAfterRename.state).toBe('ready');
+        expect(readyAfterRename.name).toBe('Recovered Via Poll');
+        expect(s.domain.table('pending_renames').get(g.id)).toMatchObject({
+          group: key,
+          revision: readyAfterRename.revision,
+          name: 'Recovered Via Poll',
+        });
+        // Calling view() must NOT clear the recovery-needed reason while the receipt is still unfinalized.
+        expect((await s.groups.view(key)).reason).toBe('recovery-needed');
+
+        // Repeated getMemberEditResult() once storage is healthy idempotently finalizes the receipt and clears pending_renames.
+        const recoveredPoll = await s.groups.getMemberEditResult(key, 'op-poll-recover');
+        expect(recoveredPoll).toEqual({
+          operationId: 'op-poll-recover',
+          status: 'saved',
+          group: readyAfterRename,
+        });
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+        expect((await s.groups.view(key)).reason).toBeUndefined();
+
+        // 2) Same-operationId retry recovery from ready + unknown receipt + pending_renames.
+        const retryInput = {
+          name: 'Recovered Via Same Op Retry',
+          mode: 'mention' as const,
+          members: [alpha, beta],
+          expectedRevision: readyAfterRename.revision,
+          expectedMembershipRevision: readyAfterRename.membershipRevision,
+        };
+        const retrySource = { kind: 'same-op-retry' };
+        s.rename.mockRejectedValueOnce(new Error('SECRET_SECOND_RENAME_FAIL'));
+        expect(await membersService.editRecipe(key, retryInput, 'op-same-retry', retrySource)).toEqual({
+          operationId: 'op-same-retry',
+          status: 'unknown',
+        });
+
+        const receiptPut2 = vi
+          .spyOn(s.domain.table('member_edits'), 'put')
+          .mockRejectedValueOnce(new Error('SECRET_RECEIPT_PUT_FAIL_2'));
+        expect(await s.groups.getMemberEditResult(key, 'op-same-retry')).toEqual({
+          operationId: 'op-same-retry',
+          status: 'unknown',
+        });
+        receiptPut2.mockRestore();
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET_RECEIPT_PUT_FAIL_2');
+
+        const readyBeforeRetry = need(s.domain.table('groups').get(g.id));
+        expect(readyBeforeRetry.state).toBe('ready');
+        expect(readyBeforeRetry.name).toBe('Recovered Via Same Op Retry');
+        expect(s.domain.table('pending_renames').get(g.id)).toBeDefined();
+
+        // Retrying the exact same operationId completes the receipt and returns the saved GroupRecord.
+        const retried = await membersService.editRecipe(key, retryInput, 'op-same-retry', retrySource);
+        expect(retried).toEqual({
+          operationId: 'op-same-retry',
+          status: 'saved',
+          group: readyBeforeRetry,
+        });
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+
+        // Conflicting payload with the same operationId still fails with conflict.
+        await expect(
+          membersService.editRecipe(key, retryInput, 'op-same-retry', { kind: 'conflicting-source' }),
+        ).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+
+        // Subsequent new edits succeed cleanly.
+        const nextEdit = await s.groups.edit(key, {
+          name: 'After Same Op Recovery',
+          mode: 'natural',
+          members: [alpha, beta],
+          expectedRevision: readyBeforeRetry.revision,
+          expectedMembershipRevision: readyBeforeRetry.membershipRevision,
+        });
+        expect(nextEdit.state).toBe('ready');
+        expect(nextEdit.name).toBe('After Same Op Recovery');
+      } finally {
+        warn.mockRestore();
+        await s.close();
+      }
+    }));
+
+  it('recovers ready + unknown receipt + pending_renames across real JSON restart without pruning credentials, unblocks new edits, and keeps partial members writes fail-closed', () =>
+    withIntegrations(async (f) => {
+      f.bots.set('gamma', { ...need(f.bots.get('alpha')), id: 'gamma', name: 'Gamma' });
+      const gamma = { botId: 'gamma', botCreatedAt: 1 };
+      const s = await createNaturalGroupsFixture(f);
+      const warn = vi.spyOn(f.ctx.logger, 'warn');
+      try {
+        const g = await s.groups.create({
+          operationId: 'receipt-restart-group',
+          name: 'Before Restart Failure',
+          members: [alpha, beta],
+          mode: 'mention',
+          historyConfirmed: true,
+        });
+        const key = groupKey(g);
+        const membersService = () =>
+          (s.groups as unknown as {
+            membership: {
+              editRecipe(
+                targetKey: GroupKey,
+                value: unknown,
+                operationId: string,
+                source: unknown,
+              ): Promise<{ operationId: string; status: string; group?: GroupRecord }>;
+            };
+          }).membership;
+
+        // 1) Rename fails during editRecipe -> recovery puts ready -> receipt.put fails once -> real JSON restart.
+        s.rename.mockRejectedValueOnce(new Error('SECRET_RESTART_RENAME_FAIL'));
+        expect(
+          await membersService().editRecipe(
+            key,
+            {
+              name: 'Restart Recovered Title',
+              mode: 'natural',
+              members: [alpha, beta],
+              expectedRevision: g.revision,
+              expectedMembershipRevision: g.membershipRevision,
+            },
+            'op-restart-recover',
+            { kind: 'restart-test' },
+          ),
+        ).toEqual({ operationId: 'op-restart-recover', status: 'unknown' });
+
+        const receiptPut = vi
+          .spyOn(s.domain.table('member_edits'), 'put')
+          .mockRejectedValueOnce(new Error('SECRET_RESTART_RECEIPT_FAIL'));
+        expect(await s.groups.getMemberEditResult(key, 'op-restart-recover')).toEqual({
+          operationId: 'op-restart-recover',
+          status: 'unknown',
+        });
+        receiptPut.mockRestore();
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET_RESTART_RECEIPT_FAIL');
+
+        const readyBeforeRestart = need(s.domain.table('groups').get(g.id));
+        expect(readyBeforeRestart.state).toBe('ready');
+        expect(readyBeforeRestart.name).toBe('Restart Recovered Title');
+        expect(s.domain.table('pending_renames').get(g.id)).toBeDefined();
+
+        // First restart: inject another receipt.put failure during roots.start() -> pending_renames MUST NOT be deleted!
+        const origOpen = f.ctx.storageDomain.open.bind(f.ctx.storageDomain);
+        const openSpy = vi.spyOn(f.ctx.storageDomain, 'open').mockImplementationOnce(async (spec) => {
+          const reopenedDomain = await origOpen(spec);
+          if (spec === groupsDomain) {
+            vi.spyOn(reopenedDomain.table('member_edits'), 'put').mockRejectedValueOnce(
+              new Error('SECRET_BOOT_RECEIPT_FAIL'),
+            );
+          }
+          return reopenedDomain;
+        });
+        await s.reopen();
+        openSpy.mockRestore();
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET_BOOT_RECEIPT_FAIL');
+        expect(s.domain.table('pending_renames').get(g.id)).toBeDefined();
+
+        // Second restart (storage healthy): roots.start() MUST finalize the receipt to saved and delete pending_renames only after receipt succeeds.
+        await s.reopen();
+
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+        expect(await s.groups.getMemberEditResult(key, 'op-restart-recover')).toEqual({
+          operationId: 'op-restart-recover',
+          status: 'saved',
+          group: readyBeforeRestart,
+        });
+
+        // Subsequent NEW edit() and editMembers() calls MUST succeed (not permanently blocked with recovery-needed).
+        const afterRestartEdit = await s.groups.edit(key, {
+          name: 'Post Restart New Edit',
+          mode: 'mention',
+          members: [alpha, beta],
+          expectedRevision: readyBeforeRestart.revision,
+          expectedMembershipRevision: readyBeforeRestart.membershipRevision,
+        });
+        expect(afterRestartEdit.state).toBe('ready');
+        expect(afterRestartEdit.name).toBe('Post Restart New Edit');
+
+        const afterRestartMembers = await s.groups.editMembers(key, {
+          operationId: 'op-post-restart-members',
+          expectedRevision: afterRestartEdit.revision,
+          expectedMembershipRevision: afterRestartEdit.membershipRevision,
+          members: [alpha, beta, gamma],
+          historyConfirmed: true,
+        });
+        expect(afterRestartMembers.status).toBe('saved');
+        expect(afterRestartMembers.group?.state).toBe('ready');
+
+        // 2) Subsequent NEW saveEdit() called directly from ready + unknown receipt + pending_renames recovers first and succeeds.
+        const base = need(afterRestartMembers.group);
+        s.rename.mockRejectedValueOnce(new Error('SECRET_DIRECT_NEW_EDIT_RENAME_FAIL'));
+        expect(
+          await membersService().editRecipe(
+            key,
+            {
+              name: 'Pending Before Direct New Edit',
+              mode: 'natural',
+              members: [alpha, beta, gamma],
+              expectedRevision: base.revision,
+              expectedMembershipRevision: base.membershipRevision,
+            },
+            'op-before-direct-new-edit',
+            { kind: 'direct-new-edit' },
+          ),
+        ).toEqual({ operationId: 'op-before-direct-new-edit', status: 'unknown' });
+
+        const receiptPutDirect = vi
+          .spyOn(s.domain.table('member_edits'), 'put')
+          .mockRejectedValueOnce(new Error('SECRET_DIRECT_RECEIPT_FAIL'));
+        expect(await s.groups.getMemberEditResult(key, 'op-before-direct-new-edit')).toEqual({
+          operationId: 'op-before-direct-new-edit',
+          status: 'unknown',
+        });
+        receiptPutDirect.mockRestore();
+
+        const readyBeforeDirectEdit = need(s.domain.table('groups').get(g.id));
+        expect(readyBeforeDirectEdit.state).toBe('ready');
+        expect(s.domain.table('pending_renames').get(g.id)).toBeDefined();
+
+        const directNewEdit = await s.groups.edit(key, {
+          name: 'Direct New Edit Succeeded',
+          mode: 'mention',
+          members: [alpha, beta, gamma],
+          expectedRevision: readyBeforeDirectEdit.revision,
+          expectedMembershipRevision: readyBeforeDirectEdit.membershipRevision,
+        });
+        expect(directNewEdit.state).toBe('ready');
+        expect(directNewEdit.name).toBe('Direct New Edit Succeeded');
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+        expect(await s.groups.getMemberEditResult(key, 'op-before-direct-new-edit')).toEqual({
+          operationId: 'op-before-direct-new-edit',
+          status: 'saved',
+          group: readyBeforeDirectEdit,
+        });
+
+        // 3) Receipt write failure directly inside initial saveEdit() (after putGroup(ready)) retains pending_renames and recovers across restart.
+        const memberEditsTable = s.domain.table('member_edits');
+        const originalMemberEditsPut = memberEditsTable.put.bind(memberEditsTable);
+        let saveEditReceiptAttempt = 0;
+        const saveEditReceiptSpy = vi.spyOn(memberEditsTable, 'put').mockImplementation(async (rowKey, value) => {
+          saveEditReceiptAttempt++;
+          if (saveEditReceiptAttempt === 2) throw new Error('SECRET_INITIAL_SAVE_RECEIPT_FAIL');
+          return originalMemberEditsPut(rowKey, value);
+        });
+        expect(
+          await membersService().editRecipe(
+            key,
+            {
+              name: 'Initial Save Receipt Fail Title',
+              mode: 'natural',
+              members: [alpha, beta, gamma],
+              expectedRevision: directNewEdit.revision,
+              expectedMembershipRevision: directNewEdit.membershipRevision,
+            },
+            'op-initial-save-receipt-fail',
+            { kind: 'initial-save-receipt-fail' },
+          ),
+        ).toEqual({ operationId: 'op-initial-save-receipt-fail', status: 'unknown' });
+        saveEditReceiptSpy.mockRestore();
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET_INITIAL_SAVE_RECEIPT_FAIL');
+        expect(s.domain.table('pending_renames').get(g.id)).toBeDefined();
+
+        await s.reopen();
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+        const recoveredInitialSave = await s.groups.getMemberEditResult(key, 'op-initial-save-receipt-fail');
+        expect(recoveredInitialSave.status).toBe('saved');
+        expect(recoveredInitialSave.group?.state).toBe('ready');
+        expect(recoveredInitialSave.group?.name).toBe('Initial Save Receipt Fail Title');
+
+        // 4) Genuine partial members.put failure (even with nameChanged=true) never writes pending_renames and stays strictly fail-closed.
+        const latestBeforePartial = need(recoveredInitialSave.group);
+        const membersPut = vi
+          .spyOn(s.domain.table('members'), 'put')
+          .mockRejectedValueOnce(new Error('SECRET_PARTIAL_MEMBERS_FAIL'));
+        expect(
+          await membersService().editRecipe(
+            key,
+            {
+              name: 'Partial Members Fail Title',
+              mode: 'mention',
+              members: [alpha, beta],
+              expectedRevision: latestBeforePartial.revision,
+              expectedMembershipRevision: latestBeforePartial.membershipRevision,
+            },
+            'op-partial-members-fail',
+            { kind: 'partial-members' },
+          ),
+        ).toEqual({ operationId: 'op-partial-members-fail', status: 'unknown' });
+        membersPut.mockRestore();
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET_PARTIAL_MEMBERS_FAIL');
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+
+        await s.reopen();
+        const failedGroup = (await s.groups.view(key)).group;
+        expect(failedGroup.state).toBe('recovery_needed');
+        expect(await s.groups.getMemberEditResult(key, 'op-partial-members-fail')).toEqual({
+          operationId: 'op-partial-members-fail',
+          status: 'unknown',
+        });
+        await expect(
+          s.groups.edit(key, {
+            name: 'Blocked After Partial Members Failure',
+            mode: 'mention',
+            members: [alpha, beta],
+            expectedRevision: failedGroup.revision,
+            expectedMembershipRevision: failedGroup.membershipRevision,
+          }),
+        ).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+      } finally {
+        warn.mockRestore();
+        await s.close();
+      }
+    }));
 });
 
 describe('Issue #56 Fix 4: Isolated teardown and cleanup under fault injection', () => {
