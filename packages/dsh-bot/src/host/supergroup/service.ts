@@ -17,7 +17,7 @@ import type { Groups } from '../groups/service.js';
 import type { SupergroupAuthority, SupergroupExpertRequest } from '../groups/supergroup-admission.js';
 import { getBotBinding } from '../data-flow/agent-binding.js';
 import { outlets } from '../data-flow/tool-guard.js';
-import { OperationError, Serial } from '../common/operations.js';
+import { OperationError, Serial, redactedErrorMetadata } from '../common/operations.js';
 import { isNativeAmbientSource } from '../common/native-ambient-source.js';
 import { Config, type SupergroupConfig } from './config.js';
 import { ScopedCollaboration, getScopedCollaborationBinding, type CollaborationScope, type CollaborationResult, type PeerTask } from './collaboration.js';
@@ -698,58 +698,73 @@ export class Supergroup {
     const replyValid = !input.replyTo
       || view.messages.some(message => message.id === input.replyTo)
       || (view.hasEarlier && typeof this.groups.hasMessage === 'function' && await this.groups.hasMessage(input.group, input.replyTo));
-    let workId = input.workId, receipt!: SupergroupGroupInputReceipt;
-    await this.serial.run(async () => {
-      let work = this.read(input.workId);
-      if (this.stopped || !this.config().enabled || work.configDigest !== this.configDigest() ||
-        !work.group || JSON.stringify(work.group) !== JSON.stringify(input.group)) throw new OperationError('approval-denied');
-      const digest = hash({ group: input.group, workId: input.workId, expectedRevision: input.expectedRevision,
-        text: input.text, memberIds: input.memberIds ?? [], replyTo: input.replyTo });
-      const prior = work.groupInputs.find(row => row.operationId === input.operationId);
-      if (prior) {
-        if (prior.digest !== digest) throw new OperationError('conflict');
-        receipt = prior; return;
-      }
-      if (view.members.filter(member => member.removedAt === undefined).length > this.groupMemberLimit())
-        throw new OperationError('member-limit');
-      if (view.group.archived || view.group.state !== 'ready' || view.group.supergroup?.workId !== work.id)
-        throw new OperationError('approval-denied');
-      if (input.memberIds && (new Set(input.memberIds).size !== input.memberIds.length || input.memberIds.some(id =>
-        !view.members.some(member => member.id === id && member.enabled && member.removedAt === undefined)))) throw new OperationError('invalid');
-      if (!replyValid) throw new OperationError('invalid');
-      const root = this.ctx.agents.get(SessionId(view.group.rootSessionId));
-      if (!root) throw new OperationError('unavailable');
-      const flow = outlets(this.registry);
-      if (!flow) throw new OperationError('unavailable');
-      // Preserve the existing audience intersection; this is a fresh owner text, never private main history.
-      await flow.inherit(root.id, { readers: work.readers, originTrust: 'candidate', sourceVersions: [], restrictions: [], grants: [] });
-      const message = createUserMessage({ source: { kind: 'user', group: input.group, supergroupWorkId: work.id,
-        operationId: input.operationId, ...(input.replyTo ? { replyTo: input.replyTo } : {}) }, content: [{ type: 'text', text: input.text }] });
-      const conflict = work.revision !== input.expectedRevision || !['running', 'completed', 'partial'].includes(work.state);
-      receipt = { operationId: input.operationId, digest, messageId: message.id, expectedRevision: input.expectedRevision,
-        state: 'stored', ...(input.memberIds ? { memberIds: input.memberIds } : {}), ...(input.replyTo ? { replyTo: input.replyTo } : {}) };
-      const envelope = flow.draft('group-input', work.owner, root.id, `owner:${input.operationId}`,
-        { kind: 'group', groupId: input.group.groupId, groupCreatedAt: input.group.groupCreatedAt, members: work.readers }, JSON.stringify(message));
-      const flowId = await flow.admit(envelope);
-      work = await flow.persist(flowId, () => this.put({ ...work, groupInputs: [...work.groupInputs, receipt] }));
-      try {
-        const event = await flow.dispatch(flowId, () => root.session.append('user/message', message, { surfaceOp: 'append' }));
-        if (!await this.ctx.sessions.flush(root.session)) throw new OperationError('recovery-needed');
-        receipt = { ...receipt, seq: Number(event.seq), state: conflict ? 'conflict' : 'queued',
-          ...(conflict ? { reason: 'work-revision-conflict' } : { acceptedRevision: work.revision + 1 }) };
-        work = await this.updateInput(work.id, input.operationId, () => receipt);
-      } catch (error) {
-        this.ctx.logger?.warn?.('[dsh-bot] Supergroup group input dispatch failed; marking unknown', {
-          workId: work.id, groupId: input.group.groupId, operationId: input.operationId,
-          error: error instanceof Error ? `${error.name}: ${error.message.slice(0, 200)}` : String(error).slice(0, 200),
+    let workId = input.workId, receipt!: SupergroupGroupInputReceipt, persisted = false, postPhase: 'persist' | 'project' = 'persist';
+    try {
+      await this.serial.run(async () => {
+        let work = this.read(input.workId);
+        if (this.stopped || !this.config().enabled || work.configDigest !== this.configDigest() ||
+          !work.group || JSON.stringify(work.group) !== JSON.stringify(input.group)) throw new OperationError('approval-denied');
+        const digest = hash({ group: input.group, workId: input.workId, expectedRevision: input.expectedRevision,
+          text: input.text, memberIds: input.memberIds ?? [], replyTo: input.replyTo });
+        const prior = work.groupInputs.find(row => row.operationId === input.operationId);
+        if (prior) {
+          if (prior.digest !== digest) throw new OperationError('conflict');
+          receipt = prior; persisted = true; return;
+        }
+        if (view.members.filter(member => member.removedAt === undefined).length > this.groupMemberLimit())
+          throw new OperationError('member-limit');
+        if (view.group.archived || view.group.state !== 'ready' || view.group.supergroup?.workId !== work.id)
+          throw new OperationError('approval-denied');
+        if (input.memberIds && (new Set(input.memberIds).size !== input.memberIds.length || input.memberIds.some(id =>
+          !view.members.some(member => member.id === id && member.enabled && member.removedAt === undefined)))) throw new OperationError('invalid');
+        if (!replyValid) throw new OperationError('invalid');
+        const root = this.ctx.agents.get(SessionId(view.group.rootSessionId));
+        if (!root) throw new OperationError('unavailable');
+        const flow = outlets(this.registry);
+        if (!flow) throw new OperationError('unavailable');
+        // Preserve the existing audience intersection; this is a fresh owner text, never private main history.
+        await flow.inherit(root.id, { readers: work.readers, originTrust: 'candidate', sourceVersions: [], restrictions: [], grants: [] });
+        const message = createUserMessage({ source: { kind: 'user', group: input.group, supergroupWorkId: work.id,
+          operationId: input.operationId, ...(input.replyTo ? { replyTo: input.replyTo } : {}) }, content: [{ type: 'text', text: input.text }] });
+        const conflict = work.revision !== input.expectedRevision || !['running', 'completed', 'partial'].includes(work.state);
+        receipt = { operationId: input.operationId, digest, messageId: message.id, expectedRevision: input.expectedRevision,
+          state: 'stored', ...(input.memberIds ? { memberIds: input.memberIds } : {}), ...(input.replyTo ? { replyTo: input.replyTo } : {}) };
+        const envelope = flow.draft('group-input', work.owner, root.id, `owner:${input.operationId}`,
+          { kind: 'group', groupId: input.group.groupId, groupCreatedAt: input.group.groupCreatedAt, members: work.readers }, JSON.stringify(message));
+        const flowId = await flow.admit(envelope);
+        work = await flow.persist(flowId, async () => {
+          const saved = await this.put({ ...work, groupInputs: [...work.groupInputs, receipt] });
+          persisted = true;
+          return saved;
         });
-        receipt = { ...receipt, state: 'unknown', reason: 'input-storage-unconfirmed' };
-        await this.updateInput(work.id, input.operationId, () => receipt); return;
-      }
-      workId = work.id;
-      if (!conflict) this.scheduleGroupInput(work.id, input.operationId);
-    });
-    return { view: await this.project(workId), receipt };
+        let phase: 'dispatch' | 'flush' | 'finalize' = 'dispatch';
+        try {
+          const event = await flow.dispatch(flowId, () => root.session.append('user/message', message, { surfaceOp: 'append' }));
+          phase = 'flush';
+          if (!await this.ctx.sessions.flush(root.session)) throw new OperationError('recovery-needed');
+          phase = 'finalize';
+          receipt = { ...receipt, seq: Number(event.seq), state: conflict ? 'conflict' : 'queued',
+            ...(conflict ? { reason: 'work-revision-conflict' } : { acceptedRevision: work.revision + 1 }) };
+          work = await this.updateInput(work.id, input.operationId, () => receipt);
+        } catch (error) {
+          this.ctx.logger?.warn?.('[dsh-bot] Supergroup group input dispatch failed; marking unknown', {
+            workId: work.id, groupId: input.group.groupId, phase, ...redactedErrorMetadata(error),
+          });
+          receipt = { ...receipt, state: 'unknown', reason: 'input-storage-unconfirmed' };
+          await this.updateInput(work.id, input.operationId, () => receipt); return;
+        }
+        workId = work.id;
+        if (!conflict) this.scheduleGroupInput(work.id, input.operationId);
+      });
+      postPhase = 'project';
+      return { view: await this.project(workId), receipt };
+    } catch (error) {
+      if (!persisted) throw error;
+      this.ctx.logger?.warn?.('[dsh-bot] Supergroup group input persisted; confirmation failed', {
+        workId, groupId: input.group.groupId, phase: postPhase, ...redactedErrorMetadata(error),
+      });
+      throw new OperationError('recovery-needed');
+    }
   }
   private scheduleGroupInput(id: string, operationId: string) {
     const previous = this.groupInputTails.get(id) ?? this.active.get(id)?.task ?? Promise.resolve();

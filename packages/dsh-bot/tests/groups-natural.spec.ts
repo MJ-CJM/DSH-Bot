@@ -815,10 +815,10 @@ describe('group diagnostics and older message lookup (#54)', () => {
       await expect(s.groups.hasMessage(key, 'nonexistent-message')).resolves.toBe(false);
     } finally { await s.close(); }
   }));
-  it('logs a redacted warning before throwing recovery-needed on follow-up dispatch failure', () => withIntegrations(async f => {
+  it('logs strictly redacted metadata without leaking sensitive error messages, names, or codes on recovery-needed', () => withIntegrations(async f => {
     const s = await fixture(f, 30_000);
     const warn = vi.spyOn(f.ctx.logger, 'warn');
-    const prompt = vi.fn(async () => { throw new Error('native-steer-timeout'); });
+    const prompt = vi.fn(async () => ({ messageId: 'unused' }));
     Object.assign(f.ctx.subagents, { prompt });
     try {
       s.setBehavior('hold');
@@ -826,17 +826,22 @@ describe('group diagnostics and older message lookup (#54)', () => {
       const t = await s.groups.send(key, { operationId: 'log-turn', text: 'start', memberIds: [need(members[0]).id], expectedMembershipRevision: 1 });
       await vi.waitFor(() => expect(s.calls).toHaveLength(1));
       const d = need((await s.groups.view(key)).deliveries[0]);
-      const secretText = 'private-user-draft-should-not-be-logged';
+      const sentinel = 'PRIVATE-DRAFT-token-review-sentinel';
+      const poisoned = Object.assign(new Error(`flush failed for ${sentinel} /Users/private/secret`), {
+        name: `PoisonedName-${sentinel}`,
+        code: `POISONED-CODE-${sentinel}`,
+      });
+      s.flush.mockRejectedValueOnce(poisoned);
       await expect(s.groups.send(key, {
         operationId: 'log-followup',
-        text: secretText,
+        text: sentinel,
         expectedMembershipRevision: 1,
         followup: { turnId: t.id, deliveryId: d.id },
       })).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
       const matching = warn.mock.calls.find(call => String(call[0]).includes('Group follow-up dispatch failed'));
       expect(matching).toBeTruthy();
-      expect(matching?.[1]).toMatchObject({ groupId: g.id, turnId: t.id, deliveryId: d.id, name: 'Error', message: 'native-steer-timeout' });
-      expect(JSON.stringify(matching)).not.toContain(secretText);
+      expect(matching?.[1]).toEqual({ groupId: g.id, turnId: t.id, deliveryId: d.id, phase: 'flush', errorName: 'unknown' });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(sentinel);
     } finally { await s.close(); }
   }));
 });

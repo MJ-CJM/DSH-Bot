@@ -4,7 +4,7 @@ import { SessionId } from '@deepseek-ai/dsh-session';
 import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent';
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm';
 import { groupSendSchema, groupUploadedAttachment, ownerFollowUpBindingSchema, type GroupKey, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
-import { OperationError, digest, need, parse } from '../common/operations.js';
+import { OperationError, digest, need, parse, redactedErrorMetadata } from '../common/operations.js';
 import { memoryOnlyIntent } from '../../shared/group-memory-intent.js';
 import { hasExplicitBotAddress, isAddressedQuestion, isGroupDelegation, matchGroupAddress, relayNeedsTopic } from '../../shared/addressed-bot.js';
 import { resolveGroupMentions } from '../../shared/group-mentions.js';
@@ -19,14 +19,6 @@ import type { GroupMessages } from './messages.js';
 import type { GroupTurnRunner } from './turn-runner.js';
 import { ownerFollowUpChoice, verifyOwnerFollowUpChoice } from './owner-follow-up.js';
 import { checkSupergroup, checkSupergroupEnqueue, type SupergroupAuthority } from './supergroup-admission.js';
-function errorSummary(error: unknown) {
-  const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
-  return {
-    ...(code ? { code } : {}),
-    name: error instanceof Error ? error.name : typeof error,
-    message: (error instanceof Error ? error.message : String(error)).slice(0, 200),
-  };
-}
 export class GroupTurns {
   constructor(
     private state: GroupState,
@@ -292,6 +284,7 @@ export class GroupTurns {
         await need(flow).persist(flowId, () => this.state.putTurn(turn));
       }
       else await this.state.putTurn(turn);
+      let phase: 'deliveries' | 'dispatch' | 'flush' | 'finalize' = 'deliveries';
       try {
         const statuses = await this.state.registry.status();
         for (const [ordinal, m] of selected.entries()) {
@@ -313,6 +306,7 @@ export class GroupTurns {
             state: 'pending',
           });
         }
+        phase = 'dispatch';
         using receiptBinding = uploads?.bindPrompt(root.agent, receiptIds as Parameters<NonNullable<typeof uploads>['bindPrompt']>[1], id);
         const append = async () => { await checkGroupDispatch(this.state, g);
           if (scoped && 'existing' in scoped) {
@@ -328,14 +322,16 @@ export class GroupTurns {
         } : append;
         const event = flowId ? await need(flow).dispatch(flowId, send) : restricted ? await send() : await append();
         receiptBinding?.commit();
+        phase = 'flush';
         await this.roots.flush(root);
+        phase = 'finalize';
         const accepted = await this.state.putTurn({ ...turn, inputSeq: Number(event.seq) });
         if (restricted) this.state.proactiveChecks.set(id, restricted.check);
         this.schedule(accepted);
         return accepted;
       } catch (error) {
         this.state.ctx.logger?.warn?.('[dsh-bot] Group turn acceptance failed; marking recovery_needed', {
-          groupId: g.id, turnId: id, ...errorSummary(error),
+          groupId: g.id, turnId: id, phase, ...redactedErrorMetadata(error),
         });
         await this.state.putTurn({ ...turn, state: 'recovery_needed' });
         throw new OperationError('recovery-needed');
@@ -359,7 +355,7 @@ export class GroupTurns {
       try { await this.runner.execute(id); }
       catch (error) {
         this.state.ctx.logger?.warn?.('[dsh-bot] Group turn execution failed; marking recovery_needed', {
-          groupId: accepted.group.groupId, turnId: id, ...errorSummary(error),
+          groupId: accepted.group.groupId, turnId: id, phase: 'execute', ...redactedErrorMetadata(error),
         });
         await this.state.queue.run(async () => {
           const t = this.state.table('turns').get(id);
@@ -422,11 +418,14 @@ export class GroupTurns {
       return this.state.putTurn({ ...t, followups: [...(t.followups ?? []), receipt] });
     };
     if (flowId) await need(flow).persist(flowId, persist); else await persist();
+    let phase: 'dispatch' | 'flush' | 'prompt' | 'finalize' = 'dispatch';
     try {
       const append = () => root.agent.session.append('user/message', message, { surfaceOp: 'append' });
       assertInputOpen();
       if (flowId) await need(flow).dispatch(flowId, append, admissionSignal); else append();
+      phase = 'flush';
       await this.roots.flush(root);
+      phase = 'prompt';
       const childMessageId = await followupInput(this.state, g, root.agent, d.bot, childId,
         input.text, `followup:${input.operationId}`, admissionSignal, () => {
           assertInputOpen();
@@ -435,12 +434,13 @@ export class GroupTurns {
           childSessionId: SessionId(childId), mode: 'continuable', delivery: 'steer', content: blocks(input.text),
         }, admissionSignal);
         }, [message.id]);
+      phase = 'finalize';
       const current = need(this.state.table('turns').get(t.id));
       return this.state.putTurn({ ...current, followups: current.followups?.map(row => row.operationId === input.operationId
         ? { ...row, state: 'accepted', childMessageId: childMessageId.messageId } : row) });
     } catch (error) {
       this.state.ctx.logger?.warn?.('[dsh-bot] Group follow-up dispatch failed; marking unknown', {
-        groupId: g.id, turnId: t.id, deliveryId: d.id, ...errorSummary(error),
+        groupId: g.id, turnId: t.id, deliveryId: d.id, phase, ...redactedErrorMetadata(error),
       });
       const current = need(this.state.table('turns').get(t.id));
       await this.state.putTurn({ ...current, followups: current.followups?.map(row => row.operationId === input.operationId

@@ -767,4 +767,91 @@ describe('group send error classification and pre-flight guards (#54)', () => {
       await f.close();
     }
   });
+
+  it('allows idempotent retry of an unconfirmed supplement even after the delivery completes (#54)', async () => {
+    const f = await composer('zh');
+    try {
+      const id = f.data.group.rootSessionId;
+      f.data.turns.push({
+        id: 'turn:retry', group: { groupId: f.data.group.id, groupCreatedAt: 1 }, operationId: 'op:turn',
+        requestDigest: 'hash', inputMessageId: 'msg:turn', createdAt: 1, updatedAt: 1, revision: 1,
+        schemaVersion: 1, membershipRevision: 1, orderedMemberIds: ['member:alpha'], mode: 'natural',
+        contextThroughSeq: -1, state: 'running',
+      });
+      f.data.deliveries.push({
+        id: 'delivery:retry', turnId: 'turn:retry', memberId: 'member:alpha', ordinal: 0,
+        bot: { botId: 'alpha', botCreatedAt: 1 }, botRevision: 1, presetId: 'bot-alpha',
+        contextOutputMessageIds: [], contextTruncated: false, state: 'running',
+      });
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:retry', deliveryId: 'delivery:retry' } })));
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Lost-response supplement');
+      // First attempt loses the response in transit; client keeps operationId and shows sendFailed.
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(1);
+      const originalOpId = f.actions.draft(id).operation?.request.operationId;
+      expect(originalOpId).toBeTruthy();
+      expect(f.element.textContent).toContain(f.t('groups.export.sendFailed'));
+
+      // Delivery finishes on the Host and the view refreshes before the user retries.
+      f.data.turns[0]!.state = 'idle';
+      f.data.deliveries[0]!.state = 'completed';
+      await f.remount();
+      expect(f.element.textContent).not.toContain(f.t('groups.supplementEndedShort'));
+
+      // Second click must retry with the exact same operationId and clear the draft when Host confirms.
+      f.send.mockResolvedValueOnce({ ok: true, value: { id: 'turn:retry' } as never });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(2);
+      expect(f.send.mock.calls[1]?.[1].operationId).toBe(originalOpId);
+      expect(f.element.textContent).not.toContain(f.t('groups.supplementEnded'));
+      expect((field(f.element, f.t('groups.message')) as HTMLTextAreaElement).value).toBe('');
+      expect(f.actions.draft(id).followup).toBeUndefined();
+      expect(f.actions.draft(id).operation).toBeUndefined();
+
+      // If an unconfirmed supplement retry fails with unavailable and live view confirms it was never persisted,
+      // then it releases operationId and reports supplementEnded.
+      f.data.turns[0]!.state = 'running';
+      f.data.deliveries[0]!.state = 'running';
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:retry', deliveryId: 'delivery:retry' } })));
+      await fill(field(f.element, f.t('groups.message')), 'Unreceived supplement');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(3);
+      const secondOpId = f.actions.draft(id).operation?.request.operationId;
+      f.data.turns[0]!.state = 'idle';
+      f.data.deliveries[0]!.state = 'completed';
+      await f.remount();
+      f.send.mockRejectedValueOnce({ code: 'dsh-bot/unavailable' });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(4);
+      expect(f.send.mock.calls[3]?.[1].operationId).toBe(secondOpId);
+      await vi.waitFor(() => expect(f.element.textContent).toContain(f.t('groups.supplementEnded')));
+      expect(f.actions.draft(id).operation).toBeUndefined();
+    } finally { await f.close(); }
+  });
+
+  it('does not misclassify automatic group unavailable errors as not-sent (#54)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = await composer('en');
+    try {
+      const owner = f.data.members[0]!.bot;
+      f.data.group.supergroup = {
+        workId: 'work:1', originSessionId: 'origin', originMessageId: 'origin-msg',
+        owner, readers: f.data.members.map(m => m.bot), expiresAt: 99999,
+      };
+      await f.remount();
+      const sendSpy = vi.spyOn(f.actions, 'send').mockRejectedValueOnce({ code: 'dsh-bot/unavailable' });
+      await fill(field(f.element, f.t('groups.message')), 'Automatic group input');
+      await click(button(f.element, f.t('groups.send')));
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(f.element.textContent).toContain(`${f.t('groups.export.sendFailed')} (dsh-bot/unavailable)`);
+      expect(f.element.textContent).not.toContain(f.t('groups.sendUnavailable'));
+      expect(f.actions.draft(f.data.group.rootSessionId).operation?.request.operationId).toBeTruthy();
+    } finally {
+      warn.mockRestore();
+      await f.close();
+    }
+  });
 });

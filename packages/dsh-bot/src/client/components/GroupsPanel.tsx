@@ -34,7 +34,7 @@ const definitiveRejectionCodes = ['memory-text-required', 'mention-not-member', 
 const uncertainDraftErrors = new Set<NonNullable<GroupDraft['errorCode']>>(['send-failed', 'conflict', 'supergroup-conflict', 'route-unavailable']);
 const safeErrorCode = (error: unknown): string | undefined => {
   if (typeof error !== 'object' || error === null || !('code' in error) || typeof error.code !== 'string') return;
-  return /^[a-z0-9-]+(?:\/[a-z0-9-]+)+$/i.test(error.code) ? error.code : undefined;
+  return /^(?:dsh-bot|gateway)\/[a-z0-9-]+$/.test(error.code) ? error.code : undefined;
 };
 const isDefinitivePreDispatchRejection = (error: unknown): boolean =>
   definitiveRejectionCodes.some(code => hasOperationCode(error, code)) || safeErrorCode(error) === 'gateway/input-invalid';
@@ -584,19 +584,27 @@ export function GroupConversation({
       }).finally(() => uploadControllers.current.delete(id));
     }
   };
-  const classifyError = (error: unknown, isFollowup = false, mentionMissingTarget = false): NonNullable<GroupDraft['errorCode']> => {
+  const classifyError = (error: unknown, options: {
+    isFollowup?: boolean;
+    mentionMissingTarget?: boolean;
+    isRetry?: boolean;
+  } = {}): NonNullable<GroupDraft['errorCode']> => {
     if (error instanceof GroupRouteUnavailable) return 'route-unavailable';
     const mapped = sendErrors.find(code => hasOperationCode(error, code));
     if (mapped) return mapped;
-    if (hasOperationCode(error, 'unavailable')) return isFollowup ? 'followup-ended' : 'send-unavailable';
+    if (options.isRetry) return 'send-failed';
+    if (hasOperationCode(error, 'unavailable')) {
+      if (automaticGroup) return 'send-failed';
+      return options.isFollowup ? 'followup-ended' : 'send-unavailable';
+    }
     if (hasOperationCode(error, 'invalid') || safeErrorCode(error) === 'gateway/input-invalid')
-      return mentionMissingTarget ? 'mention-required' : 'send-invalid';
+      return options.mentionMissingTarget ? 'mention-required' : 'send-invalid';
     if (hasOperationCode(error, 'approval-denied')) return 'send-denied';
     if (hasOperationCode(error, 'unsupported')) return 'send-unsupported';
     if (hasOperationCode(error, 'not-found')) return 'send-not-found';
     return 'send-failed';
   };
-  const perform = async (work: () => Promise<unknown>, options: { isFollowup?: boolean; mentionMissingTarget?: boolean } = {}) => {
+  const perform = async (work: () => Promise<unknown>, options: { isFollowup?: boolean; mentionMissingTarget?: boolean; isRetry?: boolean } = {}) => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
@@ -607,7 +615,7 @@ export function GroupConversation({
       await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
     } catch (error) {
       const diagnostic = safeErrorCode(error);
-      const fallback = classifyError(error, options.isFollowup, options.mentionMissingTarget);
+      const fallback = classifyError(error, options);
       let finalCode: NonNullable<GroupDraft['errorCode']> = fallback;
       actions.patchDraft(rootId, value => {
         finalCode = value.errorCode ?? fallback;
@@ -719,10 +727,6 @@ export function GroupConversation({
     }
     if (!canSend || lock.current || !view) return;
     setGuestIssue(undefined);
-    if (followupEnded) {
-      actions.patchDraft(rootId, value => ({ ...value, error: true, errorCode: 'followup-ended', errorDiagnostic: undefined }));
-      return;
-    }
     if (new TextEncoder().encode(draft.trim()).length > GROUP_TEXT_MAX_BYTES) {
       actions.patchDraft(rootId, value => ({ ...value, error: true, errorCode: 'message-too-long', errorDiagnostic: undefined }));
       return;
@@ -783,12 +787,17 @@ export function GroupConversation({
       replyTo: base.replyTo,
       fileReceiptIds: base.fileReceiptIds,
     });
-    if (operation.current?.signature !== signature)
+    const isPendingRetry = operation.current?.signature === signature;
+    if (followupEnded && !isPendingRetry) {
+      actions.patchDraft(rootId, value => ({ ...value, error: true, errorCode: 'followup-ended', errorDiagnostic: undefined }));
+      return;
+    }
+    if (!isPendingRetry)
       operation.current = {
         signature,
         request: { ...base, operationId: `send:${crypto.randomUUID()}` },
       };
-    const pending = operation.current;
+    const pending = operation.current!;
     const selectedAtSend = [...mentions];
     actions.patchDraft(rootId, value => ({ ...value, sending: true }));
     void perform(async () => {
@@ -809,10 +818,22 @@ export function GroupConversation({
             actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
               ? { ...current, operation: undefined, errorCode: 'membership-changed' } : current);
           }
-        } else if (!automaticGroup && isDefinitivePreDispatchRejection(cause)) {
+        } else if (isPendingRetry && !automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) {
+          await catalog.refresh();
+          const snapshot = catalog.getSnapshot();
+          const fresh = snapshot.view;
+          const recorded = fresh?.turns.some(turn => turn.operationId === pending.request.operationId ||
+            turn.followups?.some(row => row.operationId === pending.request.operationId));
+          // Only release an unconfirmed supplement retry after a live Host view
+          // confirms this exact operationId was never persisted.
+          if (!snapshot.error && fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt && !recorded) {
+            actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
+              ? { ...current, operation: undefined, errorCode: 'followup-ended' } : current);
+          }
+        } else if (!isPendingRetry && isDefinitivePreDispatchRejection(cause) && (!automaticGroup || !hasOperationCode(cause, 'unavailable'))) {
           actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
             ? { ...current, operation: undefined } : current);
-          if (pending.request.followup && hasOperationCode(cause, 'unavailable')) void catalog.refresh();
+          if (!automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) void catalog.refresh();
         }
         throw cause;
       }
@@ -828,7 +849,7 @@ export function GroupConversation({
         setUploads(current => current.filter(row => !row.receiptId || !pending.request.fileReceiptIds?.includes(row.receiptId)));
         operation.current = undefined;
         if (alive.current) setFilesOverLimit(false);
-    }, { isFollowup: Boolean(pending.request.followup), mentionMissingTarget }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
+    }, { isFollowup: Boolean(pending.request.followup), mentionMissingTarget, isRetry: isPendingRetry }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
   };
   if (!view)
     return (
@@ -948,7 +969,7 @@ export function GroupConversation({
         </div>}
         {sharedDraft.followup && <div className={styles.replyPreview} role="status">
           {t('groups.supplement')} · {lookup(followupDelivery?.memberId ?? '')?.name ?? t('groups.unavailable')}
-          {followupEnded && <span> · {t('groups.supplementEndedShort')}</span>}
+          {followupEnded && !(sharedDraft.operation?.request.followup?.deliveryId === sharedDraft.followup.deliveryId && sharedDraft.operation?.request.followup?.turnId === sharedDraft.followup.turnId) && <span> · {t('groups.supplementEndedShort')}</span>}
           <button type="button" onClick={() => actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, followup: undefined }))}>{t('groups.close')}</button>
         </div>}
         <GroupComposerInput sessionId={rootId} text={draft} bindings={sharedDraft.mentionBindings ?? []} targets={mentionTargets} inputRef={composer} t={t}
