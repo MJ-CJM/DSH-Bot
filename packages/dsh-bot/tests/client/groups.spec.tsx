@@ -854,4 +854,123 @@ describe('group send error classification and pre-flight guards (#54)', () => {
       await f.close();
     }
   });
+
+  it('retains operationId and send-failed when navigation cancels retry receipt confirmation (#54)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ctx = new Context();
+    const data = view();
+    data.group.mode = 'natural';
+    const turn = {
+      id: 'turn:nav', group: { groupId: data.group.id, groupCreatedAt: data.group.createdAt }, operationId: 'op:nav-turn',
+      requestDigest: 'hash', inputMessageId: 'msg:nav-turn', createdAt: 1, updatedAt: 1, revision: 1,
+      schemaVersion: 1 as const, membershipRevision: 1, orderedMemberIds: ['member:alpha'], mode: 'natural' as const,
+      contextThroughSeq: -1, state: 'running' as const, followups: [] as Array<{
+        operationId: string; requestDigest: string; deliveryId: string; messageId: string; state: 'accepted';
+      }>,
+    };
+    data.turns.push(turn);
+    data.deliveries.push({
+      id: 'delivery:nav', turnId: 'turn:nav', memberId: 'member:alpha', ordinal: 0,
+      bot: { botId: 'alpha', botCreatedAt: 1 }, botRevision: 1, presetId: 'bot-alpha',
+      contextOutputMessageIds: [], contextTruncated: false, state: 'running',
+    });
+    const stalePreSendSnapshot = structuredClone(data);
+    const acceptedFollowups: string[] = [];
+    let holdConfirmView = false;
+    let releaseConfirmView: ((result: { ok: true; value: ReturnType<typeof view> }) => void) | undefined;
+    let confirmViewStarted!: () => void;
+    const confirmViewEntered = new Promise<void>(resolve => { confirmViewStarted = resolve; });
+    const remoteView = vi.fn<GroupMethods['view']>(async () => {
+      if (holdConfirmView) {
+        holdConfirmView = false;
+        confirmViewStarted();
+        return new Promise(resolve => { releaseConfirmView = resolve; });
+      }
+      return { ok: true, value: structuredClone(data) };
+    });
+    let sendCount = 0;
+    const remoteSend = vi.fn<GroupMethods['send']>(async (_key, request) => {
+      sendCount++;
+      if (sendCount === 1) {
+        // 1st attempt: Host accepts and persists the supplement, then the response is lost in transit.
+        acceptedFollowups.push(request.operationId);
+        turn.followups.push({
+          operationId: request.operationId, requestDigest: 'digest', deliveryId: 'delivery:nav',
+          messageId: 'msg:followup-1', state: 'accepted',
+        });
+        throw new Error('response-lost');
+      }
+      if (sendCount === 2) {
+        // 2nd attempt: route read already saw the receipt, then send hits Host unload unavailable;
+        // hold the follow-up confirmation view pending while the user navigates away.
+        holdConfirmView = true;
+        throw { code: 'dsh-bot/unavailable' };
+      }
+      // 3rd attempt (after returning to the group): must reuse the exact original operationId.
+      if (!acceptedFollowups.includes(request.operationId)) acceptedFollowups.push(request.operationId);
+      return { ok: true, value: { id: 'turn:nav' } as never };
+    });
+    ctx.provide('remote.dshBot.groups', {
+      view: remoteView,
+      list: async () => ({ ok: true, value: [summary()] }),
+      send: remoteSend,
+      cancel: vi.fn(),
+    } as unknown as GroupMethods);
+    const actions = createGroupActions(ctx, {});
+    const element = document.createElement('div');
+    document.body.append(element);
+    let root = createRoot(element);
+    const t = ((key: keyof typeof en.ui) => en.ui[key]) as PropsLocale<'dsh-bot'>['t'];
+    const mount = async () => {
+      await act(async () => root.render(<GroupConversation workspace summary={summary()} actions={actions} bots={bots}
+        expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={async () => {}} t={t} />));
+      await vi.waitFor(() => expect(element.querySelector('textarea')).toBeTruthy());
+    };
+    const rootId = data.group.rootSessionId;
+    try {
+      await mount();
+      await act(async () => actions.patchDraft(rootId, old => ({ ...old, followup: { turnId: 'turn:nav', deliveryId: 'delivery:nav' } })));
+      await fill(field(element, t('groups.message')), 'Accepted supplement whose response dropped');
+
+      // 1st submit: accepted on Host, response lost -> operationId retained.
+      await click(button(element, t('groups.send')));
+      expect(remoteSend).toHaveBeenCalledTimes(1);
+      const originalOpId = actions.draft(rootId).operation?.request.operationId;
+      expect(originalOpId).toBeTruthy();
+      expect(acceptedFollowups).toEqual([originalOpId]);
+
+      // 2nd submit: send throws unavailable; confirmation view hangs while user navigates away.
+      await act(async () => {
+        button(element, t('groups.send')).click();
+      });
+      await confirmViewEntered;
+
+      // Navigate away (unmount component while confirmation view is still pending).
+      await act(async () => root.unmount());
+      await vi.waitFor(() => expect(actions.draft(rootId).sending).toBe(false));
+
+      // Even if the stale in-flight view resolves late after unmount, operationId must stay intact.
+      releaseConfirmView?.({ ok: true, value: stalePreSendSnapshot });
+      await act(async () => { await Promise.resolve(); });
+
+      expect(actions.draft(rootId).operation?.request.operationId).toBe(originalOpId);
+      expect(actions.draft(rootId).errorCode).toBe('send-failed');
+      expect(actions.draft(rootId).errorCode).not.toBe('followup-ended');
+
+      // Return to the same group and retry the unmodified draft -> must reuse exact originalOpId.
+      root = createRoot(element);
+      await mount();
+      await click(button(element, t('groups.send')));
+      expect(remoteSend).toHaveBeenCalledTimes(3);
+      expect(remoteSend.mock.calls[2]?.[1].operationId).toBe(originalOpId);
+      expect(acceptedFollowups).toEqual([originalOpId]);
+      expect(actions.draft(rootId).operation).toBeUndefined();
+      expect((field(element, t('groups.message')) as HTMLTextAreaElement).value).toBe('');
+    } finally {
+      warn.mockRestore();
+      await act(async () => root.unmount());
+      await ctx.fiber.dispose();
+      element.remove();
+    }
+  });
 });

@@ -22,7 +22,7 @@ import { isGroupDelegation, matchAddressedBot, matchGroupAddress, relayNeedsTopi
 import { resolveGroupMentions } from '../group-mentions.js';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import { GROUP_ATTACHMENT_LIMIT, GROUP_TEXT_MAX_BYTES, groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
+import { GROUP_ATTACHMENT_LIMIT, GROUP_TEXT_MAX_BYTES, groupKey, groupViewSchema, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
 import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { GroupRouteUnavailable, type GroupActions, type GroupDraft, unwrapGroup } from '../groups-state.js';
@@ -819,16 +819,42 @@ export function GroupConversation({
               ? { ...current, operation: undefined, errorCode: 'membership-changed' } : current);
           }
         } else if (isPendingRetry && !automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) {
-          await catalog.refresh();
-          const snapshot = catalog.getSnapshot();
-          const fresh = snapshot.view;
+          const signal = dispatchLifetime.current.signal;
+          const confirmFreshView = (): Promise<GroupView | undefined> => {
+            if (signal.aborted || !alive.current) return Promise.resolve(undefined);
+            const pendingView = actions.remote().view(groupKey(view.group), {});
+            void pendingView.catch(() => {});
+            return new Promise<GroupView | undefined>(resolve => {
+              const finish = (value?: GroupView) => {
+                signal.removeEventListener('abort', onAbort);
+                resolve(value);
+              };
+              const onAbort = () => finish(undefined);
+              signal.addEventListener('abort', onAbort, { once: true });
+              if (signal.aborted) { onAbort(); return; }
+              void pendingView.then(
+                result => {
+                  if (signal.aborted || !alive.current) { finish(undefined); return; }
+                  try { finish(groupViewSchema.parse(unwrapGroup(result))); }
+                  catch { finish(undefined); }
+                },
+                () => finish(undefined),
+              );
+            });
+          };
+          const fresh = await confirmFreshView();
           const recorded = fresh?.turns.some(turn => turn.operationId === pending.request.operationId ||
             turn.followups?.some(row => row.operationId === pending.request.operationId));
-          // Only release an unconfirmed supplement retry after a live Host view
-          // confirms this exact operationId was never persisted.
-          if (!snapshot.error && fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt && !recorded) {
+          // Only release an unconfirmed supplement retry after THIS live remote.view() call
+          // succeeds while mounted and proves this exact operationId was never persisted.
+          if (fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt && !recorded) {
+            const targetTurn = fresh.turns.find(turn => turn.id === pending.request.followup?.turnId);
+            const targetDelivery = fresh.deliveries.find(delivery => delivery.id === pending.request.followup?.deliveryId);
+            const targetEnded = !targetTurn || !targetDelivery || targetDelivery.state !== 'running' || Boolean(targetDelivery.skipped) ||
+              ['completed', 'partial', 'cancelled', 'idle', 'recovery_needed'].includes(targetTurn.state);
             actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
-              ? { ...current, operation: undefined, errorCode: 'followup-ended' } : current);
+              ? { ...current, operation: undefined, errorCode: targetEnded ? 'followup-ended' : 'send-unavailable' } : current);
+            void catalog.refresh();
           }
         } else if (!isPendingRetry && isDefinitivePreDispatchRejection(cause) && (!automaticGroup || !hasOperationCode(cause, 'unavailable'))) {
           actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
