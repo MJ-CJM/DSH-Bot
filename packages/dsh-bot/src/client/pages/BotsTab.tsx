@@ -6,7 +6,7 @@ import { FollowUpPanel } from '../proactive/FollowUpPanel.js';
 import { followUpSessionTarget, useFollowUpPolicyRevision } from '../proactive/follow-up-state.js';
 import { ProactiveSetup } from '../proactive/ProactiveSetup.js';
 import { Button, SegmentedTabs, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { CapabilitiesPanel } from '../components/CapabilitiesPanel.js';
 import { MessageOverviewPanel } from '../components/MessageOverview.js';
 import { BackgroundTasksPanel } from '../components/BackgroundTasksPanel.js';
@@ -30,10 +30,24 @@ import workspaceStyles from '../proactive/workspace.module.css';
 
 type Section = 'overview' | 'work' | 'memory' | 'settings' | 'history';
 type SettingsSection = 'profile' | 'capabilities' | 'connectors' | 'notifications';
+function WorkDraftScope({ leaveRef, t, children }: {
+  leaveRef: MutableRefObject<(run: () => void) => void>;
+  t: BotsPageProps['t'];
+  children: ReactNode;
+}) {
+  const workNavigation = useSettingsNavigation(t);
+  leaveRef.current = workNavigation.leave;
+  return <SettingsDrafts.Provider value={workNavigation.registry}>
+    {children}
+    {workNavigation.confirmation}
+  </SettingsDrafts.Provider>;
+}
+
 /** One owner-bound page; long settings never grow the quick-create modal. */
 export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageModel }) {
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  const leaveWork = useRef<(run: () => void) => void>(run => run());
   const [saving, setSaving] = useState(false);
   const destination = model.detailDestination;
   const requestId = destination?.requestId;
@@ -80,7 +94,11 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
         </div>
       </header>
       {selected.status?.preset.state !== 'ok' && <p role="status">{t(selected.status?.preset.state === 'broken' ? 'card.statusBroken' : selected.status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown')} {selected.status?.preset.reason}</p>}
-      <div className={detailStyles.tabs}><SegmentedTabs label={t('detail.navigation')} value={panel} onChange={setPanel}
+      <div className={detailStyles.tabs}><SegmentedTabs label={t('detail.navigation')} value={panel} onChange={next => {
+        if (next === panel) return;
+        if (panel === 'work') leaveWork.current(() => setPanel(next));
+        else setPanel(next);
+      }}
         items={sections.map(value => ({ value, label: t(`detail.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel` })) as [import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<Section>, ...import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<Section>[]]} /></div>
       <RetainedPanel active={panel === 'overview'} id={`${uid}-overview-panel`} labelledBy={`${uid}-overview`}>
         {page.followUp && <div className={detailStyles.section}><FollowUpPanel source={page.followUp}
@@ -96,15 +114,17 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
         </section>
       </RetainedPanel>
       <RetainedPanel active={panel === 'work'} id={`${uid}-work-panel`} labelledBy={`${uid}-work`}>
+        <WorkDraftScope leaveRef={leaveWork} t={t}>
         <div className={detailStyles.section}><Button variant="ghost" disabled={busy || model.navigating || !model.ready} onClick={start}>{t('detail.createTask')}</Button></div>
         <BotWorkSection page={page} model={model} bot={bot} active={panel === 'work'}
-          onSettings={setting => { setPanel('settings'); setSettingsPanel(setting); }}>
+          onSettings={setting => { leaveWork.current(() => { setPanel('settings'); setSettingsPanel(setting); }); }}>
           <section ref={otherWork} data-bot-other-work="" tabIndex={-1} aria-label={t('botPanel.otherWork')}>
             {page.background && <BackgroundTasksPanel bot={bot} actions={page.background} t={t} />}
             {page.routines && <RoutinePanel actions={page.routines} bots={bots} botId={bot.id} onOpenSession={page.onOpenSession} t={t} />}
           </section>
           {panel === 'work' && page.messages && <MessageOverviewPanel botId={bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}
         </BotWorkSection>
+        </WorkDraftScope>
       </RetainedPanel>
       <RetainedPanel active={panel === 'memory'} id={`${uid}-memory-panel`} labelledBy={`${uid}-memory`}>
         {page.management ? <ManagementPanel bots={bots} actions={page.management} createMemoryPanel={page.createMemoryPanel} active={panel === 'memory'} t={t} />
