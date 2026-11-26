@@ -2,6 +2,7 @@ import css from '../styles/messages.module.css?inline';
 import { useEffect, useRef, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { MessageRequest, MessageOverview } from '../../shared/messaging-contract.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/messages.module.css';
 export interface MessageActions {
@@ -11,6 +12,7 @@ export interface MessageActions {
 export function MessageOverviewPanel({ botId, actions, onOpen, t }: {
   botId: string; actions: MessageActions; onOpen(id: string): Promise<void>;
 } & PropsLocale<'dsh-bot'>) {
+  useStyleSheet('messages', css);
   const [snapshot, setSnapshot] = useState<MessageOverview>();
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -35,7 +37,7 @@ export function MessageOverviewPanel({ botId, actions, onOpen, t }: {
     catch { if (token === epoch.current) setError(true); }
     finally { if (token === epoch.current) { mutating.current = false; setBusy(false); } }
   };
-  return <section className={styles.overview} data-message-overview={botId} aria-label={t('messages.title')}><style>{css}</style><h3>{t('messages.title')}</h3>
+  return <section className={styles.overview} data-message-overview={botId} aria-label={t('messages.title')}><h3>{t('messages.title')}</h3>
     <p>{t('messages.limited')}</p>
     {(error || snapshot?.enabled === false) && <p role="status">{t('messages.disabled')}</p>}
     <p>{t('messages.pending')}: {snapshot?.pending ?? 0}</p>

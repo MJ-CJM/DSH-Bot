@@ -59,7 +59,7 @@ export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onDel
   return <section className={styles.directory} aria-label={t('groups.list')}>
     <div className={styles.directoryTools}>
       <SearchField label={t('groups.search')} clearLabel={t('detail.clearSearch')} value={query} onChange={setQuery} />
-      <Menu open={filterOpen} onClose={() => setFilterOpen(false)} align="end" selectedId={filter}
+      <Menu open={filterOpen} onClose={() => setFilterOpen(false)} align="end" portal autoFocus selectedId={filter}
         anchor={<Button variant="ghost" className={styles.directoryFilter} aria-label={t('groups.filter')} aria-haspopup="menu" aria-expanded={filterOpen} onClick={() => setFilterOpen(!filterOpen)}>
           {t(`groups.filter.${filter}`)}<IconChevronDownOutlineRegular size={12} />
         </Button>}
@@ -119,7 +119,7 @@ export function GroupDirectory({ rows, bots, selectedId, onSelect, onOpen, onDel
             items={[
               ...(onOpen ? [{ id: 'profile', label: t('chat.profile') }] : []),
               { id: 'pin', label: t(pinned ? 'chat.unpin' : 'chat.pin') },
-              ...(onDelete ? [{ id: 'delete', label: t('groups.delete') }] : []),
+              ...(onDelete ? [{ id: 'delete', label: t('groups.delete'), danger: true }] : []),
             ]}
             onSelect={id => {
               setMenuKey(undefined);

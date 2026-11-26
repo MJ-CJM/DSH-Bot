@@ -6,6 +6,7 @@ import { expect, it, vi } from 'vitest';
 import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import { createGroupActions } from '../../src/client/groups-state.js';
 import { GroupsPanel } from '../../src/client/components/GroupsPanel.js';
+import { formatList } from '../../src/client/format.js';
 import { bots, view, summary } from './group-fixture.js';
 import { button, click, fill } from './helpers.js';
 import en from '../../locale/en.json';
@@ -32,7 +33,7 @@ it('saved group survives open failure: retry opens the same identity without cre
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0]?.[0].onDemand).toBe(true);
     await vi.waitFor(() => expect(element.querySelector('[role="alert"]')?.textContent).toBe(en.ui['groups.createdOpenFailed']));
-    expect(create).toHaveBeenCalledTimes(1); expect(create.mock.calls[0]?.[0].name).toBe('Same name、Same name');
+    expect(create).toHaveBeenCalledTimes(1); expect(create.mock.calls[0]?.[0].name).toBe(formatList(['Same name', 'Same name'], en.ui['activity.locale']));
     expect(form.querySelector('input')?.disabled).toBe(true);
     await click(button(element, en.ui['groups.open']));
     expect(create).toHaveBeenCalledTimes(1); expect(open).toHaveBeenCalledTimes(2); expect(open.mock.calls[0]?.[0]).toEqual(open.mock.calls[1]?.[0]);

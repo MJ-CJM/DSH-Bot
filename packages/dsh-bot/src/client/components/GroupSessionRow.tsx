@@ -27,6 +27,20 @@ export function GroupSessionLeading({ sessionId, useGroups, useCatalog, t }: Pro
 export function GroupSessionHover({ sessionId, useGroups, t }: Props) {
   const group = useGroups((snapshot) => snapshot.groups.find((row) => row.group.rootSessionId === sessionId));
   return group ? (
-    <span data-group-session-hover={group.group.id}>{t('row.group', { name: group.group.name })}</span>
+    <span
+      data-group-session-hover={group.group.id}
+      style={{
+        display: 'block',
+        padding: '4px 6px',
+        borderRadius: 4,
+        fontSize: 12,
+        lineHeight: '16px',
+        overflowWrap: 'anywhere',
+        color: 'var(--dsw-alias-label-primary)',
+        background: 'var(--dsw-alias-bg-base)',
+      }}
+    >
+      {t('row.group', { name: group.group.name })}
+    </span>
   ) : null;
 }

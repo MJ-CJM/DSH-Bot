@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { GroupExportQueue } from '../../src/client/components/GroupExportQueue.js';
+import { formatList } from '../../src/client/format.js';
 import type { GroupActions } from '../../src/client/groups-state.js';
 import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import type { GroupDelivery } from '../../src/shared/groups.js';
@@ -362,7 +363,7 @@ it('separates a private outside answer for the requesting member from that membe
     await click(button(f.row(0), f.t('groups.relay.approveHandoff', { sender: via.name })));
     expect(f.row(0).textContent).toContain(f.t('groups.relay.handoffApproved', { sender: via.name }));
     expect(f.row(0).querySelector('input')).toBeNull();
-    expect(f.row(1).textContent).toContain(f.t('groups.export.scope', { group: f.data.group.name, members: 'alpha、beta' }));
+    expect(f.row(1).textContent).toContain(f.t('groups.export.scope', { group: f.data.group.name, members: formatList(['alpha', 'beta'], f.t('activity.locale')) }));
     expect(f.row(1).textContent).not.toContain(f.t('groups.relay.handoffScope', { sender: via.name }));
   } finally { await f.close(); }
 });

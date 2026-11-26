@@ -6,8 +6,9 @@ import { hasOperationCode } from '../../shared/operation-errors.js';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
-import type { CollaborationActions } from '../collaboration-state.js';
+import { EMPTY_BOARD, type CollaborationActions } from '../collaboration-state.js';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
+import { useStyleSheet } from '../use-style-sheet.js';
 import css from '../styles/integrations.module.css?inline';
 import styles from '../styles/integrations.module.css';
 export interface CollaborationPanelProps extends PropsLocale<'dsh-bot'> {
@@ -16,10 +17,10 @@ export interface CollaborationPanelProps extends PropsLocale<'dsh-bot'> {
   onOpenSession(id: string): Promise<void>;
 }
 export function CollaborationPanel({ actions, bots, onOpenSession, t }: CollaborationPanelProps) {
+  useStyleSheet('integrations', css);
   const { bot, select: setSelected } = useSettingsBot(bots);
   return (
     <section className={styles.panel} aria-label={t('team.title')}>
-      <style>{css}</style>
       {!bot && <ManagementHeader title={t('team.title')} selector={{ bots, value: '', onChange: setSelected }} t={t} />}
       {bot && (
         <Board key={`${bot.id}:${bot.createdAt}`} actions={actions} bot={bot} bots={bots} onBotChange={setSelected} onOpenSession={onOpenSession} t={t} />
@@ -27,11 +28,25 @@ export function CollaborationPanel({ actions, bots, onOpenSession, t }: Collabor
     </section>
   );
 }
+const emptyBoardSnapshot: ReturnType<ReturnType<CollaborationActions['createBoard']>['getSnapshot']> = {
+  ...EMPTY_BOARD,
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const subscribeEmptyBoard = () => () => {};
+const getEmptyBoard = () => emptyBoardSnapshot;
+
 function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: CollaborationPanelProps & { bot: BotRecord; onBotChange(id: string): void }) {
   const key = useMemo(() => ({ botId: bot.id, botCreatedAt: bot.createdAt }), [bot.id, bot.createdAt]);
-  const catalog = useMemo(() => actions.createBoard(key), [actions, key]);
-  useEffect(() => () => catalog.dispose(), [catalog]);
-  const data = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+  const [owned, setOwned] = useState<{ key: typeof key; source: ReturnType<CollaborationActions['createBoard']> }>();
+  useEffect(() => {
+    const source = actions.createBoard(key);
+    setOwned({ key, source });
+    return () => source.dispose();
+  }, [actions, key]);
+  const catalog = owned?.key === key ? owned.source : undefined;
+  const data = useSyncExternalStore(catalog?.subscribe ?? subscribeEmptyBoard, catalog?.getSnapshot ?? getEmptyBoard, catalog?.getSnapshot ?? getEmptyBoard);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [blockedBy, setBlockedBy] = useState<string[]>([]);
@@ -56,14 +71,14 @@ function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: Collaborat
     try {
       const r = await fn();
       if (!r.ok) throw r.error;
-      await catalog.refresh();
+      await catalog?.refresh();
     } catch (e) {
       if (alive.current) {
         setError(
           hasOperationCode(e, 'conflict') ? 'conflict' : hasOperationCode(e, 'recovery-needed') ? 'recovery' : 'failed',
         );
       }
-      await catalog.refresh();
+      await catalog?.refresh();
     } finally {
       writing.current = false;
       if (alive.current) setBusy(false);
@@ -75,7 +90,7 @@ function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: Collaborat
       <ManagementHeader title={t('team.title')} selector={{ bots, value: bot.id, onChange: onBotChange }} actions={<Button
         type="button"
         onClick={() => {
-          void catalog.refresh();
+          void catalog?.refresh();
         }}
       >
         {t('bots.refresh')}
@@ -221,10 +236,10 @@ function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: Collaborat
   );
 }
 export function ImPanel({ actions, t }: { actions: CollaborationActions } & PropsLocale<'dsh-bot'>) {
+  useStyleSheet('integrations', css);
   const data = useSyncExternalStore(actions.im.subscribe, actions.im.getSnapshot, actions.im.getSnapshot);
   return (
     <section className={styles.panel} aria-label={t('im.title')}>
-      <style>{css}</style>
       <ManagementHeader title={t('im.title')} actions={<Button
         type="button"
         onClick={() => {

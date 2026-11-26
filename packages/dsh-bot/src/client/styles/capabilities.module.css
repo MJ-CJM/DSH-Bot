@@ -1,6 +1,7 @@
 .panel { min-width: 0; margin: 16px 0; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 1.5; }
 .panel h3 { font-size: 16px; margin: 0; }
 .panel p { color: var(--dsw-alias-label-secondary); }
+.panel [role="alert"] { color: var(--dsw-alias-state-error-primary); }
 .panel ul { display: grid; padding: 0; gap: 10px; list-style: none; }
 .panel li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 12px; background: var(--dsw-alias-bg-base); }
 .panel li span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }

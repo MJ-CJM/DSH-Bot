@@ -106,7 +106,7 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
           {!!row.at && <time className={styles.relativeTime} dateTime={new Date(row.at).toISOString()}>{relativeTime(row.at, t('activity.locale'))}</time>}
         </button>
         {recentPreferences.get(row.key)?.pinned && <span className={styles.directoryPinned} data-directory-pinned="">{t('chat.pinned')}</span>}
-        <Menu open={menu === row.key} onClose={() => setMenu(undefined)} align="end" autoFocus
+        <Menu open={menu === row.key} onClose={() => setMenu(undefined)} align="end" portal autoFocus
           anchor={<Button variant="ghost" className={styles.quietAction} aria-label={`${t('card.more')} ${row.name}`} aria-haspopup="menu" aria-expanded={menu === row.key} onClick={event => {
             menuTrigger.current = event.currentTarget;
             setMenu(menu === row.key ? undefined : row.key);
@@ -115,7 +115,7 @@ export function RecentConversations({ page, model, mode = 'recent' }: { page: Bo
             { id: 'pinned', label: text(recentPreferences.get(row.key)?.pinned ? 'chat.unpin' : 'chat.pin') },
             ...(mode === 'recent' ? [{ id: 'hidden', label: text(hidden ? 'chat.restore' : 'chat.hide') }] : []),
             { id: 'profile', label: text('chat.profile') },
-            { id: 'delete', label: t(row.entry ? 'actions.delete' : 'groups.delete') },
+            { id: 'delete', label: t(row.entry ? 'actions.delete' : 'groups.delete'), danger: true },
           ]}
           onSelect={id => { setMenu(undefined); menuTrigger.current?.focus({ preventScroll: true });
             if (id === 'pinned' || id === 'hidden') update(row.key, id);

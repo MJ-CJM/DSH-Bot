@@ -6,7 +6,7 @@ import { FollowUpPanel } from '../proactive/FollowUpPanel.js';
 import { followUpSessionTarget, useFollowUpPolicyRevision } from '../proactive/follow-up-state.js';
 import { ProactiveSetup } from '../proactive/ProactiveSetup.js';
 import { Button, SegmentedTabs, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { CapabilitiesPanel } from '../components/CapabilitiesPanel.js';
 import { MessageOverviewPanel } from '../components/MessageOverview.js';
 import { BackgroundTasksPanel } from '../components/BackgroundTasksPanel.js';
@@ -21,6 +21,7 @@ import { SettingsBotContext } from '../components/SettingsBotContext.js';
 import { SettingsDrafts, useSettingsNavigation } from '../components/SettingsNavigation.js';
 import detailStyles from '../styles/detail.module.css';
 import css from '../styles/detail.module.css?inline';
+import { useStyleSheet } from '../use-style-sheet.js';
 import type { BotsPageProps } from './bots-page-types.js';
 import type { BotsPageModel } from './use-bots-page.js';
 import { BotSessionHistory } from './BotSessionHistory.js';
@@ -30,10 +31,24 @@ import workspaceStyles from '../proactive/workspace.module.css';
 
 type Section = 'overview' | 'work' | 'memory' | 'settings' | 'history';
 type SettingsSection = 'profile' | 'capabilities' | 'connectors' | 'notifications';
+function WorkDraftScope({ leaveRef, t, children }: {
+  leaveRef: MutableRefObject<(run: () => void) => void>;
+  t: BotsPageProps['t'];
+  children: ReactNode;
+}) {
+  const workNavigation = useSettingsNavigation(t);
+  leaveRef.current = workNavigation.leave;
+  return <SettingsDrafts.Provider value={workNavigation.registry}>
+    {children}
+    {workNavigation.confirmation}
+  </SettingsDrafts.Provider>;
+}
+
 /** One owner-bound page; long settings never grow the quick-create modal. */
 export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageModel }) {
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  const leaveWork = useRef<(run: () => void) => void>(run => run());
   const [saving, setSaving] = useState(false);
   const destination = model.detailDestination;
   const requestId = destination?.requestId;
@@ -60,7 +75,9 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
   }, [profileActive]);
   const uid = useId(), { t } = page, navigation = useSettingsNavigation(t);
   const { selected, showDetail, tab, busy } = model;
-  if (tab === 'management' || !showDetail || !selected) return null;
+  const activeDetail = !(tab === 'management' || !showDetail || !selected);
+  useStyleSheet('detail', css, activeDetail);
+  if (!activeDetail) return null;
   const bot = selected.bot, bots = [bot];
   const start = () => navigation.leave(() => {
     void model.navigate(signal => page.onStartExact ? page.onStartExact(bot, signal) : page.onStart(bot.id, signal), 'errors.start');
@@ -71,21 +88,24 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
   return <SettingsDrafts.Provider value={navigation.registry}>
     <SettingsBotContext.Provider value={{ bot, select: () => {} }}>
     <article className={detailStyles.page} data-bot-detail={bot.id} data-bot-identity={`${bot.id}:${bot.createdAt}`}>
-      <style>{css}</style>
       <Button ref={model.backElement} variant="ghost" onClick={back} disabled={busy || saving}>{t('navigation.returnTo', { name: t(model.section === 'groups' ? 'groups.title' : model.section === 'recent' ? 'chat.recent' : 'navigation.myBots') })}</Button>
       <header className={detailStyles.header}>
         <BotAvatar bot={bot} size={48} />
         <div className={detailStyles.identity}><h1>{bot.name}</h1><p>{bot.description || t('persona.empty')}</p></div>
         <div className={detailStyles.actions}>
           <Button variant="primary" disabled={busy || model.navigating || !model.ready} onClick={start}>{t('chat.openChat')}</Button>
-          <Menu open={more} onClose={() => setMore(false)} align="end"
+          <Menu open={more} onClose={() => setMore(false)} align="end" portal autoFocus
             anchor={<Button variant="ghost" aria-haspopup="menu" aria-expanded={more} disabled={busy || saving} onClick={() => setMore(!more)}>{t('card.more')}</Button>}
-            items={[{ id: 'duplicate', label: t('card.duplicate') }, { id: 'delete', label: t('actions.delete') }]}
+            items={[{ id: 'duplicate', label: t('card.duplicate') }, { id: 'delete', label: t('actions.delete'), danger: true }]}
             onSelect={id => { setMore(false); navigation.leave(() => model.open({ kind: id === 'delete' ? 'delete' : 'duplicate', bot })); }} />
         </div>
       </header>
       {selected.status?.preset.state !== 'ok' && <p role="status">{t(selected.status?.preset.state === 'broken' ? 'card.statusBroken' : selected.status?.preset.state === 'missing' ? 'card.statusMissing' : 'card.statusUnknown')} {selected.status?.preset.reason}</p>}
-      <div className={detailStyles.tabs}><SegmentedTabs label={t('detail.navigation')} value={panel} onChange={setPanel}
+      <div className={detailStyles.tabs}><SegmentedTabs label={t('detail.navigation')} value={panel} onChange={next => {
+        if (next === panel) return;
+        if (panel === 'work') leaveWork.current(() => setPanel(next));
+        else setPanel(next);
+      }}
         items={sections.map(value => ({ value, label: t(`detail.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel` })) as [import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<Section>, ...import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<Section>[]]} /></div>
       <RetainedPanel active={panel === 'overview'} id={`${uid}-overview-panel`} labelledBy={`${uid}-overview`}>
         {page.followUp && <div className={detailStyles.section}><FollowUpPanel source={page.followUp}
@@ -101,15 +121,17 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
         </section>
       </RetainedPanel>
       <RetainedPanel active={panel === 'work'} id={`${uid}-work-panel`} labelledBy={`${uid}-work`}>
+        <WorkDraftScope leaveRef={leaveWork} t={t}>
         <div className={detailStyles.section}><Button variant="ghost" disabled={busy || model.navigating || !model.ready} onClick={start}>{t('detail.createTask')}</Button></div>
         <BotWorkSection page={page} model={model} bot={bot} active={panel === 'work'}
-          onSettings={setting => { setPanel('settings'); setSettingsPanel(setting); }}>
+          onSettings={setting => { leaveWork.current(() => { setPanel('settings'); setSettingsPanel(setting); }); }}>
           <section ref={otherWork} data-bot-other-work="" tabIndex={-1} aria-label={t('botPanel.otherWork')}>
             {page.background && <BackgroundTasksPanel bot={bot} actions={page.background} t={t} />}
             {page.routines && <RoutinePanel actions={page.routines} bots={bots} botId={bot.id} onOpenSession={page.onOpenSession} t={t} />}
           </section>
           {panel === 'work' && page.messages && <MessageOverviewPanel botId={bot.id} actions={page.messages} onOpen={page.onOpenSession} t={t} />}
         </BotWorkSection>
+        </WorkDraftScope>
       </RetainedPanel>
       <RetainedPanel active={panel === 'memory'} id={`${uid}-memory-panel`} labelledBy={`${uid}-memory`}>
         {page.management ? <ManagementPanel bots={bots} actions={page.management} createMemoryPanel={page.createMemoryPanel} active={panel === 'memory'} t={t} />

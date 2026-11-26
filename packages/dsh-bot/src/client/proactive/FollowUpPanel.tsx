@@ -4,6 +4,8 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { subjectKey, type FollowUpAction, type FollowUpCard, type FollowUpOrigin, type Subject } from '../../shared/proactive/follow-up.js';
 import { GroupFollowUpContinue, type GroupFollowUpMember, type GroupFollowUpTransport } from './GroupFollowUpContinue.js';
 import { useFollowUpCatalog, useFollowUpVisibility, type FollowUpCommand, type FollowUpSource } from './follow-up-state.js';
+import { formatDateTime } from '../format.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from './follow-up.module.css';
 import css from './follow-up.module.css?inline';
 
@@ -119,8 +121,8 @@ function ScopedPanel({ source, subject, mode, active = true, editable = true, na
     void run({ kind: 'card', input: { commandId: crypto.randomUUID(), subject, cardId: row.id,
       expectedRevision: row.revision, expectedPolicyRevision: policy.revision, action } });
   };
+  useStyleSheet('proactive-follow-up', css);
   return <section data-follow-up={mode} aria-labelledby={titleId} className={styles.section}>
-    <style>{css}</style>
     <header className={styles.header}>
       <div><h3 id={titleId}>{t('followUp.title')}</h3><p role="status">{t(statusText)}</p></div>
       {editable && (status?.state === 'disabled' || ready) && <Button size="sm" variant={enabled ? 'ghost' : 'primary'} disabled={!canChange}
@@ -190,7 +192,7 @@ function FollowUpRow({ row, detail, canChange, canForget, editCard, open, onWatc
       <p className={styles.meta}>{t(`followUp.source.${row.origin.kind}`)} · {t(`followUp.condition.${condition.kind}`)}
         {row.state !== 'open' && <> · {t(`followUp.history.${row.state}`)}</>}</p>
       {detail && row.when && <p>{t(`followUp.when.${row.when.kind}`)} · {t('followUp.when.original', { id: row.when.cardId })}</p>}
-      {detail && row.deadlineAt && <p>{t('followUp.when.deadline', { time: new Date(row.deadlineAt).toLocaleString() })}</p>}
+      {detail && row.deadlineAt && <p>{t('followUp.when.deadline', { time: formatDateTime(row.deadlineAt, t('activity.locale')) })}</p>}
       {detail && condition.kind === 'waiting-input' && <><p>{condition.wait.reason}</p><p>{condition.wait.request}</p></>}
       {detail && condition.kind === 'tracking' && condition.completion && <p>{t('followUp.completionValue', { value: condition.completion })}</p>}
       {detail && condition.kind === 'approval-pending' && <>

@@ -130,6 +130,10 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
       }}>{t('execution.continue')}</button></p>}
       {deliveries.filter(delivery => !turn.guestQuestion?.via || (active && ['pending', 'starting', 'running'].includes(delivery.state))).map(delivery => {
         const exportStatus = exportStatusKey(view.group, turn, delivery);
+        const menuItems = [
+          ...(delivery.state === 'running' && !turn.guestQuestion && onRequestSupplement !== null ? [{ id: 'supplement', label: t('groups.supplement') }] : []),
+          ...(turn.protocol === 2 ? [{ id: 'stop', label: t('execution.stopMember'), danger: true }] : []),
+        ];
         return <div key={delivery.childSessionId ?? delivery.id} className={styles.memberExecution} data-group-execution-card={delivery.id}>
         <div className={styles.delivery}>
         <BotAvatar bot={botState.entries.find(row => row.bot.id === delivery.bot.botId && row.bot.createdAt === delivery.bot.botCreatedAt)?.bot ?? { id: delivery.bot.botId }} size={22} />
@@ -152,10 +156,10 @@ export function GroupTurnExecution({ view, turn, actions, bots, onOpenExecution,
             {t('groups.supplementShort')}
           </Button>
         )}
-        {active && (delivery.state === 'running' || (turn.protocol === 2 && ['starting', 'pending'].includes(delivery.state))) && <Menu
-          open={menu === delivery.id} onClose={() => setMenu(undefined)} align="end"
+        {active && (delivery.state === 'running' || (turn.protocol === 2 && ['starting', 'pending'].includes(delivery.state))) && menuItems.length > 0 && <Menu
+          open={menu === delivery.id} onClose={() => setMenu(undefined)} align="end" portal autoFocus
           anchor={<Button variant="ghost" disabled={disabled} aria-label={t('execution.memberActions', { name: nameOf(delivery) })} aria-expanded={menu === delivery.id} aria-haspopup="menu" onClick={() => setMenu(menu === delivery.id ? undefined : delivery.id)}>···</Button>}
-          items={[...(delivery.state === 'running' && !turn.guestQuestion && onRequestSupplement !== null ? [{ id: 'supplement', label: t('groups.supplement') }] : []), ...(turn.protocol === 2 ? [{ id: 'stop', label: t('execution.stopMember') }] : [])]}
+          items={menuItems}
           onSelect={id => { setMenu(undefined); if (id === 'supplement') supplement(delivery.id); else void perform(async () => unwrapGroup(await actions.remote().stopMember(key, turn.id, delivery.memberId, turn.revision))); }} />}
 
         </div>

@@ -8,7 +8,7 @@ import { GroupComposerInput } from './GroupComposer.js';
 import { GroupModelControl } from './GroupModelControl.js';
 import { GroupPermissionControl } from './GroupPermissionControl.js';
 import type { GroupPermissionState } from '../group-permission-state.js';
-import { Button, IconDataOutlineRegular, IconDownloadOutlineRegular, IconPaperclipOutlineRegular, IconPlusOutlineRegular, IconPaperPlaneOutlineRegular, IconSendOutlineRegular, IconShieldOutlineRegular, Menu, PathLabel, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconDatabaseOutlineRegular, IconDataOutlineRegular, IconDownloadOutlineRegular, IconPaperclipOutlineRegular, IconPlusOutlineRegular, IconPaperPlaneOutlineRegular, IconSendOutlineRegular, IconShieldOutlineRegular, Menu, PathLabel, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives';
 import { availableGroupCommands, bareGroupCommand, GROUP_COMMANDS, type GroupCommandName, type GroupCommandServices } from '../group-commands.js';
 import type { GroupCommandSource } from '../group-trigger.js';
 import type { ModelActions } from '../model-catalog-state.js';
@@ -20,14 +20,18 @@ import { RosterManagement } from './RosterManagement.js';
 import { memoryOnlyIntent, singleMemoryReference } from '../../shared/group-memory-intent.js';
 import { isGroupDelegation, matchAddressedBot, matchGroupAddress, relayNeedsTopic } from '../../shared/addressed-bot.js';
 import { resolveGroupMentions } from '../group-mentions.js';
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { GROUP_ATTACHMENT_LIMIT, GROUP_TEXT_MAX_BYTES, groupKey, groupViewSchema, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
 import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { GroupRouteUnavailable, type GroupActions, type GroupDraft, unwrapGroup } from '../groups-state.js';
 import { formatBytes } from '../format-bytes.js';
+import { formatList } from '../format.js';
 import { BotAvatar } from './BotAvatar.js';
+import { Modal } from './Modal.js';
+import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
 const sendErrors = ['memory-text-required', 'mention-not-member', 'guest-ambiguous', 'guest-unavailable', 'guest-changed', 'relay-topic-required', 'member-limit', 'group-data-blocked', 'conflict'] as const;
@@ -69,10 +73,17 @@ const draftErrorText = {
 } as const satisfies Record<NonNullable<GroupDraft['errorCode']>, string>;
 const keyOf = (b: BotRecord) => ({ botId: b.id, botCreatedAt: b.createdAt });
 const subscribeNoPermission = (_listener: () => void) => () => {};
+const subscribeNoGroupView = (_listener: () => void) => () => {};
+const emptyGroupViewSnapshot: ReturnType<ReturnType<GroupActions['createView']>['getSnapshot']> = {
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const getEmptyGroupView = () => emptyGroupViewSnapshot;
 /** Icon and copy of each '/' row, following the native composer menu's icons. */
 const COMMAND_FACE = {
   file: { icon: IconPaperclipOutlineRegular, label: 'groups.commandFile', hint: 'groups.commandFileHint' },
-  memory: { icon: IconDataOutlineRegular, label: 'groups.memoryStatus.toggle', hint: 'groups.memoryStatus.hint' },
+  memory: { icon: IconDatabaseOutlineRegular, label: 'groups.memoryStatus.toggle', hint: 'groups.memoryStatus.hint' },
   model: { icon: IconDataOutlineRegular, label: 'groups.commandModel', hint: 'groups.commandModelHint' },
   permission: { icon: IconShieldOutlineRegular, label: 'groups.commandPermission', hint: 'groups.commandPermissionHint' },
   export: { icon: IconDownloadOutlineRegular, label: 'groups.commandExport', hint: 'groups.commandExportHint' },
@@ -122,6 +133,13 @@ export function GroupsPanel({
   const [creating, setCreating] = useState(initialCreate);
   const [created, setCreated] = useState<GroupRecord>();
   const createdRef = useRef<GroupRecord>();
+  useEffect(() => {
+    if (!visible && !initialCreate) {
+      setCreating(false);
+      createdRef.current = undefined;
+      setCreated(undefined);
+    }
+  }, [visible, initialCreate]);
   const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(actions.turnExpansion),
   );
@@ -133,9 +151,9 @@ export function GroupsPanel({
     const identity = { id: group.id, createdAt: group.createdAt };
     setSelected(identity); onSelectGroup?.(identity); setCreating(false);
   };
+  useStyleSheet('groups', css);
   return (
     <SettingsDrafts.Provider value={navigation.registry}><section className={styles.panel} aria-label={t('groups.title')}>
-      <style>{css}</style>
       {!initialCreate && <h2>{t('groups.title')}</h2>}
       {list.error && <p role="alert">{t('groups.disconnected')}</p>}
       {deletedName && <p role="status">{t('groups.deleted', { name: deletedName })}</p>}
@@ -146,7 +164,7 @@ export function GroupsPanel({
             onSelect={group => { navigation.leave(() => select(group)); }}
             onDelete={group => { setDeletedName(undefined); setDeleting(group); }}
             onOpen={(group, signal) => actions.open(groupKey(group), signal)}
-            onCreate={() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); }}
+            onCreate={() => navigation.leave(() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); })}
             onRefresh={() => { void actions.catalog.refresh(); }} t={t} />
         </nav>}
         <div className={styles.content}>
@@ -233,7 +251,7 @@ function GroupWorkspaceField({ cwd, onChange, workspaces = [], onPickDirectory, 
     <legend>{t('groups.cwd')}</legend>
     <div className={styles.workspaceValue}>
       {cwd ? <PathLabel path={cwd} /> : <span className={styles.workspaceDefault}>{t('groups.workspaceDefault')}</span>}
-      <Menu open={open && !disabled} portal items={items} onSelect={choose} onClose={() => setOpen(false)}
+      <Menu open={open && !disabled} portal autoFocus items={items} onSelect={choose} onClose={() => setOpen(false)}
         selectedId={cwd ? (selectedIndex >= 0 ? `workspace:${selectedIndex}` : undefined) : 'default'} listClassName={styles.workspaceMenu}
         anchor={<Button variant="outline" size="sm" disabled={disabled} aria-haspopup="menu" aria-expanded={open && !disabled}
           onClick={() => setOpen(!open)}>{t('groups.workspaceChoose')}</Button>} />
@@ -292,7 +310,7 @@ export function GroupEditor({
     : members.length <= limit);
   const [cwd, setCwd] = useState('');
   const initialDraft = useRef(JSON.stringify([name, mode, members, cwd, onDemand]));
-  useSettingsDraft(JSON.stringify([name, mode, members, cwd, onDemand]) !== initialDraft.current);
+  useSettingsDraft(!creationSaved && JSON.stringify([name, mode, members, cwd, onDemand]) !== initialDraft.current);
   const leave = useSettingsLeave();
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -346,7 +364,7 @@ export function GroupEditor({
         setBusy(true);
         setError(undefined);
         const input = {
-          name: name.trim() || members.map(key => bots.find(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt)?.name ?? key.botId).join('、').slice(0, 120),
+          name: name.trim() || formatList(members.map(key => bots.find(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt)?.name ?? key.botId), t('activity.locale')).slice(0, 120),
           mode,
           ...(mode === 'natural' ? { onDemand } : {}),
           members,
@@ -519,15 +537,22 @@ export function GroupConversation({
   onOpenSession(id: string): Promise<void>;
 } & Localized) {
   const [statisticsSent, setStatisticsSent] = useState<{ turnId: string; followup: boolean; sequence: number }>();
-  const [catalog] = useState(() => workspace ? actions.messageView(groupKey(summary.group)) : actions.createView(groupKey(summary.group)));
-  useEffect(() => () => { if (!workspace) catalog.dispose(); }, [catalog, workspace]);
-  const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
+  const sharedCatalog = useMemo(() => workspace ? actions.messageView({ groupId, groupCreatedAt }) : undefined, [actions, workspace, groupId, groupCreatedAt]);
+  const [ownedCatalog, setOwnedCatalog] = useState<{ id: string; createdAt: number; source: ReturnType<GroupActions['createView']> }>();
+  useEffect(() => {
+    if (workspace) { setOwnedCatalog(undefined); return; }
+    const source = actions.createView({ groupId, groupCreatedAt });
+    setOwnedCatalog({ id: groupId, createdAt: groupCreatedAt, source });
+    return () => source.dispose();
+  }, [actions, workspace, groupId, groupCreatedAt]);
+  const catalog = workspace ? sharedCatalog : (ownedCatalog?.id === groupId && ownedCatalog.createdAt === groupCreatedAt ? ownedCatalog.source : undefined);
+  const snapshot = useSyncExternalStore(catalog?.subscribe ?? subscribeNoGroupView, catalog?.getSnapshot ?? getEmptyGroupView, catalog?.getSnapshot ?? getEmptyGroupView);
   const view = snapshot.view;
   const automaticGroup = Boolean(view?.group.supergroup ?? summary.group.supergroup);
   const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
   const focusRequest = workspace && runRequest?.sessionId === summary.group.rootSessionId ? runRequest : undefined;
   const focusMessageId = focusRequest?.source?.messageId ?? (focusRequest && view?.turns.find(row => row.id === focusRequest.turnId)?.inputMessageId);
-  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
   useEffect(() => {
     if (!focusRequest || !focusMessageId) return;
     const { requestId } = focusRequest;
@@ -565,7 +590,7 @@ export function GroupConversation({
       .markRead(groupKey(view.group), readSeq, view.readRevision)
       .then(unwrapGroup)
       .then(async () => {
-        if (active) await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
+        if (active) await Promise.all([...(catalog ? [catalog.refresh()] : []), actions.catalog.refresh()]);
       })
       .catch(() => {});
     return () => {
@@ -592,6 +617,8 @@ export function GroupConversation({
   useEffect(() => { if (incomingReply?.sessionId === rootId) actions.consumeReply(rootId); }, [actions, incomingReply, rootId]);
 
   const [editing, setEditing] = useState<GroupView>();
+  const [archiving, setArchiving] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const [localBusy, setBusy] = useState(false), [modelBusy, setModelBusy] = useState(false);
   const permissionSaving = useSyncExternalStore(permissionState?.store.subscribe ?? subscribeNoPermission,
     () => Boolean(permissionState?.rootSessionId === rootId && permissionState?.store.getSnapshot().saving));
@@ -662,7 +689,7 @@ export function GroupConversation({
     actions.patchDraft(rootId, value => ({ ...value, errorCode: undefined, errorDiagnostic: undefined }));
     try {
       await work();
-      await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
+      await Promise.all([...(catalog ? [catalog.refresh()] : []), actions.catalog.refresh()]);
     } catch (error) {
       const diagnostic = safeErrorCode(error);
       const fallback = classifyError(error, options);
@@ -706,7 +733,7 @@ export function GroupConversation({
   const quoteExcerpt = needsTopic && replyTo && (!via || replyAuthor === via) ? groupMessagePreview(replyTo?.text) : '';
   const updateTopic = (text: string) => {
     if (!topicKey) return;
-    actions.patchDraft(rootId, value => ({ ...value, relayTopic: { key: topicKey, text } }));
+    actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, relayTopic: { key: topicKey, text } }));
     setGuestIssue(undefined);
   };
   const resolveMentions = (text: string) => resolveGroupMentions(text, mentionTargets, mentions, sharedDraft.mentionBindings ?? []);
@@ -810,7 +837,10 @@ export function GroupConversation({
     if (resolved.issues.length) return;
     const addressedMember = addressed?.kind === 'match' && memberBots.includes(addressed.bot);
     const mentionMissingTarget = !automaticGroup && !round && !sharedDraft.followup && !sharedDraft.memoryStatusOnly && !memoryIntent && !guest && !addressedMember && !replyAuthor && view.group.mode === 'mention' && resolved.memberIds.length === 0;
-    if (mentions.some(id => !resolved.memberIds.includes(id)) || (sharedDraft.followup && (uploads.length || resolved.memberIds.length || replyTo))) { setError(true); return; }
+    if (mentions.some(id => !resolved.memberIds.includes(id)) || (sharedDraft.followup && (uploads.length || resolved.memberIds.length || replyTo))) {
+      actions.patchDraft(rootId, value => ({ ...value, error: true, errorCode: 'send-invalid', errorDiagnostic: undefined }));
+      return;
+    }
     const reference = replyTo ?? suggestedQuote;
     const base = {
       expectedMembershipRevision: view.group.membershipRevision,
@@ -856,42 +886,41 @@ export function GroupConversation({
       try {
         ({ turnId } = await actions.send(groupKey(view.group), pending.request, dispatchLifetime.current.signal));
       } catch (cause) {
+        const confirmFreshView = (): Promise<GroupView | undefined> => {
+          const signal = dispatchLifetime.current.signal;
+          if (signal.aborted || !alive.current) return Promise.resolve(undefined);
+          const pendingView = actions.remote().view(groupKey(view.group), {});
+          void pendingView.catch(() => {});
+          return new Promise<GroupView | undefined>(resolve => {
+            const finish = (value?: GroupView) => {
+              signal.removeEventListener('abort', onAbort);
+              resolve(value);
+            };
+            const onAbort = () => finish(undefined);
+            signal.addEventListener('abort', onAbort, { once: true });
+            if (signal.aborted) { onAbort(); return; }
+            void pendingView.then(
+              result => {
+                if (signal.aborted || !alive.current) { finish(undefined); return; }
+                try { finish(groupViewSchema.parse(unwrapGroup(result))); }
+                catch { finish(undefined); }
+              },
+              () => finish(undefined),
+            );
+          });
+        };
         if (!automaticGroup && !pending.request.followup && hasOperationCode(cause, 'conflict')) {
-          await catalog.refresh();
-          const snapshot = catalog.getSnapshot();
-          const fresh = snapshot.view;
-          // Only release the idempotency key after an authoritative rejection and
-          // an updated roster with no recorded turn for this exact operation.
-          if (!snapshot.error && fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt &&
+          const fresh = await confirmFreshView();
+          // Only release the idempotency key after THIS live remote.view() call succeeds
+          // while mounted and proves an updated roster with no recorded turn for this exact operation.
+          if (fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt &&
               fresh.group.membershipRevision > pending.request.expectedMembershipRevision &&
               !fresh.turns.some(turn => turn.operationId === pending.request.operationId)) {
             actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
               ? { ...current, operation: undefined, errorCode: 'membership-changed' } : current);
+            void catalog?.refresh();
           }
         } else if (isPendingRetry && !automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) {
-          const signal = dispatchLifetime.current.signal;
-          const confirmFreshView = (): Promise<GroupView | undefined> => {
-            if (signal.aborted || !alive.current) return Promise.resolve(undefined);
-            const pendingView = actions.remote().view(groupKey(view.group), {});
-            void pendingView.catch(() => {});
-            return new Promise<GroupView | undefined>(resolve => {
-              const finish = (value?: GroupView) => {
-                signal.removeEventListener('abort', onAbort);
-                resolve(value);
-              };
-              const onAbort = () => finish(undefined);
-              signal.addEventListener('abort', onAbort, { once: true });
-              if (signal.aborted) { onAbort(); return; }
-              void pendingView.then(
-                result => {
-                  if (signal.aborted || !alive.current) { finish(undefined); return; }
-                  try { finish(groupViewSchema.parse(unwrapGroup(result))); }
-                  catch { finish(undefined); }
-                },
-                () => finish(undefined),
-              );
-            });
-          };
           const fresh = await confirmFreshView();
           const recorded = fresh?.turns.some(turn => turn.operationId === pending.request.operationId ||
             turn.followups?.some(row => row.operationId === pending.request.operationId));
@@ -904,12 +933,12 @@ export function GroupConversation({
               ['completed', 'partial', 'cancelled', 'idle', 'recovery_needed'].includes(targetTurn.state);
             actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
               ? { ...current, operation: undefined, errorCode: targetEnded ? 'followup-ended' : 'send-unavailable' } : current);
-            void catalog.refresh();
+            void catalog?.refresh();
           }
         } else if (!isPendingRetry && isDefinitivePreDispatchRejection(cause) && (!automaticGroup || !hasOperationCode(cause, 'unavailable'))) {
           actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
             ? { ...current, operation: undefined } : current);
-          if (!automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) void catalog.refresh();
+          if (!automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) void catalog?.refresh();
         }
         throw cause;
       }
@@ -927,7 +956,8 @@ export function GroupConversation({
         if (alive.current) setFilesOverLimit(false);
     }, { isFollowup: Boolean(pending.request.followup), mentionMissingTarget, isRetry: isPendingRetry }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
   };
-  if (!view)
+  useStyleSheet('groups', css, Boolean(catalog && view));
+  if (!catalog || !view)
     return (
       <p role={snapshot.error ? 'alert' : 'status'}>
         {t(snapshot.error ? 'groups.disconnected' : 'groups.loading')}
@@ -943,7 +973,6 @@ export function GroupConversation({
   );
   return (
     <article className={`${styles.conversation} ${workspace ? `${styles.panel} ${styles.workspace}` : ''}`} aria-label={view.group.name} data-workspace-group-composer={workspace ? view.group.rootSessionId : undefined}>
-      <style>{css}</style>
       {view.group.state === 'ready' && !view.group.archived && !view.hasEarlier && !view.messages.length && !view.turns.length && <p role="status" data-group-empty-conversation="">{t('groups.emptyConversation')}</p>}
       {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit })}</p>}
       {(error || snapshot.error) && <p role="alert">{t(error ? draftErrorText[sharedDraft.errorCode ?? 'conflict'] : 'groups.disconnected', {
@@ -960,15 +989,33 @@ export function GroupConversation({
         <button
           type="button"
           disabled={busy || view.group.archived}
-          onClick={() => {
-            void perform(async () =>
-              unwrapGroup(await actions.remote().archive(groupKey(view.group), view.group.revision)),
-            );
-          }}
+          onClick={() => setArchiving(true)}
         >
           {t('groups.archive')}
         </button>
       </div>
+      {archiving && (
+        <Modal title={t('groups.archiveConfirmTitle')} busy={busy} onClose={() => setArchiving(false)} t={t}>
+          <div className={dialogStyles.editorBody}>
+            <p>{t('groups.archiveConfirm', { name: view.group.name })}</p>
+          </div>
+          <footer className={dialogStyles.dialogFooter}>
+            <Button disabled={busy} onClick={() => setArchiving(false)}>{t('actions.cancel')}</Button>
+            <Button
+              className={dialogStyles.dangerButton}
+              disabled={busy || view.group.archived}
+              onClick={() => {
+                setArchiving(false);
+                void perform(async () =>
+                  unwrapGroup(await actions.remote().archive(groupKey(view.group), view.group.revision)),
+                );
+              }}
+            >
+              {t('groups.archive')}
+            </Button>
+          </footer>
+        </Modal>
+      )}
       <p>{t('navigation.memberCount', { count: view.members.filter(member => member.removedAt === undefined).length })}</p>
       <GroupMembersView view={view} bots={bots} actions={actions} executionBridge={executionBridge} t={t} />
       {editing && (
@@ -1027,7 +1074,7 @@ export function GroupConversation({
       >
         <GroupExportQueue key={JSON.stringify(groupKey(view.group))} view={view} bots={bots} actions={actions} t={t} />
         {!automaticGroup && sharedDraft.memoryStatusOnly && <div className={styles.memoryStatusTag} data-group-memory-status="" role="status" title={t('groups.memoryStatus.hint')}>
-          <IconDataOutlineRegular size={16} /><span>{t('groups.memoryStatus.toggle')}</span>
+          <IconDatabaseOutlineRegular size={16} /><span>{t('groups.memoryStatus.toggle')}</span>
           <Button variant="ghost" size="sm" type="button" data-group-memory-cancel="" aria-label={t('groups.memoryStatus.cancel')} title={t('groups.memoryStatus.cancel')}
             disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => { actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, memoryStatusOnly: undefined })); composer.current?.focus({ preventScroll: true }); }}>×</Button>
         </div>}
@@ -1049,7 +1096,7 @@ export function GroupConversation({
           <button type="button" onClick={() => actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, followup: undefined }))}>{t('groups.close')}</button>
         </div>}
         <GroupComposerInput sessionId={rootId} text={draft} bindings={sharedDraft.mentionBindings ?? []} targets={mentionTargets} inputRef={composer} t={t}
-          commands={commands} commandLauncher={commandLauncher}
+          commands={commands} commandLauncher={commandLauncher} onCommandMenuOpenChange={setCommandMenuOpen}
           onChange={(text, mentionBindings) => {
             actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, text, mentionBindings, mentions: [],
               memoryReferenceId: !automaticGroup && !value.replyTo && !value.followup && memoryOnlyIntent(text) === 'reference'
@@ -1093,7 +1140,7 @@ export function GroupConversation({
         ))}
         {!workspace && <p>{t('groups.routingHint')}</p>}
         <div className={`${styles.bar} ${styles.composerFooter}`} title={t('groups.keyboardHint')}>
-          <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} title={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} aria-haspopup="listbox"
+          <Button variant="ghost" size="sm" className={styles.attachAction} aria-label={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} title={t(automaticGroup ? 'groups.commands' : 'groups.addOrCommand')} aria-haspopup="listbox" aria-expanded={commandMenuOpen}
             data-group-command-launcher="" disabled={view.group.archived} onMouseDown={event => event.preventDefault()} onClick={() => commandLauncher.current?.()}><IconPlusOutlineRegular size={18} /></Button>
           {models && <GroupModelControl group={view.group} members={view.members} bots={bots} actions={actions} models={models} disabled={localBusy || sharedDraft.sending || permissionSaving || view.group.archived || view.group.state !== 'ready'} openRequest={modelOpen || undefined} onBusyChange={setModelBusy} onSaved={() => catalog.refresh()} t={t} />}
           {permissionState && permissionState.rootSessionId === rootId && <GroupPermissionControl state={permissionState} cwd={view.group.cwd} disabled={busy || view.group.archived || view.group.state !== 'ready'} openRequest={permissionOpen || undefined} t={t} />}
@@ -1124,6 +1171,7 @@ function GroupManager({ summary, actions, bots, t, onOpenBot, visible, onDelete 
   onOpenBot?(bot: BotRecord): void; visible?: boolean; onDelete(group: GroupRecord): void;
 }) {
   const [editing, setEditing] = useState<GroupView>();
+  useEffect(() => { if (!visible) setEditing(undefined); }, [visible]);
   return <><GroupOverview summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
     onEdit={setEditing} onDelete={onDelete} visible={visible} t={t} />
     {editing && <GroupRosterEditor bots={bots} actions={actions} initial={editing} t={t} onClose={() => setEditing(undefined)} />}</>;

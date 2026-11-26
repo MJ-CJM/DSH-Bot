@@ -59,13 +59,15 @@ function diagnostic(error: unknown): CatalogError {
   return { message: typeof error === 'string' ? error : '' };
 }
 
+const ABORTED = Symbol('aborted');
+
 /** The unary Remote contract has no cancellation argument. Abort stops local
  * waiting, and epoch checks discard late carrier responses without claiming to
  * cancel a Host operation. Both success and failure handlers remain attached.
  */
-function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T | undefined> {
+function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T | typeof ABORTED> {
   return new Promise((resolve, reject) => {
-    const abort = () => resolve(undefined);
+    const abort = () => resolve(ABORTED);
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) abort();
     pending.then(
@@ -113,6 +115,15 @@ export function createPollingCatalog<Payload>(
   let disposed = false;
   let controller: AbortController | undefined;
   let releaseScheduler: (() => void) | undefined;
+  const waiters = new Set<{ epoch: number; resolve: () => void }>();
+  const flushWaiters = (upToEpoch?: number) => {
+    for (const waiter of [...waiters]) {
+      if (upToEpoch === undefined || waiter.epoch <= upToEpoch) {
+        waiters.delete(waiter);
+        waiter.resolve();
+      }
+    }
+  };
   const publish = (next: Payload & PollingSnapshot) => {
     if (structuralEqual(snapshot, next)) return false;
     snapshot = next;
@@ -125,7 +136,7 @@ export function createPollingCatalog<Payload>(
     controller?.abort();
     controller = undefined;
   };
-  const read = async (): Promise<boolean | undefined> => {
+  const read = async (fromRefresh = false): Promise<boolean | undefined> => {
     if (disposed) return undefined;
     cancelRead();
     const current = epoch;
@@ -136,30 +147,42 @@ export function createPollingCatalog<Payload>(
     try {
       if (request.signal.aborted || disposed) return;
       const result = await untilAborted(load(request.signal), request.signal);
-      if (!result || disposed || request.signal.aborted || current !== epoch) return;
-      return publish({ ...result, loading: false, loaded: true, pollIntervalMs });
+      if (result === ABORTED || disposed || request.signal.aborted || current !== epoch) return;
+      if (controller === request) controller = undefined;
+      const changed = publish({ ...result, loading: false, loaded: true, pollIntervalMs });
+      if (changed && fromRefresh) scheduler.changed();
+      flushWaiters(current);
+      return changed;
     } catch (error: unknown) {
       if (disposed || request.signal.aborted || current !== epoch) return;
-      return publish({ ...snapshot, loading: false, error: diagnostic(error) });
+      if (controller === request) controller = undefined;
+      const changed = publish({ ...snapshot, loading: false, error: diagnostic(error) });
+      if (changed && fromRefresh) scheduler.changed();
+      flushWaiters(current);
+      return changed;
     } finally {
       if (controller === request) controller = undefined;
     }
   };
-  const refresh = async (): Promise<void> => {
-    if (disposed) return;
+  const refresh = (): Promise<void> => {
+    if (disposed) return Promise.resolve();
     scheduler.interact();
-    if (await read()) scheduler.changed();
+    return new Promise<void>((resolve) => {
+      waiters.add({ epoch: epoch + 1, resolve });
+      void read(true);
+    });
   };
   const source = {
     polling: false,
     // Slow requests finish instead of being starved by periodic invalidation.
-    refresh: (supersede: boolean) => (!supersede && controller ? Promise.resolve(undefined) : read()),
+    refresh: (supersede: boolean) => (!supersede && controller ? Promise.resolve(undefined) : read(false)),
   };
   const stop = () => {
     cancelRead();
     releaseScheduler?.();
     releaseScheduler = undefined;
     if (snapshot.loading) snapshot = { ...snapshot, loading: false };
+    flushWaiters();
   };
   const dispose = () => {
     if (disposed) return;
@@ -204,7 +227,9 @@ export function createPollingCatalog<Payload>(
     reset(value) {
       if (disposed) return;
       cancelRead();
+      const resetEpoch = epoch;
       publish({ ...value, loading: true, loaded: false, pollIntervalMs });
+      flushWaiters(resetEpoch);
     },
     setPollIntervalMs(value) {
       validatePollInterval(value);

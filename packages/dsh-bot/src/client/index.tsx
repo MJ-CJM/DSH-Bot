@@ -158,7 +158,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     },
   };
   const groupRecall = createGroupRecallBinding(groups, t, (bot, prompt, signal) => askBot(bot, prompt, signal));
-  const management = createWorkspaceActions(ctx, config);
+  const management = createWorkspaceActions(ctx, config, () => refresh());
   // Host and Client ambient Context declarations share a TS program here;
   // this entry runs only on the Client and uses its public service contract.
   const sessions = ctx.sessions as unknown as ISessions;
@@ -351,6 +351,7 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
       pollIntervalMs: catalog.getSnapshot().pollIntervalMs, pageSize: config.memoryPageSize,
     }), memoryRemote, openSession, groupRecall),
     onRefresh: refresh,
+    getCatalogSnapshot: catalog.getSnapshot,
     getPreferredWorkspace: () => preferredWorkspace,
     onPollInterval: (value) => {
       const interval = Config({ pollIntervalMs: value }).pollIntervalMs;
@@ -378,12 +379,15 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
     },
     onStartCreated: (id, operationId, signal) => startBot(id, signal, undefined, operationId),
     onEditPersona: async (bot) => {
+      if (!active) return;
       const navigation = ctx.layout.beginNavigation();
       const current = unwrap(await remote().get(bot.id));
+      if (!active || navigation.aborted) return;
       if (current.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
       const { sessionId } = await openExactMain(bot.id, bot.createdAt);
       const conversation = ctx.get('conversation');
-      if (!active || navigation.aborted || !conversation) throw new Error(t('errors.unavailable'));
+      if (!active || navigation.aborted) return;
+      if (!conversation) throw new Error(t('errors.unavailable'));
       await sessions.using(sessionId as SessionId, { source: 'dshBotPersona' }, async reference => {
         const binding = await reference.ready;
         if (!active || navigation.aborted) return;
@@ -391,8 +395,8 @@ export async function apply(ctx: Context, options: Partial<Config> = {}): Promis
         if (!active || navigation.aborted) return;
         if (latest.createdAt !== bot.createdAt) throw new Error(t('errors.detailMissing'));
         const result = conversation.input.requestDraftInitialization(binding, { prompt: t('persona.prompt') });
-        ctx.uiWorkspace.openSession(sessionId as SessionId);
         if (result !== 'applied') throw new Error(t('persona.draftBlocked'));
+        ctx.uiWorkspace.openSession(sessionId as SessionId);
       });
     },
     onUpdate: (id, patch) => mutate(() => remote().update(id, patch)),

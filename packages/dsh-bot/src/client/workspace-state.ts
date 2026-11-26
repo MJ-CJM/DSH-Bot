@@ -12,8 +12,13 @@ export interface WorkspaceActions {
   workspace(input: Parameters<WorkspaceMethods['request']>[0]): ReturnType<WorkspaceMethods['request']>;
   graph(input: Parameters<ReferenceMemoryMethods['request']>[0]): ReturnType<ReferenceMemoryMethods['request']>;
   createGraph(bot: BotKey): PollingCatalog<{ status?: GraphStatus }>;
+  refreshBots?(): Promise<void>;
 }
-export function createWorkspaceActions(ctx: Context, options: BotCatalogOptions): WorkspaceActions {
+export function createWorkspaceActions(
+  ctx: Context,
+  options: BotCatalogOptions,
+  refreshBots?: () => Promise<void>,
+): WorkspaceActions {
   const workspace = (input: Parameters<WorkspaceMethods['request']>[0]) => {
     const remote = ctx.get('remote.dshBot.workspace');
     if (!remote) throw new Error('Workspace unavailable');
@@ -27,6 +32,7 @@ export function createWorkspaceActions(ctx: Context, options: BotCatalogOptions)
   return {
     workspace,
     graph,
+    ...(refreshBots ? { refreshBots } : {}),
     createGraph: (bot) =>
       createPollingCatalog(
         ctx,

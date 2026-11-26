@@ -6,6 +6,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
 import type { WorkspaceActions } from '../workspace-state.js';
 import type { BotsPageInjected } from '../pages/BotsPage.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import { MemoryPanel } from './MemoryPanel.js';
 import { TransferPanel } from './BotTransferPanel.js';
 import { GraphPanel } from './ReferenceMemoryPanel.js';
@@ -25,13 +26,13 @@ export function ManagementPanel({
   createMemoryPanel: BotsPageInjected['createMemoryPanel'];
   active?: boolean;
 } & Locale) {
+  useStyleSheet('integrations', css);
   const uid = useId();
   const embedded = Boolean(useContext(SettingsBotContext));
   const [tab, setTab] = useState<'records' | 'graph' | 'transfer'>('records');
   const { bot, select: setId } = useSettingsBot(bots);
   return (
     <section className={styles.panel} aria-label={t('manage.memoryTools')}>
-      <style>{css}</style>
       <p>{t('shared.personalContextHint')}</p>
       <p>{t('shared.contextTiming')}</p>
       {!embedded && <ManagementHeader title={t('manage.memoryTools')} selector={{ bots, value: bot?.id ?? '', onChange: setId }} t={t} />}

@@ -6,6 +6,7 @@ import type { BotRecord } from '../../shared/schema.js';
 import type { LegacyEntry } from '../../shared/native-schedule.js';
 import type { RoutineActions, NativeTask, LegacyNativeTask } from '../automation-state.js';
 import { Modal } from './Modal.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/routines.module.css';
 import css from '../styles/routines.module.css?inline';
 type T = PropsLocale<'dsh-bot'>['t'];
@@ -91,10 +92,10 @@ export function RoutinePanel({
     setNotice('');
     setDialog(next);
   }
+  useStyleSheet('routines', css);
   const record = records.find((r) => r.id === selected);
   return (
     <section className={styles.panel} data-routine-panel={botId ?? 'overview'} aria-label={t('routine.title')}>
-      <style>{css}</style>
       <ManagementHeader title={t('routine.title')} level={3} description={t('routine.hint')} actions={
         <button type="button" disabled={busy} onClick={() => { void actions.catalog.refresh(); }}>{t('bots.refresh')}</button>
       } t={t} />
@@ -199,33 +200,56 @@ export function RoutinePanel({
               )}
             </p>
             {error && <p role="alert">{error}</p>}
-            <button
-              type="button"
-              disabled={busy || !writable}
-              onClick={() => {
-                void perform(
-                  () =>
-                    dialog.kind === 'run'
-                      ? actions.runNow(dialog.record, dialog.operationId as string)
-                      : dialog.kind === 'legacy'
-                        ? actions.deleteLegacy(dialog.record.id)
-                        : actions.remove(dialog.record),
-                  dialog.kind === 'run',
-                );
-              }}
-            >
-              {t('routine.confirm')}
-            </button>
+            <div className={styles.actions}>
+              <button type="button" disabled={busy} onClick={() => setDialog(undefined)}>
+                {t('actions.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={busy || !writable}
+                onClick={() => {
+                  void perform(
+                    () =>
+                      dialog.kind === 'run'
+                        ? actions.runNow(dialog.record, dialog.operationId as string)
+                        : dialog.kind === 'legacy'
+                          ? actions.deleteLegacy(dialog.record.id)
+                          : actions.remove(dialog.record),
+                    dialog.kind === 'run',
+                  );
+                }}
+              >
+                {t('routine.confirm')}
+              </button>
+            </div>
           </div>
         </Modal>
       )}
     </section>
   );
 }
+const emptyHistory: ReturnType<ReturnType<RoutineActions['history']>['getSnapshot']> = {
+  records: [],
+  more: false,
+  unavailable: false,
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const subscribeEmptyHistory = () => () => {};
+const getEmptyHistory = () => emptyHistory;
+
 function DeliveryHistory({ actions, record, t }: { actions: RoutineActions; record: NativeTask; t: T }) {
-  const [source] = useState(() => actions.history(record));
-  const data = useSyncExternalStore(source.subscribe, source.getSnapshot);
-  useEffect(() => () => source.dispose(), [source]);
+  const recordRef = useRef(record);
+  recordRef.current = record;
+  const [owned, setOwned] = useState<{ id: string; sessionId: string; source: ReturnType<RoutineActions['history']> }>();
+  useEffect(() => {
+    const created = actions.history(recordRef.current);
+    setOwned({ id: record.id, sessionId: record.sessionId, source: created });
+    return () => created.dispose();
+  }, [actions, record.id, record.sessionId]);
+  const source = owned?.id === record.id && owned.sessionId === record.sessionId ? owned.source : undefined;
+  const data = useSyncExternalStore(source?.subscribe ?? subscribeEmptyHistory, source?.getSnapshot ?? getEmptyHistory, source?.getSnapshot ?? getEmptyHistory);
   return (
     <section className={styles.history} data-routine-history="">
       <h4>
@@ -252,7 +276,7 @@ function DeliveryHistory({ actions, record, t }: { actions: RoutineActions; reco
         <button
           type="button"
           onClick={() => {
-            void source.loadMore();
+            void source?.loadMore();
           }}
         >
           {t('routine.more')}

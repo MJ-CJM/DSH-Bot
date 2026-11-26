@@ -40,6 +40,8 @@ export function BotCard({ bot, status, busy, onStart, onEdit, onDuplicate, onDel
           open={more}
           onClose={() => setMore(false)}
           align="end"
+          portal
+          autoFocus
           className={styles.moreContainer}
           anchor={
             <Button

@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-client-connection/client';
-import { createChangeStream } from './change-stream.js';
+import { sharedChangeStream } from './change-stream.js';
 
 export const DEFAULT_POLL_INTERVAL_MS = 5_000;
 export const DEFAULT_MAX_POLL_INTERVAL_MS = 30_000;
@@ -42,8 +42,11 @@ export function sharedPollingScheduler(ctx: Context, options: PollingOptions): S
   let base = interval;
   let delay = base;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let nextFireAt: number | undefined;
   let streamAllowed = false;
   let revision = 0;
+  let refreshing = false;
+  let interactedDuringRefresh = false;
   let unsubscribeReset: (() => void) | undefined;
   const sources = new Set<Source>();
   const page = typeof document === 'undefined' ? undefined : document;
@@ -51,15 +54,17 @@ export function sharedPollingScheduler(ctx: Context, options: PollingOptions): S
   let focused = page?.hasFocus?.() ?? true;
   const foreground = () => page?.visibilityState !== 'hidden' && focused;
   const polling = () => foreground() && [...sources].some((source) => source.polling);
-  const stream = createChangeStream(ctx, () => {
+  const sharedStream = sharedChangeStream(ctx);
+  const stream = sharedStream.lease(() => {
     interact();
     void refresh(true);
   });
   const clear = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
+    nextFireAt = undefined;
   };
-  const schedule = () => {
+  const arm = (waitMs: number) => {
     clear();
     if (!polling()) {
       streamAllowed = false;
@@ -70,28 +75,62 @@ export function sharedPollingScheduler(ctx: Context, options: PollingOptions): S
       streamAllowed = true;
       stream.start();
     }
+    const clamped = Math.max(0, waitMs);
+    nextFireAt = Date.now() + clamped;
     // Retry a disconnected stream only at a polling boundary, never in an
     // immediate opening -> refetch -> failed-stream -> opening loop.
     timer = setTimeout(() => {
       timer = undefined;
+      nextFireAt = undefined;
       stream.start();
       void refresh(false);
-    }, delay);
+    }, clamped);
+  };
+  const schedule = () => {
+    arm(delay);
   };
   const refresh = async (supersede: boolean) => {
     clear();
     const current = ++revision;
+    refreshing = true;
+    interactedDuringRefresh = false;
     const selected = [...sources].filter((source) => supersede || source.polling);
-    const results = await Promise.all(selected.map((source) => source.refresh(supersede)));
+    const settled = await Promise.allSettled(
+      selected.map((source) => Promise.resolve().then(() => source.refresh(supersede))),
+    );
     if (current !== revision) return;
-    if (supersede || results.some((changed) => changed === true)) delay = base;
+    refreshing = false;
+    const results = settled.map((entry) => (entry.status === 'fulfilled' ? entry.value : undefined));
+    if (supersede || interactedDuringRefresh || results.some((changed) => changed === true)) delay = base;
     else if (results.some((changed) => changed === false)) delay = Math.min(Math.max(base, maximum), delay + base);
+    interactedDuringRefresh = false;
+    schedule();
+  };
+  const reset = () => {
+    revision++;
+    refreshing = false;
+    interactedDuringRefresh = false;
+    delay = base;
     schedule();
   };
   const interact = () => {
-    revision++;
     delay = base;
-    schedule();
+    if (!polling()) {
+      clear();
+      streamAllowed = false;
+      void stream.stop();
+      return;
+    }
+    if (refreshing) {
+      interactedDuringRefresh = true;
+      return;
+    }
+    // Never postpone an imminent poll while the user is actively typing/clicking;
+    // only pull a backed-off timer forward or arm when no timer is scheduled.
+    const target = Date.now() + base;
+    if (timer === undefined || nextFireAt === undefined || nextFireAt > target) {
+      arm(base);
+    }
   };
   const wake = () => {
     if (foreground()) {
@@ -99,6 +138,8 @@ export function sharedPollingScheduler(ctx: Context, options: PollingOptions): S
       void refresh(true);
     } else {
       revision++;
+      refreshing = false;
+      interactedDuringRefresh = false;
       clear();
       streamAllowed = false;
       void stream.stop();
@@ -115,6 +156,8 @@ export function sharedPollingScheduler(ctx: Context, options: PollingOptions): S
   const onBlur = () => {
     focused = false;
     revision++;
+    refreshing = false;
+    interactedDuringRefresh = false;
     clear();
     streamAllowed = false;
     void stream.stop();
@@ -128,15 +171,15 @@ export function sharedPollingScheduler(ctx: Context, options: PollingOptions): S
     page?.addEventListener('keydown', interact);
     // Reconnection is an explicit invalidation, including for passive stores.
     unsubscribeReset = ctx.on('connection/reset', () => {
-      void stream.stop().then(() => {
-        if (polling()) stream.start();
-      });
+      void sharedStream.restart();
       interact();
       void refresh(true);
     });
   };
   const stop = () => {
     revision++;
+    refreshing = false;
+    interactedDuringRefresh = false;
     clear();
     streamAllowed = false;
     void stream.stop();
@@ -161,11 +204,11 @@ export function sharedPollingScheduler(ctx: Context, options: PollingOptions): S
     },
     reschedule: schedule,
     interact,
-    changed: interact,
+    changed: reset,
     setPollIntervalMs(value) {
       validatePollInterval(value);
       base = value;
-      interact();
+      reset();
     },
   };
   schedulers.set(ctx, scheduler);

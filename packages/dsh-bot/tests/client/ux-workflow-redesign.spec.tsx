@@ -736,11 +736,10 @@ describe('Raw plumbing replacements & CSS responsiveness contracts', () => {
     await openSettings(app, 'en');
     await click(button(app.container, en.ui['notifications.notifications']));
     await click(button(app.container, en.ui['notifications.policies']));
-    await click(button(app.container, 'local-policy · in-app · v1'));
-
+    await click(button(app.container, `local-policy · ${en.ui['notifications.channel.in-app']} · v1`));
     const targetSummary = app.container.querySelector('[data-notification-test-target]');
     expect(targetSummary?.textContent).not.toContain(policy.scopeDigest);
-    expect(targetSummary?.textContent).toContain(en.ui['notifications.inApp']);
+    expect(targetSummary?.textContent).toContain(en.ui['notifications.channel.in-app']);
 
     const details = app.container.querySelector<HTMLDetailsElement>('[data-notification-scope-details]');
     expect(details).toBeTruthy();

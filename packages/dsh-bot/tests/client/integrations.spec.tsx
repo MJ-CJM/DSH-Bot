@@ -51,7 +51,7 @@ describe('P34 management through the public main slot and shared polling catalog
       expect(tab.querySelector('svg')).toBeNull();
     } finally { await app.dispose(); }
   });
-  it('uses only native credential write/describe, clears password after success, failure and leaving the tab', async () => {
+  it('uses only native credential write/describe, clears password after success and leaving the tab, and preserves it on failure', async () => {
     const app = await mountClient([bot({ id: 'alpha', name: 'Alpha' })]); const t = en.ui;
     const describe = vi.fn(async () => ({ ok: true, value: { GITHUB_TOKEN: { configured: false, writable: true } } }));
     const set = vi.fn(async (_ref: string, _value: string) => ({ ok: true as boolean, value: undefined, error: new RemoteError('dsh-bot/unavailable', '', {}) }));
@@ -66,7 +66,7 @@ describe('P34 management through the public main slot and shared polling catalog
       expect(set).toHaveBeenCalledWith('GITHUB_TOKEN', 'SYNTHETIC_UI_SECRET'); expect(password.value).toBe('');
       expect(app.remote.connectors.saveDefinition).not.toHaveBeenCalled(); expect(JSON.stringify(app.remote.data.integrations)).not.toContain('SYNTHETIC_UI_SECRET');
       set.mockResolvedValue({ ok: false, value: undefined, error: new RemoteError('dsh-bot/unavailable', '', {}) });
-      await fill(password, 'SYNTHETIC_UI_FAILURE'); await click(button(app.container, t['connectors.storeCredential'])); expect(password.value).toBe('');
+      await fill(password, 'SYNTHETIC_UI_FAILURE'); await click(button(app.container, t['connectors.storeCredential'])); expect(password.value).toBe('SYNTHETIC_UI_FAILURE');
       await fill(password, 'SYNTHETIC_NOT_SUBMITTED'); await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['notifications.notifications'])); await openSettings(app, t === zh.ui ? 'zh' : 'en'); await click(button(app.container, t['connectors.connectors']));
       expect(field(app.container, t['connectors.secret']).value).toBe('');
     } finally { release(); await app.dispose(); }

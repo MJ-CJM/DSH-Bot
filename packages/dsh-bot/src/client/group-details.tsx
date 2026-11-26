@@ -12,8 +12,9 @@ import type { BotCatalog } from './state.js';
 import { GroupAvatar } from './components/GroupAvatar.js';
 import { GroupMembersList, GroupOverview } from './components/GroupOverview.js';
 import { GroupRosterEditor } from './components/GroupsPanel.js';
-import { useSettingsNavigation } from './components/SettingsNavigation.js';
+import { SettingsDrafts, useSettingsNavigation } from './components/SettingsNavigation.js';
 import { WorkMaterials, type WorkMaterialsActions } from './work-materials.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
 
@@ -34,10 +35,24 @@ type Dependencies = {
   openBot(bot: BotRecord): Promise<void>;
 };
 
+const emptyMaterialsSnapshot: ReturnType<ReturnType<GroupActions['createView']>['getSnapshot']> = {
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const subscribeNoMaterials = () => () => {};
+const getEmptyMaterials = () => emptyMaterialsSnapshot;
+
 function GroupMaterials({ summary, actions, t }: { summary: GroupSummary; actions: GroupActions } & PropsLocale<'dsh-bot'>) {
-  const [catalog] = useState(() => actions.createView(groupKey(summary.group)));
-  useEffect(() => () => catalog.dispose(), [catalog]);
-  const { view, error } = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot);
+  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
+  const [owned, setOwned] = useState<{ id: string; createdAt: number; source: ReturnType<GroupActions['createView']> }>();
+  useEffect(() => {
+    const source = actions.createView({ groupId, groupCreatedAt });
+    setOwned({ id: groupId, createdAt: groupCreatedAt, source });
+    return () => source.dispose();
+  }, [actions, groupId, groupCreatedAt]);
+  const catalog = owned?.id === groupId && owned.createdAt === groupCreatedAt ? owned.source : undefined;
+  const { view, error } = useSyncExternalStore(catalog?.subscribe ?? subscribeNoMaterials, catalog?.getSnapshot ?? getEmptyMaterials, catalog?.getSnapshot ?? getEmptyMaterials);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -59,7 +74,7 @@ function GroupMaterials({ summary, actions, t }: { summary: GroupSummary; action
     });
   };
   const key = groupKey(summary.group);
-  if (error) return <p role="alert">{t('groups.disconnected')} <button type="button" onClick={() => { void catalog.refresh(); }}>{t('bots.refresh')}</button></p>;
+  if (error) return <p role="alert">{t('groups.disconnected')} <button type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button></p>;
   if (!view) return <p role="status">{t('groups.loading')}</p>;
   if (view.group.id !== key.groupId || view.group.createdAt !== key.groupCreatedAt || view.group.rootSessionId !== summary.group.rootSessionId)
     return <p role="alert">{t('groups.disconnected')}</p>;
@@ -87,6 +102,7 @@ function GroupMaterials({ summary, actions, t }: { summary: GroupSummary; action
 
 function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigin, stopWork, openBot, close, t }: Dependencies &
   { summary: GroupSummary; close(): void } & PropsLocale<'dsh-bot'>) {
+  useStyleSheet('groups', css);
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
   const [section, setSection] = useState<Section>('details');
   const [editing, setEditing] = useState<GroupView>();
@@ -99,8 +115,7 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
   const { group, members } = summary;
   const labels = { details: 'botMode.details', activity: 'botPanel.tasks', materials: 'botMode.materials', members: 'groups.members', settings: 'simple.groupSettings' } as const;
   const tabs = sections.map(value => ({ value, label: t(labels[value]), id: `${uid}-${value}`, panelId: `${uid}-panel` })) as [SegmentedTab<Section>, ...SegmentedTab<Section>[]];
-  return <section className={`${styles.panel} ${styles.overview} ${styles.groupDetails}`} data-group-details={group.id} aria-label={t('botMode.detailsAndMaterials')}>
-    <style>{css}</style>
+  return <SettingsDrafts.Provider value={navigation.registry}><section className={`${styles.panel} ${styles.overview} ${styles.groupDetails}`} data-group-details={group.id} aria-label={t('botMode.detailsAndMaterials')}>
     <header className={styles.overviewHeader}><GroupAvatar size={40} members={members.filter(member => member.removedAt === undefined)} bots={records} />
       <div className={styles.overviewIdentity}><h3>{group.name}</h3><p>{t('navigation.memberCount', { count: members.filter(member => member.removedAt === undefined).length })}</p></div>
       <Button variant="ghost" size="sm" onClick={() => navigation.leave(close)}>{t('actions.close')}</Button>
@@ -133,7 +148,7 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
     </div>
     {editing && <GroupRosterEditor bots={records} initial={editing} actions={actions} onClose={() => setEditing(undefined)} t={t} />}
     {navigation.confirmation}
-  </section>;
+  </section></SettingsDrafts.Provider>;
 }
 
 export function registerGroupDetails(ctx: Context, deps: Dependencies) {
