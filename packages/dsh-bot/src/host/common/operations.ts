@@ -39,3 +39,58 @@ export function need<T>(value: T | undefined): T {
   if (value === undefined) throw new OperationError('unavailable');
   return value;
 }
+
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'URIError',
+  'ReferenceError',
+  'AbortError',
+  'TimeoutError',
+  'DOMException',
+  'AggregateError',
+  'OperationError',
+  'RemoteError',
+]);
+const SAFE_ERROR_CODES = new Set<string>([
+  ...Object.values(OPERATION_CODES),
+  'gateway/internal',
+  'gateway/cancelled',
+  'gateway/timeout',
+  'gateway/unavailable',
+  'gateway/input-invalid',
+  'gateway/not-found',
+  'gateway/unauthorized',
+  'gateway/forbidden',
+  'gateway/rate-limited',
+  'ENOENT',
+  'EACCES',
+  'EPERM',
+  'ENOSPC',
+  'EROFS',
+  'EBUSY',
+  'EMFILE',
+  'ENFILE',
+  'EIO',
+  'EAGAIN',
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EPIPE',
+  'ECANCELED',
+  'ABORT_ERR',
+  'ERR_ABORTED',
+  'ERR_STREAM_DESTROYED',
+]);
+
+/** Redacted diagnostic metadata for Host logs: never emits error.message, stack, or arbitrary strings. */
+export function redactedErrorMetadata(error: unknown): { errorCode?: string; errorName: string } {
+  const rawCode = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : undefined;
+  const errorCode = rawCode && SAFE_ERROR_CODES.has(rawCode) ? rawCode : undefined;
+  const errorName = error instanceof Error && SAFE_ERROR_NAMES.has(error.name) ? error.name : 'unknown';
+  return { ...(errorCode ? { errorCode } : {}), errorName };
+}

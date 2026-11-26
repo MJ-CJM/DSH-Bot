@@ -31,7 +31,8 @@ export interface GroupDraft {
   text: string; mentions: string[]; mentionBindings?: MentionBinding[]; followup?: { turnId: string; deliveryId: string }; replyTo?: GroupView['messages'][number];
   uploads: Array<{ id: string; name: string; bytes: number; state: 'uploading' | 'uploaded' | 'uploadFailed'; receiptId?: string }>;
   operation?: { signature: string; request: GroupSend };
-  sending: boolean; error: boolean; errorCode?: 'memory-text-required' | 'mention-not-member' | 'relay-topic-required' | 'guest-ambiguous' | 'guest-unavailable' | 'guest-changed' | 'supergroup-conflict' | 'supergroup-unsupported' | 'group-data-blocked' | 'member-limit' | 'membership-changed' | 'send-failed' | 'conflict' | 'route-unavailable';
+  sending: boolean; error: boolean; errorCode?: 'memory-text-required' | 'mention-not-member' | 'mention-required' | 'message-too-long' | 'followup-ended' | 'relay-topic-required' | 'guest-ambiguous' | 'guest-unavailable' | 'guest-changed' | 'supergroup-conflict' | 'supergroup-unsupported' | 'group-data-blocked' | 'member-limit' | 'membership-changed' | 'send-invalid' | 'send-unavailable' | 'send-denied' | 'send-unsupported' | 'send-not-found' | 'send-failed' | 'conflict' | 'route-unavailable';
+  errorDiagnostic?: string;
 }
 export class GroupRouteUnavailable extends Error {
   constructor() { super('Current group route is unconfirmed'); }
@@ -195,7 +196,7 @@ export function createGroupActions(ctx: Context, options: BotCatalogOptions): Gr
         throw new Error('Supergroup input saved but not queued');
       }
       supergroupOperations.delete(operationKey);
-      patchDraft(rootId, value => ({ ...value, errorCode: undefined }));
+      patchDraft(rootId, value => ({ ...value, errorCode: undefined, errorDiagnostic: undefined }));
       const turnId = sent.view.work.turnIds.at(-1);
       return turnId ? { turnId } : {};
     },

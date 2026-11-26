@@ -2066,7 +2066,16 @@
     "groups.roster.confirmAddSave": "确认添加并保存",
     "groups.roster.removeTitle": "将 {name} 移出群聊？",
     "groups.roster.stopRemoved": "保存时将停止 {name} 在本群的当前执行，其他成员不受影响。",
-    "groups.roster.alreadyRemoved": "该成员已移出群聊，无需再次移出。"
+    "groups.roster.alreadyRemoved": "该成员已移出群聊，无需再次移出。",
+    "groups.mentionRequired": "当前群为仅 @ 触发模式，请先 @ 成员、回复消息或使用轮询发送。消息未发出，草稿已保留。",
+    "groups.messageTooLong": "单条消息过长，超出了群聊发送上限。消息未发出，请精简草稿后重试。",
+    "groups.supplementEnded": "该成员本轮执行已结束，补充消息未发出。草稿已保留，可关闭补充栏后作为新消息发送。",
+    "groups.supplementEndedShort": "已结束，关闭后可作为新消息发送",
+    "groups.sendInvalid": "消息未发出：请求无效或已过期（例如内容超过群上下文上限，或引用的消息、附件已失效）。草稿已保留。",
+    "groups.sendUnavailable": "消息未发出：所选成员 Bot 或宿主模型服务当前不可用。草稿已保留。",
+    "groups.sendDenied": "消息未发出：当前权限或状态不允许此群操作。草稿已保留。",
+    "groups.sendUnsupported": "消息未发出：当前宿主运行时不支持此群操作。草稿已保留。",
+    "groups.sendNotFound": "消息未发出：未找到目标群或轮次，请刷新后核对。"
   },
   "config": {
     "supergroup": {

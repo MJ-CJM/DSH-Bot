@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { UserMessage } from '@deepseek-ai/dsh-llm';
 import type { Domain } from '@deepseek-ai/dsh-storage-domain';
 import type { Groups } from '../src/host/groups/service.js';
 import type { DshBotRegistry } from '../src/host/registry.js';
+import { OperationError } from '../src/host/common/operations.js';
 import { supergroupMetadata, type SupergroupAuthority } from '../src/host/groups/supergroup-admission.js';
 import { bindings } from '../src/host/data-flow/agent-binding.js';
 import { Supergroup, type supergroupDomain } from '../src/host/supergroup/service.js';
@@ -35,8 +36,16 @@ async function fixture(recovered?: SupergroupWork) {
   const members = [owner, peer].map((bot, index) => ({ id: `member-${index}`, bot, enabled: true }));
   const turns: { id: string; state: string; revision: number }[] = [], deliveries: { turnId: string; state: string }[] = [];
   const results: { id: string; text: string; turnId: string; authorKind: string }[] = [];
-  const groups = { setExpertHandler: () => () => {}, view: async () => ({ group, members, turns: structuredClone(turns), deliveries: structuredClone(deliveries),
-    messages: [...rootEvents.map(event => ({ id: (event.data as UserMessage).id, text: '', authorKind: 'user' })), ...results] }),
+  let earlierHistory: string[] = [];
+  let viewError: Error | undefined, failViewAfterCall = Number.POSITIVE_INFINITY, viewCalls = 0, flushError: Error | undefined;
+  const warn = vi.fn();
+  const groups = { setExpertHandler: () => () => {}, view: async () => {
+    viewCalls++;
+    if (viewError && viewCalls > failViewAfterCall) throw viewError;
+    return { group, members, turns: structuredClone(turns), deliveries: structuredClone(deliveries),
+      messages: [...rootEvents.map(event => ({ id: (event.data as UserMessage).id, text: '', authorKind: 'user' })), ...results], hasEarlier: earlierHistory.length > 0 };
+  },
+    hasMessage: async (_key: unknown, id: string) => earlierHistory.includes(id),
     refreshSupergroupAuthority: async (_key: unknown, authority: SupergroupAuthority) => {
       await authority.check();
       expect(supergroupMetadata(authority)).toMatchObject({ originSessionId: 'main', originMessageId: 'original' });
@@ -64,7 +73,7 @@ async function fixture(recovered?: SupergroupWork) {
   const registry = { config, invalidate() { invalidations++; }, list: async () => bots, status: async () => bots.map(bot => ({ id: bot.id, preset: { state: 'ok' } })),
     get: async (id: string) => { const bot = bots.find(row => row.id === id); if (!bot) throw new Error('deleted'); return bot; },
     mainSessions: { find: async () => ({ sessionId: bound }) }, memoryKernel: {}, memoryOutlets: flow } as unknown as DshBotRegistry;
-  const ctx = { agents: { get: (id: string) => id === 'main' ? agent : id === 'root' ? root : undefined }, sessions: { flush: async () => flush } } as unknown as Context;
+  const ctx = { agents: { get: (id: string) => id === 'main' ? agent : id === 'root' ? root : undefined }, sessions: { flush: async () => { if (flushError) throw flushError; return flush; } }, logger: { warn } } as unknown as Context;
   const domain = { table: () => ({ get: (id: string) => table.get(id), entries: () => [...table.entries()],
     put: async (id: string, value: SupergroupWork) => { table.set(id, structuredClone(value)); } }), close: async () => {} } as unknown as Domain<typeof supergroupDomain>;
   const service = new Supergroup(ctx, registry, groups, domain); await service.start();
@@ -72,10 +81,13 @@ async function fixture(recovered?: SupergroupWork) {
   const send = (operationId: string, text = 'New genuine group instruction', expectedRevision = current().revision,
     extra: { memberIds?: string[]; replyTo?: string } = {}) => service.sendGroupInput({ group: key, workId: 'work', expectedRevision, operationId, text, ...extra });
   const wait = async (condition: () => boolean) => { for (let i = 0; i < 100 && !condition(); i++) await new Promise(resolve => setTimeout(resolve, 1)); expect(condition()).toBe(true); };
-  return { service, ctx, key, current, send, wait, followups, rootEvents, mainEvents, agent, sent, labels, config,
+  return { service, ctx, key, current, send, wait, followups, rootEvents, mainEvents, agent, sent, labels, config, warn,
     get maxActive() { return maxActive; }, get invalidations() { return invalidations; },
     hold: () => { hold = true; blocked = new Promise(resolve => { release = resolve; }); }, release: () => { hold = false; release?.(); },
-    bindElsewhere: () => { bound = 'other-main'; }, rejectFlow: () => { flowHeld = true; }, failFlush: () => { flush = false; } };
+    bindElsewhere: () => { bound = 'other-main'; }, rejectFlow: () => { flowHeld = true; }, failFlush: () => { flush = false; },
+    failFlushWith: (error: Error) => { flushError = error; },
+    failViewAfterFirst: (error: Error = new OperationError('unavailable')) => { viewCalls = 0; failViewAfterCall = 1; viewError = error; },
+    addEarlierMessage: (id: string) => { earlierHistory = [...earlierHistory, id]; } };
 }
 
 test('owner input is durable native group text; exact replay is inert and changed operation conflicts', async () => {
@@ -173,6 +185,58 @@ test('unsupported fields/attachments, foreign member and private data-flow refus
     await expect(f.send('invalid-reply', 'text', 1, { replyTo: 'private-message' })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
     f.rejectFlow(); await expect(f.send('held')).rejects.toThrow('Private or unknown source held');
     expect(f.rootEvents).toEqual([]); expect(f.sent).toEqual([]); expect(f.current().groupInputs).toEqual([]);
+  } finally { await f.service.close(); }
+});
+
+test('replyTo accepts earlier group messages outside the latest 200-message page (#54)', async () => {
+  const f = await fixture();
+  try {
+    f.addEarlierMessage('historic-turn-1');
+    const accepted = await f.send('reply-earlier', 'Follow up on earlier finding', 1, { replyTo: 'historic-turn-1' });
+    expect(accepted.receipt.state).toBe('queued');
+    expect(accepted.receipt.replyTo).toBe('historic-turn-1');
+    await f.wait(() => f.followups.length === 1);
+    expect(f.sent[0]?.replyTo).toBe('historic-turn-1');
+    await expect(f.send('reply-missing', 'Missing target', f.current().revision, { replyTo: 'nonexistent-earlier' })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
+  } finally { await f.service.close(); }
+});
+
+test('post-persistence projection unavailable normalizes to recovery-needed instead of unavailable (#54)', async () => {
+  const f = await fixture();
+  try {
+    const revision = f.current().revision;
+    f.failViewAfterFirst(new OperationError('unavailable'));
+    await expect(f.send('proj-fail', 'Persisted before projection fails', revision)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+    expect(f.rootEvents).toHaveLength(1);
+    expect(f.current().groupInputs).toHaveLength(1);
+    expect(f.current().groupInputs[0]?.operationId).toBe('proj-fail');
+    expect(f.warn).toHaveBeenCalledWith('[dsh-bot] Supergroup group input persisted; confirmation failed', {
+      workId: 'work', groupId: 'group', phase: 'project', errorCode: 'dsh-bot/unavailable', errorName: 'RemoteError',
+    });
+    // Wait for background scheduled input to settle, then replay with exact original revision while projection fails again.
+    await f.wait(() => f.current().groupInputs[0]?.state === 'unknown');
+    f.failViewAfterFirst(new OperationError('unavailable'));
+    await expect(f.send('proj-fail', 'Persisted before projection fails', revision)).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+    expect(f.rootEvents).toHaveLength(1);
+    expect(f.current().groupInputs).toHaveLength(1);
+  } finally { await f.service.close(); }
+});
+
+test('supergroup flush failure logs strictly redacted metadata without leaking sensitive error content (#54)', async () => {
+  const f = await fixture();
+  try {
+    const sentinel = 'SUPERGROUP-PRIVATE-token-review-sentinel';
+    const poisoned = Object.assign(new Error(`flush failed: ${sentinel} /Users/private/secret`), {
+      name: `Poisoned-${sentinel}`,
+      code: `POISONED-${sentinel}`,
+    });
+    f.failFlushWith(poisoned);
+    const result = await f.send('poisoned-flush', sentinel);
+    expect(result.receipt.state).toBe('unknown');
+    expect(f.warn).toHaveBeenCalledWith('[dsh-bot] Supergroup group input dispatch failed; marking unknown', {
+      workId: 'work', groupId: 'group', phase: 'flush', errorName: 'unknown',
+    });
+    expect(JSON.stringify(f.warn.mock.calls)).not.toContain(sentinel);
   } finally { await f.service.close(); }
 });
 

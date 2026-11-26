@@ -652,3 +652,325 @@ it('limits file selection across batches before uploading and blocks oversized r
     expect(f.send).not.toHaveBeenCalled();
   } finally { await f.close(); }
 });
+
+describe('group send error classification and pre-flight guards (#54)', () => {
+  it('blocks ended supplement targets before sending, clears on close, and handles racing unavailable responses', async () => {
+    const f = await composer('en', true, [bot({ id: 'alpha', name: 'Alpha' }), bot({ id: 'beta', name: 'Beta' })]);
+    try {
+      const id = f.data.group.rootSessionId;
+      f.data.turns.push({
+        id: 'turn:one', group: { groupId: f.data.group.id, groupCreatedAt: 1 }, operationId: 'op:one',
+        requestDigest: 'hash', inputMessageId: 'msg:one', createdAt: 1, updatedAt: 1, revision: 1,
+        schemaVersion: 1, membershipRevision: 1, orderedMemberIds: ['member:alpha'], mode: 'natural',
+        contextThroughSeq: -1, state: 'idle',
+      });
+      f.data.deliveries.push({
+        id: 'delivery:done', turnId: 'turn:one', memberId: 'member:alpha', ordinal: 0,
+        bot: { botId: 'alpha', botCreatedAt: 1 }, botRevision: 1, presetId: 'bot-alpha',
+        contextOutputMessageIds: [], contextTruncated: false, state: 'completed',
+      });
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:one', deliveryId: 'delivery:done' } })));
+      expect(f.element.textContent).toContain(f.t('groups.supplementEndedShort'));
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Late supplement');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).not.toHaveBeenCalled();
+      expect(f.element.textContent).toContain(f.t('groups.supplementEnded'));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+
+      await click(button(f.element, f.t('groups.close')));
+      expect(f.element.textContent).not.toContain(f.t('groups.supplementEnded'));
+
+      // Now simulate a racing delivery that was still running locally but finished on the Host.
+      f.data.turns[0]!.state = 'running';
+      f.data.deliveries[0]!.state = 'running';
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:one', deliveryId: 'delivery:done' } })));
+      f.send.mockRejectedValueOnce({ code: 'dsh-bot/unavailable' });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(1);
+      expect(f.element.textContent).toContain(f.t('groups.supplementEnded'));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+      expect(f.actions.draft(id).operation).toBeUndefined();
+    } finally { await f.close(); }
+  });
+
+  it('classifies mention-only Host rejection without @mention and blocks oversized drafts before RPC', async () => {
+    const f = await composer('zh', true, [bot({ id: 'alpha', name: 'Alpha' }), bot({ id: 'beta', name: 'Beta' })]);
+    try {
+      f.data.group.mode = 'mention';
+      await f.remount();
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, '未提及任何成员的消息');
+      f.send.mockRejectedValueOnce({ code: 'dsh-bot/invalid' });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(1);
+      expect(f.element.textContent).toContain(f.t('groups.mentionRequired'));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+      expect(f.actions.draft(f.data.group.rootSessionId).operation).toBeUndefined();
+
+      // Editing clears the definitive validation alert, and @mentioning sends normally.
+      await fill(draft, '@Alpha 请看下');
+      expect(f.element.textContent).not.toContain(f.t('groups.mentionRequired'));
+      f.send.mockResolvedValueOnce({ ok: true, value: { id: 'turn:mention-ok' } as never });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(2);
+
+      // Oversized text (> 64KB) is blocked before RPC.
+      await fill(draft, 'a'.repeat(70000));
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(2);
+      expect(f.element.textContent).toContain(f.t('groups.messageTooLong'));
+    } finally { await f.close(); }
+  });
+
+  it.each([
+    ['dsh-bot/invalid', 'groups.sendInvalid'],
+    ['gateway/input-invalid', 'groups.sendInvalid'],
+    ['dsh-bot/unavailable', 'groups.sendUnavailable'],
+    ['dsh-bot/approval-denied', 'groups.sendDenied'],
+    ['dsh-bot/unsupported', 'groups.sendUnsupported'],
+    ['dsh-bot/not-found', 'groups.sendNotFound'],
+  ] as const)('classifies definitive pre-dispatch rejection %s without misreporting sendFailed', async (code, key) => {
+    const f = await composer('en');
+    try {
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Definitive rejection test');
+      f.send.mockRejectedValueOnce({ code });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.element.textContent).toContain(f.t(key));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+      expect(f.actions.draft(f.data.group.rootSessionId).operation).toBeUndefined();
+      await fill(draft, 'Edited after definitive rejection');
+      expect(f.element.textContent).not.toContain(f.t(key));
+    } finally { await f.close(); }
+  });
+
+  it.each(['dsh-bot/recovery-needed', 'gateway/internal'] as const)('retains sendFailed, diagnostic code, and idempotency key for uncertain failure %s', async code => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = await composer('en');
+    try {
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Uncertain send test');
+      f.send.mockRejectedValueOnce({ code });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.element.textContent).toContain(`${f.t('groups.export.sendFailed')} (${code})`);
+      const firstId = f.actions.draft(f.data.group.rootSessionId).operation?.request.operationId;
+      expect(firstId).toBeTruthy();
+      expect(warn).toHaveBeenCalledWith('[dsh-bot] Group operation did not complete', { code });
+      // Editing does not silently discard an uncertain acceptance warning.
+      await fill(draft, 'Uncertain send test edited');
+      expect(f.element.textContent).toContain(f.t('groups.export.sendFailed'));
+    } finally {
+      warn.mockRestore();
+      await f.close();
+    }
+  });
+
+  it('allows idempotent retry of an unconfirmed supplement even after the delivery completes (#54)', async () => {
+    const f = await composer('zh');
+    try {
+      const id = f.data.group.rootSessionId;
+      f.data.turns.push({
+        id: 'turn:retry', group: { groupId: f.data.group.id, groupCreatedAt: 1 }, operationId: 'op:turn',
+        requestDigest: 'hash', inputMessageId: 'msg:turn', createdAt: 1, updatedAt: 1, revision: 1,
+        schemaVersion: 1, membershipRevision: 1, orderedMemberIds: ['member:alpha'], mode: 'natural',
+        contextThroughSeq: -1, state: 'running',
+      });
+      f.data.deliveries.push({
+        id: 'delivery:retry', turnId: 'turn:retry', memberId: 'member:alpha', ordinal: 0,
+        bot: { botId: 'alpha', botCreatedAt: 1 }, botRevision: 1, presetId: 'bot-alpha',
+        contextOutputMessageIds: [], contextTruncated: false, state: 'running',
+      });
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:retry', deliveryId: 'delivery:retry' } })));
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Lost-response supplement');
+      // First attempt loses the response in transit; client keeps operationId and shows sendFailed.
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(1);
+      const originalOpId = f.actions.draft(id).operation?.request.operationId;
+      expect(originalOpId).toBeTruthy();
+      expect(f.element.textContent).toContain(f.t('groups.export.sendFailed'));
+
+      // Delivery finishes on the Host and the view refreshes before the user retries.
+      f.data.turns[0]!.state = 'idle';
+      f.data.deliveries[0]!.state = 'completed';
+      await f.remount();
+      expect(f.element.textContent).not.toContain(f.t('groups.supplementEndedShort'));
+
+      // Second click must retry with the exact same operationId and clear the draft when Host confirms.
+      f.send.mockResolvedValueOnce({ ok: true, value: { id: 'turn:retry' } as never });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(2);
+      expect(f.send.mock.calls[1]?.[1].operationId).toBe(originalOpId);
+      expect(f.element.textContent).not.toContain(f.t('groups.supplementEnded'));
+      expect((field(f.element, f.t('groups.message')) as HTMLTextAreaElement).value).toBe('');
+      expect(f.actions.draft(id).followup).toBeUndefined();
+      expect(f.actions.draft(id).operation).toBeUndefined();
+
+      // If an unconfirmed supplement retry fails with unavailable and live view confirms it was never persisted,
+      // then it releases operationId and reports supplementEnded.
+      f.data.turns[0]!.state = 'running';
+      f.data.deliveries[0]!.state = 'running';
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:retry', deliveryId: 'delivery:retry' } })));
+      await fill(field(f.element, f.t('groups.message')), 'Unreceived supplement');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(3);
+      const secondOpId = f.actions.draft(id).operation?.request.operationId;
+      f.data.turns[0]!.state = 'idle';
+      f.data.deliveries[0]!.state = 'completed';
+      await f.remount();
+      f.send.mockRejectedValueOnce({ code: 'dsh-bot/unavailable' });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(4);
+      expect(f.send.mock.calls[3]?.[1].operationId).toBe(secondOpId);
+      await vi.waitFor(() => expect(f.element.textContent).toContain(f.t('groups.supplementEnded')));
+      expect(f.actions.draft(id).operation).toBeUndefined();
+    } finally { await f.close(); }
+  });
+
+  it('does not misclassify automatic group unavailable errors as not-sent (#54)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = await composer('en');
+    try {
+      const owner = f.data.members[0]!.bot;
+      f.data.group.supergroup = {
+        workId: 'work:1', originSessionId: 'origin', originMessageId: 'origin-msg',
+        owner, readers: f.data.members.map(m => m.bot), expiresAt: 99999,
+      };
+      await f.remount();
+      const sendSpy = vi.spyOn(f.actions, 'send').mockRejectedValueOnce({ code: 'dsh-bot/unavailable' });
+      await fill(field(f.element, f.t('groups.message')), 'Automatic group input');
+      await click(button(f.element, f.t('groups.send')));
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(f.element.textContent).toContain(`${f.t('groups.export.sendFailed')} (dsh-bot/unavailable)`);
+      expect(f.element.textContent).not.toContain(f.t('groups.sendUnavailable'));
+      expect(f.actions.draft(f.data.group.rootSessionId).operation?.request.operationId).toBeTruthy();
+    } finally {
+      warn.mockRestore();
+      await f.close();
+    }
+  });
+
+  it('retains operationId and send-failed when navigation cancels retry receipt confirmation (#54)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ctx = new Context();
+    const data = view();
+    data.group.mode = 'natural';
+    const turn = {
+      id: 'turn:nav', group: { groupId: data.group.id, groupCreatedAt: data.group.createdAt }, operationId: 'op:nav-turn',
+      requestDigest: 'hash', inputMessageId: 'msg:nav-turn', createdAt: 1, updatedAt: 1, revision: 1,
+      schemaVersion: 1 as const, membershipRevision: 1, orderedMemberIds: ['member:alpha'], mode: 'natural' as const,
+      contextThroughSeq: -1, state: 'running' as const, followups: [] as Array<{
+        operationId: string; requestDigest: string; deliveryId: string; messageId: string; state: 'accepted';
+      }>,
+    };
+    data.turns.push(turn);
+    data.deliveries.push({
+      id: 'delivery:nav', turnId: 'turn:nav', memberId: 'member:alpha', ordinal: 0,
+      bot: { botId: 'alpha', botCreatedAt: 1 }, botRevision: 1, presetId: 'bot-alpha',
+      contextOutputMessageIds: [], contextTruncated: false, state: 'running',
+    });
+    const stalePreSendSnapshot = structuredClone(data);
+    const acceptedFollowups: string[] = [];
+    let holdConfirmView = false;
+    let releaseConfirmView: ((result: { ok: true; value: ReturnType<typeof view> }) => void) | undefined;
+    let confirmViewStarted!: () => void;
+    const confirmViewEntered = new Promise<void>(resolve => { confirmViewStarted = resolve; });
+    const remoteView = vi.fn<GroupMethods['view']>(async () => {
+      if (holdConfirmView) {
+        holdConfirmView = false;
+        confirmViewStarted();
+        return new Promise(resolve => { releaseConfirmView = resolve; });
+      }
+      return { ok: true, value: structuredClone(data) };
+    });
+    let sendCount = 0;
+    const remoteSend = vi.fn<GroupMethods['send']>(async (_key, request) => {
+      sendCount++;
+      if (sendCount === 1) {
+        // 1st attempt: Host accepts and persists the supplement, then the response is lost in transit.
+        acceptedFollowups.push(request.operationId);
+        turn.followups.push({
+          operationId: request.operationId, requestDigest: 'digest', deliveryId: 'delivery:nav',
+          messageId: 'msg:followup-1', state: 'accepted',
+        });
+        throw new Error('response-lost');
+      }
+      if (sendCount === 2) {
+        // 2nd attempt: route read already saw the receipt, then send hits Host unload unavailable;
+        // hold the follow-up confirmation view pending while the user navigates away.
+        holdConfirmView = true;
+        throw { code: 'dsh-bot/unavailable' };
+      }
+      // 3rd attempt (after returning to the group): must reuse the exact original operationId.
+      if (!acceptedFollowups.includes(request.operationId)) acceptedFollowups.push(request.operationId);
+      return { ok: true, value: { id: 'turn:nav' } as never };
+    });
+    ctx.provide('remote.dshBot.groups', {
+      view: remoteView,
+      list: async () => ({ ok: true, value: [summary()] }),
+      send: remoteSend,
+      cancel: vi.fn(),
+    } as unknown as GroupMethods);
+    const actions = createGroupActions(ctx, {});
+    const element = document.createElement('div');
+    document.body.append(element);
+    let root = createRoot(element);
+    const t = ((key: keyof typeof en.ui) => en.ui[key]) as PropsLocale<'dsh-bot'>['t'];
+    const mount = async () => {
+      await act(async () => root.render(<GroupConversation workspace summary={summary()} actions={actions} bots={bots}
+        expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={async () => {}} t={t} />));
+      await vi.waitFor(() => expect(element.querySelector('textarea')).toBeTruthy());
+    };
+    const rootId = data.group.rootSessionId;
+    try {
+      await mount();
+      await act(async () => actions.patchDraft(rootId, old => ({ ...old, followup: { turnId: 'turn:nav', deliveryId: 'delivery:nav' } })));
+      await fill(field(element, t('groups.message')), 'Accepted supplement whose response dropped');
+
+      // 1st submit: accepted on Host, response lost -> operationId retained.
+      await click(button(element, t('groups.send')));
+      expect(remoteSend).toHaveBeenCalledTimes(1);
+      const originalOpId = actions.draft(rootId).operation?.request.operationId;
+      expect(originalOpId).toBeTruthy();
+      expect(acceptedFollowups).toEqual([originalOpId]);
+
+      // 2nd submit: send throws unavailable; confirmation view hangs while user navigates away.
+      await act(async () => {
+        button(element, t('groups.send')).click();
+      });
+      await confirmViewEntered;
+
+      // Navigate away (unmount component while confirmation view is still pending).
+      await act(async () => root.unmount());
+      await vi.waitFor(() => expect(actions.draft(rootId).sending).toBe(false));
+
+      // Even if the stale in-flight view resolves late after unmount, operationId must stay intact.
+      releaseConfirmView?.({ ok: true, value: stalePreSendSnapshot });
+      await act(async () => { await Promise.resolve(); });
+
+      expect(actions.draft(rootId).operation?.request.operationId).toBe(originalOpId);
+      expect(actions.draft(rootId).errorCode).toBe('send-failed');
+      expect(actions.draft(rootId).errorCode).not.toBe('followup-ended');
+
+      // Return to the same group and retry the unmodified draft -> must reuse exact originalOpId.
+      root = createRoot(element);
+      await mount();
+      await click(button(element, t('groups.send')));
+      expect(remoteSend).toHaveBeenCalledTimes(3);
+      expect(remoteSend.mock.calls[2]?.[1].operationId).toBe(originalOpId);
+      expect(acceptedFollowups).toEqual([originalOpId]);
+      expect(actions.draft(rootId).operation).toBeUndefined();
+      expect((field(element, t('groups.message')) as HTMLTextAreaElement).value).toBe('');
+    } finally {
+      warn.mockRestore();
+      await act(async () => root.unmount());
+      await ctx.fiber.dispose();
+      element.remove();
+    }
+  });
+});
