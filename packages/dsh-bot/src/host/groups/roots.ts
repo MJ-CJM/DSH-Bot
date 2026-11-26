@@ -169,22 +169,49 @@ export class GroupRoots {
   async reconcilePendingRename(g: GroupRecord): Promise<GroupRecord> {
     const pending = this.state.table('pending_renames').get(g.id);
     if (!pending) return g;
-    if (
-      pending.group.groupId !== g.id ||
-      pending.group.groupCreatedAt !== g.createdAt ||
-      pending.revision !== g.revision
-    ) {
-      await this.state.table('pending_renames').delete(g.id).catch((error) => {
-        this.state.ctx.logger?.warn?.('[dsh-bot] Group stale pending rename cleanup failed', {
+    const deletePending = async (message: string) => {
+      try {
+        await this.state.table('pending_renames').delete(g.id);
+        return true;
+      } catch (error) {
+        this.state.ctx.logger?.warn?.(message, {
           groupId: g.id,
           ...redactedErrorMetadata(error),
         });
-      });
+        return false;
+      }
+    };
+    if (
+      pending.group.groupId !== g.id ||
+      pending.group.groupCreatedAt !== g.createdAt ||
+      pending.revision > g.revision
+    ) {
+      await deletePending('[dsh-bot] Group stale pending rename cleanup failed');
       return g;
     }
     if (g.state !== 'recovery_needed' && g.state !== 'ready') return g;
-    let ready: GroupRecord = g;
+    const receipt = pending.operationKey ? this.state.table('member_edits').get(pending.operationKey) : undefined;
+    const matchingReceipt =
+      receipt && receipt.group.groupId === g.id && receipt.group.groupCreatedAt === g.createdAt ? receipt : undefined;
+    let current: GroupRecord = g;
+    let receiptResult: GroupRecord =
+      pending.result &&
+      pending.result.id === g.id &&
+      pending.result.createdAt === g.createdAt &&
+      pending.result.revision === pending.revision &&
+      pending.result.state === 'ready'
+        ? pending.result
+        : g;
     if (g.state === 'recovery_needed') {
+      const sameEdit =
+        pending.revision === g.revision ||
+        (g.name === pending.name &&
+          (pending.membershipRevision === undefined || pending.membershipRevision === g.membershipRevision) &&
+          (!pending.operationKey || matchingReceipt?.status === 'unknown'));
+      if (!sameEdit) {
+        await deletePending('[dsh-bot] Group stale pending rename cleanup failed');
+        return g;
+      }
       let title: string;
       try {
         if (!this.state.roots.has(g.id) && !g.archived) await this.restore(g);
@@ -197,7 +224,25 @@ export class GroupRoots {
         this.state.reasons.set(g.id, 'recovery-needed');
         return g;
       }
-      ready = { ...g, name: title, state: 'ready' };
+      const ready: GroupRecord = { ...g, name: title, state: 'ready' };
+      if (pending.operationKey) {
+        try {
+          await this.state.table('pending_renames').put(g.id, {
+            ...pending,
+            revision: ready.revision,
+            membershipRevision: ready.membershipRevision,
+            result: ready,
+          });
+        } catch (error) {
+          this.state.ctx.logger?.warn?.('[dsh-bot] Group root rename recovery failed', {
+            groupId: g.id,
+            phase: 'persist',
+            ...redactedErrorMetadata(error),
+          });
+          this.state.reasons.set(g.id, 'recovery-needed');
+          return g;
+        }
+      }
       try {
         await this.state.putGroup(ready);
       } catch (error) {
@@ -209,42 +254,41 @@ export class GroupRoots {
         this.state.reasons.set(g.id, 'recovery-needed');
         return g;
       }
+      current = ready;
+      receiptResult = ready;
     }
-    let receiptFinalized = !pending.operationKey;
     if (pending.operationKey) {
-      const row = this.state.table('member_edits').get(pending.operationKey);
-      if (row && row.group.groupId === g.id && row.group.groupCreatedAt === g.createdAt) {
-        if (row.status === 'unknown') {
-          try {
-            await this.state.table('member_edits').put(pending.operationKey, { ...row, status: 'saved', result: ready });
-          } catch (error) {
-            this.state.ctx.logger?.warn?.('[dsh-bot] Group edit receipt recovery failed', {
-              groupId: g.id,
-              ...redactedErrorMetadata(error),
-            });
-            this.state.reasons.set(g.id, 'recovery-needed');
-            return ready;
-          }
+      if (!matchingReceipt) {
+        if (pending.revision < current.revision) {
+          await deletePending('[dsh-bot] Group stale pending rename cleanup failed');
+        } else {
+          this.state.reasons.set(g.id, 'recovery-needed');
         }
-        receiptFinalized = true;
+        return current;
+      }
+      if (matchingReceipt.status === 'unknown') {
+        try {
+          await this.state.table('member_edits').put(pending.operationKey, {
+            ...matchingReceipt,
+            status: 'saved',
+            result: receiptResult,
+          });
+        } catch (error) {
+          this.state.ctx.logger?.warn?.('[dsh-bot] Group edit receipt recovery failed', {
+            groupId: g.id,
+            ...redactedErrorMetadata(error),
+          });
+          this.state.reasons.set(g.id, 'recovery-needed');
+          return current;
+        }
       }
     }
-    if (!receiptFinalized) {
+    if (!(await deletePending('[dsh-bot] Group pending rename cleanup failed'))) {
       this.state.reasons.set(g.id, 'recovery-needed');
-      return ready;
-    }
-    try {
-      await this.state.table('pending_renames').delete(g.id);
-    } catch (error) {
-      this.state.ctx.logger?.warn?.('[dsh-bot] Group pending rename cleanup failed', {
-        groupId: g.id,
-        ...redactedErrorMetadata(error),
-      });
-      this.state.reasons.set(g.id, 'recovery-needed');
-      return ready;
+      return current;
     }
     if (this.state.reasons.get(g.id) === 'recovery-needed') this.state.reasons.delete(g.id);
-    return ready;
+    return current;
   }
   async open(key: GroupKey) {
     return this.state.queue.run(async () => {

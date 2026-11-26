@@ -120,7 +120,7 @@ export class GroupMembers {
       const g = await this.roots.reconcilePendingRename(this.state.record(key));
       if (g.supergroup) throw new OperationError('approval-denied');
       if (g.archived || input.expectedModelRevision !== (g.modelRevision ?? 0)) throw new OperationError('conflict');
-      if (g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
+      if (g.state !== 'ready' || this.state.reasons.has(g.id) || this.state.table('pending_renames').get(g.id)) throw new OperationError('recovery-needed');
       if (input.memberId) {
         const member = this.state.members(g).find(m => m.id === input.memberId && m.enabled && m.removedAt === undefined);
         if (!member) throw new OperationError('invalid');
@@ -215,7 +215,7 @@ export class GroupMembers {
         input.expectedMembershipRevision !== g.membershipRevision
       )
         throw new OperationError('conflict');
-      if (g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
+      if (g.state !== 'ready' || this.state.reasons.has(g.id) || this.state.table('pending_renames').get(g.id)) throw new OperationError('recovery-needed');
       if (!normalizeSessionTitle(input.name, Number.MAX_SAFE_INTEGER)) throw new OperationError('invalid');
       if (new Set(input.members.map(bot => bot.botId)).size !== input.members.length) throw new OperationError('invalid');
       const existing = this.state.members(g).filter(member => member.removedAt === undefined);
@@ -252,6 +252,7 @@ export class GroupMembers {
       if (operation && operationKey) await this.state.table('member_edits').put(operationKey, { group: key, ...operation, status: 'unknown' });
       const nameChanged = next.name !== g.name;
       let phase: 'persist' | 'rename' | 'receipt' = 'persist';
+      let readyCommitted = false;
       try {
         await this.state.putGroup(next);
         for (const m of old.filter((m) => m.removedAt === undefined && !input.members.some((b) => sameBot(b, m.bot)))) {
@@ -276,6 +277,7 @@ export class GroupMembers {
           await this.state.table('pending_renames').put(g.id, {
             group: key,
             revision: next.revision,
+            membershipRevision: next.membershipRevision,
             name: next.name,
             ...(operationKey ? { operationKey } : {}),
           });
@@ -283,7 +285,18 @@ export class GroupMembers {
           title = await this.roots.rename(next);
         }
         const ready: GroupRecord = { ...next, name: title, state: 'ready' };
+        if (nameChanged && operationKey) {
+          await this.state.table('pending_renames').put(g.id, {
+            group: key,
+            revision: next.revision,
+            membershipRevision: next.membershipRevision,
+            name: next.name,
+            operationKey,
+            result: ready,
+          });
+        }
         await this.state.putGroup(ready);
+        readyCommitted = true;
         if (operation && operationKey) {
           phase = 'receipt';
           await this.state.table('member_edits').put(operationKey, { group: key, ...operation, status: 'saved', result: ready });
@@ -307,9 +320,12 @@ export class GroupMembers {
           ...redactedErrorMetadata(error),
         });
         this.state.reasons.set(g.id, 'recovery-needed');
-        // A final receipt write can fail after ready committed. Keep every later edit
-        // closed, including after restart, without assuming cross-table transactions.
-        if (operation) await this.state.putGroup({ ...next, state: 'recovery_needed' }).catch(() => {});
+        // A final receipt write can fail after ready committed. When no pending_renames
+        // credential exists, keep every later edit closed across restart without assuming
+        // cross-table transactions.
+        if (operation && (!nameChanged || !readyCommitted)) {
+          await this.state.putGroup({ ...next, state: 'recovery_needed' }).catch(() => {});
+        }
         if (operation) return { operationId: operation.operationId, status: 'unknown' };
         throw new OperationError('recovery-needed');
       }

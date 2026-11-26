@@ -1164,6 +1164,250 @@ describe('Issue #56 Fix 3: GroupMembers.saveEdit() rename skipping, redacted log
         await s.close();
       }
     }));
+
+  it('preserves unsettled edit receipt recovery and revoked export approval across revision bumps (getMemberEditResult, same-op retry, restart, and recovery_needed revoke)', () =>
+    withIntegrations(async (f) => {
+      const s = await createNaturalGroupsFixture(f);
+      const warn = vi.spyOn(f.ctx.logger, 'warn');
+      try {
+        const g = await s.groups.create({
+          operationId: 'cross-rev-export-revoke',
+          name: 'Original Group',
+          members: [alpha, beta],
+          mode: 'mention',
+          historyConfirmed: true,
+        });
+        const key = groupKey(g);
+        const membersService = () =>
+          (s.groups as unknown as {
+            membership: {
+              editRecipe(
+                targetKey: GroupKey,
+                value: unknown,
+                operationId: string,
+                source: unknown,
+              ): Promise<{ operationId: string; status: string; group?: GroupRecord }>;
+            };
+          }).membership;
+
+        // 1) Codex exact repro — Path (a): enable alpha auto-export (rev 2) -> rename fail + recovery receipt.put fail (rev 3, ready)
+        //    -> disable alpha auto-export (rev 4) -> getMemberEditResult + same-op retry + new edit.
+        const enabled1 = await s.groups.exportSettings.set(key, alpha, true, g.revision, g.membershipRevision);
+        expect(enabled1.revision).toBe(2);
+        expect((await s.groups.exportSettings.get(key)).enabledBots).toEqual([alpha]);
+
+        const edit1Input = {
+          name: 'Renamed While Export Enabled',
+          mode: 'natural' as const,
+          members: [alpha, beta],
+          expectedRevision: enabled1.revision,
+          expectedMembershipRevision: enabled1.membershipRevision,
+        };
+        const edit1Source = { kind: 'cross-rev-poll' };
+        s.rename.mockRejectedValueOnce(new Error('SECRET_CROSS_REV_RENAME_1'));
+        expect(await membersService().editRecipe(key, edit1Input, 'op-cross-rev-1', edit1Source)).toEqual({
+          operationId: 'op-cross-rev-1',
+          status: 'unknown',
+        });
+
+        const receiptFail1 = vi
+          .spyOn(s.domain.table('member_edits'), 'put')
+          .mockRejectedValueOnce(new Error('SECRET_CROSS_REV_RECEIPT_1'));
+        expect(await s.groups.getMemberEditResult(key, 'op-cross-rev-1')).toEqual({
+          operationId: 'op-cross-rev-1',
+          status: 'unknown',
+        });
+        receiptFail1.mockRestore();
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET_CROSS_REV_RECEIPT_1');
+
+        const readyRev3 = need(s.domain.table('groups').get(g.id));
+        expect(readyRev3.state).toBe('ready');
+        expect(readyRev3.revision).toBe(3);
+        expect(s.domain.table('pending_renames').get(g.id)?.revision).toBe(3);
+
+        // Storage is healthy again; UI reads export settings (canEnable=false, alpha still enabled) and revokes alpha -> rev 4.
+        const settingsBeforeRevoke1 = await s.groups.exportSettings.get(key);
+        expect(settingsBeforeRevoke1.enabledBots).toEqual([alpha]);
+        expect(settingsBeforeRevoke1.canEnable).toBe(false);
+        expect(settingsBeforeRevoke1.groupRevision).toBe(3);
+
+        const revokedRev4 = await s.groups.exportSettings.set(
+          key,
+          alpha,
+          false,
+          settingsBeforeRevoke1.groupRevision,
+          settingsBeforeRevoke1.membershipRevision,
+        );
+        expect(revokedRev4.revision).toBe(4);
+        expect(revokedRev4.exportApprovals ?? []).toEqual([]);
+
+        // getMemberEditResult MUST finalize receipt to saved without deleting the revocation or overwriting revision 4!
+        const settled1 = await s.groups.getMemberEditResult(key, 'op-cross-rev-1');
+        expect(settled1).toEqual({
+          operationId: 'op-cross-rev-1',
+          status: 'saved',
+          group: readyRev3,
+        });
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+
+        const settingsAfterRecover1 = await s.groups.exportSettings.get(key);
+        expect(settingsAfterRecover1.enabledBots).toEqual([]);
+        expect(settingsAfterRecover1.groupRevision).toBe(4);
+        expect(settingsAfterRecover1.canEnable).toBe(true);
+
+        // Same-operationId retry returns the original saved result and keeps rev 4 + revoked state intact.
+        expect(await membersService().editRecipe(key, edit1Input, 'op-cross-rev-1', edit1Source)).toEqual(settled1);
+        expect((await s.groups.exportSettings.get(key)).enabledBots).toEqual([]);
+
+        // Subsequent new edit succeeds at revision 4 -> 5 and preserves revoked export approvals.
+        const editAfterRevoke1 = await s.groups.edit(key, {
+          name: 'Post Revoke Edit 1',
+          mode: 'mention',
+          members: [alpha, beta],
+          expectedRevision: 4,
+          expectedMembershipRevision: revokedRev4.membershipRevision,
+        });
+        expect(editAfterRevoke1.state).toBe('ready');
+        expect(editAfterRevoke1.revision).toBe(5);
+        expect(editAfterRevoke1.exportApprovals ?? []).toEqual([]);
+
+        // 2) Codex exact repro — Path (b): revoke alpha auto-export while ready + unknown receipt + pending_renames,
+        //    then immediately restart (reopen -> roots.start) over real JSON storage!
+        const enabled2 = await s.groups.exportSettings.set(
+          key,
+          alpha,
+          true,
+          editAfterRevoke1.revision,
+          editAfterRevoke1.membershipRevision,
+        );
+        expect((await s.groups.exportSettings.get(key)).enabledBots).toEqual([alpha]);
+
+        s.rename.mockRejectedValueOnce(new Error('SECRET_CROSS_REV_RENAME_2'));
+        expect(
+          await membersService().editRecipe(
+            key,
+            {
+              name: 'Renamed Before Restart Revoke',
+              mode: 'natural',
+              members: [alpha, beta],
+              expectedRevision: enabled2.revision,
+              expectedMembershipRevision: enabled2.membershipRevision,
+            },
+            'op-cross-rev-restart',
+            { kind: 'cross-rev-restart' },
+          ),
+        ).toEqual({ operationId: 'op-cross-rev-restart', status: 'unknown' });
+
+        const receiptFail2 = vi
+          .spyOn(s.domain.table('member_edits'), 'put')
+          .mockRejectedValueOnce(new Error('SECRET_CROSS_REV_RECEIPT_2'));
+        expect(await s.groups.getMemberEditResult(key, 'op-cross-rev-restart')).toEqual({
+          operationId: 'op-cross-rev-restart',
+          status: 'unknown',
+        });
+        receiptFail2.mockRestore();
+
+        const readyBeforeRevoke2 = need(s.domain.table('groups').get(g.id));
+        expect(readyBeforeRevoke2.state).toBe('ready');
+        expect(s.domain.table('pending_renames').get(g.id)?.revision).toBe(readyBeforeRevoke2.revision);
+
+        // Revoke alpha auto-export (bumping revision by +1), then immediately reopen fresh Groups over real JSON storage.
+        const revokedBeforeRestart = await s.groups.exportSettings.set(
+          key,
+          alpha,
+          false,
+          readyBeforeRevoke2.revision,
+          readyBeforeRevoke2.membershipRevision,
+        );
+        expect(revokedBeforeRestart.revision).toBe(readyBeforeRevoke2.revision + 1);
+        expect(revokedBeforeRestart.exportApprovals ?? []).toEqual([]);
+
+        await s.reopen();
+
+        // After restart: pending_renames is cleared, receipt is saved, revocation is preserved, and new edits succeed!
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+        expect(await s.groups.getMemberEditResult(key, 'op-cross-rev-restart')).toEqual({
+          operationId: 'op-cross-rev-restart',
+          status: 'saved',
+          group: readyBeforeRevoke2,
+        });
+        const settingsAfterRestart = await s.groups.exportSettings.get(key);
+        expect(settingsAfterRestart.enabledBots).toEqual([]);
+        expect(settingsAfterRestart.groupRevision).toBe(revokedBeforeRestart.revision);
+        expect(settingsAfterRestart.canEnable).toBe(true);
+
+        const editAfterRestart = await s.groups.edit(key, {
+          name: 'Post Restart Revoke Edit',
+          mode: 'mention',
+          members: [alpha, beta],
+          expectedRevision: revokedBeforeRestart.revision,
+          expectedMembershipRevision: revokedBeforeRestart.membershipRevision,
+        });
+        expect(editAfterRestart.state).toBe('ready');
+        expect(editAfterRestart.exportApprovals ?? []).toEqual([]);
+
+        // 3) Revoking alpha auto-export while group is still recovery_needed (BEFORE rename succeeds) preserves revocation on recovery.
+        const enabled3 = await s.groups.exportSettings.set(
+          key,
+          alpha,
+          true,
+          editAfterRestart.revision,
+          editAfterRestart.membershipRevision,
+        );
+        s.rename.mockRejectedValueOnce(new Error('SECRET_CROSS_REV_RENAME_3'));
+        expect(
+          await membersService().editRecipe(
+            key,
+            {
+              name: 'Renamed With Early Revoke',
+              mode: 'natural',
+              members: [alpha, beta],
+              expectedRevision: enabled3.revision,
+              expectedMembershipRevision: enabled3.membershipRevision,
+            },
+            'op-cross-rev-early',
+            { kind: 'cross-rev-early' },
+          ),
+        ).toEqual({ operationId: 'op-cross-rev-early', status: 'unknown' });
+
+        const recoveringGroup = need(s.domain.table('groups').get(g.id));
+        expect(recoveringGroup.state).toBe('recovery_needed');
+
+        const revokedWhileRecovering = await s.groups.exportSettings.set(
+          key,
+          alpha,
+          false,
+          recoveringGroup.revision,
+          recoveringGroup.membershipRevision,
+        );
+        expect(revokedWhileRecovering.state).toBe('recovery_needed');
+        expect(revokedWhileRecovering.revision).toBe(recoveringGroup.revision + 1);
+        expect(revokedWhileRecovering.exportApprovals ?? []).toEqual([]);
+
+        const settledEarly = await s.groups.getMemberEditResult(key, 'op-cross-rev-early');
+        expect(settledEarly.status).toBe('saved');
+        expect(settledEarly.group?.state).toBe('ready');
+        expect(settledEarly.group?.name).toBe('Renamed With Early Revoke');
+        expect(settledEarly.group?.exportApprovals ?? []).toEqual([]);
+        expect(s.domain.table('pending_renames').get(g.id)).toBeUndefined();
+        expect((await s.groups.exportSettings.get(key)).enabledBots).toEqual([]);
+        expect((await s.groups.exportSettings.get(key)).canEnable).toBe(true);
+
+        const finalEdit = await s.groups.edit(key, {
+          name: 'Final Post Early Revoke',
+          mode: 'mention',
+          members: [alpha, beta],
+          expectedRevision: revokedWhileRecovering.revision,
+          expectedMembershipRevision: revokedWhileRecovering.membershipRevision,
+        });
+        expect(finalEdit.state).toBe('ready');
+        expect(finalEdit.name).toBe('Final Post Early Revoke');
+        expect(finalEdit.exportApprovals ?? []).toEqual([]);
+      } finally {
+        warn.mockRestore();
+        await s.close();
+      }
+    }));
 });
 
 describe('Issue #56 Fix 4: Isolated teardown and cleanup under fault injection', () => {

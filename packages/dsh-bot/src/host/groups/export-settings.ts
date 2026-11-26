@@ -13,7 +13,8 @@ export class GroupExportSettings {
     return this.state.queue.run(async () => {
       signal?.throwIfAborted();
       const g = this.state.record(key), members = groupReaders(this.state, g);
-      let canEnable = !g.archived && g.state === 'ready' && !this.state.reasons.has(g.id);
+      const hasPendingRename = Boolean(this.state.table?.('pending_renames').get(g.id));
+      let canEnable = !g.archived && g.state === 'ready' && !this.state.reasons.has(g.id) && !hasPendingRename;
       try { await checkSupergroup(this.state, g); } catch { canEnable = false; }
       const readers = [];
       for (const bot of members) {
@@ -40,7 +41,7 @@ export class GroupExportSettings {
         throw new OperationError('conflict');
       const members = groupReaders(this.state, g);
       if (input.enabled) {
-        if (g.archived || g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
+        if (g.archived || g.state !== 'ready' || this.state.reasons.has(g.id) || this.state.table?.('pending_renames').get(g.id)) throw new OperationError('recovery-needed');
         if (!this.state.members(g).some(m => m.enabled && m.removedAt === undefined && sameBot(m.bot, input.bot)) ||
           !members.some(member => sameBot(member, input.bot))) throw new OperationError('invalid');
         await checkSupergroup(this.state, g);
