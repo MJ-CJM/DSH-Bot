@@ -2,6 +2,7 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { useRef, useState } from 'react';
 import { proactiveSetupRequest, type ProactiveSetupRequest, type ProactiveSetupReply } from '../../shared/proactive/setup.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from './workspace.module.css';
 import css from './workspace.module.css?inline';
 
@@ -9,6 +10,7 @@ export function ProactiveSetup({ setup, refresh, t }: PropsLocale<'dsh-bot'> & {
   setup?(input: ProactiveSetupRequest): Promise<ProactiveSetupReply>;
   refresh?(): Promise<void>;
 }) {
+  useStyleSheet('proactive-workspace', css);
   const [pending, setPending] = useState(false), busy = useRef(false);
   const [message, setMessage] = useState<ProactiveSetupReply | 'unknown'>();
   const [repository, setRepository] = useState(''), [branch, setBranch] = useState('main');
@@ -27,7 +29,6 @@ export function ProactiveSetup({ setup, refresh, t }: PropsLocale<'dsh-bot'> & {
     }
   }
   return <div data-proactive-setup className={styles.content}>
-    <style>{css}</style>
     <p>{t('proactive.setup.noSource')}</p>
     <details>
       <summary>{t('proactive.setup.connect')}</summary>

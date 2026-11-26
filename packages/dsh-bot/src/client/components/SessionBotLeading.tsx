@@ -2,6 +2,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotCatalog } from '../state.js';
 import type { ActivityCatalog } from '../activity-state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/session-row.module.css';
 import css from '../styles/session-row.module.css?inline';
@@ -33,10 +34,10 @@ function useRowBot({ sessionId, useCatalog, useActivity }: SessionBotRowProps) {
 /** Root-scoped decoration: reading the two shared catalogs retains no Session. */
 export function SessionBotLeading(props: SessionBotRowProps) {
   const bot = useRowBot(props);
+  useStyleSheet('session-row', css, Boolean(bot));
   if (!bot) return null;
   return (
     <>
-      <style data-dsh-bot-row-styles>{css}</style>
       {/* Like the native schedule mark, this decoration only shields its area
         from row activation. It performs no action and adds no keyboard stop. */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: non-action decoration only stops propagation */}

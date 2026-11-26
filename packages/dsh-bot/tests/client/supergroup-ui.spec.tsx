@@ -2,10 +2,12 @@
 import { Context } from '@deepseek-ai/cordis';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import { act } from 'react';
+import { act, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
-import { createSupergroupUiBridge, SupergroupWorkCard, supergroupMessageDefinition } from '../../src/client/supergroup.js';
+import type { ConversationSnapshot, TurnLocation } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client';
+import { createSupergroupUiBridge, SupergroupWorkCard, supergroupMessageDefinition, supergroupNativeRevision } from '../../src/client/supergroup.js';
 import type { SupergroupWorkView } from '../../src/shared/supergroup.js';
 import type { GroupMethods } from '../../src/shared/groups-contract.js';
 import { createGroupActions } from '../../src/client/groups-state.js';
@@ -247,4 +249,117 @@ it('does not retry a transport failure or a second CAS conflict', async () => {
     await expect(f.bridge.cancel(workView().work)).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
     expect(f.remote.cancel).toHaveBeenCalledTimes(2); expect(f.remote.forSession).toHaveBeenCalledTimes(2);
   } finally { await f.close(); }
+});
+
+it('does not trigger repeated forSession RPCs or re-renders during streaming token updates in ordinary chats', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const ctx = new Context();
+  const remote = {
+    forSession: vi.fn(async () => ({ ok: true as const, value: null as SupergroupWorkView | null })),
+    cancel: vi.fn(async () => ({ ok: true as const, value: null })),
+    settings: vi.fn(async () => ({ ok: true as const, value: { enabled: false } })),
+    configure: vi.fn(async () => ({ ok: true as const, value: { enabled: false } })),
+  };
+  ctx.provide('remote.dshBotSupergroup', remote);
+  const groupRemote = {
+    view: vi.fn(async () => ({ ok: true, value: view() })),
+    list: vi.fn(async () => ({ ok: true, value: [] })),
+    cancel: vi.fn(async () => ({ ok: true, value: true })),
+  };
+  ctx.provide('remote.dshBot.groups', groupRemote as unknown as GroupMethods);
+  const actions = createGroupActions(ctx, {});
+  const bridge = createSupergroupUiBridge(ctx, actions);
+  const botSnapshot = { entries: bots.map(bot => ({ bot })) };
+  const botSubscribe = vi.fn(() => () => {});
+  const catalog = { subscribe: botSubscribe, getSnapshot: () => botSnapshot } as unknown as BotCatalog;
+  const t = ((key: keyof typeof en.ui) => en.ui[key]) as PropsLocale<'dsh-bot'>['t'];
+
+  const makeTurn = (turn: number, status: 'open' | 'closed', endSeq?: number): TurnLocation => ({
+    turn,
+    start: { seq: turn * 10 } as TurnLocation['start'],
+    end: endSeq === undefined ? undefined : ({ seq: endSeq } as TurnLocation['end']),
+    status,
+    steps: [{ turn, step: 1, start: undefined, end: undefined, status, data: {} as never }],
+    data: {} as never,
+  });
+  let turns = new Map<number, TurnLocation>([
+    [1, makeTurn(1, 'closed', 15)],
+    [2, makeTurn(2, 'closed', 25)],
+    [3, makeTurn(3, 'closed', 35)],
+    [4, makeTurn(4, 'open')],
+  ]);
+  const makeSnapshot = (): ConversationSnapshot => ({
+    activeTargets: new Set(['chat']),
+    views: {
+      get: (target: string) => (target === 'chat' ? ({ timeline: { turnOrder: [1, 2, 3, 4], turns } } as never) : undefined),
+      grouped: () => undefined,
+    },
+  });
+  let conversationSnapshot = makeSnapshot();
+  const listeners = new Set<() => void>();
+  const publishConversation = () => {
+    conversationSnapshot = makeSnapshot();
+    for (const listener of listeners) listener();
+  };
+  const useConversation = <T,>(selector: (snapshot: ConversationSnapshot) => T): T =>
+    useSyncExternalStore(
+      listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+      () => selector(conversationSnapshot),
+    );
+
+  const nodes = [1, 2, 3, 4].map(turn => {
+    const turnRecord = turns.get(turn);
+    if (!turnRecord) throw new Error(`Missing turn ${turn}`);
+    return {
+      id: `msg-${turn}`,
+      anchorSeq: turn * 10 + 1,
+      location: { kind: 'turn' as const, turn: turnRecord },
+    };
+  }) as Array<Pick<ChatNode<'supergroup-work'>, 'id' | 'anchorSeq' | 'location'>>;
+
+  const renders = new Map<string, number>();
+  function StreamingSlotHost({ node }: { node: Pick<ChatNode<'supergroup-work'>, 'id' | 'anchorSeq' | 'location'> }) {
+    const nativeRevision = useConversation(snapshot => supergroupNativeRevision(snapshot, node));
+    renders.set(node.id, (renders.get(node.id) ?? 0) + 1);
+    return <SupergroupWorkCard sessionId="ordinary-chat" messageId={node.id} bridge={bridge}
+      actions={actions} bots={catalog} nativeRevision={nativeRevision} t={t} />;
+  }
+
+  const element = document.createElement('main');
+  document.body.append(element);
+  const root = createRoot(element);
+  try {
+    await act(async () => {
+      root.render(nodes.map(node => <StreamingSlotHost key={node.id} node={node} />));
+    });
+    await vi.waitFor(() => expect(remote.forSession).toHaveBeenCalledTimes(4));
+    expect(botSubscribe).not.toHaveBeenCalled();
+
+    const rendersAfterMount = new Map(renders);
+    // Simulate 50 streaming token flushes creating new ConversationSnapshot references.
+    await act(async () => {
+      for (let token = 0; token < 50; token++) publishConversation();
+    });
+    await Promise.resolve();
+    expect(remote.forSession).toHaveBeenCalledTimes(4);
+    expect(renders).toEqual(rendersAfterMount);
+
+    // Explicit refresh returning null again must not notify listeners (structuralEqual).
+    const sourceListener = vi.fn();
+    const offSource = bridge.source('ordinary-chat', 'msg-1').subscribe(sourceListener);
+    await vi.waitFor(() => expect(remote.forSession).toHaveBeenCalledTimes(5));
+    expect(sourceListener).not.toHaveBeenCalled();
+    offSource();
+
+    // Closing turn 4 refreshes only turn 4's message once, never prior closed turns 1-3.
+    turns = new Map(turns);
+    turns.set(4, makeTurn(4, 'closed', 49));
+    await act(async () => { publishConversation(); });
+    await vi.waitFor(() => expect(remote.forSession).toHaveBeenCalledTimes(6));
+    expect(remote.forSession).toHaveBeenLastCalledWith({ sessionId: 'ordinary-chat', messageId: 'msg-4' });
+  } finally {
+    await act(async () => root.unmount());
+    element.remove();
+    await ctx.fiber.dispose();
+  }
 });

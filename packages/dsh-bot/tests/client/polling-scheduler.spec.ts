@@ -1,6 +1,7 @@
 import { Context } from '@deepseek-ai/cordis';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPollingCatalog } from '../../src/client/state.js';
+import { sharedPollingScheduler } from '../../src/client/polling-scheduler.js';
 
 const contexts: Context[] = [];
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
@@ -120,5 +121,57 @@ describe('one foreground polling scheduler per Client context', () => {
     expect(watch).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(4_999); expect(watch).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1); expect(watch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not starve a 5s periodic poll during continuous keystrokes or clicks every 1s', async () => {
+    const { page, load } = setup(); await settle();
+    const initialCalls = load.mock.calls.length;
+    for (let second = 1; second <= 4; second++) {
+      await vi.advanceTimersByTimeAsync(1_000);
+      page.dispatchEvent(new Event(second % 2 === 0 ? 'pointerdown' : 'keydown'));
+    }
+    expect(load).toHaveBeenCalledTimes(initialCalls);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(load).toHaveBeenCalledTimes(initialCalls + 1);
+    // After poll #1 backs off to 10s, the first keystroke at +1s pulls it forward
+    // to +6s (5s from that keystroke), and continued 1s keystrokes do not postpone it.
+    for (let second = 1; second <= 5; second++) {
+      await vi.advanceTimersByTimeAsync(1_000);
+      page.dispatchEvent(new Event('keydown'));
+    }
+    expect(load).toHaveBeenCalledTimes(initialCalls + 1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(load).toHaveBeenCalledTimes(initialCalls + 2);
+  });
+
+  it('isolates rejecting and throwing sources with Promise.allSettled so healthy sources keep polling', async () => {
+    const { ctx, load } = setup(); await settle();
+    const scheduler = sharedPollingScheduler(ctx, {});
+    const rejectingSource = {
+      polling: true,
+      refresh: vi.fn(async () => { throw new Error('boom async'); }),
+    };
+    const throwingSource = {
+      polling: true,
+      refresh: vi.fn(() => { throw new Error('boom sync'); }),
+    };
+    const releaseRejecting = scheduler.register(rejectingSource);
+    const releaseThrowing = scheduler.register(throwingSource);
+    try {
+      const initialCalls = load.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(rejectingSource.refresh).toHaveBeenCalledTimes(1);
+      expect(throwingSource.refresh).toHaveBeenCalledTimes(1);
+      expect(load).toHaveBeenCalledTimes(initialCalls + 1);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(rejectingSource.refresh).toHaveBeenCalledTimes(2);
+      expect(throwingSource.refresh).toHaveBeenCalledTimes(2);
+      expect(load).toHaveBeenCalledTimes(initialCalls + 2);
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      releaseRejecting();
+      releaseThrowing();
+    }
   });
 });

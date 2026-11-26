@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { RelayDetails as Detail, RelayDetailsRequest } from '../../shared/group-relay-details.js';
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/relay-details.module.css';
 import css from '../styles/relay-details.module.css?inline';
 
@@ -34,8 +35,9 @@ export function RelayDetails({ actions, request, revision = '', t }: {
       window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [actions, serialized, scope]);
   const detail = loaded?.scope === scope ? loaded.detail : undefined;
+  useStyleSheet('relay-details', css, Boolean(detail));
   if (!detail) return <p role="status" data-group-relay-details="">{t(loaded?.scope === scope ? 'groups.relay.unavailable' : 'groups.loading')}</p>;
-  return <div data-group-relay-details=""><style>{css}</style><dl className={styles.relayDetails}>
+  return <div data-group-relay-details=""><dl className={styles.relayDetails}>
     {(['question', 'answer', 'report'] as const).map(key => {
       const part = detail[key];
       if (!part) return null;

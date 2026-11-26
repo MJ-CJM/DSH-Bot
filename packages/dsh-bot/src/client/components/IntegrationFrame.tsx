@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
 import type { IntegrationActions } from '../integrations-state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import css from '../styles/integrations.module.css?inline';
 import styles from '../styles/integrations.module.css';
 export interface IntegrationPanelProps extends PropsLocale<'dsh-bot'> {
@@ -64,12 +65,12 @@ export function IntegrationFrame({
   children: import('react').ReactNode;
   onOwnerChange?(): void;
 }) {
+  useStyleSheet('integrations', css);
   return (
     <section
       className={styles.panel}
       aria-label={t(title === 'connectors' ? 'connectors.connectors' : 'notifications.notifications')}
     >
-      <style>{css}</style>
       <ManagementHeader
         title={t(title === 'connectors' ? 'connectors.connectors' : 'notifications.notifications')}
         selector={{ bots, value: state.bot?.id ?? '', onChange: (id) => {

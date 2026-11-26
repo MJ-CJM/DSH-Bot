@@ -1,5 +1,6 @@
 import { useId, useRef } from 'react';
 import { Button, IconCloseOutlineRegular, IconSearchOutlineRegular, Input } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/search-field.module.css';
 import css from '../styles/search-field.module.css?inline';
 
@@ -10,14 +11,14 @@ export function SearchField({ label, clearLabel, value, onChange, className }: {
   onChange(value: string): void;
   className?: string;
 }) {
+  useStyleSheet('search-field', css);
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const clear = () => {
     onChange('');
     input.current?.focus();
   };
-  return <>
-    <style>{css}</style>
+  return (
     <div className={`${styles.search} ${className ?? ''}`}>
       <label className={styles.label} htmlFor={id}>
         <span className={styles.srOnly}>{label}</span>
@@ -34,5 +35,5 @@ export function SearchField({ label, clearLabel, value, onChange, className }: {
         <IconCloseOutlineRegular size={14} />
       </Button>}
     </div>
-  </>;
+  );
 }

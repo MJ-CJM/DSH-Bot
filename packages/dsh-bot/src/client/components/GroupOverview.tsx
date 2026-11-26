@@ -23,6 +23,7 @@ import { GroupStatisticsBar } from './GroupStatistics.js';
 import { RetainedPanel } from './RetainedPanel.js';
 import { FollowUpPanel, type FollowUpNavigation } from '../proactive/FollowUpPanel.js';
 import { followUpSessionTarget } from '../proactive/follow-up-state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import css from '../styles/groups.module.css?inline';
 import styles from '../styles/groups.module.css';
 
@@ -66,16 +67,16 @@ export function GroupMembersList({ summary, actions, bots, onOpenBot, onEdit, op
   }, [actions, id, createdAt]);
   const catalog = owned?.id === id && owned.createdAt === createdAt ? owned.source : undefined;
   const snapshot = useSyncExternalStore(catalog?.subscribe ?? subscribeNoMembersView, catalog?.getSnapshot ?? noMembersView, catalog?.getSnapshot ?? noMembersView);
+  useStyleSheet('groups', css);
   const view = snapshot?.view;
   const matched = view?.group.id === id && view.group.createdAt === createdAt && view.group.rootSessionId === summary.group.rootSessionId;
   if (!view || !matched) return <section className={styles.compactMembers} aria-label={t('groups.members')}>
-    <style>{css}</style><p role={snapshot?.error || view ? 'alert' : 'status'}>{t(snapshot?.error || view ? 'groups.disconnected' : 'groups.loading')}</p>
+    <p role={snapshot?.error || view ? 'alert' : 'status'}>{t(snapshot?.error || view ? 'groups.disconnected' : 'groups.loading')}</p>
     {(snapshot?.error || view) && <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button>}
   </section>;
   const editingReason = memberEditingReason(view);
   const members = view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
   return <section className={styles.compactMembers} aria-label={t('groups.members')} data-group-members-list={id}>
-    <style>{css}</style>
     {onEdit && canEditMembers(view) && <MemberEditAction view={view} onEdit={onEdit} disabled={Boolean(snapshot?.error)} t={t} />}
     {snapshot?.error && <p role="alert">{t('groups.disconnected')} <button className={styles.compactMemberRetry} type="button" onClick={() => { void catalog?.refresh(); }}>{t('bots.refresh')}</button></p>}
     {members.length === 0 && <p>{t('navigation.memberCount', { count: 0 })}</p>}
@@ -167,8 +168,10 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     return () => owner.abort();
   }, []);
   const uid = useId();
+  const viewMatched = Boolean(catalog && view && view.group.id === summary.group.id && view.group.createdAt === summary.group.createdAt && view.group.rootSessionId === summary.group.rootSessionId);
+  useStyleSheet('groups', css, viewMatched);
   if (!catalog || !view) return <p role={snapshot?.error ? 'alert' : 'status'}>{t(snapshot?.error ? 'groups.disconnected' : 'groups.loading')}</p>;
-  if (view.group.id !== summary.group.id || view.group.createdAt !== summary.group.createdAt || view.group.rootSessionId !== summary.group.rootSessionId)
+  if (!viewMatched)
     return <p role="alert">{t('groups.disconnected')}</p>;
   const open = async () => {
     setBusy(true); setError(false);
@@ -215,7 +218,6 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     label: t(`groups.view.${value}`), id: `${uid}-${value}`, panelId: `${uid}-${value}-panel`,
   })) as [import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>, ...import('@deepseek-ai/dsh-client-ui-primitives').SegmentedTab<GroupOverviewSection>[]];
   return <article className={styles.overview} aria-label={view.group.name} data-group-overview={view.group.id}>
-    <style>{css}</style>
     {showHeader && <header className={styles.overviewHeader}>
       <GroupAvatar size={48} members={members} bots={bots} label={view.group.name} />
       <div className={styles.overviewIdentity}>

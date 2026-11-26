@@ -3,6 +3,7 @@ import { type RefObject, useEffect, useId, useRef } from 'react';
 import type { BotActivity } from '../../shared/activity.js';
 import { previewText, relativeTime } from '../activity-view.js';
 import type { BotCatalogEntry } from '../state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import identityCss from '../styles/identity.module.css?inline';
 import styles from '../styles/bots.module.css';
 import { BotIdentity } from './BotIdentity.js';
@@ -44,6 +45,7 @@ export function BotList({
   const activeId = selected?.bot.id;
   const locale = t('activity.locale');
   const activityByBot = new Map(activities.map((row) => [row.botId, row]));
+  useStyleSheet('identity', identityCss);
   useEffect(() => {
     if (activeId && element.current)
       document.getElementById(`${listId}-${activeId}`)?.scrollIntoView?.({ block: 'nearest' });
@@ -75,7 +77,7 @@ export function BotList({
         if (id) onSelect(id);
       }}
     >
-      <style>{identityCss}</style>{entries.map(({ bot, status }) => {
+      {entries.map(({ bot, status }) => {
         const latest = activityByBot.get(bot.id);
         const preview = latest?.mainSessionState === 'unavailable' || status?.mainSessionState === 'unavailable' ? t('activity.mainUnavailable') : latest?.latest
           ? previewText(latest.latest.preview, t)
