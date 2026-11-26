@@ -73,9 +73,9 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
         <div className={detailStyles.identity}><h1>{bot.name}</h1><p>{bot.description || t('persona.empty')}</p></div>
         <div className={detailStyles.actions}>
           <Button variant="primary" disabled={busy || model.navigating || !model.ready} onClick={start}>{t('chat.openChat')}</Button>
-          <Menu open={more} onClose={() => setMore(false)} align="end"
+          <Menu open={more} onClose={() => setMore(false)} align="end" portal autoFocus
             anchor={<Button variant="ghost" aria-haspopup="menu" aria-expanded={more} disabled={busy || saving} onClick={() => setMore(!more)}>{t('card.more')}</Button>}
-            items={[{ id: 'duplicate', label: t('card.duplicate') }, { id: 'delete', label: t('actions.delete') }]}
+            items={[{ id: 'duplicate', label: t('card.duplicate') }, { id: 'delete', label: t('actions.delete'), danger: true }]}
             onSelect={id => { setMore(false); navigation.leave(() => model.open({ kind: id === 'delete' ? 'delete' : 'duplicate', bot })); }} />
         </div>
       </header>

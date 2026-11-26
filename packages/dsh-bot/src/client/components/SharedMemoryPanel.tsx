@@ -1,5 +1,6 @@
 import { useSettingsDraft } from './SettingsNavigation.js';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { SegmentedTabs, type SegmentedTab } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { DshBotMemoryRemoteMethods } from '../../shared/remote-contract.js';
 import type { MemoryQuery, ManagedMemoryRow, MemoryResolve } from '../../shared/memory-management.js';
 import type { SharedMemoryCatalog } from '../shared-memory-state.js';
@@ -19,6 +20,7 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
   binding: SharedMemoryBinding; scope: MemoryQuery['scope']; botId: string; t: MemoryPanelProps['t'];
 }) {
   const { catalog } = binding, snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+  const uid = useId();
   const drafts = useRef(memoryDrafts()), [draft, setDraft] = useState<ManagedDraft>(), [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(false), [preview, setPreview] = useState<{ row: ManagedMemoryRow; revision: number; scope: MemoryQuery['scope']; botId: string }>();
   const confirming = preview?.botId === botId && preview.scope === scope && preview.revision === snapshot.revision &&
@@ -85,10 +87,18 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
   return <section aria-label={t('shared.title')} data-shared-memory-panel="">
     <AutoShareStatus binding={binding} t={t} />
     <p className={styles.notice}>{t('shared.manualOnly')}</p>
-    <div className={styles.actions} role="tablist" aria-label={t('shared.views')}>
-      {(['facts', 'journal', 'candidates', 'conflicts', 'all'] as const).map(view => <button type="button" role="tab" key={view}
-        aria-selected={snapshot.input.view === view} className={styles.button} disabled={busy}
-        onClick={() => catalog.select({ view, cursor: undefined, revision: undefined })}>{t(`shared.${view}`)}</button>)}
+    <div className={styles.actions}>
+      <SegmentedTabs
+        label={t('shared.views')}
+        value={snapshot.input.view}
+        onChange={view => { if (!busy) catalog.select({ view, cursor: undefined, revision: undefined }); }}
+        items={(['facts', 'journal', 'candidates', 'conflicts', 'all'] as const).map(view => ({
+          value: view,
+          label: t(`shared.${view}`),
+          id: `${uid}-${view}`,
+          panelId: `${uid}-panel`,
+        })) as [SegmentedTab<typeof snapshot.input.view>, ...SegmentedTab<typeof snapshot.input.view>[]]}
+      />
     </div>
     <form onSubmit={e => { e.preventDefault(); catalog.select({ query, cursor: undefined, revision: undefined }); }}>
       <label>{t('memory.search')}<input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>

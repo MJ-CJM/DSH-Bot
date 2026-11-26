@@ -146,7 +146,7 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
           .map((p) => (
             <li key={p.id}>
               <Button type="button" disabled={busy} onClick={() => leave(() => editPolicy(p))}>
-                {p.id} · {p.channel} · v{p.revision}
+                {p.id} · {t(`notifications.channel.${p.channel}`)} · v{p.revision}
               </Button>
             </li>
           ))}
@@ -193,8 +193,8 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
         <label>
           {t('notifications.channel')}
           <select value={channel} onChange={(e) => setChannel(e.target.value as typeof channel)}>
-            <option>in-app</option>
-            <option disabled={!data.imSupported}>im</option>
+            <option value="in-app">{t('notifications.channel.in-app')}</option>
+            <option value="im" disabled={!data.imSupported}>{t('notifications.channel.im')}</option>
           </select>
         </label>
         {channel === 'im' && (
@@ -249,7 +249,7 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
             />
           </label>
           <p>
-            {policy.targetRef ?? 'in-app'} · {policy.scopeDigest}
+            {policy.targetRef ?? t('notifications.channel.in-app')} · {policy.scopeDigest}
           </p>
           <label>
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />

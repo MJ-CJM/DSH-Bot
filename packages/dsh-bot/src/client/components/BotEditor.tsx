@@ -1,5 +1,5 @@
 import { useSettingsDraft } from './SettingsNavigation.js';
-import { Input } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Input, SegmentedTabs } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { ModelActions, ModelCatalogData } from '../model-catalog-state.js';
 import type { CapabilityKey } from './CapabilitiesPanel.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -571,31 +571,18 @@ export function BotEditor({
   return (
     <Modal title={title} description={editing ? t('bots.newSessionsNotice') : undefined} busy={disabled} onClose={onCancel} t={t}>
       {editing && memoryPanel && (
-        <div className={styles.tabs} role="tablist" aria-label={t('editor.details')}>
-          <button
-            id={`${uid}-settings-tab`}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'settings'}
-            aria-controls={`${uid}-settings-panel`}
-            className={styles.button}
-            disabled={disabled}
-            onClick={() => setTab('settings')}
-          >
-            {t('editor.settings')}
-          </button>
-          <button
-            id={`${uid}-memory-tab`}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'memory'}
-            aria-controls={`${uid}-memory-panel`}
-            className={styles.button}
-            disabled={disabled}
-            onClick={() => setTab('memory')}
-          >
-            {t('memory.title')}
-          </button>
+        <div className={styles.tabs}>
+          <SegmentedTabs
+            label={t('editor.details')}
+            value={tab}
+            onChange={(next) => {
+              if (!disabled) setTab(next);
+            }}
+            items={[
+              { value: 'settings', label: t('editor.settings'), id: `${uid}-settings-tab`, panelId: `${uid}-settings-panel` },
+              { value: 'memory', label: t('memory.title'), id: `${uid}-memory-tab`, panelId: `${uid}-memory-panel` },
+            ]}
+          />
         </div>
       )}
       {tab === 'memory' && (

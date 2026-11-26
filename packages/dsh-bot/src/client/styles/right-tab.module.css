@@ -26,6 +26,10 @@
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
 }
+.tab [role="alert"],
+.notice[role="alert"] {
+  color: var(--dsw-alias-state-error-primary);
+}
 .footer {
   padding: 4px 8px;
   border-top: 1px solid var(--dsw-alias-border-l3);

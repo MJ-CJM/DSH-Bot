@@ -95,7 +95,7 @@ describe('workspace group composer and management', () => {
       for (const text of ['@', '请 @']) {
         await fill(draft, text);
         await vi.waitFor(() => expect(Array.from(f.element.querySelectorAll('[role=option] strong'), el => el.textContent))
-          .toEqual(['everyone', 'Same name']));
+          .toEqual([f.t('groups.everyone'), 'Same name']));
       }
       await fill(draft, '@Jar');
       await vi.waitFor(() => expect(f.element.querySelector('[role=option]')).toBeNull());
@@ -111,12 +111,12 @@ describe('workspace group composer and management', () => {
       const draft = field(f.element, f.t('groups.message'));
       const options = () => Array.from(f.element.querySelectorAll('[role=option] strong'), el => el.textContent);
       await fill(draft, '@');
-      await vi.waitFor(() => expect(options()).toEqual(['everyone', 'Alpha', 'Beta']));
+      await vi.waitFor(() => expect(options()).toEqual([f.t('groups.everyone'), 'Alpha', 'Beta']));
       f.data.members[0]!.enabled = false;
       f.data.members[1]!.removedAt = 4;
       f.data.group.membershipRevision++;
       await act(async () => f.actions.messageView({ groupId: f.data.group.id, groupCreatedAt: f.data.group.createdAt }).refresh());
-      await vi.waitFor(() => expect(options()).toEqual(['everyone']));
+      await vi.waitFor(() => expect(options()).toEqual([f.t('groups.everyone')]));
       expect(draft.value).toBe('@');
       expect(f.send).not.toHaveBeenCalled();
     } finally { await f.close(); }

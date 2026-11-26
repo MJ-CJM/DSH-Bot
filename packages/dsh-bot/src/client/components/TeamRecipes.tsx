@@ -7,9 +7,13 @@ import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
 import { teamRecipeInputSchema, type TeamRecipe, type TeamPreview } from '../../shared/team-recipes.js';
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
+import { formatList } from '../format.js';
+import dialogStyles from '../styles/bots.module.css';
 import styles from '../styles/groups.module.css';
+import groupsCss from '../styles/groups.module.css?inline';
 import rosterCss from '../styles/roster.module.css?inline';
-import { useSettingsDraft, useSettingsNavigation } from './SettingsNavigation.js';
+import { Modal } from './Modal.js';
+import { SettingsDrafts, useSettingsDraft, useSettingsNavigation } from './SettingsNavigation.js';
 import { MemberChangeReview, RosterSaveNotice, rosterAddedMembers, rosterMemberName, rosterMembers, useRosterSave } from './RosterManagement.js';
 
 function parseRecipe(input: unknown): TeamRecipe {
@@ -30,6 +34,7 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
   const [name, setName] = useState(defaultName);
   const [preview, setPreview] = useState<TeamPreview>();
   const [draft, setDraft] = useState('');
+  const [removing, setRemoving] = useState<{ id: string; name: string }>();
   const [busy, setBusy] = useState(true), [error, setError] = useState<'failed' | 'member-limit'>();
   useEffect(() => {
     let alive = true;
@@ -79,9 +84,10 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
     const link = document.createElement('a'); link.href = url; link.download = 'dsh-bot-team.json'; link.click();
     URL.revokeObjectURL(url);
   };
-  return <><section className={`${styles.settingsOverview} ${styles.teamRecipes}`} role="dialog" aria-label={t('teams.title')} data-team-recipes="">
-    <style>{rosterCss}</style>
-    <h3>{t('teams.title')}</h3>
+  return <SettingsDrafts.Provider value={navigation.registry}><Modal title={t('teams.title')} busy={busy || mutation.phase === 'saving'} onClose={leave} t={t}>
+    <style>{groupsCss}{rosterCss}</style>
+    <div className={dialogStyles.editorBody}>
+    <section className={`${styles.settingsOverview} ${styles.teamRecipes}`} data-team-recipes="">
     <p>{t('teams.safe')}</p>
     <p>{t('teams.memberLimit', { limit })}</p>
     {error && <p role="alert">{t(error === 'member-limit' ? 'groups.memberLimitFailed' : 'teams.failed', { limit })}</p>}
@@ -132,19 +138,37 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
     {saved.length > 0 && <details><summary>{t('simple.savedTeams')}</summary>
     <ul>{saved.map(row => <li key={row.id}>
       <Button disabled={busy || applying} onClick={() => void run(() => show(row.recipe))}>{row.recipe.name}</Button>
-      <Button disabled={busy || applying} onClick={() => void run(async () => {
-        unwrapGroup(await actions.remote().teamRemove(row.id));
-        setSaved(current => current.filter(item => item.id !== row.id));
-      })}>{t('teams.remove')}</Button>
+      <Button disabled={busy || applying} onClick={() => setRemoving({ id: row.id, name: row.recipe.name })}>{t('teams.remove')}</Button>
     </li>)}</ul>
     </details>}
     <RosterSaveNotice mutation={mutation} t={t} />
     {mutation.phase === 'conflict' && mutation.latest && <section data-team-roster-conflict="">
       <h4>{t('groups.roster.currentRoster')}</h4>
-      <p>{rosterMembers(mutation.latest).map(member => rosterMemberName(mutation.latest!, member.bot, bots)).join('、')}</p>
+      <p>{formatList(rosterMembers(mutation.latest).map(member => rosterMemberName(mutation.latest!, member.bot, bots)), t('activity.locale'))}</p>
       <MemberChangeReview view={mutation.latest} target={target} bots={bots} t={t} />
       <Button onClick={() => { setBaseline(mutation.latest!); mutation.reset(); }}>{t('groups.roster.reviewLatest')}</Button>
     </section>}
-    <Button disabled={busy || mutation.phase === 'saving'} onClick={leave}>{t('groups.close')}</Button>
-  </section>{navigation.confirmation}</>;
+    </section>
+    </div>
+    <footer className={dialogStyles.dialogFooter}>
+      <Button disabled={busy || mutation.phase === 'saving'} onClick={leave}>{t('groups.close')}</Button>
+    </footer>
+  </Modal>
+  {removing && <Modal title={t('teams.removeConfirmTitle')} busy={busy} onClose={() => setRemoving(undefined)} t={t}>
+    <div className={dialogStyles.editorBody}>
+      <p>{t('teams.removeConfirm', { name: removing.name })}</p>
+    </div>
+    <footer className={dialogStyles.dialogFooter}>
+      <Button disabled={busy} onClick={() => setRemoving(undefined)}>{t('actions.cancel')}</Button>
+      <Button className={dialogStyles.dangerButton} disabled={busy} onClick={() => {
+        const targetRecipe = removing;
+        void run(async () => {
+          unwrapGroup(await actions.remote().teamRemove(targetRecipe.id));
+          setSaved(current => current.filter(item => item.id !== targetRecipe.id));
+          setRemoving(undefined);
+        });
+      }}>{t('teams.remove')}</Button>
+    </footer>
+  </Modal>}
+  {navigation.confirmation}</SettingsDrafts.Provider>;
 }

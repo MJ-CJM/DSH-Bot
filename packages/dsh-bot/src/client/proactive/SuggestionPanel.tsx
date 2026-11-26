@@ -1,4 +1,5 @@
 import type { ProactiveSetupRequest, ProactiveSetupReply } from "../../shared/proactive/setup.js";
+import { formatDateTime } from "../format.js";
 import { TaskOutcomes } from "./TaskOutcomes.js";
 import { DocumentTask } from "./DocumentTask.js";
 import type { DocumentRequest } from "../../shared/proactive/document.js";
@@ -348,13 +349,13 @@ export function SuggestionPanel({
 					<p>{t("proactive.reason", { attempt: String(row.attempt) })}</p>
 					<p>
 						{t("proactive.expiry", {
-							at: new Date(row.expiresAt).toLocaleString(),
+							at: formatDateTime(row.expiresAt, t("activity.locale")),
 						})}
 					</p>
 					{row.observeUntil && (
 						<p>
 							{t("proactive.observing", {
-								at: new Date(row.observeUntil).toLocaleString(),
+								at: formatDateTime(row.observeUntil, t("activity.locale")),
 							})}
 						</p>
 					)}

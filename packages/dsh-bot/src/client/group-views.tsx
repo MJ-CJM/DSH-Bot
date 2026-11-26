@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
@@ -16,17 +16,66 @@ import css from './styles/groups.module.css?inline';
 
 export const GROUP_MANAGEMENT_VIEW = 'dsh-bot-group-management';
 
+export interface GroupManagementViewStore {
+  acquire(sessionId: string): () => void;
+  isActive(sessionId: string): boolean;
+  subscribe(listener: () => void): () => void;
+  clear(): void;
+}
+
+export function createGroupManagementViewStore(): GroupManagementViewStore {
+  const counts = new Map<string, number>();
+  const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+  return {
+    acquire(sessionId: string) {
+      const prev = counts.get(sessionId) ?? 0;
+      counts.set(sessionId, prev + 1);
+      if (prev === 0) notify();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        const current = counts.get(sessionId) ?? 0;
+        if (current <= 1) {
+          if (counts.delete(sessionId)) notify();
+        } else {
+          counts.set(sessionId, current - 1);
+        }
+      };
+    },
+    isActive: (sessionId: string) => (counts.get(sessionId) ?? 0) > 0,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    clear() {
+      if (counts.size === 0) return;
+      counts.clear();
+      notify();
+    },
+  };
+}
+
+export const defaultGroupManagementViews = createGroupManagementViewStore();
+
 type ViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'dsh-bot'> & {
   summary: GroupSummary;
   actions: GroupActions;
   bots: BotCatalog;
   executionBridge?: ExecutionBridge;
+  managementViews?: GroupManagementViewStore;
   onOpenBot?(bot: BotRecord): void;
   onAskBot?(bot: BotRecord, prompt: string, signal?: AbortSignal): void | Promise<void>;
 };
 
-export function GroupWorkspaceView({ summary, actions, bots, executionBridge, onOpenBot, onAskBot,
+export function GroupWorkspaceView({ summary, actions, bots, executionBridge, managementViews = defaultGroupManagementViews, onOpenBot, onAskBot,
   viewRequest, openView, completeViewRequest, t }: ViewProps) {
+  useLayoutEffect(() => managementViews.acquire(summary.group.rootSessionId), [managementViews, summary.group.rootSessionId]);
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
   const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
   const [editing, setEditing] = useState<GroupView>();
@@ -65,7 +114,8 @@ export function GroupWorkspaceView({ summary, actions, bots, executionBridge, on
 }
 
 export function registerGroupViews(ctx: Context, actions: GroupActions, bots: BotCatalog, executionBridge: ExecutionBridge,
-  onOpenBot?: (bot: BotRecord) => void, onAskBot?: (bot: BotRecord, prompt: string, signal?: AbortSignal) => void | Promise<void>) {
+  onOpenBot?: (bot: BotRecord) => void, onAskBot?: (bot: BotRecord, prompt: string, signal?: AbortSignal) => void | Promise<void>,
+  managementViews: GroupManagementViewStore = defaultGroupManagementViews) {
   return ctx.effect(() => {
     // Empty catalogs can activate before the optional native session surface is available.
     const sessions = () => (ctx.sessions as unknown as ISessions).list;
@@ -104,7 +154,7 @@ export function registerGroupViews(ctx: Context, actions: GroupActions, bots: Bo
       }, (props: PropsRuntime<'conversation.view'> & PropsLocale<'dsh-bot'>) => {
         if (props.sessionId !== group.rootSessionId) return null;
         return <GroupWorkspaceView key={JSON.stringify([group.id, group.createdAt])} {...props} summary={summary} actions={actions} bots={bots}
-          executionBridge={executionBridge} onOpenBot={onOpenBot} onAskBot={onAskBot} />;
+          executionBridge={executionBridge} managementViews={managementViews} onOpenBot={onOpenBot} onAskBot={onAskBot} />;
       }));
       registered = { group, release };
     };

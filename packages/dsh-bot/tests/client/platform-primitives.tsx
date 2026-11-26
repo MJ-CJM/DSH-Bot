@@ -58,19 +58,19 @@ export function MarkdownText({ text }: { text: string; labels: unknown; variant?
   return <div data-platform-markdown="">{text}</div>;
 }
 
-type MenuEntryDouble = { id: string; label?: ReactNode; icon?: ReactNode; disabled?: boolean; type?: string; text?: string };
-export function Menu({ open, anchor, items = [], footer = [], selectedId, onSelect, children, className }: {
+type MenuEntryDouble = { id: string; label?: ReactNode; icon?: ReactNode; disabled?: boolean; danger?: boolean; type?: string; text?: string };
+export function Menu({ open, anchor, items = [], footer = [], selectedId, portal, autoFocus, onSelect, children, className }: {
   open: boolean; anchor: ReactNode; className?: string; children?: ReactNode;
   items?: readonly MenuEntryDouble[]; footer?: readonly MenuEntryDouble[];
-  selectedId?: string | undefined; portal?: boolean; side?: string; listClassName?: string;
+  selectedId?: string | undefined; portal?: boolean; autoFocus?: boolean; side?: string; listClassName?: string;
   onSelect?: (id: string) => void;
 }) {
   // Mirrors the public entry contract: separators and non-interactive labels are presentation rows;
   // the selected row is marked (the native list draws a trailing check).
   const entry = (item: MenuEntryDouble) => item.type === 'separator' ? <hr key={item.id} />
     : item.type === 'label' ? <div key={item.id} role="presentation" data-menu-label="">{item.text}</div>
-    : <button type="button" role="menuitem" key={item.id} disabled={item.disabled} data-menu-selected={item.id === selectedId ? '' : undefined} onClick={() => onSelect?.(item.id)}>{item.icon}{item.label}</button>;
-  return <span className={className}>{anchor}{open && <div role="menu">{items.map(entry)}{children}
+    : <button type="button" role="menuitem" key={item.id} disabled={item.disabled} data-menu-selected={item.id === selectedId ? '' : undefined} data-menu-danger={item.danger ? '' : undefined} onClick={() => onSelect?.(item.id)}>{item.icon}{item.label}</button>;
+  return <span className={className} data-menu-portal={portal ? '' : undefined} data-menu-autofocus={autoFocus ? '' : undefined}>{anchor}{open && <div role="menu">{items.map(entry)}{children}
     {footer.length > 0 && <div role="presentation" data-menu-footer="">{footer.map(entry)}</div>}</div>}</span>;
 }
 export function PathLabel({ path, ...attributes }: { path: string } & import('react').HTMLAttributes<HTMLSpanElement>) {

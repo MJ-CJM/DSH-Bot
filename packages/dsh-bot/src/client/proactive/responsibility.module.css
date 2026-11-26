@@ -67,6 +67,10 @@
 	color: var(--dsw-alias-label-secondary);
 	overflow-wrap: anywhere;
 }
+.panel [role="alert"],
+.editor [role="alert"] {
+	color: var(--dsw-alias-state-error-primary);
+}
 .check {
 	display: grid;
 	gap: 8px;

@@ -1,8 +1,10 @@
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Modal } from './Modal.js';
 import { useSettingsDraft } from './SettingsNavigation.js';
+import dialogStyles from '../styles/bots.module.css';
 import styles from '../styles/background-work.module.css';
 import css from '../styles/background-work.module.css?inline';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
 import type { BotRecord } from '../../shared/schema.js';
 import type { BackgroundActions, BackgroundTask } from '../background-work-state.js';
 export type BackgroundKey = `background.${'title' | 'hint' | 'empty' | 'refresh' | 'open' | 'stop' | 'stopAll' | 'stopConfirm' | 'supplement' | 'queue' | 'steer' | 'input' | 'running' | 'inactive' | 'unknown' | 'error' | 'recovery' | 'runningOnly'}`;
@@ -13,9 +15,15 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
   const state = useSyncExternalStore(source.catalog.subscribe, source.catalog.getSnapshot);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmStopAll, setConfirmStopAll] = useState(false);
   const [selected, setSelected] = useState<BackgroundTask>();
   const [text, setText] = useState('');
   const [delivery, setDelivery] = useState<'queue' | 'steer'>('queue');
+  const radioName = useId();
+  const actionLabel = (key: 'actions.cancel' | 'actions.close', fallback: string) => {
+    const value = (t as (name: string) => string | undefined)(key);
+    return value && value !== key ? value : fallback;
+  };
   useSettingsDraft(!!text.trim() || busy);
   useEffect(() => { void source.catalog.refresh(); return () => source.dispose(); }, [source]);
   const perform = async (action: () => Promise<void>) => {
@@ -29,7 +37,7 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
     {(state.error || state.tasks.some(task => task.running === undefined)) && <p>{t('background.recovery')}</p>}
     <Button type="button" disabled={busy} onClick={() => { void perform(() => source.catalog.refresh()); }}>{t('background.refresh')}</Button>
     <Button type="button" disabled={busy || !state.tasks.some(task => task.running !== false && task.address.mode === 'continuable')}
-      onClick={() => { if (window.confirm(t('background.stopConfirm'))) void perform(() => source.stopAll()); }}>{t('background.stopAll')}</Button>
+      onClick={() => setConfirmStopAll(true)}>{t('background.stopAll')}</Button>
     {(error || state.error) && <p role="alert">{t('background.error')}</p>}
     {state.loaded && !state.tasks.length && <p>{t('background.empty')}</p>}
     <ul>{state.tasks.map(task => <li key={task.address.childSessionId}>
@@ -45,9 +53,21 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
       await source.supplement(selected, text, delivery); setSelected(undefined); setText('');
     }); }}>
       <label>{t('background.input')} · {selected.label}<textarea required value={text} onChange={event => setText(event.target.value)} /></label>
-      <label><input type="radio" checked={delivery === 'queue'} onChange={() => setDelivery('queue')} />{t('background.queue')}</label>
-      <label><input type="radio" checked={delivery === 'steer'} onChange={() => setDelivery('steer')} />{t('background.steer')}</label>
+      <label><input type="radio" name={radioName} checked={delivery === 'queue'} onChange={() => setDelivery('queue')} />{t('background.queue')}</label>
+      <label><input type="radio" name={radioName} checked={delivery === 'steer'} onChange={() => setDelivery('steer')} />{t('background.steer')}</label>
       <Button type="submit" disabled={busy || !text.trim() || !state.tasks.some(task => task.address.childSessionId === selected.address.childSessionId && task.running === true)}>{t('background.supplement')}</Button>
     </form>}
+    {confirmStopAll && <Modal title={t('background.stopAll')} closeLabel={actionLabel('actions.close', 'Close')} busy={busy} onClose={() => setConfirmStopAll(false)}>
+      <div className={dialogStyles.editorBody}>
+        <p>{t('background.stopConfirm')}</p>
+      </div>
+      <footer className={dialogStyles.dialogFooter}>
+        <Button disabled={busy} onClick={() => setConfirmStopAll(false)}>{actionLabel('actions.cancel', 'Cancel')}</Button>
+        <Button className={dialogStyles.dangerButton} disabled={busy} onClick={() => {
+          setConfirmStopAll(false);
+          void perform(() => source.stopAll());
+        }}>{t('background.stopAll')}</Button>
+      </footer>
+    </Modal>}
   </section>;
 }

@@ -20,9 +20,11 @@ import { groupQuestionDraft } from '../group-recall.js';
 import { BotAvatar } from './BotAvatar.js';
 import { GroupAvatar } from './GroupAvatar.js';
 import { GroupStatisticsBar } from './GroupStatistics.js';
+import { Modal } from './Modal.js';
 import { RetainedPanel } from './RetainedPanel.js';
 import { FollowUpPanel, type FollowUpNavigation } from '../proactive/FollowUpPanel.js';
 import { followUpSessionTarget } from '../proactive/follow-up-state.js';
+import dialogStyles from '../styles/bots.module.css';
 import css from '../styles/groups.module.css?inline';
 import styles from '../styles/groups.module.css';
 
@@ -107,7 +109,7 @@ export function GroupMembersList({ summary, actions, bots, onOpenBot, onEdit, op
         {canEditMembers(view) && <Menu open={memberMenu === member.id} onClose={() => setMemberMenu(undefined)} align="end" portal autoFocus
           anchor={<Button variant="ghost" size="sm" aria-label={t('execution.memberActions', { name })} aria-haspopup="menu" aria-expanded={memberMenu === member.id}
             onClick={event => { menuTrigger.current = event.currentTarget; setMemberMenu(memberMenu === member.id ? undefined : member.id); }}>···</Button>}
-          items={[{ id: 'remove', label: t('groups.roster.remove'), disabled: Boolean(snapshot?.error) }]}
+          items={[{ id: 'remove', label: t('groups.roster.remove'), disabled: Boolean(snapshot?.error), danger: true }]}
           onSelect={() => { setMemberMenu(undefined); menuTrigger.current?.focus({ preventScroll: true }); setRemoving({ view, member }); }} />}
       </article>;
     })}
@@ -152,6 +154,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
   const [menu, setMenu] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement | null>(null);
   const [deleting, setDeleting] = useState<GroupRecord>();
+  const [archiving, setArchiving] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const navigation = useRef(new AbortController());
   useEffect(() => {
@@ -173,6 +176,7 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
     setMenu(false); setBusy(true); setError(false);
     try {
       unwrapGroup(await actions.remote().archive(groupKey(view.group), view.group.revision));
+      setArchiving(false);
       await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
     } catch { setError(true); }
     finally { setBusy(false); }
@@ -219,16 +223,16 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
       <div className={styles.overviewActions}>
         <Button variant="primary" disabled={busy} onClick={() => { void open(); }}>{t('groups.open')}</Button>
         {onEdit && <Button variant="outline" disabled={busy || !!snapshot.error || !canEditMembers(view)} onClick={() => onEdit(view)}>{t('groups.roster.manage')}</Button>}
-        <Menu open={menu} onClose={() => setMenu(false)} align="end"
+        <Menu open={menu} onClose={() => setMenu(false)} align="end" portal autoFocus
           anchor={<Button variant="ghost" aria-label={t('card.more')} aria-haspopup="menu" aria-expanded={menu} onClick={event => { menuTrigger.current = event.currentTarget; setMenu(!menu); }}>···</Button>}
-          items={[{ id: 'teams', label: t('teams.title') }, { id: 'archive', label: t('groups.archive'), disabled: busy || view.group.archived },
-            { id: 'delete', label: t('groups.delete'), disabled: busy }]}
+          items={[{ id: 'teams', label: t('teams.title') }, { id: 'archive', label: t('groups.archive'), disabled: busy || view.group.archived, danger: true },
+            { id: 'delete', label: t('groups.delete'), disabled: busy, danger: true }]}
           onSelect={id => {
             setMenu(false);
             menuTrigger.current?.focus({ preventScroll: true });
             if (id === 'teams') setTeamsOpen(true);
             else if (id === 'delete') (onDelete ?? setDeleting)(view.group);
-            else if (id === 'archive') void archive();
+            else if (id === 'archive') setArchiving(true);
           }} />
       </div>
     </header>}
@@ -277,6 +281,16 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
       {!showHeader && <Button variant="outline" disabled={busy} onClick={() => (onDelete ?? setDeleting)(view.group)}>{t('groups.delete')}</Button>}
     </RetainedPanel>
     {deleting && <GroupDeleteDialog group={deleting} actions={actions} onClose={() => setDeleting(undefined)} onDeleted={onDeleted} t={t} />}
+    {archiving && <Modal title={t('groups.archiveConfirmTitle')} busy={busy} onClose={() => setArchiving(false)} t={t}>
+      <div className={dialogStyles.editorBody}>
+        <p>{t('groups.archiveConfirm', { name: view.group.name })}</p>
+        {error && <p role="alert" className={dialogStyles.error}>{t('groups.conflict')}</p>}
+      </div>
+      <footer className={dialogStyles.dialogFooter}>
+        <Button disabled={busy} onClick={() => setArchiving(false)}>{t('actions.cancel')}</Button>
+        <Button className={dialogStyles.dangerButton} disabled={busy || view.group.archived} onClick={() => { void archive(); }}>{t('groups.archive')}</Button>
+      </footer>
+    </Modal>}
   </article>;
 }
 
@@ -286,7 +300,7 @@ function GroupPermissionLabel({ state, t }: { state: GroupPermissionState } & Pr
   const key = snapshot.currentValue === 'read-only' ? 'groups.permissionReadOnly' : snapshot.currentValue === 'workspace-write'
     ? 'groups.permissionWorkspaceWrite' : snapshot.currentValue === 'danger-full-access' ? 'groups.permissionFull'
     : snapshot.currentValue === 'auto' ? 'groups.permissionAuto' : undefined;
-  return <span>{t(key ?? 'groups.permission')}: {key ? t(key) : snapshot.currentValue}</span>;
+  return <span>{t('groups.permission')}: {key ? t(key) : snapshot.currentValue}</span>;
 }
 
 export function GroupMembersView({ view, bots, actions, active = true, onOpenBot, onAskBot, executionBridge, t }: {
@@ -358,7 +372,7 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
         ...(bot && onOpenBot ? [{ id: 'profile', label: t('chat.profile') }] : []),
         ...(delivery?.childSessionId && executionBridge ? [{ id: 'execution', label: t('execution.viewDetails') }] : []),
         ...(bot && onAskBot ? [{ id: 'ask', label: t('groups.askInChat'), disabled: unavailable || !!asking }] : []),
-        ...(actions && canEditMembers(view) ? [{ id: 'remove', label: t('groups.roster.remove') }] : []),
+        ...(actions && canEditMembers(view) ? [{ id: 'remove', label: t('groups.roster.remove'), danger: true }] : []),
       ];
       return <article key={member.id} className={styles.memberOverviewRow} data-group-member={member.id}>
         {bot ? <BotAvatar bot={bot} size={36} /> : <GroupAvatar size={36} />}
@@ -375,7 +389,7 @@ export function GroupMembersView({ view, bots, actions, active = true, onOpenBot
           {askError === member.id && <p role="alert">{t('groups.askFailed')}</p>}
         </div>
         {items.length > 0 && <div className={styles.memberOverviewActions}>
-          <Menu open={menu === member.id} onClose={() => setMenu(undefined)} align="end" items={items}
+          <Menu open={menu === member.id} onClose={() => setMenu(undefined)} align="end" portal autoFocus items={items}
             anchor={<Button variant="ghost" className={styles.quietAction} aria-label={t('execution.memberActions', { name })}
               aria-haspopup="menu" aria-expanded={menu === member.id} onClick={event => { memberMenuTrigger.current = event.currentTarget; setMenu(menu === member.id ? undefined : member.id); }}>···</Button>}
             onSelect={id => {

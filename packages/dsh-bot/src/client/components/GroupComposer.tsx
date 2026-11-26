@@ -4,15 +4,17 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { createGroupTrigger, GROUP_COMMAND_SOURCE, type GroupCommandSource } from '../group-trigger.js';
 import { reconcileMentionBindings, type MentionTarget, type MentionBinding } from '../group-mentions.js';
 import styles from '../styles/groups.module.css';
-export function GroupComposerInput({ sessionId, text, bindings, targets, inputRef, commands, commandLauncher, onChange, onSubmit, t }: {
+export function GroupComposerInput({ sessionId, text, bindings, targets, inputRef, commands, commandLauncher, onCommandMenuOpenChange, onChange, onSubmit, t }: {
   sessionId: string; text: string; bindings: MentionBinding[]; targets: MentionTarget[]; inputRef: RefObject<HTMLTextAreaElement>;
   /** Entries of the leading '/' menu; absent leaves '/' as plain text. */
   commands?: GroupCommandSource;
   /** Receives a toggle for the '/' menu, used by the composer's add button. */
   commandLauncher?: MutableRefObject<(() => void) | undefined>;
+  onCommandMenuOpenChange?(open: boolean): void;
   onChange(text: string, bindings: MentionBinding[]): void; onSubmit(): void;
 } & PropsLocale<'dsh-bot'>) {
-  const latest = useRef({ text, bindings, targets, commands, onChange }); latest.current = { text, bindings, targets, commands, onChange };
+  const latest = useRef({ text, bindings, targets, commands, onChange, t }); latest.current = { text, bindings, targets, commands, onChange, t };
+  const containerRef = useRef<HTMLDivElement>(null);
   const revision = useRef(0), composing = useRef(false), composition = useRef<ReturnType<typeof observeComposition>>(), menuId = useId();
   const [bridge] = useState(() => createGroupTrigger(sessionId, () => latest.current.targets, (span, memberId, insertion) => {
     const current = latest.current;
@@ -24,7 +26,7 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
     revision.current++; current.onChange(next, nextBindings);
     queueMicrotask(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(span.start + insertion.length, span.start + insertion.length); });
     return true;
-  }, () => latest.current.commands));
+  }, () => latest.current.commands, () => latest.current.t('groups.everyone')));
   useEffect(() => { const input = inputRef.current; if (!input) return; composition.current = observeComposition(input.ownerDocument); return () => { composition.current?.dispose(); bridge.dispose(); }; }, [bridge, inputRef]);
   useEffect(() => {
     if (!commandLauncher) return;
@@ -76,11 +78,23 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
         : <div role="presentation" key={`${group.source}:`}>{options}</div>);
     }
   }
-  return <div className={styles.mentionInput}>
+  const menuVisible = menu.open && rows.length > 0;
+  const commandMenuOpen = menuVisible && commandMenu;
+  useEffect(() => {
+    onCommandMenuOpenChange?.(commandMenuOpen);
+  }, [commandMenuOpen, onCommandMenuOpenChange]);
+  useEffect(() => () => { onCommandMenuOpenChange?.(false); }, [onCommandMenuOpenChange]);
+  return <div ref={containerRef} className={styles.mentionInput}>
     <label><span className={styles.srOnly}>{t('groups.message')}</span><textarea ref={inputRef} value={text} placeholder={t(commands ? 'groups.pickCommands' : 'groups.pick')}
-      aria-controls={menu.open ? menuId : undefined} aria-autocomplete="list" aria-activedescendant={menu.open && menu.highlight ? `${menuId}-${menu.highlight.source}-${menu.highlight.index}` : undefined}
+      role="combobox" aria-expanded={menuVisible} aria-haspopup="listbox"
+      aria-controls={menuVisible ? menuId : undefined} aria-autocomplete="list" aria-activedescendant={menuVisible && menu.highlight ? `${menuId}-${menu.highlight.source}-${menu.highlight.index}` : undefined}
       onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; track(); }}
       onSelect={track} onClick={track}
+      onBlur={event => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && containerRef.current?.contains(next)) return;
+        bridge.controller.dismiss();
+      }}
       onChange={event => { const next = event.target.value; revision.current++; onChange(next, reconcileMentionBindings(text, next, bindings)); bridge.track(next, event.target.selectionStart, revision.current); }}
       onKeyDown={event => {
         if (composition.current?.guards(event.nativeEvent) || composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -89,7 +103,7 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
         if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSubmit(); }
       }}
     /></label>
-    {menu.open && rows.length > 0 && <MenuSurface id={menuId} role="listbox" aria-label={t(commandMenu ? 'groups.commands' : 'groups.targets')}
+    {menuVisible && <MenuSurface id={menuId} role="listbox" aria-label={t(commandMenu ? 'groups.commands' : 'groups.targets')}
       className={commandMenu ? `${styles.mentionMenu} ${styles.commandMenu}` : styles.mentionMenu} data-group-command-menu={commandMenu ? '' : undefined}>
       {rows}
     </MenuSurface>}

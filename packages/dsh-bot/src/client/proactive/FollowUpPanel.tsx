@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { subjectKey, type FollowUpAction, type FollowUpCard, type FollowUpOrigin, type Subject } from '../../shared/proactive/follow-up.js';
 import { GroupFollowUpContinue, type GroupFollowUpMember, type GroupFollowUpTransport } from './GroupFollowUpContinue.js';
 import { useFollowUpCatalog, useFollowUpVisibility, type FollowUpCommand, type FollowUpSource } from './follow-up-state.js';
+import { formatDateTime } from '../format.js';
 import styles from './follow-up.module.css';
 import css from './follow-up.module.css?inline';
 
@@ -190,7 +191,7 @@ function FollowUpRow({ row, detail, canChange, canForget, editCard, open, onWatc
       <p className={styles.meta}>{t(`followUp.source.${row.origin.kind}`)} · {t(`followUp.condition.${condition.kind}`)}
         {row.state !== 'open' && <> · {t(`followUp.history.${row.state}`)}</>}</p>
       {detail && row.when && <p>{t(`followUp.when.${row.when.kind}`)} · {t('followUp.when.original', { id: row.when.cardId })}</p>}
-      {detail && row.deadlineAt && <p>{t('followUp.when.deadline', { time: new Date(row.deadlineAt).toLocaleString() })}</p>}
+      {detail && row.deadlineAt && <p>{t('followUp.when.deadline', { time: formatDateTime(row.deadlineAt, t('activity.locale')) })}</p>}
       {detail && condition.kind === 'waiting-input' && <><p>{condition.wait.reason}</p><p>{condition.wait.request}</p></>}
       {detail && condition.kind === 'tracking' && condition.completion && <p>{t('followUp.completionValue', { value: condition.completion })}</p>}
       {detail && condition.kind === 'approval-pending' && <>

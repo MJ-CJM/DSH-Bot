@@ -140,7 +140,7 @@
 }
 .panel [role="alert"],
 .form [role="alert"] {
-  color: var(--dsw-alias-label-primary);
-  border-left: 3px solid var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-state-error-primary);
+  border-left: 3px solid var(--dsw-alias-state-error-primary);
   padding-left: 8px;
 }

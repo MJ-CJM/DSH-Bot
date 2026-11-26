@@ -8,7 +8,9 @@
 .actions, .settingsNav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .tabs { overflow-x: auto; min-width: 0; padding: 4px; }
 .tabs > div { min-width: max-content; }
-.page button { min-height: 44px; }
+@media (pointer: coarse) {
+  .page button { min-height: 44px; }
+}
 .section { padding-block: 16px; }
 .section h2 { margin: 0 0 12px; font-size: 18px; }
 .persona { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 75ch; }

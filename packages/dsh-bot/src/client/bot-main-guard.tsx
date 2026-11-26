@@ -1,8 +1,11 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotCatalog } from './state.js';
+import styles from './styles/groups.module.css';
+import css from './styles/groups.module.css?inline';
 
 export function unavailableBotMain(
   owner: Pick<ComposerChainProps, 'sessionId' | 'pendingInteraction'>,
@@ -25,10 +28,15 @@ export function registerBotMainGuard(ctx: Context, catalog: BotCatalog, onDetail
       return unavailableBotMain(owner, catalog.getSnapshot().entries, preset ?? undefined);
     },
   }, ({ matched, t }: { matched: { botId: string } } & PropsLocale<'dsh-bot'>) =>
-    <section data-bot-main-unavailable={matched.botId}>
-      <p role="status">{t('chat.identityUnavailable')}</p>
-      <button type="button" onClick={() => { void catalog.refresh(); }}>{t('bots.refresh')}</button>
-      <button type="button" onClick={() => onDetails(matched.botId)}>{t('chat.profile')}</button>
+    <section className={`${styles.panel} ${styles.workspace} ${styles.fallbackComposer}`} data-bot-main-unavailable={matched.botId}>
+      <style>{css}</style>
+      <div className={styles.fallbackCard}>
+        <p role="status" className={styles.fallbackMessage}>{t('chat.identityUnavailable')}</p>
+        <div className={styles.bar}>
+          <Button variant="outline" size="sm" onClick={() => { void catalog.refresh(); }}>{t('bots.refresh')}</Button>
+          <Button variant="ghost" size="sm" onClick={() => onDetails(matched.botId)}>{t('chat.profile')}</Button>
+        </div>
+      </div>
     </section>,
   )), 'dsh-bot: scoped unavailable Bot composer');
 }

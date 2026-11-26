@@ -11,16 +11,24 @@ export interface ModalProps {
   busy?: boolean;
   onClose: () => void;
   children: ReactNode;
-  t: PropsLocale<'dsh-bot'>['t'];
+  closeLabel?: string;
+  t?: PropsLocale<'dsh-bot'>['t'];
 }
 
 /** Native layer owns portal, inert background, Escape and focus restoration. */
-export function Modal({ title, titleAction, description, busy, onClose, children, t }: ModalProps) {
+export function Modal({ title, titleAction, description, busy, onClose, children, closeLabel, t }: ModalProps) {
   return <NativeModal open headless title={title} className={styles.dialog} onClose={() => { if (!busy) onClose(); }}>
     <style>{css}</style>
     <header className={styles.dialogHeader}>
-      <h2>{titleAction ? <Button variant="ghost" disabled={busy} title={titleAction.label} aria-label={titleAction.label} onClick={titleAction.onClick}>{title}</Button> : title}</h2>
-      <Button disabled={busy} onClick={onClose}>{t('actions.close')}</Button>
+      <h2>{title}</h2>
+      <div className={styles.dialogHeaderActions}>
+        {titleAction && (
+          <Button variant="ghost" size="sm" disabled={busy} title={titleAction.label} onClick={titleAction.onClick}>
+            {titleAction.label}
+          </Button>
+        )}
+        <Button disabled={busy} onClick={onClose}>{closeLabel ?? t?.('actions.close') ?? 'Close'}</Button>
+      </div>
     </header>
     {description && <p className={styles.dialogDescription}>{description}</p>}
     {children}
