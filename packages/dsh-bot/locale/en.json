@@ -2066,7 +2066,16 @@
     "groups.roster.confirmAddSave": "Confirm additions and save",
     "groups.roster.removeTitle": "Remove {name} from the group?",
     "groups.roster.stopRemoved": "Saving stops {name}’s current execution in this group. Other members continue.",
-    "groups.roster.alreadyRemoved": "This member has already left the group. No further removal is needed."
+    "groups.roster.alreadyRemoved": "This member has already left the group. No further removal is needed.",
+    "groups.mentionRequired": "This group only responds when you @mention a member or reply to a message. Nothing was sent; your draft is kept.",
+    "groups.messageTooLong": "Message is too long for a single group turn. Nothing was sent; shorten your draft and try again.",
+    "groups.supplementEnded": "That member has already finished this round, so the supplement was not sent. Your draft is kept — close the supplement bar to send it as a new message.",
+    "groups.supplementEndedShort": "Finished — close to send as a new message",
+    "groups.sendInvalid": "Message was not sent because the request is invalid or expired (for example, the text exceeds the group context limit, or a quoted message or attachment expired). Your draft is kept.",
+    "groups.sendUnavailable": "Message was not sent because a selected member Bot or host model service is currently unavailable. Your draft is kept.",
+    "groups.sendDenied": "Message was not sent because this group action is not currently permitted. Your draft is kept.",
+    "groups.sendUnsupported": "Message was not sent because the current host runtime does not support this group action. Your draft is kept.",
+    "groups.sendNotFound": "Message was not sent because the group or target turn could not be found. Refresh and check the group."
   },
   "config": {
     "supergroup": {

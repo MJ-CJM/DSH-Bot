@@ -22,7 +22,7 @@ import { isGroupDelegation, matchAddressedBot, matchGroupAddress, relayNeedsTopi
 import { resolveGroupMentions } from '../group-mentions.js';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
-import { GROUP_ATTACHMENT_LIMIT, groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
+import { GROUP_ATTACHMENT_LIMIT, GROUP_TEXT_MAX_BYTES, groupKey, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
 import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { GroupRouteUnavailable, type GroupActions, type GroupDraft, unwrapGroup } from '../groups-state.js';
@@ -30,8 +30,23 @@ import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
 const sendErrors = ['memory-text-required', 'mention-not-member', 'guest-ambiguous', 'guest-unavailable', 'guest-changed', 'relay-topic-required', 'member-limit', 'group-data-blocked', 'conflict'] as const;
+const definitiveRejectionCodes = ['memory-text-required', 'mention-not-member', 'guest-ambiguous', 'guest-unavailable', 'guest-changed', 'relay-topic-required', 'member-limit', 'group-data-blocked', 'invalid', 'unavailable', 'approval-denied', 'unsupported', 'not-found'] as const;
+const uncertainDraftErrors = new Set<NonNullable<GroupDraft['errorCode']>>(['send-failed', 'conflict', 'supergroup-conflict', 'route-unavailable']);
+const safeErrorCode = (error: unknown): string | undefined => {
+  if (typeof error !== 'object' || error === null || !('code' in error) || typeof error.code !== 'string') return;
+  return /^[a-z0-9-]+(?:\/[a-z0-9-]+)+$/i.test(error.code) ? error.code : undefined;
+};
+const isDefinitivePreDispatchRejection = (error: unknown): boolean =>
+  definitiveRejectionCodes.some(code => hasOperationCode(error, code)) || safeErrorCode(error) === 'gateway/input-invalid';
+const clearDefinitiveError = (value: GroupDraft): GroupDraft =>
+  !value.error || !value.errorCode || uncertainDraftErrors.has(value.errorCode)
+    ? value
+    : { ...value, error: false, errorCode: undefined, errorDiagnostic: undefined };
 const draftErrorText = {
   'mention-not-member': 'groups.mentionMembersOnly',
+  'mention-required': 'groups.mentionRequired',
+  'message-too-long': 'groups.messageTooLong',
+  'followup-ended': 'groups.supplementEnded',
   'memory-text-required': 'groups.memoryStatus.needsText',
   'relay-topic-required': 'groups.relay.topicRequired',
   'guest-ambiguous': 'groups.guest.ambiguous',
@@ -43,6 +58,11 @@ const draftErrorText = {
   'supergroup-conflict': 'botMode.inputConflict',
   'supergroup-unsupported': 'botMode.inputUnsupported',
   'member-limit': 'groups.memberLimitFailed',
+  'send-invalid': 'groups.sendInvalid',
+  'send-unavailable': 'groups.sendUnavailable',
+  'send-denied': 'groups.sendDenied',
+  'send-unsupported': 'groups.sendUnsupported',
+  'send-not-found': 'groups.sendNotFound',
   'send-failed': 'groups.export.sendFailed',
   conflict: 'groups.conflict',
 } as const satisfies Record<NonNullable<GroupDraft['errorCode']>, string>;
@@ -564,17 +584,43 @@ export function GroupConversation({
       }).finally(() => uploadControllers.current.delete(id));
     }
   };
-  const perform = async (work: () => Promise<unknown>) => {
+  const classifyError = (error: unknown, isFollowup = false, mentionMissingTarget = false): NonNullable<GroupDraft['errorCode']> => {
+    if (error instanceof GroupRouteUnavailable) return 'route-unavailable';
+    const mapped = sendErrors.find(code => hasOperationCode(error, code));
+    if (mapped) return mapped;
+    if (hasOperationCode(error, 'unavailable')) return isFollowup ? 'followup-ended' : 'send-unavailable';
+    if (hasOperationCode(error, 'invalid') || safeErrorCode(error) === 'gateway/input-invalid')
+      return mentionMissingTarget ? 'mention-required' : 'send-invalid';
+    if (hasOperationCode(error, 'approval-denied')) return 'send-denied';
+    if (hasOperationCode(error, 'unsupported')) return 'send-unsupported';
+    if (hasOperationCode(error, 'not-found')) return 'send-not-found';
+    return 'send-failed';
+  };
+  const perform = async (work: () => Promise<unknown>, options: { isFollowup?: boolean; mentionMissingTarget?: boolean } = {}) => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
     setError(false);
-    actions.patchDraft(rootId, value => ({ ...value, errorCode: undefined }));
+    actions.patchDraft(rootId, value => ({ ...value, errorCode: undefined, errorDiagnostic: undefined }));
     try {
       await work();
       await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
     } catch (error) {
-      actions.patchDraft(rootId, value => ({ ...value, errorCode: value.errorCode ?? (error instanceof GroupRouteUnavailable ? 'route-unavailable' : sendErrors.find(code => hasOperationCode(error, code)) ?? 'send-failed') }));
+      const diagnostic = safeErrorCode(error);
+      const fallback = classifyError(error, options.isFollowup, options.mentionMissingTarget);
+      let finalCode: NonNullable<GroupDraft['errorCode']> = fallback;
+      actions.patchDraft(rootId, value => {
+        finalCode = value.errorCode ?? fallback;
+        return {
+          ...value,
+          errorCode: finalCode,
+          errorDiagnostic: finalCode === 'send-failed' ? diagnostic : undefined,
+        };
+      });
+      if (finalCode === 'send-failed') {
+        if (diagnostic) console.warn('[dsh-bot] Group operation did not complete', { code: diagnostic });
+        else console.warn('[dsh-bot] Group operation did not complete');
+      }
       setError(true);
     } finally {
       lock.current = false;
@@ -611,6 +657,12 @@ export function GroupConversation({
   const memoryIntent = automaticGroup ? undefined : memoryOnlyIntent(draft);
   const suggestedQuote = memoryIntent === 'reference' && !replyTo && sharedDraft.memoryReferenceId
     ? view?.messages.find(row => row.id === sharedDraft.memoryReferenceId) : undefined;
+  const followupDelivery = sharedDraft.followup ? view?.deliveries.find(row => row.id === sharedDraft.followup?.deliveryId) : undefined;
+  const followupTurn = sharedDraft.followup ? view?.turns.find(row => row.id === sharedDraft.followup?.turnId) : undefined;
+  const followupEnded = Boolean(sharedDraft.followup && (
+    (followupDelivery && (followupDelivery.state !== 'running' || followupDelivery.skipped)) ||
+    (followupTurn && ['completed', 'partial', 'cancelled', 'idle', 'recovery_needed'].includes(followupTurn.state))
+  ));
   const memoryConflict = Boolean(sharedDraft.followup && (sharedDraft.memoryStatusOnly || memoryIntent) ||
     sharedDraft.memoryStatusOnly && replyTo && !memoryIntent);
   const canSend = Boolean(view && !memoryConflict && uploads.length <= GROUP_ATTACHMENT_LIMIT && !overMemberLimit && !busy && !view.group.archived && !view.reason && view.group.state === 'ready' &&
@@ -667,6 +719,14 @@ export function GroupConversation({
     }
     if (!canSend || lock.current || !view) return;
     setGuestIssue(undefined);
+    if (followupEnded) {
+      actions.patchDraft(rootId, value => ({ ...value, error: true, errorCode: 'followup-ended', errorDiagnostic: undefined }));
+      return;
+    }
+    if (new TextEncoder().encode(draft.trim()).length > GROUP_TEXT_MAX_BYTES) {
+      actions.patchDraft(rootId, value => ({ ...value, error: true, errorCode: 'message-too-long', errorDiagnostic: undefined }));
+      return;
+    }
     if (memoryIntent === 'reference' && !replyTo && !suggestedQuote && !uploads.length) {
       setGuestIssue('groups.memoryStatus.needsText'); return;
     }
@@ -694,6 +754,8 @@ export function GroupConversation({
     }
     setMentionIssues(resolved.issues);
     if (resolved.issues.length) return;
+    const addressedMember = addressed?.kind === 'match' && memberBots.includes(addressed.bot);
+    const mentionMissingTarget = !automaticGroup && !round && !sharedDraft.followup && !sharedDraft.memoryStatusOnly && !memoryIntent && !guest && !addressedMember && !replyAuthor && view.group.mode === 'mention' && resolved.memberIds.length === 0;
     if (mentions.some(id => !resolved.memberIds.includes(id)) || (sharedDraft.followup && (uploads.length || resolved.memberIds.length || replyTo))) { setError(true); return; }
     const reference = replyTo ?? suggestedQuote;
     const base = {
@@ -747,6 +809,10 @@ export function GroupConversation({
             actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
               ? { ...current, operation: undefined, errorCode: 'membership-changed' } : current);
           }
+        } else if (!automaticGroup && isDefinitivePreDispatchRejection(cause)) {
+          actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
+            ? { ...current, operation: undefined } : current);
+          if (pending.request.followup && hasOperationCode(cause, 'unavailable')) void catalog.refresh();
         }
         throw cause;
       }
@@ -762,7 +828,7 @@ export function GroupConversation({
         setUploads(current => current.filter(row => !row.receiptId || !pending.request.fileReceiptIds?.includes(row.receiptId)));
         operation.current = undefined;
         if (alive.current) setFilesOverLimit(false);
-    }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
+    }, { isFollowup: Boolean(pending.request.followup), mentionMissingTarget }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
   };
   if (!view)
     return (
@@ -785,7 +851,7 @@ export function GroupConversation({
       {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit })}</p>}
       {(error || snapshot.error) && <p role="alert">{t(error ? draftErrorText[sharedDraft.errorCode ?? 'conflict'] : 'groups.disconnected', {
         limit, members: members.map(m => lookup(m.id)?.name ?? m.bot.botId).join(', '),
-      })}</p>}
+      })}{error && sharedDraft.errorCode === 'send-failed' && sharedDraft.errorDiagnostic ? ` (${sharedDraft.errorDiagnostic})` : ''}</p>}
       {(view.reason || view.group.state !== 'ready') && <p role="alert">{t('groups.recovery')}</p>}
       {!workspace && <>
       <h3>{view.group.name}</h3>
@@ -866,7 +932,7 @@ export function GroupConversation({
         {!automaticGroup && sharedDraft.memoryStatusOnly && <div className={styles.memoryStatusTag} data-group-memory-status="" role="status" title={t('groups.memoryStatus.hint')}>
           <IconDataOutlineRegular size={16} /><span>{t('groups.memoryStatus.toggle')}</span>
           <Button variant="ghost" size="sm" type="button" data-group-memory-cancel="" aria-label={t('groups.memoryStatus.cancel')} title={t('groups.memoryStatus.cancel')}
-            disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => { actions.patchDraft(rootId, value => ({ ...value, memoryStatusOnly: undefined })); composer.current?.focus({ preventScroll: true }); }}>×</Button>
+            disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => { actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, memoryStatusOnly: undefined })); composer.current?.focus({ preventScroll: true }); }}>×</Button>
         </div>}
         {suggestedQuote && <div className={styles.replyPreview} role="status" data-group-memory-reference="">
           <strong>{t('groups.memoryStatus.reference', { name: suggestedQuote.speaker?.name ?? t('groups.you') })}</strong>
@@ -876,16 +942,19 @@ export function GroupConversation({
         {replyTo && <div className={styles.replyPreview} role="status">
           <strong>{t('groups.replying', { name: replyTo.speaker?.name ?? t('groups.you') })}</strong>
           <span>{groupMessagePreview(replyTo.text)}</span>
-          <button type="button" onClick={() => { setReplyTo(undefined); composer.current?.focus({ preventScroll: true }); }}>
+          <button type="button" onClick={() => { actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, replyTo: undefined })); composer.current?.focus({ preventScroll: true }); }}>
             {t('groups.clearReply')}
           </button>
         </div>}
-        {sharedDraft.followup && <div className={styles.replyPreview} role="status">{t('groups.supplement')} · {lookup(view.deliveries.find(row => row.id === sharedDraft.followup?.deliveryId)?.memberId ?? '')?.name ?? t('groups.unavailable')}
-          <button type="button" onClick={() => actions.patchDraft(rootId, value => ({ ...value, followup: undefined }))}>{t('groups.close')}</button></div>}
+        {sharedDraft.followup && <div className={styles.replyPreview} role="status">
+          {t('groups.supplement')} · {lookup(followupDelivery?.memberId ?? '')?.name ?? t('groups.unavailable')}
+          {followupEnded && <span> · {t('groups.supplementEndedShort')}</span>}
+          <button type="button" onClick={() => actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, followup: undefined }))}>{t('groups.close')}</button>
+        </div>}
         <GroupComposerInput sessionId={rootId} text={draft} bindings={sharedDraft.mentionBindings ?? []} targets={mentionTargets} inputRef={composer} t={t}
           commands={commands} commandLauncher={commandLauncher}
           onChange={(text, mentionBindings) => {
-            actions.patchDraft(rootId, value => ({ ...value, text, mentionBindings, mentions: [],
+            actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, text, mentionBindings, mentions: [],
               memoryReferenceId: !automaticGroup && !value.replyTo && !value.followup && memoryOnlyIntent(text) === 'reference'
                 ? (memoryOnlyIntent(value.text) === 'reference' ? value.memoryReferenceId : singleMemoryReference(view)?.id) : undefined }));
             setMentionIssues([]); setGuestIssue(undefined);
@@ -903,7 +972,7 @@ export function GroupConversation({
             <button type="button" disabled={busy} aria-label={t('groups.removeAttachment', { name: upload.name })} onClick={() => {
               setFilesOverLimit(false);
               uploadControllers.current.get(upload.id)?.abort();
-              setUploads(current => current.filter(row => row.id !== upload.id));
+              actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, uploads: value.uploads.filter(row => row.id !== upload.id) }));
             }}>{t('groups.removeAttachment', { name: upload.name })}</button>
           </li>)}
         </ul>}

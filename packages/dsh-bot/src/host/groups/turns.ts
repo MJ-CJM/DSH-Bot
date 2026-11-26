@@ -19,6 +19,14 @@ import type { GroupMessages } from './messages.js';
 import type { GroupTurnRunner } from './turn-runner.js';
 import { ownerFollowUpChoice, verifyOwnerFollowUpChoice } from './owner-follow-up.js';
 import { checkSupergroup, checkSupergroupEnqueue, type SupergroupAuthority } from './supergroup-admission.js';
+function errorSummary(error: unknown) {
+  const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+  return {
+    ...(code ? { code } : {}),
+    name: error instanceof Error ? error.name : typeof error,
+    message: (error instanceof Error ? error.message : String(error)).slice(0, 200),
+  };
+}
 export class GroupTurns {
   constructor(
     private state: GroupState,
@@ -325,7 +333,10 @@ export class GroupTurns {
         if (restricted) this.state.proactiveChecks.set(id, restricted.check);
         this.schedule(accepted);
         return accepted;
-      } catch {
+      } catch (error) {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group turn acceptance failed; marking recovery_needed', {
+          groupId: g.id, turnId: id, ...errorSummary(error),
+        });
         await this.state.putTurn({ ...turn, state: 'recovery_needed' });
         throw new OperationError('recovery-needed');
       }
@@ -346,7 +357,10 @@ export class GroupTurns {
     const limit = accepted.protocol === 2 ? Number.MAX_SAFE_INTEGER : 1;
     const running = this.state.schedule(accepted.group.groupId, limit, async () => {
       try { await this.runner.execute(id); }
-      catch {
+      catch (error) {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group turn execution failed; marking recovery_needed', {
+          groupId: accepted.group.groupId, turnId: id, ...errorSummary(error),
+        });
         await this.state.queue.run(async () => {
           const t = this.state.table('turns').get(id);
           if (t && !terminal(t)) await this.state.putTurn({ ...t, state: 'recovery_needed' });
@@ -424,7 +438,10 @@ export class GroupTurns {
       const current = need(this.state.table('turns').get(t.id));
       return this.state.putTurn({ ...current, followups: current.followups?.map(row => row.operationId === input.operationId
         ? { ...row, state: 'accepted', childMessageId: childMessageId.messageId } : row) });
-    } catch {
+    } catch (error) {
+      this.state.ctx.logger?.warn?.('[dsh-bot] Group follow-up dispatch failed; marking unknown', {
+        groupId: g.id, turnId: t.id, deliveryId: d.id, ...errorSummary(error),
+      });
       const current = need(this.state.table('turns').get(t.id));
       await this.state.putTurn({ ...current, followups: current.followups?.map(row => row.operationId === input.operationId
         ? { ...row, state: 'unknown' } : row) });

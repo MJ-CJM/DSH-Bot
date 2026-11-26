@@ -35,8 +35,10 @@ async function fixture(recovered?: SupergroupWork) {
   const members = [owner, peer].map((bot, index) => ({ id: `member-${index}`, bot, enabled: true }));
   const turns: { id: string; state: string; revision: number }[] = [], deliveries: { turnId: string; state: string }[] = [];
   const results: { id: string; text: string; turnId: string; authorKind: string }[] = [];
+  let earlierHistory: string[] = [];
   const groups = { setExpertHandler: () => () => {}, view: async () => ({ group, members, turns: structuredClone(turns), deliveries: structuredClone(deliveries),
-    messages: [...rootEvents.map(event => ({ id: (event.data as UserMessage).id, text: '', authorKind: 'user' })), ...results] }),
+    messages: [...rootEvents.map(event => ({ id: (event.data as UserMessage).id, text: '', authorKind: 'user' })), ...results], hasEarlier: earlierHistory.length > 0 }),
+    hasMessage: async (_key: unknown, id: string) => earlierHistory.includes(id),
     refreshSupergroupAuthority: async (_key: unknown, authority: SupergroupAuthority) => {
       await authority.check();
       expect(supergroupMetadata(authority)).toMatchObject({ originSessionId: 'main', originMessageId: 'original' });
@@ -75,7 +77,8 @@ async function fixture(recovered?: SupergroupWork) {
   return { service, ctx, key, current, send, wait, followups, rootEvents, mainEvents, agent, sent, labels, config,
     get maxActive() { return maxActive; }, get invalidations() { return invalidations; },
     hold: () => { hold = true; blocked = new Promise(resolve => { release = resolve; }); }, release: () => { hold = false; release?.(); },
-    bindElsewhere: () => { bound = 'other-main'; }, rejectFlow: () => { flowHeld = true; }, failFlush: () => { flush = false; } };
+    bindElsewhere: () => { bound = 'other-main'; }, rejectFlow: () => { flowHeld = true; }, failFlush: () => { flush = false; },
+    addEarlierMessage: (id: string) => { earlierHistory = [...earlierHistory, id]; } };
 }
 
 test('owner input is durable native group text; exact replay is inert and changed operation conflicts', async () => {
@@ -173,6 +176,19 @@ test('unsupported fields/attachments, foreign member and private data-flow refus
     await expect(f.send('invalid-reply', 'text', 1, { replyTo: 'private-message' })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
     f.rejectFlow(); await expect(f.send('held')).rejects.toThrow('Private or unknown source held');
     expect(f.rootEvents).toEqual([]); expect(f.sent).toEqual([]); expect(f.current().groupInputs).toEqual([]);
+  } finally { await f.service.close(); }
+});
+
+test('replyTo accepts earlier group messages outside the latest 200-message page (#54)', async () => {
+  const f = await fixture();
+  try {
+    f.addEarlierMessage('historic-turn-1');
+    const accepted = await f.send('reply-earlier', 'Follow up on earlier finding', 1, { replyTo: 'historic-turn-1' });
+    expect(accepted.receipt.state).toBe('queued');
+    expect(accepted.receipt.replyTo).toBe('historic-turn-1');
+    await f.wait(() => f.followups.length === 1);
+    expect(f.sent[0]?.replyTo).toBe('historic-turn-1');
+    await expect(f.send('reply-missing', 'Missing target', f.current().revision, { replyTo: 'nonexistent-earlier' })).rejects.toMatchObject({ code: 'dsh-bot/invalid' });
   } finally { await f.service.close(); }
 });
 

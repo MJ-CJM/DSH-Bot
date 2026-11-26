@@ -192,4 +192,11 @@ export class GroupMessages {
       };
     });
   }
+  async hasMessage(key: GroupKey, messageId: string): Promise<boolean> {
+    return this.state.queue.run(async () => {
+      const g = this.state.record(key);
+      await this.roots.restore(g).catch(() => {});
+      return this.messages(g).some(m => m.id === messageId);
+    });
+  }
 }

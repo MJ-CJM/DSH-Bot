@@ -695,6 +695,9 @@ export class Supergroup {
     // Never hold the work queue while reading Groups: an in-flight expert may
     // hold the Groups queue while recording its request in this work.
     const view = await this.groups.view(input.group);
+    const replyValid = !input.replyTo
+      || view.messages.some(message => message.id === input.replyTo)
+      || (view.hasEarlier && typeof this.groups.hasMessage === 'function' && await this.groups.hasMessage(input.group, input.replyTo));
     let workId = input.workId, receipt!: SupergroupGroupInputReceipt;
     await this.serial.run(async () => {
       let work = this.read(input.workId);
@@ -713,7 +716,7 @@ export class Supergroup {
         throw new OperationError('approval-denied');
       if (input.memberIds && (new Set(input.memberIds).size !== input.memberIds.length || input.memberIds.some(id =>
         !view.members.some(member => member.id === id && member.enabled && member.removedAt === undefined)))) throw new OperationError('invalid');
-      if (input.replyTo && !view.messages.some(message => message.id === input.replyTo)) throw new OperationError('invalid');
+      if (!replyValid) throw new OperationError('invalid');
       const root = this.ctx.agents.get(SessionId(view.group.rootSessionId));
       if (!root) throw new OperationError('unavailable');
       const flow = outlets(this.registry);
@@ -735,7 +738,11 @@ export class Supergroup {
         receipt = { ...receipt, seq: Number(event.seq), state: conflict ? 'conflict' : 'queued',
           ...(conflict ? { reason: 'work-revision-conflict' } : { acceptedRevision: work.revision + 1 }) };
         work = await this.updateInput(work.id, input.operationId, () => receipt);
-      } catch {
+      } catch (error) {
+        this.ctx.logger?.warn?.('[dsh-bot] Supergroup group input dispatch failed; marking unknown', {
+          workId: work.id, groupId: input.group.groupId, operationId: input.operationId,
+          error: error instanceof Error ? `${error.name}: ${error.message.slice(0, 200)}` : String(error).slice(0, 200),
+        });
         receipt = { ...receipt, state: 'unknown', reason: 'input-storage-unconfirmed' };
         await this.updateInput(work.id, input.operationId, () => receipt); return;
       }

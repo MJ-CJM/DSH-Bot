@@ -796,3 +796,47 @@ it('member-only removal aborts precisely its active worker and cancels its pendi
     expect(view.members.filter(member => member.removedAt === undefined).map(member => member.bot)).toEqual([beta, delta]);
   } finally { await s.close(); }
 }));
+
+describe('group diagnostics and older message lookup (#54)', () => {
+  it('hasMessage finds earlier root messages beyond a small view page and returns false for unknown ids', () => withIntegrations(async f => {
+    const s = await fixture(f);
+    try {
+      const g = await s.createGroup(), key = groupKey(g);
+      await s.groups.send(key, { operationId: 'first-msg', text: 'first message', expectedMembershipRevision: 1 });
+      await s.settle(g);
+      await s.groups.send(key, { operationId: 'second-msg', text: 'second message', expectedMembershipRevision: 1 });
+      await s.settle(g);
+      const full = await s.groups.view(key);
+      const earliest = need(full.messages[0]);
+      const paged = await s.groups.view(key, { limit: 1 });
+      expect(paged.hasEarlier).toBe(true);
+      expect(paged.messages.some(message => message.id === earliest.id)).toBe(false);
+      await expect(s.groups.hasMessage(key, earliest.id)).resolves.toBe(true);
+      await expect(s.groups.hasMessage(key, 'nonexistent-message')).resolves.toBe(false);
+    } finally { await s.close(); }
+  }));
+  it('logs a redacted warning before throwing recovery-needed on follow-up dispatch failure', () => withIntegrations(async f => {
+    const s = await fixture(f, 30_000);
+    const warn = vi.spyOn(f.ctx.logger, 'warn');
+    const prompt = vi.fn(async () => { throw new Error('native-steer-timeout'); });
+    Object.assign(f.ctx.subagents, { prompt });
+    try {
+      s.setBehavior('hold');
+      const g = await s.createGroup(), key = groupKey(g), members = (await s.groups.view(key)).members;
+      const t = await s.groups.send(key, { operationId: 'log-turn', text: 'start', memberIds: [need(members[0]).id], expectedMembershipRevision: 1 });
+      await vi.waitFor(() => expect(s.calls).toHaveLength(1));
+      const d = need((await s.groups.view(key)).deliveries[0]);
+      const secretText = 'private-user-draft-should-not-be-logged';
+      await expect(s.groups.send(key, {
+        operationId: 'log-followup',
+        text: secretText,
+        expectedMembershipRevision: 1,
+        followup: { turnId: t.id, deliveryId: d.id },
+      })).rejects.toMatchObject({ code: 'dsh-bot/recovery-needed' });
+      const matching = warn.mock.calls.find(call => String(call[0]).includes('Group follow-up dispatch failed'));
+      expect(matching).toBeTruthy();
+      expect(matching?.[1]).toMatchObject({ groupId: g.id, turnId: t.id, deliveryId: d.id, name: 'Error', message: 'native-steer-timeout' });
+      expect(JSON.stringify(matching)).not.toContain(secretText);
+    } finally { await s.close(); }
+  }));
+});

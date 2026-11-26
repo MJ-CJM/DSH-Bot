@@ -130,6 +130,9 @@ export class Groups {
   view(...args: Parameters<GroupMessages['view']>) {
     return this.messages.view(...args);
   }
+  hasMessage(...args: Parameters<GroupMessages['hasMessage']>) {
+    return this.messages.hasMessage(...args);
+  }
   recall(...args: Parameters<GroupRecall['query']>) {
     return this.recallReader.query(...args);
   }

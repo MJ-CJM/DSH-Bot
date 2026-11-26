@@ -652,3 +652,119 @@ it('limits file selection across batches before uploading and blocks oversized r
     expect(f.send).not.toHaveBeenCalled();
   } finally { await f.close(); }
 });
+
+describe('group send error classification and pre-flight guards (#54)', () => {
+  it('blocks ended supplement targets before sending, clears on close, and handles racing unavailable responses', async () => {
+    const f = await composer('en', true, [bot({ id: 'alpha', name: 'Alpha' }), bot({ id: 'beta', name: 'Beta' })]);
+    try {
+      const id = f.data.group.rootSessionId;
+      f.data.turns.push({
+        id: 'turn:one', group: { groupId: f.data.group.id, groupCreatedAt: 1 }, operationId: 'op:one',
+        requestDigest: 'hash', inputMessageId: 'msg:one', createdAt: 1, updatedAt: 1, revision: 1,
+        schemaVersion: 1, membershipRevision: 1, orderedMemberIds: ['member:alpha'], mode: 'natural',
+        contextThroughSeq: -1, state: 'idle',
+      });
+      f.data.deliveries.push({
+        id: 'delivery:done', turnId: 'turn:one', memberId: 'member:alpha', ordinal: 0,
+        bot: { botId: 'alpha', botCreatedAt: 1 }, botRevision: 1, presetId: 'bot-alpha',
+        contextOutputMessageIds: [], contextTruncated: false, state: 'completed',
+      });
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:one', deliveryId: 'delivery:done' } })));
+      expect(f.element.textContent).toContain(f.t('groups.supplementEndedShort'));
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Late supplement');
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).not.toHaveBeenCalled();
+      expect(f.element.textContent).toContain(f.t('groups.supplementEnded'));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+
+      await click(button(f.element, f.t('groups.close')));
+      expect(f.element.textContent).not.toContain(f.t('groups.supplementEnded'));
+
+      // Now simulate a racing delivery that was still running locally but finished on the Host.
+      f.data.turns[0]!.state = 'running';
+      f.data.deliveries[0]!.state = 'running';
+      await f.remount();
+      await act(async () => f.actions.patchDraft(id, old => ({ ...old, followup: { turnId: 'turn:one', deliveryId: 'delivery:done' } })));
+      f.send.mockRejectedValueOnce({ code: 'dsh-bot/unavailable' });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(1);
+      expect(f.element.textContent).toContain(f.t('groups.supplementEnded'));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+      expect(f.actions.draft(id).operation).toBeUndefined();
+    } finally { await f.close(); }
+  });
+
+  it('classifies mention-only Host rejection without @mention and blocks oversized drafts before RPC', async () => {
+    const f = await composer('zh', true, [bot({ id: 'alpha', name: 'Alpha' }), bot({ id: 'beta', name: 'Beta' })]);
+    try {
+      f.data.group.mode = 'mention';
+      await f.remount();
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, '未提及任何成员的消息');
+      f.send.mockRejectedValueOnce({ code: 'dsh-bot/invalid' });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(1);
+      expect(f.element.textContent).toContain(f.t('groups.mentionRequired'));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+      expect(f.actions.draft(f.data.group.rootSessionId).operation).toBeUndefined();
+
+      // Editing clears the definitive validation alert, and @mentioning sends normally.
+      await fill(draft, '@Alpha 请看下');
+      expect(f.element.textContent).not.toContain(f.t('groups.mentionRequired'));
+      f.send.mockResolvedValueOnce({ ok: true, value: { id: 'turn:mention-ok' } as never });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(2);
+
+      // Oversized text (> 64KB) is blocked before RPC.
+      await fill(draft, 'a'.repeat(70000));
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.send).toHaveBeenCalledTimes(2);
+      expect(f.element.textContent).toContain(f.t('groups.messageTooLong'));
+    } finally { await f.close(); }
+  });
+
+  it.each([
+    ['dsh-bot/invalid', 'groups.sendInvalid'],
+    ['gateway/input-invalid', 'groups.sendInvalid'],
+    ['dsh-bot/unavailable', 'groups.sendUnavailable'],
+    ['dsh-bot/approval-denied', 'groups.sendDenied'],
+    ['dsh-bot/unsupported', 'groups.sendUnsupported'],
+    ['dsh-bot/not-found', 'groups.sendNotFound'],
+  ] as const)('classifies definitive pre-dispatch rejection %s without misreporting sendFailed', async (code, key) => {
+    const f = await composer('en');
+    try {
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Definitive rejection test');
+      f.send.mockRejectedValueOnce({ code });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.element.textContent).toContain(f.t(key));
+      expect(f.element.textContent).not.toContain(f.t('groups.export.sendFailed'));
+      expect(f.actions.draft(f.data.group.rootSessionId).operation).toBeUndefined();
+      await fill(draft, 'Edited after definitive rejection');
+      expect(f.element.textContent).not.toContain(f.t(key));
+    } finally { await f.close(); }
+  });
+
+  it.each(['dsh-bot/recovery-needed', 'gateway/internal'] as const)('retains sendFailed, diagnostic code, and idempotency key for uncertain failure %s', async code => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = await composer('en');
+    try {
+      const draft = field(f.element, f.t('groups.message'));
+      await fill(draft, 'Uncertain send test');
+      f.send.mockRejectedValueOnce({ code });
+      await click(button(f.element, f.t('groups.send')));
+      expect(f.element.textContent).toContain(`${f.t('groups.export.sendFailed')} (${code})`);
+      const firstId = f.actions.draft(f.data.group.rootSessionId).operation?.request.operationId;
+      expect(firstId).toBeTruthy();
+      expect(warn).toHaveBeenCalledWith('[dsh-bot] Group operation did not complete', { code });
+      // Editing does not silently discard an uncertain acceptance warning.
+      await fill(draft, 'Uncertain send test edited');
+      expect(f.element.textContent).toContain(f.t('groups.export.sendFailed'));
+    } finally {
+      warn.mockRestore();
+      await f.close();
+    }
+  });
+});
