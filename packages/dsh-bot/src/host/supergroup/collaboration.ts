@@ -28,6 +28,8 @@ export interface CollaborationScope {
   expiresAt: number;
   signal: AbortSignal;
   check(): Promise<void>;
+  /** Authority check for idempotent receipt reads after execution cleanup. */
+  checkReceipt?(signal?: AbortSignal): Promise<void>;
 }
 /** Selected by the work owner from the current human turn, bound to one Bot incarnation. */
 export interface PeerTask {
@@ -184,6 +186,8 @@ export class ScopedCollaboration {
     if (getScopedCollaborationBinding(agent)) return this.prepare(agent, targetBotId, callId, args, signal);
     const peer = await this.hooks.peerTask?.(agent, targetBotId, args);
     if (peer) return this.prepare(agent, targetBotId, callId, args, signal, peer);
+    if (this.preparations.get(agent)?.has(callId))
+      return this.prepare(agent, targetBotId, callId, args, signal);
     // Only an independently established work can authorize an unaddressed task.
     // A global setting alone must never turn an unrelated DM into a shared prompt.
     if (this.enabled() && await this.hooks.hasSharedWork?.(agent, targetBotId))
@@ -199,7 +203,13 @@ export class ScopedCollaboration {
     if (prior) {
       if (prior.target !== targetBotId || prior.digest !== argumentDigest) throw new OperationError('conflict');
       const prepared = await prior.task;
-      await prepared.scope.check();
+      const key = `${prepared.scope.workId}/${prepared.scope.operationId}`;
+      if (this.operations.has(key) && prepared.scope.checkReceipt) {
+        await prepared.scope.checkReceipt(signal);
+      } else {
+        await prepared.scope.check();
+      }
+      signal.throwIfAborted();
       return prepared;
     }
     const task = this.prepareFresh(agent, targetBotId, callId, args, signal, peer);

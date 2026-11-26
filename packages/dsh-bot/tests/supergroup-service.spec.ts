@@ -9,7 +9,7 @@ import { bindings } from '../src/host/data-flow/agent-binding.js';
 import { Supergroup, type supergroupDomain, supergroupInputSchema } from '../src/host/supergroup/service.js';
 import type { SupergroupWork } from '../src/shared/supergroup.js';
 import { Config as SupergroupConfig, type SupergroupConfig as SupergroupConfigValue } from '../src/host/supergroup/config.js';
-import type { CollaborationScope, CollaborationResult } from '../src/host/supergroup/collaboration.js';
+import { protectScopedCollaboration, type CollaborationScope, type CollaborationResult } from '../src/host/supergroup/collaboration.js';
 import { need } from '../src/host/common/operations.js';
 
 /** Exercise the work owner's hooks without a fake native model or exposing them as product APIs. */
@@ -719,4 +719,385 @@ test('claimed input before Session append projects only its exact owner receipt 
     f.human('unrelated-new-input', 'A newer actual user instruction');
     expect(f.service.continuationInstruction(f.agent)).toBe('');
   } finally { await f.service.close(); }
+});
+
+test('authorizeCollaboration never leaks active runtime or timer on budget, member-limit, or authority failure, and cleans up on finish (#57)', async () => {
+  const f = await fixture(), hooks = collaborationHooks(f.service);
+  const internal = f.service as unknown as { active: Map<string, { timer?: ReturnType<typeof setTimeout> }> };
+  const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+  const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+  try {
+    // 1. Authority check throws before inserting into active or arming timer (and without creating work).
+    const origGet = f.registry.get.bind(f.registry);
+    let getCalls = 0;
+    f.registry.get = async (id: string) => {
+      getCalls++;
+      const bot = await origGet(id);
+      return getCalls > 1 && id === 'beta' ? { ...bot, updatedAt: bot.updatedAt + 1 } : bot;
+    };
+    const beforeAuth = setTimeoutSpy.mock.calls.length;
+    await expect(hooks.authorizeCollaboration(f.agent, 'beta', 'auth-fail', signal(), 'args'))
+      .rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    expect(internal.active.size).toBe(0);
+    expect(f.table.size).toBe(0);
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeAuth);
+    f.registry.get = origGet;
+
+    // 2. Successful authorization arms one timer, and finishCollaboration cleans up runtime + timer immediately.
+    f.config.supergroup.maxMembers = 2;
+    f.config.supergroup.maxRequests = 2;
+    const beforeOk = setTimeoutSpy.mock.calls.length;
+    const beforeClears = clearTimeoutSpy.mock.calls.length;
+    const scope = await hooks.authorizeCollaboration(f.agent, 'beta', 'ok-call', signal(), 'args');
+    expect(internal.active.size).toBe(1);
+    expect(internal.active.get(scope.workId)?.timer).toBeDefined();
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeOk + 1);
+    await hooks.finishCollaboration(scope, completedCollaboration(scope));
+    expect(internal.active.size).toBe(0);
+    expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(beforeClears);
+    expect(scope.signal.aborted).toBe(true);
+
+    // 3. Member limit exceeded on next call after finish: zero leaked runtime, zero new timers.
+    const beforeMember = setTimeoutSpy.mock.calls.length;
+    await expect(hooks.authorizeCollaboration(f.agent, 'gamma', 'over-members', signal(), 'args'))
+      .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+    expect(internal.active.size).toBe(0);
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeMember);
+
+    // 4. Budget exhausted on subsequent call after finish: zero leaked runtime, zero new timers.
+    const second = await hooks.authorizeCollaboration(f.agent, 'beta', 'second-call', signal(), 'args');
+    await hooks.finishCollaboration(second, completedCollaboration(second));
+    expect(internal.active.size).toBe(0);
+    const beforeBudget = setTimeoutSpy.mock.calls.length;
+    await expect(hooks.authorizeCollaboration(f.agent, 'beta', 'over-budget', signal(), 'args'))
+      .rejects.toMatchObject({ code: 'dsh-bot/budget-exhausted' });
+    expect(internal.active.size).toBe(0);
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeBudget);
+  } finally {
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+    await f.service.close();
+  }
+});
+
+test('collaboration deadline timer guards missing work without throwing uncaught exceptions (#57)', async () => {
+  vi.useFakeTimers();
+  const f = await fixture(), hooks = collaborationHooks(f.service);
+  const warn = vi.fn();
+  Object.assign(f.ctx, { logger: { warn } });
+  const internal = f.service as unknown as { active: Map<string, unknown> };
+  try {
+    f.config.supergroup.timeoutMs = 1000;
+    const scope = await hooks.authorizeCollaboration(f.agent, 'beta', 'deadline-missing', signal(), 'args');
+    expect(internal.active.size).toBe(1);
+    // Simulate missing work record when deadline fires.
+    f.table.delete(scope.workId);
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(internal.active.size).toBe(0);
+    expect(scope.signal.aborted).toBe(true);
+    expect(warn).toHaveBeenCalledWith('[dsh-bot] Supergroup collaboration deadline check failed', {
+      workId: scope.workId, phase: 'collaboration-deadline', errorCode: 'dsh-bot/not-found', errorName: 'RemoteError',
+    });
+  } finally {
+    vi.useRealTimers();
+    await f.service.close();
+  }
+});
+
+test('configChanged uses Promise.allSettled to isolate per-work cancellation errors and still invalidates registry (#57)', async () => {
+  const f = await fixture(), hooks = collaborationHooks(f.service);
+  const warn = vi.fn();
+  Object.assign(f.ctx, { logger: { warn } });
+  let invalidations = 0;
+  f.registry.invalidate = () => { invalidations++; };
+  const internal = f.service as unknown as {
+    active: Map<string, unknown>;
+    cancelCurrent: (id: string, reason: string, expectedRevision?: number) => Promise<void>;
+  };
+  try {
+    const first = await hooks.authorizeCollaboration(f.agent, 'beta', 'work-one', signal(), 'a');
+    f.human('human-two', 'Second independent task');
+    const second = await hooks.authorizeCollaboration(f.agent, 'beta', 'work-two', signal(), 'b');
+    expect(internal.active.size).toBe(2);
+
+    const sentinel = 'CONFIG-CHANGED-POISONED-SENTINEL';
+    const poisoned = Object.assign(new Error(`cancel failed: ${sentinel}`), {
+      name: `Poisoned-${sentinel}`,
+      code: `POISONED-${sentinel}`,
+    });
+    const origCancel = internal.cancelCurrent.bind(f.service);
+    vi.spyOn(internal, 'cancelCurrent').mockImplementation(async (id, reason, expected) => {
+      if (id === first.workId) throw poisoned;
+      return origCancel(id, reason, expected);
+    });
+
+    const beforeInvalidations = invalidations;
+    f.config.supergroup.enabled = false;
+    await expect(f.service.configChanged()).resolves.toBeUndefined();
+    expect(second.signal.aborted).toBe(true);
+    expect(f.table.get(second.workId)?.state).toBe('cancelled');
+    expect(invalidations).toBeGreaterThan(beforeInvalidations);
+    expect(warn).toHaveBeenCalledWith('[dsh-bot] Supergroup work cancellation failed during config update', {
+      workId: first.workId, phase: 'config-changed', errorName: 'unknown',
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(sentinel);
+  } finally { await f.service.close(); }
+});
+
+async function realCollaborationFixture(options: { peerMessaging?: boolean } = {}) {
+  const f = await fixture({ peerMessaging: true });
+  const internal = f.service as unknown as {
+    active: Map<string, { timer?: ReturnType<typeof setTimeout>; detach(): void }>;
+  };
+  const detachSpies = new Map<string, ReturnType<typeof vi.fn>>();
+  const bots = await f.registry.list();
+  Object.assign(f.registry, {
+    status: async () => bots.map(bot => ({ id: bot.id, presetId: `bot-${bot.id}`, preset: { state: 'ok' } })),
+    memoryOutlets: {
+      ...(f.registry as unknown as { memoryOutlets: Record<string, unknown> }).memoryOutlets,
+      checker: { check: vi.fn() },
+    },
+  });
+  const projectScoped = vi.fn(async (input: { kind: string; operationId: string; workId: string }) => ({
+    messageId: `${input.operationId}:${input.kind}`,
+    threadId: input.workId,
+    fromSessionId: 'main-alpha',
+    toSessionId: 'main-beta',
+  }));
+  const finishScoped = vi.fn(async () => {});
+  const exclusiveTarget = vi.fn(async (_target: unknown, run: () => Promise<unknown>) => run());
+  const existingMessaging = f.ctx.get('dshBotMessaging') as unknown as Record<string, unknown>;
+  Object.assign(existingMessaging, {
+    provenance: () => ({ userMessageId: options.peerMessaging ? 'peer-input' : 'human-one' }),
+    projectScoped,
+    finishScoped,
+    exclusiveTarget,
+  });
+  const dispose = vi.fn(async () => {});
+  const startActivation = vi.fn(async (spec: { childId: string; request: { parent: Agent; agentPreset: string; prompt: { text: string }[] } }) => {
+    for (const [workId, runtime] of internal.active.entries()) {
+      if (!detachSpies.has(workId)) {
+        const origDetach = runtime.detach.bind(runtime);
+        const spy = vi.fn(() => origDetach());
+        runtime.detach = spy;
+        detachSpies.set(workId, spy);
+      }
+    }
+    const target = spec.request.agentPreset.slice(4);
+    const bot = { botId: target, botCreatedAt: 1 };
+    const listeners = new Map<string, (...args: unknown[]) => unknown>();
+    const childContext = {
+      effect: (setup: () => () => void) => setup(),
+      on: (event: string, listener: (...args: unknown[]) => unknown) => {
+        listeners.set(event, listener);
+        return () => listeners.delete(event);
+      },
+      tools: { guard: () => () => {} },
+      get: (name: string) => f.ctx.get(name as never),
+    };
+    const child = {
+      id: spec.childId,
+      ctx: childContext,
+      session: {
+        id: spec.childId,
+        header: { parentSession: spec.request.parent.session.id, agentPreset: spec.request.agentPreset },
+      },
+    } as unknown as Agent;
+    bindings.set(child, bot);
+    protectScopedCollaboration(child, bot, 'startup');
+    await (listeners.get('agent/request') as ((p: unknown, next: () => Promise<unknown>) => Promise<unknown>))?.({}, async () => ({}));
+    const protocol = JSON.parse(spec.request.prompt[0]!.text);
+    return {
+      childId: spec.childId,
+      result: Promise.resolve({
+        stopReason: 'completed' as const,
+        output: [{ type: 'text' as const, text: protocol.kind === 'dsh-bot-message-draft' ? 'Clean question for beta' : 'Clean answer from beta' }],
+      }),
+      dispose,
+    };
+  });
+  Object.assign(f.ctx.subagents, { startActivation });
+  return {
+    ...f,
+    internal,
+    detachSpies,
+    projectScoped,
+    finishScoped,
+    startActivation,
+    dispose,
+    channel: need(f.ctx.get('dshBotCollaboration')),
+  };
+}
+
+test('real Supergroup + ScopedCollaboration preserves idempotent same-callId receipt read after peer completion while cleaning runtime resources (#57)', async () => {
+  const f = await realCollaborationFixture({ peerMessaging: true });
+  const hooks = collaborationHooks(f.service);
+  const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+  const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+  const outer = new AbortController();
+  const args = { action: 'send', to: 'beta', mode: 'ask', priority: 'normal', content: 'PRIVATE_DRAFT' };
+  try {
+    f.human('peer-input', '问 beta：「检查构建」。另有 PRIVATE_DM_ONLY 只给 alpha。');
+    const beforeSet = setTimeoutSpy.mock.calls.length;
+    const beforeClear = clearTimeoutSpy.mock.calls.length;
+    const prepared = need(await f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, outer.signal));
+    expect(f.internal.active.size).toBe(1);
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeSet + 1);
+
+    const firstResult = await f.channel.execute(prepared, args, outer.signal);
+    expect(firstResult).toMatchObject({
+      workId: prepared.scope.workId,
+      operationId: prepared.scope.operationId,
+      status: 'completed',
+      actualRequest: 'Clean question for beta',
+      result: 'Clean answer from beta',
+    });
+    expect(f.startActivation).toHaveBeenCalledTimes(2);
+    expect(f.projectScoped).toHaveBeenCalledTimes(2);
+    expect(f.dispose).toHaveBeenCalledTimes(2);
+
+    // Runtime, timer, and outer listener are cleaned up immediately; execution signal is aborted.
+    expect(f.internal.active.size).toBe(0);
+    expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(beforeClear);
+    expect(f.detachSpies.get(prepared.scope.workId)).toHaveBeenCalledOnce();
+    expect(prepared.scope.signal.aborted).toBe(true);
+    expect(outer.signal.aborted).toBe(false);
+    // Execution-time checks and request reservations remain fenced off after completion.
+    await expect(prepared.scope.check()).rejects.toBe('completed');
+    await expect(hooks.reserveCollaborationRequest(prepared.scope)).rejects.toBe('completed');
+
+    // Same Agent + same callId/args retry succeeds and returns cached receipt with zero re-dispatch.
+    const timersBeforeRetry = setTimeoutSpy.mock.calls.length;
+    const retried = need(await f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, outer.signal));
+    expect(retried).toBe(prepared);
+    const secondResult = await f.channel.execute(retried, args, outer.signal);
+    expect(secondResult).toEqual(firstResult);
+    expect(f.startActivation).toHaveBeenCalledTimes(2);
+    expect(f.projectScoped).toHaveBeenCalledTimes(2);
+    expect(f.internal.active.size).toBe(0);
+    expect(setTimeoutSpy.mock.calls.length).toBe(timersBeforeRetry);
+
+    // Changed arguments with same callId still conflict.
+    await expect(f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', { ...args, content: 'CHANGED' }, outer.signal))
+      .rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+
+    // Aborted outer native signal rejects receipt replay.
+    const aborted = new AbortController();
+    aborted.abort('outer-aborted');
+    await expect(f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, aborted.signal))
+      .rejects.toBe('outer-aborted');
+
+    // Invalidated authority (changed text, new human messageId, updated reader bot, or disabled messaging) rejects receipt replay.
+    f.human('peer-input-2', '问 beta：「另一个问题」。');
+    await expect(f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, outer.signal))
+      .rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+
+    f.human('peer-input-2', '问 beta：「检查构建」。另有 PRIVATE_DM_ONLY 只给 alpha。');
+    await expect(f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, outer.signal))
+      .rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+
+    f.human('peer-input', '问 beta：「检查构建」。另有 PRIVATE_DM_ONLY 只给 alpha。');
+    const betaBot = await f.registry.get('beta');
+    betaBot.updatedAt += 1;
+    await expect(f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, outer.signal))
+      .rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    betaBot.updatedAt -= 1;
+    expect(await f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, outer.signal)).toBe(prepared);
+
+    Object.assign(f.config, { messagingEnabled: false });
+    await expect(f.channel.preparePeer(f.agent, 'beta', 'peer-call-1', args, outer.signal))
+      .rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+  } finally {
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+    await f.service.close();
+  }
+});
+
+test('real Supergroup + ScopedCollaboration preserves delegate and shared-work bot_message retries while enforcing post-completion revocations (#57)', async () => {
+  // 1. Direct prepare (bot_delegate path) + shared-work preparePeer (bot_message path) + cancel revocation.
+  {
+    const f = await realCollaborationFixture();
+    const outer = new AbortController();
+    const delegateArgs = { targetBotId: 'beta', task: 'Analyze build' };
+    try {
+      const prepared = await f.channel.prepare(f.agent, 'beta', 'delegate-call-1', delegateArgs, outer.signal);
+      // While the direct supergroup work is active, an unaddressed bot_message can share it via hasSharedWork.
+      const msgArgs = { action: 'send', to: 'beta', mode: 'ask', priority: 'normal', content: 'Follow up' };
+      const sharedPrepared = need(await f.channel.preparePeer(f.agent, 'beta', 'shared-msg-1', msgArgs, outer.signal));
+      expect(sharedPrepared.scope.workId).toBe(prepared.scope.workId);
+
+      const first = await f.channel.execute(prepared, delegateArgs, outer.signal);
+      const second = await f.channel.execute(sharedPrepared, msgArgs, outer.signal);
+      expect(first.status).toBe('completed');
+      expect(second.status).toBe('completed');
+      expect(f.startActivation).toHaveBeenCalledTimes(4);
+      expect(f.internal.active.size).toBe(0);
+      expect(f.detachSpies.get(prepared.scope.workId)).toHaveBeenCalledOnce();
+      expect(prepared.scope.signal.aborted).toBe(true);
+
+      // Both delegate prepare and shared-work preparePeer hit their cached receipts without re-dispatching.
+      expect(await f.channel.prepare(f.agent, 'beta', 'delegate-call-1', delegateArgs, outer.signal)).toBe(prepared);
+      expect(await f.channel.execute(prepared, delegateArgs, outer.signal)).toEqual(first);
+      expect(await f.channel.preparePeer(f.agent, 'beta', 'shared-msg-1', msgArgs, outer.signal)).toBe(sharedPrepared);
+      expect(await f.channel.execute(sharedPrepared, msgArgs, outer.signal)).toEqual(second);
+      expect(f.startActivation).toHaveBeenCalledTimes(4);
+
+      // Explicit work cancel revokes post-completion receipt reads.
+      const work = need(f.table.get(prepared.scope.workId));
+      await f.service.cancel(work.id, work.revision);
+      await expect(f.channel.prepare(f.agent, 'beta', 'delegate-call-1', delegateArgs, outer.signal))
+        .rejects.toBe('user-stopped');
+    } finally { await f.service.close(); }
+  }
+
+  // 2. configChanged (even after toggling back enabled) revokes post-completion receipt reads.
+  {
+    const f = await realCollaborationFixture();
+    const outer = new AbortController();
+    const args = { targetBotId: 'beta', task: 'Config revocation test' };
+    try {
+      const prepared = await f.channel.prepare(f.agent, 'beta', 'config-call', args, outer.signal);
+      await f.channel.execute(prepared, args, outer.signal);
+      expect(await f.channel.prepare(f.agent, 'beta', 'config-call', args, outer.signal)).toBe(prepared);
+
+      f.config.supergroup.enabled = false;
+      await f.service.configChanged();
+      f.config.supergroup.enabled = true;
+      await expect(f.channel.prepare(f.agent, 'beta', 'config-call', args, outer.signal))
+        .rejects.toBe('mode-or-scope-changed');
+    } finally { await f.service.close(); }
+  }
+
+  // 3. Group handoff and deadline expiry revoke post-completion receipt reads.
+  {
+    const f = await realCollaborationFixture();
+    const outer = new AbortController();
+    const args = { targetBotId: 'beta', task: 'Handoff test' };
+    try {
+      const prepared = await f.channel.prepare(f.agent, 'beta', 'handoff-call', args, outer.signal);
+      await f.channel.execute(prepared, args, outer.signal);
+      expect(await f.channel.prepare(f.agent, 'beta', 'handoff-call', args, outer.signal)).toBe(prepared);
+
+      await f.service.invoke(f.agent, { action: 'start', memberIds: ['alpha', 'beta'] }, signal());
+      await expect(f.channel.prepare(f.agent, 'beta', 'handoff-call', args, outer.signal))
+        .rejects.toBe('group-handoff');
+    } finally { await f.service.close(); }
+  }
+
+  {
+    const f = await realCollaborationFixture();
+    const outer = new AbortController();
+    const args = { targetBotId: 'beta', task: 'Deadline expiry test' };
+    try {
+      const prepared = await f.channel.prepare(f.agent, 'beta', 'expiry-call', args, outer.signal);
+      await f.channel.execute(prepared, args, outer.signal);
+      expect(await f.channel.prepare(f.agent, 'beta', 'expiry-call', args, outer.signal)).toBe(prepared);
+
+      const work = need(f.table.get(prepared.scope.workId));
+      f.table.set(work.id, { ...work, expiresAt: Date.now() - 1 });
+      await expect(f.channel.prepare(f.agent, 'beta', 'expiry-call', args, outer.signal))
+        .rejects.toMatchObject({ code: 'dsh-bot/approval-denied' });
+    } finally { await f.service.close(); }
+  }
 });

@@ -265,7 +265,7 @@ test.each([true, false])('cold native catalog fallback folds current own child o
         expect(read).toHaveBeenCalledWith(historical, 256, 256);
         expect(await core.read({ kind: 'follow-up-page', input: { subject: personal } })).toMatchObject({
           page: { rows: [{ title: 'Current lifecycle', origin: { kind: 'native-subagent', childSessionId: failure.id, turn: 1 },
-            condition: { kind: 'failed', reason: 'Native child failure' } }] },
+            condition: { kind: 'failed', reason: 'error' } }] },
         });
         failure.append('turn/start', { turn: 2 });
         failure.append('turn/end', { turn: 2, reason: { kind: 'completed' } });
@@ -282,6 +282,80 @@ test.each([true, false])('cold native catalog fallback folds current own child o
         expect(await core.read({ kind: 'follow-up-page', input: { subject: personal } })).toMatchObject({
           page: { rows: [{ revision: 1, origin: { childSessionId: failure.id, turn: 2 } }] },
         });
+      } finally { await bridge.close(); }
+    });
+  } finally { await core.close(); }
+});
+
+test('native child turn/end errors persist strictly redacted error codes without leaking secrets into SQLite (#57)', async () => {
+  const core = await proactiveWorker();
+  try {
+    await withIntegrations(async fixture => {
+      const main = SessionId('bot-main-redacted');
+      Object.assign(fixture.registry, { mainSessions: { boundSessionId: (id: string, createdAt: number) =>
+        id === alpha.botId && createdAt === alpha.botCreatedAt ? main : undefined } });
+      const makeSession = (id: string, parentSession?: typeof main) => Session.create(SessionId(id), undefined, {
+        version: 4, id: SessionId(id), createdAt: Date.now(), isSeeded: false,
+        ...(parentSession ? { parentSession, origin: 'subagent' as const } : {}),
+      });
+      const root = makeSession(main);
+      const poisonedChild = makeSession('poisoned-child', main);
+      const allowlistedChild = makeSession('allowlisted-child', main);
+      const sentinel = 'FOLLOWUP-NATIVE-SECRET-sk-12345';
+      for (const [child, label] of [[poisonedChild, 'Poisoned child'], [allowlistedChild, 'Rate limited child']] as const)
+        root.append('subagent/catalog', { version: 0, mode: 'one-shot', childId: child.id, childCreatedAt: child.header.createdAt, label });
+      await core.submit(enable(personal));
+
+      poisonedChild.append('turn/start', { turn: 1 });
+      poisonedChild.append('subagent/descriptor', { version: 3, mode: 'one-shot', provider: 'spawn', label: 'Poisoned child' });
+      poisonedChild.append('turn/end', {
+        turn: 1,
+        reason: {
+          kind: 'error',
+          error: Object.assign(
+            { code: `POISONED-${sentinel}`, message: `Bearer ${sentinel} private user text` },
+            { name: `PoisonedName-${sentinel}` },
+          ),
+        },
+      });
+
+      allowlistedChild.append('turn/start', { turn: 1 });
+      allowlistedChild.append('subagent/descriptor', { version: 3, mode: 'one-shot', provider: 'spawn', label: 'Rate limited child' });
+      allowlistedChild.append('turn/end', {
+        turn: 1,
+        reason: {
+          kind: 'error',
+          error: { code: 'RATE_LIMIT', message: `upstream body with ${sentinel}` },
+        },
+      });
+
+      const nativeLogs = new Map([root, poisonedChild, allowlistedChild].map(session => [session.id, session]));
+      fixture.ctx.provide('sessions', { get: () => undefined } as unknown as Context['sessions']);
+      fixture.ctx.provide('subagents', {} as unknown as Context['subagents']);
+      fixture.ctx.provide('sessionPersistence', {
+        async stat(id: typeof main) { return nativeLogs.get(id)?.header; },
+        async open(id: typeof main) {
+          const session = nativeLogs.get(id);
+          if (!session) throw new Error('Missing native log');
+          return {
+            header: session.header,
+            inheritedEventCount: 0,
+            read: async (offset: number, length: number) => ({ events: session.snapshotEvents().slice(offset, offset + length) }),
+            close: async () => {},
+          };
+        },
+      } as unknown as Context['sessionPersistence']);
+      provideWorker(fixture.ctx, core);
+      const bridge = new FollowUpEvents(fixture.ctx, fixture.registry);
+      try {
+        await bridge.flush();
+        const page = await core.read({ kind: 'follow-up-page', input: { subject: personal } });
+        expect(page.kind).toBe('follow-up-page');
+        if (page.kind !== 'follow-up-page') throw new Error('Expected follow-up page');
+        const byChild = new Map(page.page.rows.map(row => [row.origin.kind === 'native-subagent' ? row.origin.childSessionId : '', row]));
+        expect(byChild.get(poisonedChild.id)?.condition).toEqual({ kind: 'failed', reason: 'error' });
+        expect(byChild.get(allowlistedChild.id)?.condition).toEqual({ kind: 'failed', reason: 'RATE_LIMIT' });
+        expect(JSON.stringify(page)).not.toContain(sentinel);
       } finally { await bridge.close(); }
     });
   } finally { await core.close(); }

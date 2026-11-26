@@ -54,6 +54,10 @@ export function routeMembers(
   if (!selected.length || selected.length > maxTurns) throw new OperationError('invalid');
   return selected;
 }
+/** Canonical participant label shared between turn admission pre-flight and delivery rendering. */
+export function groupParticipantLabel(bot: { id: string; name: string }, memberId: string): string {
+  return `${bot.name} (botId=${bot.id}, memberId=${memberId})`;
+}
 /** Whole messages only; no model summarizer and no future queued input. */
 export function groupContext(
   name: string,
@@ -98,6 +102,31 @@ export function groupContext(
     if (removable === -1) break;
     kept.splice(removable, 1);
   }
+  let replyTruncated = false;
+  const replied = kept[0];
+  if (!relay && kept.length === 1 && replied && replied.id === question.replyTo &&
+      Buffer.byteLength(render(kept, kept.length < candidates.length)) > maxBytes) {
+    const points = Array.from(replied.text);
+    // Keep the longest strict Unicode prefix of the replied message that fits; if even
+    // minimal metadata does not fit, evict the replied history entry so question alone can proceed.
+    let low = 0, high = points.length > 0 ? points.length - 1 : 0;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      kept[0] = { ...replied, text: points.slice(0, mid).join('') };
+      if (Buffer.byteLength(render(kept, true)) <= maxBytes) low = mid;
+      else high = mid - 1;
+    }
+    if (low > 0) {
+      kept[0] = { ...replied, text: points.slice(0, low).join('') };
+      replyTruncated = true;
+    } else if (points.length > 0 && replied.attachments?.length &&
+        Buffer.byteLength(render([{ ...replied, text: '' }], true)) <= maxBytes) {
+      kept[0] = { ...replied, text: '' };
+      replyTruncated = true;
+    } else {
+      kept.shift();
+    }
+  }
   if (relay && Buffer.byteLength(render(kept, true)) > maxBytes) {
     // Keep the longest UTF-8 prefix that fits, without splitting a Unicode character or exceeding the JSON budget.
     const points = Array.from(relay.reply);
@@ -111,7 +140,7 @@ export function groupContext(
     reply = points.slice(0, low).join('');
     if (!reply) throw new OperationError('invalid');
   }
-  const truncated = kept.length < candidates.length || Boolean(relay && reply !== relay.reply);
+  const truncated = kept.length < candidates.length || replyTruncated || Boolean(relay && reply !== relay.reply);
   const text = render(kept, truncated);
   if (Buffer.byteLength(text) > maxBytes) throw new OperationError('invalid');
   const keptIds = new Set(kept.map((m) => m.id));

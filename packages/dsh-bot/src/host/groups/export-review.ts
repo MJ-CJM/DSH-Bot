@@ -4,7 +4,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { groupExportReviewStatus } from '../../shared/group-export-review.js';
 import type { GroupKey, GroupTurn } from '../../shared/groups.js';
 import type { BotKey } from '../../shared/identity.js';
-import { digest, need, OperationError } from '../common/operations.js';
+import { digest, need, OperationError, redactedErrorMetadata } from '../common/operations.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { audience } from './data-flow.js';
 import { checkSupergroup } from './supergroup-admission.js';
@@ -163,13 +163,23 @@ export class GroupExportReview {
       if (p.t.guestQuestion?.via && p.d.ordinal === 0) assertRelayMember(this.state, p.t);
       let attempted = false;
       let outputSeq: number | undefined;
+      let relayFlowId: string | undefined;
+      let relayReleased = false;
       try {
         const id = await p.flow.approveReview(need(p.d.exportFlowId), p.review.digest, signal);
         const root = need(this.state.roots.get(p.g.id));
         if (p.t.guestQuestion?.via && p.d.ordinal === 0) {
+          relayFlowId = id;
           await p.flow.dispatch(id, () => { attempted = true; }, signal, async () => { await checkSupergroup(this.state, this.state.record(key)); });
           await releaseRelayAnswer(this.state, p.t, p.d, id, signal ?? this.state.startup.signal);
-          await this.state.putTurn({ ...p.t, state: 'accepted' });
+          relayReleased = true;
+          try {
+            await this.state.putTurn({ ...p.t, state: 'accepted' });
+          } catch (error) {
+            this.state.ctx.logger?.warn?.('[dsh-bot] Group handoff answer released; could not update turn summary', {
+              groupId: p.g.id, turnId: p.t.id, deliveryId: p.d.id, phase: 'relay-turn-summary', ...redactedErrorMetadata(error),
+            });
+          }
           this.resumeRelay(p.t);
           return true;
         }
@@ -180,14 +190,39 @@ export class GroupExportReview {
           await this.roots.flush(root);
           outputSeq = Number(event.seq);
         }, signal, async () => { await checkSupergroup(this.state, this.state.record(key)); });
-      } catch {
+      } catch (error) {
+        if (relayReleased) {
+          this.state.ctx.logger?.warn?.('[dsh-bot] Group handoff answer released; post-release step failed', {
+            groupId: p.g.id, turnId: p.t.id, deliveryId: p.d.id, phase: 'relay-resume', ...redactedErrorMetadata(error),
+          });
+          return true;
+        }
+        if (relayFlowId && this.state.table('deliveries').get(p.d.id)?.relayAnswerFlowId === relayFlowId) {
+          this.state.ctx.logger?.warn?.('[dsh-bot] Group handoff answer persisted; follow-up delivery creation failed', {
+            groupId: p.g.id, turnId: p.t.id, deliveryId: p.d.id, phase: 'relay-release', ...redactedErrorMetadata(error),
+          });
+          try {
+            const currentTurn = this.state.table('turns').get(p.t.id);
+            if (currentTurn && currentTurn.state !== 'cancelled') await this.state.putTurn({ ...currentTurn, state: 'recovery_needed' });
+          } catch (markError) {
+            this.state.ctx.logger?.warn?.('[dsh-bot] Could not mark group turn recovery_needed after partial relay release', {
+              groupId: p.g.id, turnId: p.t.id, deliveryId: p.d.id, phase: 'relay-release', ...redactedErrorMetadata(markError),
+            });
+          }
+          throw new OperationError('recovery-needed');
+        }
         if (outputSeq === undefined) {
+          this.state.ctx.logger?.warn?.('[dsh-bot] Group export dispatch failed', {
+            groupId: p.g.id, turnId: p.t.id, deliveryId: p.d.id, attempted, ...redactedErrorMetadata(error),
+          });
           await this.state.putDelivery({ ...p.d, state: attempted ? 'unknown' : 'failed',
             reasonCode: attempted ? 'export-delivery-unknown' : 'export-blocked', exportFlowId: undefined });
           await this.settleAfterDecision(p.t.id);
           throw new OperationError(attempted ? 'recovery-needed' : 'group-data-blocked');
         }
-        this.state.ctx.logger.warn('[dsh-bot] Group reply flushed; outlet receipt could not be finalized');
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group reply flushed; outlet receipt could not be finalized', {
+          groupId: p.g.id, turnId: p.t.id, deliveryId: p.d.id, phase: 'export-finalize', ...redactedErrorMetadata(error),
+        });
       }
       try {
         await this.state.putDelivery({ ...p.d, state: p.d.stopReason === 'completed' ? 'completed' : 'failed',

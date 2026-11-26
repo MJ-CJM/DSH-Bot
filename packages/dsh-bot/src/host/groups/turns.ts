@@ -3,16 +3,16 @@ import { outlets } from '../data-flow/tool-guard.js';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import type { SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent';
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm';
-import { groupSendSchema, groupUploadedAttachment, ownerFollowUpBindingSchema, type GroupKey, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
+import { groupSendSchema, groupUploadedAttachment, ownerFollowUpBindingSchema, type GroupKey, type GroupMessage, type GroupTurn, type OwnerFollowUpBinding } from '../../shared/groups.js';
 import { OperationError, digest, need, parse, redactedErrorMetadata } from '../common/operations.js';
 import { memoryOnlyIntent } from '../../shared/group-memory-intent.js';
 import { hasExplicitBotAddress, isAddressedQuestion, isGroupDelegation, matchGroupAddress, relayNeedsTopic } from '../../shared/addressed-bot.js';
 import { resolveGroupMentions } from '../../shared/group-mentions.js';
 import { sameBot } from '../../shared/identity.js';
 import { guestDeliveryKey, guestPrompt } from './guest-question.js';
-import { groupContext, selectOnDemand } from './routing.js';
+import { groupContext, groupParticipantLabel, selectOnDemand } from './routing.js';
 
-import { blocks, terminal } from './model.js';
+import { blocks, textOf, terminal } from './model.js';
 import type { GroupState } from './state.js';
 import type { GroupRoots } from './roots.js';
 import type { GroupMessages } from './messages.js';
@@ -262,16 +262,64 @@ export class GroupTurns {
         updatedAt: at,
       };
       // Reject an oversized required question before admitting any native or model side effect.
-      if (guest && addressed?.kind === 'match') guestPrompt(input.relayTopic ? addressed.question + '\n\n' + input.relayTopic : addressed.question, this.state.registry.config.groupContextMaxBytes, guest.via?.name);
-      else groupContext(
-        g.name,
-        selected[0]?.bot.botId ?? '',
-        this.state.members(g).map((m) => m.bot.botId),
-        { id: message.id, seq: 0, at, text: input.text, turnId: id, ...(files.length ? { attachments: files } : {}) },
-        [],
-        [],
-        this.state.registry.config.groupContextMaxBytes,
+      const preflightParticipantNames = async () => Promise.all(
+        memberRows.filter(m => m.enabled && m.removedAt === undefined).map(async (m) => {
+          try {
+            return groupParticipantLabel(await this.state.bot(m.bot), m.id);
+          } catch {
+            return m.bot.botId;
+          }
+        }),
       );
+      const makePreflightQuestion = (): GroupMessage => ({
+        id: message.id,
+        seq: 0,
+        at,
+        text: textOf(message.content),
+        turnId: id,
+        authorKind: proactive || owner || (scoped && (!('existing' in scoped) || scoped.projected)) ? 'proactive' : 'user',
+        ...(files.length ? { attachments: files, hasNonText: true } : {}),
+        ...(turn.replyTo && !proactive && !owner && !g.supergroup ? { replyTo: turn.replyTo } : {}),
+      });
+      if (guest && addressed?.kind === 'match') {
+        guestPrompt(input.relayTopic ? `${addressed.question}\n\n${input.relayTopic}` : addressed.question, this.state.registry.config.groupContextMaxBytes, guest.via?.name);
+        const via = guest.via;
+        if (via) {
+          const participantNames = await preflightParticipantNames();
+          const preflightQuestion = makePreflightQuestion();
+          const viaRole = g.memberRoles?.find(row => sameBot(row.bot, via.bot))?.role;
+          groupContext(
+            g.name,
+            via.name,
+            participantNames,
+            preflightQuestion,
+            [],
+            replied ? [replied] : [],
+            this.state.registry.config.groupContextMaxBytes,
+            viaRole,
+            false,
+            { from: guest.name, reply: 'x' },
+          );
+        }
+      } else {
+        const participantNames = await preflightParticipantNames();
+        const preflightQuestion = makePreflightQuestion();
+        for (const m of selected) {
+          const bot = await this.state.bot(m.bot);
+          const targetRole = g.memberRoles?.find(row => sameBot(row.bot, m.bot))?.role;
+          groupContext(
+            g.name,
+            bot.name,
+            participantNames,
+            preflightQuestion,
+            [],
+            replied ? [replied] : [],
+            this.state.registry.config.groupContextMaxBytes,
+            targetRole,
+            Boolean(turn.memoryStatusOnly),
+          );
+        }
+      }
       if (owner) {
         await verifyOwnerFollowUpChoice(this.state, key, owner.binding);
         await owner.admit();
@@ -284,7 +332,8 @@ export class GroupTurns {
         await need(flow).persist(flowId, () => this.state.putTurn(turn));
       }
       else await this.state.putTurn(turn);
-      let phase: 'deliveries' | 'dispatch' | 'flush' | 'finalize' = 'deliveries';
+      let phase: 'deliveries' | 'dispatch' | 'flush' | 'finalize' | 'schedule' = 'deliveries';
+      let inputSeq: number | undefined;
       try {
         const statuses = await this.state.registry.status();
         for (const [ordinal, m] of selected.entries()) {
@@ -321,19 +370,32 @@ export class GroupTurns {
           return append();
         } : append;
         const event = flowId ? await need(flow).dispatch(flowId, send) : restricted ? await send() : await append();
+        inputSeq = Number(event.seq);
         receiptBinding?.commit();
         phase = 'flush';
         await this.roots.flush(root);
         phase = 'finalize';
-        const accepted = await this.state.putTurn({ ...turn, inputSeq: Number(event.seq) });
+        const accepted = await this.state.putTurn({ ...turn, inputSeq });
         if (restricted) this.state.proactiveChecks.set(id, restricted.check);
+        phase = 'schedule';
         this.schedule(accepted);
         return accepted;
       } catch (error) {
         this.state.ctx.logger?.warn?.('[dsh-bot] Group turn acceptance failed; marking recovery_needed', {
           groupId: g.id, turnId: id, phase, ...redactedErrorMetadata(error),
         });
-        await this.state.putTurn({ ...turn, state: 'recovery_needed' });
+        try {
+          const current = this.state.table('turns').get(id) ?? turn;
+          await this.state.putTurn({
+            ...current,
+            ...(inputSeq !== undefined ? { inputSeq } : {}),
+            state: 'recovery_needed',
+          });
+        } catch (markError) {
+          this.state.ctx.logger?.warn?.('[dsh-bot] Failed to persist recovery_needed on group turn', {
+            groupId: g.id, turnId: id, phase, ...redactedErrorMetadata(markError),
+          });
+        }
         throw new OperationError('recovery-needed');
       }
     });
@@ -358,8 +420,14 @@ export class GroupTurns {
           groupId: accepted.group.groupId, turnId: id, phase: 'execute', ...redactedErrorMetadata(error),
         });
         await this.state.queue.run(async () => {
-          const t = this.state.table('turns').get(id);
-          if (t && !terminal(t)) await this.state.putTurn({ ...t, state: 'recovery_needed' });
+          try {
+            const t = this.state.table('turns').get(id);
+            if (t && !terminal(t)) await this.state.putTurn({ ...t, state: 'recovery_needed' });
+          } catch (markError) {
+            this.state.ctx.logger?.warn?.('[dsh-bot] Failed to persist recovery_needed after turn execution failure', {
+              groupId: accepted.group.groupId, turnId: id, phase: 'execute', ...redactedErrorMetadata(markError),
+            });
+          }
         });
       }
     });
@@ -442,9 +510,15 @@ export class GroupTurns {
       this.state.ctx.logger?.warn?.('[dsh-bot] Group follow-up dispatch failed; marking unknown', {
         groupId: g.id, turnId: t.id, deliveryId: d.id, phase, ...redactedErrorMetadata(error),
       });
-      const current = need(this.state.table('turns').get(t.id));
-      await this.state.putTurn({ ...current, followups: current.followups?.map(row => row.operationId === input.operationId
-        ? { ...row, state: 'unknown' } : row) });
+      try {
+        const current = need(this.state.table('turns').get(t.id));
+        await this.state.putTurn({ ...current, followups: current.followups?.map(row => row.operationId === input.operationId
+          ? { ...row, state: 'unknown' } : row) });
+      } catch (markError) {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Failed to persist unknown state on group follow-up', {
+          groupId: g.id, turnId: t.id, deliveryId: d.id, phase, ...redactedErrorMetadata(markError),
+        });
+      }
       throw new OperationError('recovery-needed');
     }
   }
@@ -475,12 +549,7 @@ export class GroupTurns {
       this.state.checkNewWorkMembers(g);
       await this.roots.restore(g);
       const next = await this.state.putTurn({ ...t, state: 'accepted', continuationAllowance: (t.automaticExecutions ?? 0) + this.state.registry.config.groupMaxContinuations });
-      const running = this.runner.execute(t.id).catch(() => this.state.queue.run(async () => {
-        const current = this.state.table('turns').get(t.id);
-        if (current && !terminal(current)) await this.state.putTurn({ ...current, state: 'recovery_needed' });
-      }));
-      this.state.chains.set(t.id, running);
-      void running.finally(() => this.state.chains.delete(t.id)).catch(() => {});
+      this.schedule(next);
       return next;
     });
   }
@@ -504,26 +573,73 @@ export class GroupTurns {
       if (g.revision !== revision) throw new OperationError('conflict');
       const next = { ...g, archived: true, revision: g.revision + 1, updatedAt: Date.now() };
       await this.state.putGroup(next);
-      for (const t of this.state.turns(g).filter((t) => !terminal(t) || t.state === 'paused')) {
+      const activeTurns = this.state.turns(g).filter((t) => !terminal(t) || t.state === 'paused');
+      for (const t of activeTurns) {
         this.state.cancelledTurns.add(t.id);
         this.state.wakeTurns.get(t.id)?.();
         for (const d of this.state.deliveries(t.id)) {
           this.state.controllers.get(d.id)?.abort('user-task-stop');
-          if (d.state === 'pending') await this.state.putDelivery({ ...d, state: 'cancelled', reasonCode: 'user-task-stop', endedAt: Date.now() });
         }
-        if (t.state === 'paused') { await this.state.putTurn({ ...t, state: 'cancelled' }); this.state.cancelledTurns.delete(t.id); }
+      }
+      for (const t of activeTurns) {
+        for (const d of this.state.deliveries(t.id)) {
+          if (d.state !== 'pending') continue;
+          try {
+            await this.state.putDelivery({ ...d, state: 'cancelled', reasonCode: 'user-task-stop', endedAt: Date.now() });
+          } catch (error) {
+            this.state.ctx.logger?.warn?.('[dsh-bot] Group archive could not persist cancelled delivery', {
+              groupId: next.id, turnId: t.id, deliveryId: d.id, phase: 'archive-cancel-delivery', ...redactedErrorMetadata(error),
+            });
+          }
+        }
+        if (t.state === 'paused') {
+          try {
+            await this.state.putTurn({ ...t, state: 'cancelled' });
+            this.state.cancelledTurns.delete(t.id);
+          } catch (error) {
+            this.state.ctx.logger?.warn?.('[dsh-bot] Group archive could not persist cancelled turn', {
+              groupId: next.id, turnId: t.id, phase: 'archive-cancel-turn', ...redactedErrorMetadata(error),
+            });
+          }
+        }
       }
       return next;
     });
-    await Promise.all(this.state.turns(next).map(t => this.state.chains.get(t.id)));
+    const settled = await Promise.allSettled(this.state.turns(next).map(t => this.state.chains.get(t.id)));
+    for (const outcome of settled) {
+      if (outcome.status === 'rejected') {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group archive observed rejected turn chain', {
+          groupId: next.id, phase: 'archive-chains', ...redactedErrorMetadata(outcome.reason),
+        });
+      }
+    }
     await this.state.queue.run(async () => {
       const h = this.state.roots.get(next.id);
-      if (h) {
+      if (!h) return;
+      try {
         await this.state.ctx.subagents.drainDescendants([h.agent]);
-        await this.roots.flush(h);
-        await this.roots.release(h);
-        this.state.roots.delete(next.id);
+      } catch (error) {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group archive descendant drain failed', {
+          groupId: next.id, phase: 'archive-drain', ...redactedErrorMetadata(error),
+        });
       }
+      try {
+        await this.roots.flush(h);
+      } catch (error) {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group archive root flush failed', {
+          groupId: next.id, phase: 'archive-flush', ...redactedErrorMetadata(error),
+        });
+      }
+      let released = h.ownership === 'borrowed';
+      try {
+        await this.roots.release(h);
+        released = true;
+      } catch (error) {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group archive root release failed', {
+          groupId: next.id, phase: 'archive-release', ...redactedErrorMetadata(error),
+        });
+      }
+      if (released && this.state.roots.get(next.id) === h) this.state.roots.delete(next.id);
     });
     return next;
   }
