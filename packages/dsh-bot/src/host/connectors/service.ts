@@ -245,20 +245,43 @@ export class Connectors {
     const close = () =>
       (closing ??= (async () => {
         if (l.stopped) {
-          await l.tail;
+          await l.tail.catch(() => {});
           return;
         }
         l.stopped = true;
-        await l.tail;
-        for (const e of l.entries.values()) {
-          await e.child?.dispose();
-          e.status.state = 'unavailable';
-          e.status.reasonCode = 'agent-closed';
+        const errors: unknown[] = [];
+        try {
+          await l.tail.catch(() => {});
+          const results = await Promise.allSettled(
+            [...l.entries.values()].map(async (e) => {
+              try {
+                await e.child?.dispose();
+              } finally {
+                e.child = undefined;
+                e.status.state = 'unavailable';
+                e.status.reasonCode = 'agent-closed';
+              }
+            }),
+          );
+          for (const result of results) {
+            if (result.status === 'rejected') errors.push(result.reason);
+          }
+        } finally {
+          try {
+            off();
+          } catch (error) {
+            errors.push(error);
+          }
+          try {
+            guard();
+          } catch (error) {
+            errors.push(error);
+          }
+          this.live.delete(l);
+          this.changed();
         }
-        off();
-        guard();
-        this.live.delete(l);
-        this.changed();
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) throw new AggregateError(errors, 'Connector agent cleanup failed');
       })());
     l.close = close;
     const owned = agent.ctx.effect(() => close, 'dsh-bot: connector agent');
@@ -510,8 +533,18 @@ export class Connectors {
   }
   async close() {
     this.stopping = true;
-    await this.queue.close();
-    for (const l of [...this.live]) await l.close?.();
+    const errors: unknown[] = [];
+    try {
+      await this.queue.close();
+    } catch (error) {
+      errors.push(error);
+    }
+    const results = await Promise.allSettled([...this.live].map((l) => l.close?.()));
+    for (const result of results) {
+      if (result.status === 'rejected') errors.push(result.reason);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Connectors shutdown failed');
   }
 }
 declare module '@deepseek-ai/cordis' {

@@ -120,9 +120,23 @@ export class ReferenceBackend extends ReferenceWriter {
     for (const l of this.live.values()) l.accepting = false;
     for (const cancel of this.copying.values()) cancel.abort();
     this.closing ??= (async () => {
-      await this.control.close();
-      for (const l of [...this.live.values()]) await this.closeLive(l);
-      await this.domain.close();
+      const errors: unknown[] = [];
+      try {
+        await this.control.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      const liveResults = await Promise.allSettled([...this.live.values()].map(l => this.closeLive(l)));
+      for (const result of liveResults) {
+        if (result.status === 'rejected') errors.push(result.reason);
+      }
+      try {
+        await this.domain.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, 'Reference memory shutdown failed');
     })();
     return this.closing;
   }

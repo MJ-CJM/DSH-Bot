@@ -15,7 +15,7 @@ import {
   type GroupMember,
 } from '../../shared/groups.js';
 import { resourceId } from '../../shared/identity.js';
-import { OperationError, digest, need, parse } from '../common/operations.js';
+import { OperationError, digest, need, parse, redactedErrorMetadata } from '../common/operations.js';
 import { validateDefaultCwd } from '../home.js';
 
 import { sameBot, terminal } from './model.js';
@@ -117,10 +117,10 @@ export class GroupMembers {
   async setModel(key: GroupKey, value: unknown) {
     const input = parse(groupSetModelSchema, value);
     return this.state.queue.run(async () => {
-      const g = this.state.record(key);
+      const g = await this.roots.reconcilePendingRename(this.state.record(key));
       if (g.supergroup) throw new OperationError('approval-denied');
       if (g.archived || input.expectedModelRevision !== (g.modelRevision ?? 0)) throw new OperationError('conflict');
-      if (g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
+      if (g.state !== 'ready' || this.state.reasons.has(g.id) || this.state.table('pending_renames').get(g.id)) throw new OperationError('recovery-needed');
       if (input.memberId) {
         const member = this.state.members(g).find(m => m.id === input.memberId && m.enabled && m.removedAt === undefined);
         if (!member) throw new OperationError('invalid');
@@ -170,15 +170,16 @@ export class GroupMembers {
   async editMembers(key: GroupKey, value: unknown): Promise<GroupMemberEditResult> {
     const input = parse(groupMemberEditSchema, value);
     return this.state.queue.run(async () => {
-      const g = this.state.record(key);
+      const g = await this.roots.reconcilePendingRename(this.state.record(key));
       return this.saveEdit(key, { ...input, name: g.name, mode: g.mode }, undefined,
-        { operationId: input.operationId, requestDigest: digest({ group: key, source: 'members', input }) });
+        { operationId: input.operationId, requestDigest: digest({ group: key, source: 'members', input }) }, g);
     }) as Promise<GroupMemberEditResult>;
   }
   async getMemberEditResult(key: GroupKey, operationId: string): Promise<GroupMemberEditResult> {
     parse(resourceId, operationId);
     return this.state.queue.run(async () => {
-      this.state.record(key);
+      const g = this.state.record(key);
+      await this.roots.reconcilePendingRename(g);
       const row = this.state.table('member_edits').get(this.editId(key, operationId));
       return row ? { operationId, status: row.status, ...(row.result ? { group: row.result } : {}) } : { operationId, status: 'not-found' };
     });
@@ -190,10 +191,10 @@ export class GroupMembers {
   }
   private editId(key: GroupKey, operationId: string) { return digest([key.groupId, key.groupCreatedAt, operationId]); }
   private async saveEdit(key: GroupKey, input: ReturnType<typeof groupEditSchema.parse>, authority?: SupergroupAuthority,
-    operation?: { operationId: string; requestDigest: string }): Promise<GroupRecord | GroupMemberEditResult> {
+    operation?: { operationId: string; requestDigest: string }, reconciledGroup?: GroupRecord): Promise<GroupRecord | GroupMemberEditResult> {
       if (input.memberRoles?.some(row => !input.members.some(bot => sameBot(bot, row.bot))) ||
           new Set(input.memberRoles?.map(row => JSON.stringify(row.bot))).size !== (input.memberRoles?.length ?? 0)) throw new OperationError('invalid');
-      const g = this.state.record(key);
+      const g = reconciledGroup ?? await this.roots.reconcilePendingRename(this.state.record(key));
       const operationKey = operation && this.editId(key, operation.operationId);
       const prior = operationKey && this.state.table('member_edits').get(operationKey);
       if (prior) {
@@ -214,7 +215,7 @@ export class GroupMembers {
         input.expectedMembershipRevision !== g.membershipRevision
       )
         throw new OperationError('conflict');
-      if (g.state !== 'ready' || this.state.reasons.has(g.id)) throw new OperationError('recovery-needed');
+      if (g.state !== 'ready' || this.state.reasons.has(g.id) || this.state.table('pending_renames').get(g.id)) throw new OperationError('recovery-needed');
       if (!normalizeSessionTitle(input.name, Number.MAX_SAFE_INTEGER)) throw new OperationError('invalid');
       if (new Set(input.members.map(bot => bot.botId)).size !== input.members.length) throw new OperationError('invalid');
       const existing = this.state.members(g).filter(member => member.removedAt === undefined);
@@ -249,6 +250,9 @@ export class GroupMembers {
         state: 'recovery_needed' as const,
       };
       if (operation && operationKey) await this.state.table('member_edits').put(operationKey, { group: key, ...operation, status: 'unknown' });
+      const nameChanged = next.name !== g.name;
+      let phase: 'persist' | 'rename' | 'receipt' = 'persist';
+      let readyCommitted = false;
       try {
         await this.state.putGroup(next);
         for (const m of old.filter((m) => m.removedAt === undefined && !input.members.some((b) => sameBot(b, m.bot)))) {
@@ -268,19 +272,60 @@ export class GroupMembers {
           await this.state.table('members').put(member.id, member);
         }
         for (const turn of this.state.turns(g)) this.state.wakeTurns.get(turn.id)?.();
-        const title = await this.roots.rename(next);
+        let title = next.name;
+        if (nameChanged) {
+          await this.state.table('pending_renames').put(g.id, {
+            group: key,
+            revision: next.revision,
+            membershipRevision: next.membershipRevision,
+            name: next.name,
+            ...(operationKey ? { operationKey } : {}),
+          });
+          phase = 'rename';
+          title = await this.roots.rename(next);
+        }
         const ready: GroupRecord = { ...next, name: title, state: 'ready' };
+        if (nameChanged && operationKey) {
+          await this.state.table('pending_renames').put(g.id, {
+            group: key,
+            revision: next.revision,
+            membershipRevision: next.membershipRevision,
+            name: next.name,
+            operationKey,
+            result: ready,
+          });
+        }
         await this.state.putGroup(ready);
+        readyCommitted = true;
         if (operation && operationKey) {
+          phase = 'receipt';
           await this.state.table('member_edits').put(operationKey, { group: key, ...operation, status: 'saved', result: ready });
+        }
+        if (nameChanged) {
+          await this.state.table('pending_renames').delete(g.id).catch((error) => {
+            this.state.ctx.logger?.warn?.('[dsh-bot] Group pending rename cleanup failed', {
+              groupId: g.id,
+              ...redactedErrorMetadata(error),
+            });
+          });
+        }
+        if (operation && operationKey) {
           return { operationId: operation.operationId, status: 'saved', group: ready };
         }
         return ready;
-      } catch {
+      } catch (error) {
+        this.state.ctx.logger?.warn?.('[dsh-bot] Group edit failed; recovery required', {
+          groupId: g.id,
+          phase,
+          ...redactedErrorMetadata(error),
+        });
         this.state.reasons.set(g.id, 'recovery-needed');
-        // A final receipt write can fail after ready committed. Keep every later edit
-        // closed, including after restart, without assuming cross-table transactions.
-        if (operation) await this.state.putGroup({ ...next, state: 'recovery_needed' }).catch(() => {});
+        // A final receipt write can fail after ready committed. When no pending_renames
+        // credential exists, keep every later edit closed across restart without assuming
+        // cross-table transactions.
+        if (operation && (!nameChanged || !readyCommitted)) {
+          await this.state.putGroup({ ...next, state: 'recovery_needed' }).catch(() => {});
+        }
         if (operation) return { operationId: operation.operationId, status: 'unknown' };
         throw new OperationError('recovery-needed');
       }

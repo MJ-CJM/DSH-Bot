@@ -569,8 +569,9 @@ export class GroupTurns {
   }
   async archive(key: GroupKey, revision: number) {
     const next = await this.state.queue.run(async () => {
-      const g = this.state.record(key);
+      let g = this.state.record(key);
       if (g.revision !== revision) throw new OperationError('conflict');
+      g = await this.roots.reconcilePendingRename(g);
       const next = { ...g, archived: true, revision: g.revision + 1, updatedAt: Date.now() };
       await this.state.putGroup(next);
       const activeTurns = this.state.turns(g).filter((t) => !terminal(t) || t.state === 'paused');

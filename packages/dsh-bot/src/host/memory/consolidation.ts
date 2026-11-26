@@ -201,5 +201,5 @@ export class MemoryConsolidation {
     const next = { ...found, state: input.action === 'accept' ? 'accepted' as const : 'rejected' as const, decisionId: input.operationId, decisionHash };
     await this.kernel.serial(() => this.put(next)); return next;
   }
-  async close() { this.stopped = true; this.active?.abort.abort(); await this.active?.done; }
+  async close() { this.stopped = true; this.active?.abort.abort(); await this.active?.done.catch(() => {}); }
 }

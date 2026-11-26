@@ -42,6 +42,53 @@ export class MainSessions {
   boundSessionId(botId: string, botCreatedAt: number): string | undefined {
     return this.domain?.table('bindings').get(JSON.stringify([botId, botCreatedAt]))?.sessionId;
   }
+  /** Committed synchronous check for a live main Agent without entering registry or MainSessions queues. */
+  isBoundLiveMain(botId: string, botCreatedAt: number, agent: Agent): boolean {
+    if (this.stopped || !this.domain) return false;
+    if (this.boundSessionId(botId, botCreatedAt) !== agent.session.id) return false;
+    const live = this.ctx.agents.get(agent.session.id);
+    if (live !== agent || this.recoveryGuards.has(live)) return false;
+    const meta = agent.session.header;
+    if (
+      !meta ||
+      !(meta.createdAt >= botCreatedAt) ||
+      meta.parentSession ||
+      meta.origin === 'subagent' ||
+      meta.isSeeded ||
+      (meta.delegationDepth ?? 0) > 0
+    )
+      return false;
+    const session = this.ctx.sessions?.get(agent.session.id) ?? agent.session;
+    const selected = this.ctx.get?.('sessionProjections')?.snapshot(session).values.agentPreset;
+    if ((selected ?? meta.agentPreset) !== `${this.bots.config.presetIdPrefix}${botId}`) return false;
+    const binding = getBotBinding(live);
+    if (binding) return binding.botId === botId && binding.botCreatedAt === botCreatedAt;
+    return true;
+  }
+  /** Committed synchronous lookup of a Bot incarnation's persisted main session without entering queues. */
+  boundMainSnapshot(botId: string, botCreatedAt: number): MainSession | undefined {
+    if (this.stopped || !this.domain) return undefined;
+    const sessionId = this.boundSessionId(botId, botCreatedAt);
+    if (!sessionId) return undefined;
+    const live = this.ctx.agents.get(sessionId as SessionId);
+    if (live) return this.isBoundLiveMain(botId, botCreatedAt, live) ? { sessionId } : undefined;
+    const session = this.ctx.sessions?.get(sessionId as SessionId);
+    if (session) {
+      const meta = session.header;
+      if (
+        !meta ||
+        !(meta.createdAt >= botCreatedAt) ||
+        meta.parentSession ||
+        meta.origin === 'subagent' ||
+        meta.isSeeded ||
+        (meta.delegationDepth ?? 0) > 0
+      )
+        return undefined;
+      const selected = this.ctx.get?.('sessionProjections')?.snapshot(session).values.agentPreset;
+      if ((selected ?? meta.agentPreset) !== `${this.bots.config.presetIdPrefix}${botId}`) return undefined;
+    }
+    return { sessionId };
+  }
   constructor(
     private readonly ctx: Context,
     private readonly bots: DshBotRegistry,
@@ -329,12 +376,23 @@ export class MainSessions {
   close(): Promise<void> {
     this.closing ??= (async () => {
       this.stopped = true;
-      this.off?.();
-      await this.tail;
+      const errors: unknown[] = [];
+      try {
+        this.off?.();
+      } catch (error) {
+        errors.push(error);
+      }
+      await this.tail.catch(() => {});
       this.pinned.clear();
       this.naming.clear();
       this.repairs.clear();
-      await this.domain?.close();
+      try {
+        await this.domain?.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, 'Main sessions shutdown failed');
     })();
     return this.closing;
   }

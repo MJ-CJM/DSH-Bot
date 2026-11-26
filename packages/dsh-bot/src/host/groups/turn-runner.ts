@@ -607,15 +607,18 @@ export class GroupTurnRunner {
       inputAdmission.abort();
       clearTimeout(timer);
       controller.signal.removeEventListener('abort', stopNative);
-      if (activation) {
-        disposal ??= activation.dispose();
-        await disposal;
+      try {
+        if (activation) {
+          disposal ??= activation.dispose();
+          await disposal;
+        }
+      } finally {
+        if (reservedChild) { this.state.workers.delete(reservedChild); workerReservations.delete(reservedChild); }
+        this.state.inputAdmissions.delete(d0.id);
+        this.state.settledInputs.delete(d0.id);
+        this.state.activations.delete(d0.id);
+        this.state.controllers.delete(d0.id);
       }
-      if (reservedChild) { this.state.workers.delete(reservedChild); workerReservations.delete(reservedChild); }
-      this.state.inputAdmissions.delete(d0.id);
-      this.state.settledInputs.delete(d0.id);
-      this.state.activations.delete(d0.id);
-      this.state.controllers.delete(d0.id);
     }
   }
   async execute(id: string) {

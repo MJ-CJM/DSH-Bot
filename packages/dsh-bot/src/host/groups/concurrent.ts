@@ -145,11 +145,15 @@ export class ConcurrentGroups {
         changed = new Promise<void>(resolve => { wake = resolve; });
       }
     } finally {
-      await Promise.allSettled(running.values());
-      this.state.wakeTurns.delete(id); this.state.cancelledTurns.delete(id);
-      // Idle children have durable history but no continued tool capability.
-      for (const [childId, binding] of this.state.workers) if (binding.turnId === id) {
-        this.state.workers.delete(childId); workerReservations.delete(childId);
+      try {
+        await Promise.allSettled(running.values());
+      } finally {
+        this.state.wakeTurns.delete(id); this.state.cancelledTurns.delete(id);
+        // Idle children have durable history but no continued tool capability.
+        for (const [childId, binding] of this.state.workers) if (binding.turnId === id) {
+          this.state.workers.delete(childId);
+          if (workerReservations.get(childId) === binding) workerReservations.delete(childId);
+        }
       }
     }
   }
@@ -160,10 +164,17 @@ export class ConcurrentGroups {
     let activation: SubagentActivation | undefined, childId: string | undefined, runId: string | undefined;
     let acceptedMessageId: string | undefined;
     let releaseEvents = () => {}, timer: ReturnType<typeof setTimeout> | undefined;
+    const cleanupErrors: unknown[] = [];
     const stop = () => {
       if (activation) { void activation.dispose().catch(() => {}); return; }
       if (!childId) return;
-      this.state.ctx.subagents.interrupt(SessionId(childId), { kind: 'ancestor', agent: need(this.state.roots.get(t.group.groupId)).agent });
+      const root = this.state.roots.get(t.group.groupId);
+      if (!root) return;
+      try {
+        void Promise.resolve(this.state.ctx.subagents.interrupt(SessionId(childId), { kind: 'ancestor', agent: root.agent })).catch(() => {});
+      } catch {
+        /* Drain in finally handles remaining child cleanup. */
+      }
     };
     controller.signal.addEventListener('abort', stop);
     try {
@@ -195,14 +206,20 @@ export class ConcurrentGroups {
       this.state.workers.set(childId, binding); workerReservations.set(childId, binding);
       let ended!: (result: SubagentResult) => void;
       const end = new Promise<SubagentResult>(resolve => { ended = resolve; });
+      const abortEnd = () => {
+        admission.abort();
+        ended({ stopReason: 'aborted', output: [] });
+      };
       releaseEvents = this.state.ctx.effect(() => {
         const offStart = this.state.ctx.on('subagent/start', info => { if (info.id === childId) runId = info.runId; });
         const offEnd = this.state.ctx.on('subagent/end', info => {
-          if (info.id !== childId || info.runId !== runId) return;
+          if (info.id !== childId || runId === undefined || info.runId !== runId) return;
           admission.abort(); ended({ stopReason: info.stopReason, output: info.lastAssistantMessage ?? [] });
         });
-        return () => { offStart(); offEnd(); };
+        controller.signal.addEventListener('abort', abortEnd, { once: true });
+        return () => { offStart(); offEnd(); controller.signal.removeEventListener('abort', abortEnd); };
       }, 'dsh-bot: exact group activation result');
+      if (controller.signal.aborted) abortEnd();
       await this.state.queue.run(async () => this.state.putDelivery({ ...need(this.state.table('deliveries').get(d0.id)), childSessionId: childId }));
       if (prior) {
         acceptedMessageId = await followupInput(this.state, g, prepared.root.agent, prepared.d.bot, childId, prepared.context.text, d0.id, controller.signal,
@@ -235,9 +252,27 @@ export class ConcurrentGroups {
         endedAt: Date.now(), reasonCode: controller.signal.aborted ? String(controller.signal.reason ?? 'user-stop') : error instanceof OperationError ? error.code : 'native-failure' }));
     } finally {
       admission.abort(); clearTimeout(timer); releaseEvents(); controller.signal.removeEventListener('abort', stop);
-      await activation?.dispose();
-      if (controller.signal.aborted && childId) await this.state.ctx.subagents.drainChildren(need(this.state.roots.get(t.group.groupId)).agent, [SessionId(childId)]);
-      this.state.controllers.delete(d0.id); this.state.inputAdmissions.delete(d0.id); this.state.activations.delete(d0.id); this.state.settledInputs.delete(d0.id);
+      try {
+        try {
+          await activation?.dispose();
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        if (controller.signal.aborted && childId) {
+          const root = this.state.roots.get(t.group.groupId);
+          if (root && typeof this.state.ctx.subagents?.drainChildren === 'function') {
+            try {
+              await this.state.ctx.subagents.drainChildren(root.agent, [SessionId(childId)]);
+            } catch (error) {
+              cleanupErrors.push(error);
+            }
+          }
+        }
+      } finally {
+        this.state.controllers.delete(d0.id); this.state.inputAdmissions.delete(d0.id); this.state.activations.delete(d0.id); this.state.settledInputs.delete(d0.id);
+      }
     }
+    if (cleanupErrors.length === 1) throw cleanupErrors[0];
+    if (cleanupErrors.length > 1) throw new AggregateError(cleanupErrors, 'Group delivery cleanup failed');
   }
 }

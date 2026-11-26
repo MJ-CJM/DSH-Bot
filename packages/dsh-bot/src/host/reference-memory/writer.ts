@@ -197,19 +197,28 @@ export class ReferenceWriter {
       this.reasons.delete(keyOf(bot));
       return l;
     } catch {
-      await this.closeLive(l);
+      await this.closeLive(l).catch(() => {});
       throw new OperationError('unavailable');
     }
   }
   protected closeLive(l: Live): Promise<void> {
     l.accepting = false;
     l.closing ??= (async () => {
-      await l.tail;
-      await l.child?.dispose();
-      for (const off of l.off.splice(0)) off();
-      if (this.live.get(keyOf(l.bot)) === l) this.live.delete(keyOf(l.bot));
-      if (writers.get(join(this.root, keyOf(l.bot))) === l) writers.delete(join(this.root, keyOf(l.bot)));
-      this.changed();
+      try {
+        await l.tail.catch(() => {});
+        await l.child?.dispose();
+      } finally {
+        for (const off of l.off.splice(0)) {
+          try {
+            off();
+          } catch {
+            /* Continue releasing remaining disposers and maps. */
+          }
+        }
+        if (this.live.get(keyOf(l.bot)) === l) this.live.delete(keyOf(l.bot));
+        if (writers.get(join(this.root, keyOf(l.bot))) === l) writers.delete(join(this.root, keyOf(l.bot)));
+        this.changed();
+      }
     })();
     return l.closing;
   }
