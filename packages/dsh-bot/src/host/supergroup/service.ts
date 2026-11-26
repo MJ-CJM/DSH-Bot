@@ -13,6 +13,7 @@ import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotKey } from '../../shared/identity.js';
 import { supergroupSendGroupInputSchema, supergroupWorkSchema, type SupergroupGroupInputReceipt, type SupergroupSendGroupInput, type SupergroupWork, type SupergroupWorkView } from '../../shared/supergroup.js';
 import type { DshBotRegistry } from '../registry.js';
+import { committedBot, isCommittedLiveMain } from '../registry/snapshot.js';
 import type { Groups } from '../groups/service.js';
 import type { SupergroupAuthority, SupergroupExpertRequest } from '../groups/supergroup-admission.js';
 import { getBotBinding } from '../data-flow/agent-binding.js';
@@ -77,6 +78,7 @@ export class Supergroup {
   constructor(private readonly ctx: Context, private readonly registry: DshBotRegistry,
     private readonly groups: Groups, private readonly domain: Domain<typeof supergroupDomain>) {
     this.support = new TaskSupport(ctx, registry, { read: id => this.read(id), agent: work => this.ownerAgent(work),
+      agentSnapshot: work => this.ownerAgent(work, undefined, true),
       enabled: () => !this.stopped && this.config().enabled,
       valid: work => !this.stopped && this.config().enabled && work.configDigest === this.configDigest(),
       change: (id, expected, update) => this.serial.run(() => {
@@ -196,12 +198,20 @@ export class Supergroup {
     return value;
   }
   /** The latest substantive input must really be human. Ambient context is not authorization. */
-  private async human(agent: Agent) {
+  private async human(agent: Agent, snapshot = false) {
     const header = agent.session.header, owner = getBotBinding(agent);
     if (this.stopped || !owner || header.parentSession || header.origin === 'subagent' || (header.delegationDepth ?? 0) > 0
       || this.ctx.agents.get(agent.id) !== agent) throw new OperationError('approval-denied');
-    const bot = await this.registry.get(owner.botId), main = await this.registry.mainSessions?.find(owner.botId);
-    if (bot.createdAt !== owner.botCreatedAt || main?.sessionId !== agent.id) throw new OperationError('approval-denied');
+    let bot: Awaited<ReturnType<DshBotRegistry['get']>>;
+    if (snapshot) {
+      const committed = await committedBot(this.registry, owner);
+      if (!committed || !(await isCommittedLiveMain(this.registry, owner, agent))) throw new OperationError('approval-denied');
+      bot = committed;
+    } else {
+      bot = await this.registry.get(owner.botId);
+      const main = await this.registry.mainSessions?.find(owner.botId);
+      if (bot.createdAt !== owner.botCreatedAt || main?.sessionId !== agent.id) throw new OperationError('approval-denied');
+    }
     const messaging = this.ctx.get?.('dshBotMessaging');
     const event = agent.session.snapshotEvents().findLast(row => row.type === 'user/message' && !isNativeAmbientSource(row.data.source.kind) &&
       !messaging?.isDisplayMessage(agent, row.data));
@@ -235,12 +245,12 @@ export class Supergroup {
     const continuation = neutral || /^(?:其中|刚才|该|这个|那(?:个|条)|上(?:个|一条)|基于|再|why\b|can you elaborate)/iu.test(text);
     const requestId = explicit ?? (samePeer && continuation ? prior.id : undefined);
     if (!requestId) return task;
-    const read = () => messaging.peerResult(agent, targetId, requestId, true);
+    const read = (snapshot = false) => messaging.peerResult(agent, targetId, requestId, true, snapshot);
     const result = await read();
     if (result.status !== 'completed' || !result.scoped) throw new OperationError('conflict');
     return { ...task, text: JSON.stringify({ followUp: text, previousQuestion: result.question, previousAnswer: result.content }),
       validate: async () => {
-        const current = await read();
+        const current = await read(true);
         if (current.status !== 'completed' || !current.scoped || current.question !== result.question || current.content !== result.content)
           throw new OperationError('conflict');
       } };
@@ -422,10 +432,10 @@ export class Supergroup {
     const check = async () => {
       controller.signal.throwIfAborted();
       const current = this.read(work.id);
-      const input = groupInput ? { owner: work.owner, messageId } : await this.human(agent);
+      const input = groupInput ? { owner: work.owner, messageId } : await this.human(agent, true);
       if (peerInputDigest && (!('text' in input) || hash(input.text) !== peerInputDigest)) throw new OperationError('conflict');
       if (groupInput) {
-        await this.ownerAgent(current, agent);
+        await this.ownerAgent(current, agent, true);
         const receipt = current.groupInputs.find(row => row.messageId === groupInput.messageId);
         const event = groupInput.root.session.snapshotEvents().find(row => row.type === 'user/message' && row.data.id === groupInput.messageId);
         if (!receipt || !['queued', 'running', 'completed'].includes(receipt.state) || receipt.seq !== groupInput.seq ||
@@ -437,10 +447,10 @@ export class Supergroup {
         current.configDigest !== this.configDigest() || Date.now() >= current.expiresAt || input.messageId !== messageId ||
         !same(input.owner, current.owner)) throw new OperationError('approval-denied');
       for (const key of current.readers) {
-        const bot = await this.registry.get(key.botId);
-        if (bot.createdAt !== key.botCreatedAt || bot.updatedAt !== revisions.get(key.botId)) throw new OperationError('conflict');
+        const bot = await committedBot(this.registry, key);
+        if (!bot || bot.updatedAt !== revisions.get(key.botId)) throw new OperationError('conflict');
       }
-      await this.support.text(current, '');
+      await this.support.text(current, '', true);
       controller.signal.throwIfAborted();
     };
     return { controller, text, revisions, turnIds: [], detach: () => signal.removeEventListener('abort', abort), authority: { workId: work.id, origin: agent, messageId, ...(groupInput ? { groupInput } : {}), owner: work.owner,
@@ -633,7 +643,15 @@ export class Supergroup {
       return { status: 'accepted', requestId: id };
     });
   }
-  private async ownerAgent(work: SupergroupWork, expected?: Agent) {
+  private async ownerAgent(work: SupergroupWork, expected?: Agent, snapshot = false) {
+    if (snapshot) {
+      const bot = await committedBot(this.registry, work.owner);
+      const agent = this.ctx.agents.get(SessionId(work.originSessionId));
+      if (this.stopped || !bot || !agent || !(await isCommittedLiveMain(this.registry, work.owner, agent)) ||
+        (expected && agent !== expected) || !getBotBinding(agent) || !same(getBotBinding(agent)!, work.owner) ||
+        agent.session.header.parentSession || agent.session.header.origin === 'subagent') throw new OperationError('unavailable');
+      return agent;
+    }
     const bot = await this.registry.get(work.owner.botId), main = await this.registry.mainSessions?.find(work.owner.botId);
     const agent = main && this.ctx.agents.get(SessionId(main.sessionId));
     if (this.stopped || bot.createdAt !== work.owner.botCreatedAt || main?.sessionId !== work.originSessionId ||
@@ -824,7 +842,7 @@ export class Supergroup {
       const agent = await this.ownerAgent(work, runtime.authority.origin);
       const check = async () => {
         const current = this.read(work.id), receipt = current.groupInputs.find(input => input.operationId === operationId);
-        await this.ownerAgent(current, agent);
+        await this.ownerAgent(current, agent, true);
         if (this.stopped || !this.config().enabled || current.configDigest !== this.configDigest() || current.state === 'cancelled' ||
           receipt?.delivery?.messageId !== message.id || ['cancelled', 'unknown', 'undeliverable'].includes(receipt.delivery.state)) throw new OperationError('approval-denied');
       };

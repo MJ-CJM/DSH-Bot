@@ -53,23 +53,27 @@ export async function openBotStores(
         stores = { bots, memories: memory ? new V2MemoryStore(memory.kernel, bots) : new MemoryStore(domain),
           activities, ...(memory ? { memoryKernel: memory.kernel } : {}) };
       } catch (error) {
-        await domain.close();
-        await memory?.close();
+        await Promise.allSettled([domain.close(), memory?.close()]);
         throw error;
       }
       const closeDomain = async () => {
         // Cordis may dispose sibling effects concurrently. The registry owns a
         // wider queue than these stores, and must drain it before we reject writes.
-        if (options.beforeClose) await options.beforeClose();
+        const errors: unknown[] = [];
+        try {
+          if (options.beforeClose) await options.beforeClose();
+        } catch (error) {
+          errors.push(error);
+        }
         const state = writer(domain);
         state.closing = true;
-        await state.tail;
-        try {
-          await domain.close();
-          await memory?.close();
-        } catch (error) {
-          throw failure(error);
+        await state.tail.catch(() => {});
+        const results = await Promise.allSettled([domain.close(), memory?.close()]);
+        for (const result of results) {
+          if (result.status === 'rejected') errors.push(result.reason);
         }
+        if (errors.length === 1) throw failure(errors[0]);
+        if (errors.length > 1) throw failure(new AggregateError(errors, 'Bot store cleanup failed'));
       };
       return () => (closing ??= closeDomain());
     });

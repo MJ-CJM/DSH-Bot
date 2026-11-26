@@ -52,8 +52,10 @@ export async function openIntegrationStores(ctx: Context): Promise<IntegrationSt
       connectors,
       notifications,
       async close() {
-        await notifications.close();
-        await connectors.close();
+        const results = await Promise.allSettled([notifications.close(), connectors.close()]);
+        const errors = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected').map((r) => r.reason);
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) throw new AggregateError(errors, 'Integration stores shutdown failed');
       },
     };
   } catch {

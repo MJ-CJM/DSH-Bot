@@ -82,11 +82,19 @@ export class DshBotRegistry extends RegistryMutations implements DshBotMethods {
     return bot ? { ...bot.persona } : undefined;
   }
 
+  /** Committed synchronous Bot snapshot bypassing the registry queue.
+   * Safe inside ManagedOutlets.dispatch beforeAttempt callbacks while MemoryKernel.tail is held. */
+  botSnapshot(botId: string, createdAt?: number): BotRecord | undefined {
+    if (!this.initialized || this.stopping || this.failed) return undefined;
+    const bot = this.stores.bots.list().find(
+      row => row.id === botId && (createdAt === undefined || row.createdAt === createdAt),
+    );
+    return bot ? structuredClone(bot) : undefined;
+  }
+
   /** Synchronous final onboarding admission after its durable dispatch receipt. */
   onboardingSnapshot(botId: string, createdAt: number): BotRecord | undefined {
-    if (!this.initialized || this.stopping || this.failed) return undefined;
-    const bot = this.stores.bots.list().find(row => row.id === botId && row.createdAt === createdAt);
-    return bot ? structuredClone(bot) : undefined;
+    return this.botSnapshot(botId, createdAt);
   }
 
   /** Host-only synchronous commit notification; listeners cannot undo a commit. */

@@ -3,6 +3,7 @@ import { SessionId } from '@deepseek-ai/dsh-session';
 import type { BotKey } from '../../shared/identity.js';
 import type { GroupKey, GroupRecord } from '../../shared/groups.js';
 import { digest, OperationError } from '../common/operations.js';
+import { isCommittedLiveMain } from '../registry/snapshot.js';
 import { sameBot, textOf } from './model.js';
 import type { GroupState } from './state.js';
 import type { WorkerBinding } from './worker-tool.js';
@@ -54,10 +55,12 @@ export async function validateSupergroupAuthority(state: GroupState, authority: 
   if (group && JSON.stringify(group.supergroup) !== JSON.stringify(supergroupMetadata(authority)))
     throw new OperationError('approval-denied');
   await authority.check();
-  await state.bot(authority.owner);
-  const main = await state.registry.mainSessions?.find(authority.owner.botId);
-  if (main?.sessionId !== authority.origin.session.id) throw new OperationError('approval-denied');
-  for (const reader of authority.readers) await state.bot(reader);
+  const checkBot = (key: BotKey) =>
+    typeof state.botSnapshot === 'function' ? state.botSnapshot(key) : state.bot(key);
+  await checkBot(authority.owner);
+  if (!(await isCommittedLiveMain(state.registry, authority.owner, authority.origin)))
+    throw new OperationError('approval-denied');
+  for (const reader of authority.readers) await checkBot(reader);
   if (authority.groupInput) {
     const input = authority.groupInput;
     const originatingEvent = authority.origin.session.snapshotEvents().find(event => event.type === 'user/message' &&

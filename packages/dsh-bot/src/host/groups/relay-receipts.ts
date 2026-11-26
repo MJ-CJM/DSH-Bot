@@ -27,7 +27,9 @@ export async function projectGroupRelay(state: GroupState, group: GroupRecord, t
       !received || !sameBot(received.bot, guest.bot) || received.acceptedAt === undefined || (kind === 'reply' && (received.answeredAt === undefined ||
         !reply || reply.acceptedAt === undefined || reply.memberId !== via.memberId || !sameBot(reply.bot, via.bot))))
       throw new OperationError('group-data-blocked');
-    await Promise.all([state.bot(via.bot), state.bot(guest.bot)]);
+    const checkBot = (key: typeof via.bot) =>
+      typeof state.botSnapshot === 'function' ? state.botSnapshot(key) : state.bot(key);
+    await Promise.all([checkBot(via.bot), checkBot(guest.bot)]);
   };
   await check();
   const workId = relayWorkId(turn), operationId = turn.operationId;

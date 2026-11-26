@@ -1917,19 +1917,39 @@ export class ProactiveService {
 		return result;
 	}
 	async close() {
-		this.stopAdmission();
-		const governanceClosed = this.governance.close();
-		await this.#maintenance;
-		await this.#automatic.close();
-		await this.#feed;
-		await this.#groupFollowUpQueue.close();
-		await this.execution.close();
-		await this.#resultJournal?.close();
-		await this.feedbackWorkflow.close();
-		await this.groupBudgets.close();
-		await this.#noticesClosing;
-		await governanceClosed;
-		this.#state = "unavailable";
-		await this.#client?.close(this.#storeId);
+		const errors: unknown[] = [];
+		const attempt = async (step: () => unknown) => {
+			try {
+				await step();
+			} catch (error) {
+				errors.push(error);
+			}
+		};
+		let governanceClosed: Promise<void> | undefined;
+		try {
+			await attempt(() => this.stopAdmission());
+			try {
+				governanceClosed = this.governance.close();
+				void governanceClosed.catch(() => {});
+			} catch (error) {
+				errors.push(error);
+			}
+			await attempt(() => this.#maintenance);
+			await attempt(() => this.#automatic.close());
+			await attempt(() => this.#feed);
+			await attempt(() => this.#groupFollowUpQueue.close());
+			await attempt(() => this.execution.close());
+			await attempt(() => this.#resultJournal?.close());
+			await attempt(() => this.feedbackWorkflow.close());
+			await attempt(() => this.groupBudgets.close());
+			await attempt(() => this.#noticesClosing);
+			await attempt(() => governanceClosed);
+		} finally {
+			this.#state = "unavailable";
+			await attempt(() => this.#client?.close(this.#storeId));
+		}
+		if (errors.length === 1) throw errors[0];
+		if (errors.length > 1)
+			throw new AggregateError(errors, "Proactive service shutdown failed");
 	}
 }

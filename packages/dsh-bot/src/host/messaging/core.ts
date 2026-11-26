@@ -11,6 +11,7 @@ import {
 } from '../../shared/messaging.js';
 import type { BotKey } from '../../shared/identity.js';
 import type { DshBotRegistry } from '../registry.js';
+import { committedBot, isCommittedLiveMain } from '../registry/snapshot.js';
 import { getBotBinding } from '../bot-context.js';
 import { OperationError, Serial } from '../common/operations.js';
 import { isNativeAmbientSource } from '../common/native-ambient-source.js';
@@ -64,7 +65,7 @@ export abstract class MessagingCore {
     if (bot.createdAt !== key.botCreatedAt) throw new OperationError('conflict');
     return bot;
   }
-  async exact(agent: Agent) {
+  async exact(agent: Agent, snapshot = false) {
     const binding = getBotBinding(agent),
       h = agent.session.header;
     if (
@@ -75,6 +76,11 @@ export abstract class MessagingCore {
       this.ctx.agents.get(agent.session.id) !== agent
     )
       throw new OperationError('invalid');
+    if (snapshot) {
+      if (!(await committedBot(this.registry, binding))) throw new OperationError('conflict');
+      if (!(await isCommittedLiveMain(this.registry, binding, agent))) throw new OperationError('conflict');
+      return binding;
+    }
     await this.bot(binding);
     const main = await this.registry.mainSessions?.find(binding.botId);
     if (main?.sessionId !== agent.session.id) throw new OperationError('conflict');

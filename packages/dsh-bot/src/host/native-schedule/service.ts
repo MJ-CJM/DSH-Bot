@@ -159,10 +159,19 @@ export class NativeSchedules {
   close(): Promise<void> {
     this.closing ??= (async () => {
       this.closed = true;
-      this.unsubscribe?.();
-      await this.tail;
-      await this.legacy?.close();
-      await this.bindings?.close();
+      const errors: unknown[] = [];
+      try {
+        this.unsubscribe?.();
+      } catch (error) {
+        errors.push(error);
+      }
+      await this.tail.catch(() => {});
+      const results = await Promise.allSettled([this.legacy?.close(), this.bindings?.close()]);
+      for (const result of results) {
+        if (result.status === 'rejected') errors.push(result.reason);
+      }
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, 'Native schedule shutdown failed');
     })();
     return this.closing;
   }

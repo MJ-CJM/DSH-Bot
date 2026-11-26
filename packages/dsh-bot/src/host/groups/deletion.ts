@@ -163,6 +163,8 @@ export class GroupDeletionService {
     }
     const read = this.state.table('read_state').get(id);
     if (read && belongs(read.group)) await this.state.table('read_state').delete(id);
+    const pendingRename = this.state.table('pending_renames').get(id);
+    if (pendingRename && belongs(pendingRename.group)) await this.state.table('pending_renames').delete(id);
     await this.state.exportReviews?.table('closures').delete(JSON.stringify([id, key.groupCreatedAt]));
     await this.state.table('deletions').put(id, { ...receipt, complete: true });
   }

@@ -1,5 +1,5 @@
 import { digest } from '../common/operations.js';
-import { getGroupWorkerBinding, installWorkerTools, isLiveGroupWorker } from './worker-tool.js';
+import { getGroupWorkerBinding, installWorkerTools, isLiveGroupWorker, workerReservations } from './worker-tool.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { SessionSeq } from '@deepseek-ai/dsh-session';
 import { GROUP_ROOT_PRESET } from '../../shared/groups.js';
@@ -349,19 +349,28 @@ export class Groups {
           errors.push(e);
         }
       };
-      await attempt(() => Promise.all([...this.state.chains.values()]));
+      const chainResults = await Promise.allSettled([...this.state.chains.values()]);
+      for (const result of chainResults) {
+        if (result.status === 'rejected') errors.push(result.reason);
+      }
       this.state.shutdownPhase = 'draining-queue';
       await attempt(() => this.state.queue.close());
-      this.state.offTitle?.();
-      this.state.offWorkers?.();
-      this.state.closeIndex();
+      await attempt(() => this.state.offTitle?.());
+      await attempt(() => this.state.offWorkers?.());
+      await attempt(() => this.state.closeIndex());
+      for (const [childId, binding] of this.state.workers) {
+        if (workerReservations.get(childId) === binding) workerReservations.delete(childId);
+      }
       this.state.workers.clear();
       this.state.proactiveDrains.clear();
       this.state.proactiveAllowances.clear();
       this.state.shutdownPhase = 'disposing-roots';
-      for (const [id, activation] of this.state.activations) await attempt(async () => {
-        await activation.dispose();
-        if (this.state.activations.get(id) === activation) this.state.activations.delete(id);
+      for (const [id, activation] of [...this.state.activations]) await attempt(async () => {
+        try {
+          await activation.dispose();
+        } finally {
+          if (this.state.activations.get(id) === activation) this.state.activations.delete(id);
+        }
       });
       for (const h of this.state.roots.values()) {
         // This permanently closes new child admission until the parent leaves the registry.

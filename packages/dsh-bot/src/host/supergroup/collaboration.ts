@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { BotKey } from '../../shared/identity.js';
 import { effectiveGroupMemberLimit } from '../../shared/group-limits.js';
 import type { DshBotRegistry } from '../registry.js';
+import { committedBot } from '../registry/snapshot.js';
 import { getBotBinding } from '../data-flow/agent-binding.js';
 import { outlets } from '../data-flow/tool-guard.js';
 import { reserveDelegate } from '../delegate/continuation.js';
@@ -266,8 +267,8 @@ export class ScopedCollaboration {
       workSignal.throwIfAborted();
       if (!(scope.workId.startsWith('peer:') ? this.registry.config.messagingEnabled : this.enabled())) throw new OperationError('approval-denied');
       await scope.check();
-      const current = await this.registry.get(target.botId);
-      if (current.createdAt !== target.botCreatedAt || current.updatedAt !== prepared.revision) throw new OperationError('conflict');
+      const current = await committedBot(this.registry, target);
+      if (!current || current.updatedAt !== prepared.revision) throw new OperationError('conflict');
     };
     await check();
     const from = getBotBinding(agent);
@@ -358,8 +359,10 @@ export class ScopedCollaboration {
     try {
       const start = async (dispatchSignal: AbortSignal) => {
         await check();
+        const current = await committedBot(this.registry, bot);
+        if (!current) throw new OperationError('conflict');
         return this.ctx.subagents.startActivation(compatibleActivationSpec({ childId, provider: 'spawn', delivery: 'caller',
-          label: (await this.registry.get(bot.botId)).name, signal: dispatchSignal,
+          label: current.name, signal: dispatchSignal,
           request: { parent: agent, agentPreset: presetId, prompt, maxDepth: prepared.maxDepth } }));
       };
       const accept = async () => {

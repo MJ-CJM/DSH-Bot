@@ -63,6 +63,11 @@ export const groupsDomain = defineDomain({
       group: groupKeySchema, operationId: resourceId, requestDigest: z.string().length(64),
       status: z.enum(['saved', 'unknown']), result: groupRecordSchema.optional(),
     })),
+    // Committed edits whose only remaining step is syncing the native root session title.
+    pending_renames: domainTable(z.strictObject({
+      group: groupKeySchema, revision: z.number().int().positive(), name: z.string().min(1),
+      operationKey: z.string().length(64).optional(),
+    })),
     deletions: domainTable(groupDeletionSchema),
     team_recipes: domainTable(savedTeamRecipeSchema),
     members: domainTable(groupMemberSchema),

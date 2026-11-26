@@ -11,6 +11,7 @@ import { ciSourceId } from '../proactive/sources/ci.js';
 import { isNativeAmbientSource } from '../common/native-ambient-source.js';
 import { OperationError } from '../common/operations.js';
 import type { DshBotRegistry } from '../registry.js';
+import { committedBot } from '../registry/snapshot.js';
 import { outlets } from '../data-flow/tool-guard.js';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -20,18 +21,23 @@ interface Owner {
   read(id: string): SupergroupWork;
   change(id: string, expectedRevision: number | undefined, update: (work: SupergroupWork) => SupergroupWork): Promise<SupergroupWork>;
   agent(work: SupergroupWork): Promise<Agent>;
+  agentSnapshot?(work: SupergroupWork): Promise<Agent>;
   enabled(): boolean;
   valid(work: SupergroupWork): boolean;
 }
 /** Product admission only. Native Connectors, Sessions and Supergroup own all execution. */
 export class TaskSupport {
   constructor(private ctx: Context, private registry: DshBotRegistry, private owner: Owner) {}
-  private async current(id: string) {
+  private async current(id: string, snapshot = false) {
     const work = this.owner.read(id);
     if (!this.owner.enabled() || work.state === 'cancelled') throw new OperationError('approval-denied');
-    const agent = await this.owner.agent(work);
+    const agent = snapshot && this.owner.agentSnapshot ? await this.owner.agentSnapshot(work) : await this.owner.agent(work);
     for (const reader of work.readers) {
-      if ((await this.registry.get(reader.botId)).createdAt !== reader.botCreatedAt) throw new OperationError('conflict');
+      if (snapshot) {
+        if (!(await committedBot(this.registry, reader))) throw new OperationError('conflict');
+      } else if ((await this.registry.get(reader.botId)).createdAt !== reader.botCreatedAt) {
+        throw new OperationError('conflict');
+      }
     }
     return { work, agent };
   }
@@ -189,10 +195,10 @@ export class TaskSupport {
     });
     return this.view(work.id);
   }
-  async text(work: SupergroupWork, original: string) {
+  async text(work: SupergroupWork, original: string, snapshot = false) {
     const materials = work.materials ?? [];
     if (!materials.length) return original;
-    const { agent } = await this.current(work.id);
+    const { agent } = await this.current(work.id, snapshot);
     const ci = materials.some(row => row.kind === 'github-ci') ? await this.ci(work) : [];
     for (const material of materials) {
       if (!same(material.readers, work.readers) || material.digest !== textDigest(material.text)) throw new OperationError('conflict');

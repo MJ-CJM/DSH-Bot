@@ -19,6 +19,7 @@ import {
 import type { BotKey } from '../../shared/integrations.js';
 import { effectiveGroupMemberLimit } from '../../shared/group-limits.js';
 import type { DshBotRegistry } from '../registry.js';
+import { committedBot } from '../registry/snapshot.js';
 import { OperationError, Serial, need, parse } from '../common/operations.js';
 
 import type { groupExportReviewsDomain, groupsDomain } from './model.js';
@@ -228,6 +229,12 @@ export class GroupState {
       throw new OperationError('conflict');
     });
     if (b.createdAt !== key.botCreatedAt) throw new OperationError('conflict');
+    this.check();
+    return b;
+  }
+  async botSnapshot(key: BotKey) {
+    const b = await committedBot(this.registry, key);
+    if (!b) throw new OperationError('conflict');
     this.check();
     return b;
   }

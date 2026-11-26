@@ -8,6 +8,7 @@ import { isWake, withoutWakeControls } from './wake.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { getBotBinding } from '../bot-context.js';
 import { MessagingProjection } from './scoped-projection.js';
+import { committedBotById, committedMainSessionId } from '../registry/snapshot.js';
 import type { BotKey } from '../../shared/identity.js';
 export { messagingDomain } from './store.js';
 export type { MessagingAuthorization, MessagingCapabilities } from './core.js';
@@ -51,21 +52,25 @@ export class Messaging extends MessagingProjection {
     const result = await this.peerResult(agent, input.to);
     return result.status === 'missing' ? undefined : result;
   }
-  async peerResult(agent: Agent, peerId: string, requestId?: string, scopedOnly = false): Promise<PeerResult> {
+  async peerResult(agent: Agent, peerId: string, requestId?: string, scopedOnly = false, snapshot = false): Promise<PeerResult> {
     if (this.stopped || !this.store.config.messagingEnabled) throw new OperationError('unavailable');
     if (this.provenance(agent).parent) throw new OperationError('approval-denied');
-    return this.peerResultForHumanInput(agent, peerId, requestId, scopedOnly);
+    return this.peerResultForHumanInput(agent, peerId, requestId, scopedOnly, snapshot);
   }
   /** Host pre-step may call this on the current native human input before its session event is appended. */
-  async peerResultForHumanInput(agent: Agent, peerId: string, requestId?: string, scopedOnly = false): Promise<PeerResult> {
+  async peerResultForHumanInput(agent: Agent, peerId: string, requestId?: string, scopedOnly = false, snapshot = false): Promise<PeerResult> {
     if (this.stopped || !this.store.config.messagingEnabled) throw new OperationError('unavailable');
-    const owner = await this.exact(agent);
-    const peer = await this.registry.get(peerId), main = await this.registry.mainSessions?.find(peerId);
-    if (!main || peer.id === owner.botId) return { status: 'missing' };
-    const visible = new Set(agent.session.surface.nodes);
+    const owner = await this.exact(agent, snapshot);
+    const peer = snapshot ? await committedBotById(this.registry, peerId) : await this.registry.get(peerId);
+    if (!peer) return { status: 'missing' };
     const peerKey = { botId: peer.id, botCreatedAt: peer.createdAt };
+    const mainSessionId = snapshot
+      ? await committedMainSessionId(this.registry, peerKey)
+      : (await this.registry.mainSessions?.find(peerId))?.sessionId;
+    if (!mainSessionId || peer.id === owner.botId) return { status: 'missing' };
+    const visible = new Set(agent.session.surface.nodes);
     return peerResultFromRows(this.store.peerRows(owner, peerKey, requestId), owner, peerKey,
-      agent.session.id, main.sessionId, agent.session.snapshotEvents().filter(event => visible.has(event.seq)), outlets(this.registry), requestId, scopedOnly,
+      agent.session.id, mainSessionId, agent.session.snapshotEvents().filter(event => visible.has(event.seq)), outlets(this.registry), requestId, scopedOnly,
       this.registry.supergroup?.peerReplyStatus?.bind(this.registry.supergroup));
   }
   async start() {

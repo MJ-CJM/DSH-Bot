@@ -146,25 +146,25 @@ export abstract class RegistryLifecycle extends TypertRemoteService {
       const shutdown = () =>
         (shutdownTask ??= (async () => {
           this.stopping = true;
-          this.memoryOutlets?.stop();
-          this.memoryEgress?.close(); this.memoryConfirmation?.close();
-          await this.consolidationService?.close();
-          await this.memoryAdmission.close();
-          await this.memoryOutlets?.close();
-          await this.tail;
           const errors: unknown[] = [];
-          for (const lease of [...this.leases.values()].reverse()) {
+          const attempt = async (step: () => unknown) => {
             try {
-              await this.release(lease);
+              await step();
             } catch (error) {
               errors.push(error);
             }
+          };
+          await attempt(() => this.memoryOutlets?.stop());
+          await attempt(() => this.memoryEgress?.close());
+          await attempt(() => this.memoryConfirmation?.close());
+          await attempt(() => this.consolidationService?.close());
+          await attempt(() => this.memoryAdmission.close());
+          await attempt(() => this.memoryOutlets?.close());
+          await attempt(() => this.tail);
+          for (const lease of [...this.leases.values()].reverse()) {
+            await attempt(() => this.release(lease));
           }
-          try {
-            await this.stores?.close();
-          } catch (error) {
-            errors.push(error);
-          }
+          await attempt(() => this.stores?.close());
           if (errors.length) throw new AggregateError(errors, 'DSH Bot registry cleanup failed');
         })());
       this.releaseResources = shutdown;
