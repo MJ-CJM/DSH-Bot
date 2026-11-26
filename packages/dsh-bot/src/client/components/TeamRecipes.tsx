@@ -7,6 +7,7 @@ import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
 import { teamRecipeInputSchema, type TeamRecipe, type TeamPreview } from '../../shared/team-recipes.js';
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/groups.module.css';
 import rosterCss from '../styles/roster.module.css?inline';
 import { useSettingsDraft, useSettingsNavigation } from './SettingsNavigation.js';
@@ -79,8 +80,8 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
     const link = document.createElement('a'); link.href = url; link.download = 'dsh-bot-team.json'; link.click();
     URL.revokeObjectURL(url);
   };
+  useStyleSheet('roster', rosterCss);
   return <><section className={`${styles.settingsOverview} ${styles.teamRecipes}`} role="dialog" aria-label={t('teams.title')} data-team-recipes="">
-    <style>{rosterCss}</style>
     <h3>{t('teams.title')}</h3>
     <p>{t('teams.safe')}</p>
     <p>{t('teams.memberLimit', { limit })}</p>

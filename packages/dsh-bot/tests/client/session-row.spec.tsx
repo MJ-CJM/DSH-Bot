@@ -249,6 +249,7 @@ describe('Bot identity in public native session row seats', () => {
     await act(async () => app.ctx.emit('connection/reset'));
     expect(app.remote.data.activities).toHaveLength(1);
     expect(container.querySelector('[data-bot-session-leading], [data-bot-session-hover], style')).toBeNull();
+    expect(document.head.querySelector('style[data-dsh-bot-style="session-row"]')).toBeNull();
     expect(container.querySelector('[data-slot="sidebar.session.row.leading"]')?.childNodes).toHaveLength(0);
   });
 
@@ -259,6 +260,7 @@ describe('Bot identity in public native session row seats', () => {
     await act(async () => app.ctx.emit('connection/reset'));
     expect(app.remote.data.records).toHaveLength(1);
     expect(container.querySelector('[data-bot-session-leading], [data-bot-session-hover], style')).toBeNull();
+    expect(document.head.querySelector('style[data-dsh-bot-style="session-row"]')).toBeNull();
   });
 
   it('registers Bot at order 0 before a distinct schedule entry at order 10 without replacing it', async () => {
@@ -322,8 +324,8 @@ describe('Bot identity in public native session row seats', () => {
       (() => <span data-test-schedule="">Clock</span>) as never);
     cleanups.push(async () => { releaseSchedule(); });
     const { container } = await mountRows(app, ids);
-    const css = container.querySelector('[data-dsh-bot-row-styles]')?.textContent ?? '';
-    const selector = css.match(/([^{}]+:has\(~ :not\(style\)\))\s*\{\s*display:\s*none;/)?.[1]?.trim();
+    const css = document.head.querySelector('style[data-dsh-bot-style="session-row"]')?.textContent ?? '';
+    const selector = css.match(/([^{}]+:has\(~\s*:not\(style\)\))\s*\{\s*display:\s*none;?\s*\}/)?.[1]?.trim();
     if (!selector) throw new Error('Built artifact omitted the own-element coexistence selector');
     const decoration = container.querySelector<HTMLElement>('[data-bot-session-leading]');
     expect(decoration?.matches(selector)).toBe(true);

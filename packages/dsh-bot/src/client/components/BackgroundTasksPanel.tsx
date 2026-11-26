@@ -1,5 +1,6 @@
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import { useSettingsDraft } from './SettingsNavigation.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/background-work.module.css';
 import css from '../styles/background-work.module.css?inline';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -9,6 +10,7 @@ export type BackgroundKey = `background.${'title' | 'hint' | 'empty' | 'refresh'
 export function BackgroundTasksPanel({ bot, actions, t }: {
   bot: BotRecord; actions: BackgroundActions; t: (key: BackgroundKey) => string;
 }) {
+  useStyleSheet('background-work', css);
   const source = useMemo(() => actions.forBot({ id: bot.id, createdAt: bot.createdAt }), [actions, bot.id, bot.createdAt]);
   const state = useSyncExternalStore(source.catalog.subscribe, source.catalog.getSnapshot);
   const [error, setError] = useState(false);
@@ -23,7 +25,6 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
     try { await action(); } catch { setError(true); } finally { setBusy(false); }
   };
   return <section className={styles.panel} aria-label={t('background.title')}>
-    <style>{css}</style>
     <h3>{t('background.title')}</h3>
     <p>{t('background.hint')}</p>
     {(state.error || state.tasks.some(task => task.running === undefined)) && <p>{t('background.recovery')}</p>}

@@ -6,6 +6,7 @@ import { ManagementHeader } from './ManagementHeader.js';
 import { Statistics } from './WorkspaceStatistics.js';
 import css from '../styles/settings.module.css?inline';
 import settingsStyles from '../styles/settings.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
 import type { BotsPageInjected } from '../pages/BotsPage.js';
@@ -56,11 +57,11 @@ export function ManagementWorkspace({
     ...(routines || management ? (['routines'] as const) : []),
     ...(collaboration ? (['collaboration', 'im'] as const) : []),
   ];
+  useStyleSheet('settings', css, tabs.length > 0);
   if (!tabs.length) return <p>{t('native.unavailable')}</p>;
   return (
     <SettingsBotContext.Provider value={selection}>
     <section aria-label={t('manage.navigation')} className={settingsStyles.workspace}>
-      <style>{css}</style>
       <ManagementHeader title={t('settings.botContext')} contextSelector
         selector={{ bots, value: selection.bot?.id ?? '', onChange: selection.select }} t={t} />
       {!selection.bot && <p role="status">{t(bots.length ? 'settings.botUnavailable' : 'settings.noBots')}</p>}

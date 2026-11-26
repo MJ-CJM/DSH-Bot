@@ -14,6 +14,7 @@ import { Modal } from './Modal.js';
 import styles from '../styles/roster.module.css';
 import css from '../styles/roster.module.css?inline';
 import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 
 type Localized = PropsLocale<'dsh-bot'>;
 export const rosterMembers = (view: GroupView) => view.members.filter(member => member.removedAt === undefined).sort((a, b) => a.order - b.order);
@@ -172,9 +173,9 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
   const candidates = bots.filter(bot => (actions.canAddBot?.(bot) ?? true) && !allKeys.some(key => key.botId === bot.id && key.botCreatedAt === bot.createdAt) &&
     `${bot.name} ${bot.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const latest = mutation.latest;
+  useStyleSheet('roster', css);
   const leave = () => { navigation.registry.set('roster-local', changed && !['saved', 'unknown'].includes(mutation.phase)); navigation.leave(onClose); };
   return <SettingsDrafts.Provider value={navigation.registry}><Modal title={t('groups.roster.manage')} description={baseline.group.name} busy={mutation.phase === 'saving'} onClose={leave} t={t}>
-    <style>{css}</style>
     <div className={styles.body} data-roster-management="">
       <div className={styles.heading}><strong>{t('groups.memberCapacity', { count: target.length, limit })}</strong><span>{t('groups.roster.minimum')}</span></div>
       {blocked && <p role="status">{t(blocked)}</p>}

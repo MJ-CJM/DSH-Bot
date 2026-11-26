@@ -2,7 +2,7 @@ import { TaskSupportPanel, type TaskSupportActions, type createTaskOriginFocus }
 import type { IntegrationActions } from './integrations-state.js';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Context } from '@deepseek-ai/cordis';
-import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type { ConversationNodeDefinition, ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client';
 import type { PropsLocale, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client';
@@ -12,7 +12,9 @@ import { SUPERGROUP_REMOTE } from '../shared/supergroup-contract.js';
 import type { GroupActions } from './groups-state.js';
 import type { BotCatalog } from './state.js';
 import type { ExecutionBridge } from './group-execution.js';
-import { createChangeStream } from './change-stream.js';
+import { sharedChangeStream } from './change-stream.js';
+import { structuralEqual } from './structural-equal.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import { GroupTurnExecution } from './components/GroupTurnExecution.js';
 import { BotAvatar } from './components/BotAvatar.js';
 import css from './styles/groups.module.css?inline';
@@ -37,6 +39,31 @@ export const supergroupMessageDefinition: ConversationNodeDefinition<{ messageId
   } satisfies ChatNode<'supergroup-work'>,
 };
 
+/** Narrow native conversation invalidation to this message's own turn boundaries
+ * so streaming tokens never re-render or trigger RPCs for ordinary chat messages. */
+export function supergroupNativeRevision(
+  snapshot: ConversationSnapshot | undefined,
+  node: Pick<ChatNode<'supergroup-work'>, 'anchorSeq' | 'location'>,
+): string | undefined {
+  const chat = snapshot?.views?.get?.('chat');
+  if (!chat) return undefined;
+  if (node.location.kind === 'turn' || node.location.kind === 'step') {
+    const turn = chat.timeline.turns.get(node.location.turn.turn);
+    return turn
+      ? `turn:${turn.turn}:${turn.status}:${turn.steps.length}:${turn.end?.seq ?? ''}`
+      : `turn:${node.location.turn.turn}:missing`;
+  }
+  const turns = chat.timeline.turns;
+  for (const number of chat.timeline.turnOrder) {
+    const turn = turns.get(number);
+    const startSeq = turn?.start ? Number(turn.start.seq) : undefined;
+    if (turn && startSeq !== undefined && startSeq >= node.anchorSeq) {
+      return `after:${turn.turn}:${turn.status}:${turn.steps.length}:${turn.end?.seq ?? ''}`;
+    }
+  }
+  return `pending:${chat.timeline.turnOrder.length}`;
+}
+
 type Snapshot = { value?: SupergroupWorkView | null; failed?: boolean };
 interface WorkSource {
   subscribe(listener: () => void): () => void;
@@ -49,8 +76,8 @@ export interface SupergroupUiBridge {
   support?: { actions: TaskSupportActions; integrations?: IntegrationActions; openSession?(id: string): Promise<void>; focus?: ReturnType<typeof createTaskOriginFocus> };
 }
 
-/** Passive shared invalidation stream; native Chat events trigger authoritative
- * reads too. No extra scheduler, timer, Session writes, or model execution. */
+/** Passive shared invalidation stream; scoped native turn boundaries trigger
+ * authoritative reads too. No extra scheduler, timer, Session writes, or model execution. */
 export function createSupergroupUiBridge(ctx: Context, groups: GroupActions): SupergroupUiBridge {
   const entries = new Map<string, { source: WorkSource; listeners: Set<() => void> }>();
   let active = true;
@@ -60,14 +87,20 @@ export function createSupergroupUiBridge(ctx: Context, groups: GroupActions): Su
     return service;
   };
   const refreshAll = () => { for (const entry of entries.values()) void entry.source.refresh(); };
-  const stream = createChangeStream(ctx, refreshAll);
+  const sharedStream = sharedChangeStream(ctx);
+  const stream = sharedStream.lease(refreshAll);
   let offGroups: (() => void) | undefined;
+  const onGroupCatalogChange = () => {
+    // Avoid double refresh per Host push while the shared change stream is live;
+    // keep the catalog watcher as fallback when no watch stream is open.
+    if (!sharedStream.isActive()) refreshAll();
+  };
   const start = () => {
     stream.start();
-    offGroups ??= groups.catalog.watch?.(refreshAll);
+    offGroups ??= groups.catalog.watch?.(onGroupCatalogChange);
   };
   const stop = () => { offGroups?.(); offGroups = undefined; void stream.stop(); };
-  ctx.effect(() => () => { active = false; stop(); entries.clear(); }, 'dsh-bot: Supergroup projection lifetime');
+  ctx.effect(() => async () => { active = false; offGroups?.(); offGroups = undefined; entries.clear(); await stream.dispose(); }, 'dsh-bot: Supergroup projection lifetime');
   return {
     source(sessionId, messageId) {
       const key = JSON.stringify([sessionId, messageId]);
@@ -75,7 +108,11 @@ export function createSupergroupUiBridge(ctx: Context, groups: GroupActions): Su
       if (existing) return existing.source;
       let snapshot: Snapshot = {}, epoch = 0, pending: Promise<void> | undefined, again = false;
       const listeners = new Set<() => void>();
-      const publish = (next: Snapshot) => { snapshot = next; for (const listener of listeners) listener(); };
+      const publish = (next: Snapshot) => {
+        if (structuralEqual(snapshot, next)) return;
+        snapshot = next;
+        for (const listener of listeners) listener();
+      };
       const source: WorkSource = {
         getSnapshot: () => snapshot,
         subscribe(listener) {
@@ -90,24 +127,31 @@ export function createSupergroupUiBridge(ctx: Context, groups: GroupActions): Su
           start();
           if (pending) { again = true; return pending; }
           const generation = epoch;
-          const task = (async () => {
-            do {
-              again = false;
-              try {
-                const result = await remote().forSession({ sessionId, messageId });
-                if (!result.ok) throw result.error;
-                const value = supergroupViewSchema.nullable().parse(result.value);
-                if (value && (value.work.originSessionId !== sessionId || !value.work.inputMessageIds.includes(messageId)))
-                  throw new Error('Supergroup input mismatch');
-                if (value?.group && (!value.work.group || value.group.group.id !== value.work.group.groupId
-                  || value.group.group.createdAt !== value.work.group.groupCreatedAt)) throw new Error('Supergroup group mismatch');
-                if (active && generation === epoch && listeners.size) publish({ value });
-              } catch {
-                if (active && generation === epoch && listeners.size) publish({ value: snapshot.value, failed: true });
-              }
-            } while (again && active && generation === epoch && listeners.size);
-          })().finally(() => { if (pending === task) pending = undefined; });
-          pending = task;
+          let done = false;
+          let task: Promise<void> | undefined;
+          task = (async () => {
+            try {
+              do {
+                again = false;
+                try {
+                  const result = await remote().forSession({ sessionId, messageId });
+                  if (!result.ok) throw result.error;
+                  const value = supergroupViewSchema.nullable().parse(result.value);
+                  if (value && (value.work.originSessionId !== sessionId || !value.work.inputMessageIds.includes(messageId)))
+                    throw new Error('Supergroup input mismatch');
+                  if (value?.group && (!value.work.group || value.group.group.id !== value.work.group.groupId
+                    || value.group.group.createdAt !== value.work.group.groupCreatedAt)) throw new Error('Supergroup group mismatch');
+                  if (active && generation === epoch && listeners.size) publish({ value });
+                } catch {
+                  if (active && generation === epoch && listeners.size) publish({ value: snapshot.value, failed: true });
+                }
+              } while (again && active && generation === epoch && listeners.size);
+            } finally {
+              done = true;
+              if (pending === task) pending = undefined;
+            }
+          })();
+          if (!done) pending = task;
           return task;
         },
       };
@@ -151,38 +195,30 @@ type CardProps = { sessionId: string; messageId: string; bridge: SupergroupUiBri
 const noFocus = () => undefined;
 const noFocusSubscription = () => () => {};
 
-export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots, executionBridge, nativeRevision, renderFactorySlot, t }: CardProps) {
-  const source = useMemo(() => bridge.source(sessionId, messageId), [bridge, sessionId, messageId]);
-  const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot);
+function SupergroupWorkCardBody({ sessionId, messageId, value, snapshotFailed, directPeer, source, bridge, actions, bots, executionBridge, renderFactorySlot, t }:
+  Omit<CardProps, 'nativeRevision'> & { value: SupergroupWorkView; snapshotFailed: boolean; directPeer: boolean; source: WorkSource }) {
+  useStyleSheet('groups', css);
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
-  useEffect(() => { if (nativeRevision !== undefined) void source.refresh(); }, [source, nativeRevision]);
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   const lock = useRef(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const card = useRef<HTMLElement>(null);
   const focus = bridge.support?.focus;
   const requested = useSyncExternalStore(focus?.subscribe ?? noFocusSubscription, focus?.getSnapshot ?? noFocus);
-  const value = snapshot.value;
   useEffect(() => {
-    const work = value?.work;
-    if (!requested || !work || !card.current || requested.originSessionId !== sessionId || requested.inputMessageId !== messageId
+    const work = value.work;
+    if (!requested || !card.current || requested.originSessionId !== sessionId || requested.inputMessageId !== messageId
       || requested.workId !== work.id || requested.owner.botId !== work.owner.botId || requested.owner.botCreatedAt !== work.owner.botCreatedAt) return;
     card.current.scrollIntoView?.({ block: 'center' });
     card.current.focus({ preventScroll: true });
     focus?.set();
   }, [requested, value, focus, sessionId, messageId]);
-  if (!value) return snapshot.failed ? <p role="status">{t('supergroup.unavailable')}</p> : null;
   const { work, group } = value;
-  const directPeer = !work.group && work.id.startsWith('peer:');
-  // Direct messaging renders progress, receipts and the answer in the native conversation.
-  // Keep its separate diagnostic only when a work state needs attention.
-  if (work.inputMessageId !== messageId || (directPeer && work.state !== 'unknown' && work.state !== 'partial')) return null;
   const turns = group?.turns.filter(row => work.turnIds.includes(row.id)) ?? [];
   const members = group?.members.filter(row => row.enabled && row.removedAt === undefined).sort((a, b) => a.order - b.order) ?? [];
   const memberCount = group ? members.length : undefined;
   const live = work.state === 'running' || work.state === 'creating';
   return <section ref={card} tabIndex={-1} className={`dsh-bot-group-workspace ${styles.panel} ${styles.workCard}`} data-supergroup-work={work.id} data-supergroup-state={work.state} aria-label={t(work.initialPending ? 'taskSupport.initialTitle' : 'supergroup.title')}>
-    <style>{css}</style>
     <div className={styles.workHeading}>
       <strong className={styles.workName} title={group?.group.name}>{group?.group.name ?? t(work.initialPending ? 'taskSupport.initialTitle' : 'supergroup.title')}</strong>
       <span className={styles.workStatus} role="status"><span aria-hidden="true">{live ? '◌' : work.state === 'completed' ? '✓' : '−'}</span>{t(work.initialPending && work.state === 'partial' ? 'taskSupport.waiting' : `supergroup.${work.state}`)}</span>
@@ -217,11 +253,33 @@ export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots
     {work.state === 'unknown' && work.reason && <details>
       <summary>{t('execution.advanced')}</summary><p>{work.reason}</p>
     </details>}
-    {(snapshot.failed || failed) && <p role="alert">{t('supergroup.unavailable')}</p>}
+    {(snapshotFailed || failed) && <p role="alert">{t('supergroup.unavailable')}</p>}
     {group && turns.length > 0 && <details className={styles.workExecution}><summary>{t('groups.executionDetails')}</summary>{turns.map(turn => <GroupTurnExecution key={JSON.stringify([work.id, group.group.id, group.group.createdAt, turn.id])}
       view={group} turn={turn} actions={actions} bots={bots} onOpenExecution={id => executionBridge?.open(id)}
       executionBridge={executionBridge} renderFactorySlot={renderFactorySlot} onStopTurn={null} onRequestSupplement={null} t={t} />)}</details>}
   </section>;
+}
+
+export function SupergroupWorkCard({ sessionId, messageId, bridge, actions, bots, executionBridge, nativeRevision, renderFactorySlot, t }: CardProps) {
+  const source = useMemo(() => bridge.source(sessionId, messageId), [bridge, sessionId, messageId]);
+  const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot);
+  const lastRevision = useRef<{ source: WorkSource; revision: unknown }>({ source, revision: nativeRevision });
+  useEffect(() => {
+    const previous = lastRevision.current;
+    lastRevision.current = { source, revision: nativeRevision };
+    if (previous.source !== source || nativeRevision === undefined || Object.is(previous.revision, nativeRevision)) return;
+    void source.refresh();
+  }, [source, nativeRevision]);
+  const value = snapshot.value;
+  if (!value) return snapshot.failed ? <p role="status">{t('supergroup.unavailable')}</p> : null;
+  const { work } = value;
+  const directPeer = !work.group && work.id.startsWith('peer:');
+  // Direct messaging renders progress, receipts and the answer in the native conversation.
+  // Keep its separate diagnostic only when a work state needs attention.
+  if (work.inputMessageId !== messageId || (directPeer && work.state !== 'unknown' && work.state !== 'partial')) return null;
+  return <SupergroupWorkCardBody sessionId={sessionId} messageId={messageId} value={value} snapshotFailed={Boolean(snapshot.failed)}
+    directPeer={directPeer} source={source} bridge={bridge} actions={actions} bots={bots} executionBridge={executionBridge}
+    renderFactorySlot={renderFactorySlot} t={t} />;
 }
 
 export async function registerSupergroupSettings(ctx: Context) {
@@ -250,7 +308,7 @@ export async function registerSupergroup(ctx: Context, actions: GroupActions, bo
     scope.effect(() => scope.slots.inject('conversation.chat.node', () => scope.effect(function* () {
       yield scope.slots.register({ name: 'conversation.chat.node', key: 'supergroup-work', locale: 'dsh-bot' },
         (props: PropsRuntime<'conversation.chat.node', 'supergroup-work'> & PropsLocale<'dsh-bot'> & PropsRenderFactories) => {
-          const nativeRevision = props.useConversation(value => value);
+          const nativeRevision = props.useConversation(value => supergroupNativeRevision(value, props.node));
           return <SupergroupWorkCard {...props} messageId={props.node.data.messageId} bridge={bridge}
             actions={actions} bots={bots} executionBridge={executionBridge} nativeRevision={nativeRevision} />;
         });

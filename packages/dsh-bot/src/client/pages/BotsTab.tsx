@@ -21,6 +21,7 @@ import { SettingsBotContext } from '../components/SettingsBotContext.js';
 import { SettingsDrafts, useSettingsNavigation } from '../components/SettingsNavigation.js';
 import detailStyles from '../styles/detail.module.css';
 import css from '../styles/detail.module.css?inline';
+import { useStyleSheet } from '../use-style-sheet.js';
 import type { BotsPageProps } from './bots-page-types.js';
 import type { BotsPageModel } from './use-bots-page.js';
 import { BotSessionHistory } from './BotSessionHistory.js';
@@ -55,7 +56,9 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const uid = useId(), { t } = page, navigation = useSettingsNavigation(t);
   const { selected, showDetail, tab, busy } = model;
-  if (tab === 'management' || !showDetail || !selected) return null;
+  const activeDetail = !(tab === 'management' || !showDetail || !selected);
+  useStyleSheet('detail', css, activeDetail);
+  if (!activeDetail) return null;
   const bot = selected.bot, bots = [bot];
   const start = () => navigation.leave(() => {
     void model.navigate(signal => page.onStartExact ? page.onStartExact(bot, signal) : page.onStart(bot.id, signal), 'errors.start');
@@ -66,7 +69,6 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
   return <SettingsDrafts.Provider value={navigation.registry}>
     <SettingsBotContext.Provider value={{ bot, select: () => {} }}>
     <article className={detailStyles.page} data-bot-detail={bot.id} data-bot-identity={`${bot.id}:${bot.createdAt}`}>
-      <style>{css}</style>
       <Button ref={model.backElement} variant="ghost" onClick={back} disabled={busy || saving}>{t('navigation.returnTo', { name: t(model.section === 'groups' ? 'groups.title' : model.section === 'recent' ? 'chat.recent' : 'navigation.myBots') })}</Button>
       <header className={detailStyles.header}>
         <BotAvatar bot={bot} size={48} />

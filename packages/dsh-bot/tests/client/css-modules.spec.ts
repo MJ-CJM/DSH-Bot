@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { context } from 'esbuild';
@@ -35,4 +35,20 @@ it('recompiles changed CSS on a watch rebuild, retaining matching inline styles 
     await builder?.dispose();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+it('builds a minified UTF-8 client bundle with UI-only locale dictionaries while preserving disk locale files', async () => {
+  const pkgRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const bundle = await readFile(join(pkgRoot, 'lib/client.js'), 'utf8');
+  const en = JSON.parse(await readFile(join(pkgRoot, 'locale/en.json'), 'utf8')) as Record<string, Record<string, string>>;
+  const zh = JSON.parse(await readFile(join(pkgRoot, 'locale/zh.json'), 'utf8')) as Record<string, Record<string, string>>;
+  expect(bundle.startsWith('window.__ModuleLoader__.load(')).toBe(true);
+  expect(Object.keys(en).sort()).toEqual(['config', 'meta', 'tools', 'ui']);
+  expect(Object.keys(zh).sort()).toEqual(['config', 'meta', 'tools', 'ui']);
+  expect(bundle).toContain(en.ui?.['bots.title'] ?? '');
+  expect(bundle).toContain(zh.ui?.['bots.title'] ?? '');
+  expect(bundle).not.toContain(en.tools?.['bot_supergroup.description'] ?? '');
+  expect(bundle).not.toContain(zh.tools?.['bot_supergroup.description'] ?? '');
+  expect(bundle).not.toContain(en.meta?.description ?? '');
+  expect(bundle).not.toContain(en.config?.['botHomesRoot.description'] ?? Object.values(en.config ?? {})[0] ?? '');
 });

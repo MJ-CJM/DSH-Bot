@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { RecentConversations } from './RecentConversations.js';
 import { DirectoryPending } from './DirectoryPending.js';
 import { Button, Toast } from '@deepseek-ai/dsh-client-ui-primitives';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/bots.module.css';
 import identityCss from '../styles/identity.module.css?inline';
 import css from '../styles/bots.module.css?inline';
@@ -45,6 +46,8 @@ export function BotsPage(page: BotsPageProps) {
   const { snapshot, pageElement, compact, tab, setTab, section, busy, open, entries, unavailable, toast, setToast } = model;
   const selectedGroup = groups?.catalog.getSnapshot().groups.find(row => row.group.id === model.selectedGroup?.id && row.group.createdAt === model.selectedGroup.createdAt);
   const sectionLabel = section === 'bots' ? t('navigation.myBots') : section === 'groups' ? (selectedGroup?.group.name ?? t('groups.title')) : t('chat.recent');
+  useStyleSheet('bots', css);
+  useStyleSheet('identity', identityCss);
   return (
     <SettingsDrafts.Provider value={settings.registry}><section
       ref={pageElement}
@@ -52,7 +55,6 @@ export function BotsPage(page: BotsPageProps) {
       data-bots-page=""
       aria-label={t('bots.title')}
     >
-      <style data-dsh-bot-styles="">{css + identityCss}</style>
       <div className={styles.pageScroll} ref={model.scrollElement} onScroll={event => model.rememberScroll(event.currentTarget.scrollTop)}>
         <div className={styles.pageContent}>
           <header hidden={model.showDetail && tab !== 'management'} className={styles.header}>

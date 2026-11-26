@@ -11,6 +11,7 @@ import {
 import styles from '../styles/bots.module.css';
 import picker from '../styles/avatar.module.css';
 import css from '../styles/avatar.module.css?inline';
+import { useStyleSheet } from '../use-style-sheet.js';
 import { avatarColors, BotAvatar, defaultAvatarColor, resolvedAvatarVariant } from './BotAvatar.js';
 
 const emojis = ['🤖', '🧠', '📝', '💻', '🔬', '📚', '🎨', '🌱', '🚀', '🦊', '🐱', '🌟'];
@@ -94,9 +95,9 @@ export function AvatarPicker({
     setInvalid(false);
   }
 
+  useStyleSheet('avatar', css);
   return (
     <fieldset className={picker.picker} data-avatar-picker="" disabled={disabled}>
-      <style data-dsh-bot-avatar-picker-styles="">{css}</style>
       <legend>{t('editor.avatar')}</legend>
       <div className={picker.previewRow}>
         <BotAvatar

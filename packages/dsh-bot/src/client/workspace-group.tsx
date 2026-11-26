@@ -22,8 +22,16 @@ import { GroupTurnExecution } from './components/GroupTurnExecution.js';
 import { registerGroupExecution, type ExecutionBridge } from './group-execution.js';
 import { registerGroupViews } from './group-views.js';
 import type { BotRecord } from '../shared/schema.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
+
+const EMPTY_PROCESS_ROW_CSS = `
+  [data-conversation-content]:has([data-workspace-group-composer])
+  [data-chat-flow-kind="turn-process"]:has([data-turn-process-messages="0"][data-turn-process-tool-calls="0"][data-turn-process-subagents="0"]) {
+    display: none;
+  }
+`;
 const botSourceSchema = z.object({ kind: z.literal('dsh-bot-group'), group: groupKeySchema, turnId: z.string().min(1),
   memberId: z.string().min(1), speaker: speakerSchema, guestReply: z.literal(true).optional(), relayReply: z.literal(true).optional(), childSessionId: z.string().optional(), stopReason: z.string().optional(),
   // A malformed failure drops only the detail, never the claimed message.
@@ -94,6 +102,7 @@ export function WorkspaceGroupComposer({ matched, actions, bots, models, createP
   const group = state.groups.find(row => row.group.rootSessionId === matched.sessionId);
   const rootId = group?.group.rootSessionId;
   const [permissionState, setPermissionState] = useState<GroupPermissionState>();
+  useStyleSheet('workspace-group-composer', EMPTY_PROCESS_ROW_CSS, Boolean(group));
   useEffect(() => {
     if (!rootId || !createPermissionState) { setPermissionState(undefined); return; }
     const bridge = createPermissionState(rootId); setPermissionState(bridge);
@@ -103,14 +112,9 @@ export function WorkspaceGroupComposer({ matched, actions, bots, models, createP
     <textarea disabled aria-label={t('groups.message')} /><button type="button" disabled>{t('groups.send')}</button></section>;
   // Group roots run native setup with no model content. Hide only the empty
   // process row in this conversation. Member/standard chats keep native details.
-  return <><style>{`
-    [data-conversation-content]:has([data-workspace-group-composer])
-    [data-chat-flow-kind="turn-process"]:has([data-turn-process-messages="0"][data-turn-process-tool-calls="0"][data-turn-process-subagents="0"]) {
-      display: none;
-    }
-  `}</style><GroupConversation key={matched.sessionId} workspace executionBridge={executionBridge} summary={group} actions={actions} models={models} commandServices={commandServices}
+  return <GroupConversation key={matched.sessionId} workspace executionBridge={executionBridge} summary={group} actions={actions} models={models} commandServices={commandServices}
     permissionState={permissionState?.rootSessionId === matched.sessionId ? permissionState : undefined}
-    bots={botState.entries.map(row => row.bot)} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={onOpenSession} t={t} /></>;
+    bots={botState.entries.map(row => row.bot)} expandedTurns={{}} onExpandTurn={() => {}} onOpenSession={onOpenSession} t={t} />;
 }
 export function WorkspaceMessage({ node, sessionId, actions, bots, executionBridge, renderFactorySlot, onOpenSession, t }: { node: ChatNode<'dsh-bot-group'>; sessionId?: string; actions: GroupActions;
   bots?: BotCatalog; executionBridge?: ExecutionBridge; onOpenSession(id: string): Promise<void> } & Partial<PropsRenderFactories> & PropsLocale<'dsh-bot'>) {
@@ -155,19 +159,23 @@ export function WorkspaceMessage({ node, sessionId, actions, bots, executionBrid
   };
   const labels = useMemo(() => ({ code: { copyLabel: t('groups.markdownCopy'), copiedLabel: t('groups.markdownCopied') }, footnotes: t('groups.markdownFootnotes') }), [t]);
   const message = node.data.message;
-  if (!publicInput) return null;
-  if (message.authorKind === 'bot') {
-    if (!snapshot.view) return null;
-    const guest = messageTurn?.guestQuestion;
-    if (message.guestReply || message.relayReply || guest) {
-      const author = guest?.via ? message.relayReply && !message.guestReply && guest.via.bot : message.guestReply && !message.relayReply && guest?.bot;
-      const committed = author && message.speaker && sameBot(message.speaker.bot, author) &&
-        snapshot.view.deliveries.some(row => row.turnId === message.turnId && sameBot(row.bot, author) &&
-          row.state === 'completed' && row.outputMessageId === message.id && row.outputSeq === message.seq);
-      if (!committed) return null;
+  let visible = publicInput;
+  if (visible && message.authorKind === 'bot') {
+    if (!snapshot.view) visible = false;
+    else {
+      const guest = messageTurn?.guestQuestion;
+      if (message.guestReply || message.relayReply || guest) {
+        const author = guest?.via ? message.relayReply && !message.guestReply && guest.via.bot : message.guestReply && !message.relayReply && guest?.bot;
+        const committed = Boolean(author && message.speaker && sameBot(message.speaker.bot, author) &&
+          snapshot.view.deliveries.some(row => row.turnId === message.turnId && sameBot(row.bot, author) &&
+            row.state === 'completed' && row.outputMessageId === message.id && row.outputSeq === message.seq));
+        if (!committed) visible = false;
+      }
     }
   }
-  return <div className={`dsh-bot-group-workspace ${styles.panel} ${styles.workspaceMessage}`} data-workspace-group-message={node.data.message.id} data-workspace-group={`${node.data.group.groupId}:${node.data.group.groupCreatedAt}`} tabIndex={-1}><style>{css}</style>
+  useStyleSheet('groups', css, visible);
+  if (!visible) return null;
+  return <div className={`dsh-bot-group-workspace ${styles.panel} ${styles.workspaceMessage}`} data-workspace-group-message={node.data.message.id} data-workspace-group={`${node.data.group.groupId}:${node.data.group.groupCreatedAt}`} tabIndex={-1}>
     {snapshot.view && <GroupMemberJoins view={snapshot.view} message={node.data.message} bots={memberBots} position="before" t={t} />}
     <PublishedGroupMessage round={messageRound} autoFold={autoFoldLongReplies(messageTurn)} message={node.data.message} allowExecutionSource={!messageTurn?.guestQuestion} quoted={quoted} quotedLoading={quotedLoading} sourceLabel={sourceLabel} onJump={jump} labels={labels} t={t}
     onOpenSession={onOpenSession} onReply={message => { const row = actions.catalog.getSnapshot().groups.find(group =>
