@@ -2,6 +2,7 @@ import { RetainedPanel } from './RetainedPanel.js';
 import { useId, useState, useSyncExternalStore } from 'react';
 import { SegmentedTabs } from '@deepseek-ai/dsh-client-ui-primitives';
 import { SettingsBotContext, useBotSelection } from './SettingsBotContext.js';
+import { SettingsDrafts, useSettingsNavigation } from './SettingsNavigation.js';
 import { ManagementHeader } from './ManagementHeader.js';
 import { Statistics } from './WorkspaceStatistics.js';
 import css from '../styles/settings.module.css?inline';
@@ -37,8 +38,16 @@ export function ManagementWorkspace({
   'management' | 'integrations' | 'routines' | 'collaboration' | 'createMemoryPanel' | 'onOpenSession'
 > & { bots: BotRecord[]; initialBot?: BotRecord } & PropsLocale<'dsh-bot'>) {
   const selection = useBotSelection(bots, initialBot);
+  const navigation = useSettingsNavigation(t);
   const uid = useId();
   const identity = selection.bot ? `${selection.bot.id}:${selection.bot.createdAt}` : 'none';
+  const guardedSelection = {
+    bot: selection.bot,
+    select(id: string) {
+      if (id === selection.bot?.id) return;
+      navigation.leave(() => selection.select(id));
+    },
+  };
   const [tab, setTab] = useState<Tab>(
     integrations ? 'connectors' : management ? 'records' : routines ? 'routines' : 'collaboration',
   );
@@ -58,7 +67,8 @@ export function ManagementWorkspace({
   ];
   if (!tabs.length) return <p>{t('native.unavailable')}</p>;
   return (
-    <SettingsBotContext.Provider value={selection}>
+    <SettingsDrafts.Provider value={navigation.registry}>
+    <SettingsBotContext.Provider value={guardedSelection}>
     <section aria-label={t('manage.navigation')} className={settingsStyles.workspace}>
       <style>{css}</style>
       <ManagementHeader title={t('settings.botContext')} contextSelector
@@ -111,7 +121,9 @@ export function ManagementWorkspace({
         </>
       )}
       </div>
+      {navigation.confirmation}
     </section>
     </SettingsBotContext.Provider>
+    </SettingsDrafts.Provider>
   );
 }

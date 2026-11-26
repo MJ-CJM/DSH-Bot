@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { groupKey, type GroupView } from '../../shared/groups.js';
@@ -13,7 +13,7 @@ import styles from '../styles/groups.module.css';
 import groupsCss from '../styles/groups.module.css?inline';
 import rosterCss from '../styles/roster.module.css?inline';
 import { Modal } from './Modal.js';
-import { SettingsDrafts, useSettingsDraft, useSettingsNavigation } from './SettingsNavigation.js';
+import { SettingsDrafts, useSettingsNavigation } from './SettingsNavigation.js';
 import { MemberChangeReview, RosterSaveNotice, rosterAddedMembers, rosterMemberName, rosterMembers, useRosterSave } from './RosterManagement.js';
 
 function parseRecipe(input: unknown): TeamRecipe {
@@ -74,8 +74,11 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
   const applying = mutation.phase !== 'idle' && mutation.phase !== 'failed';
   const originalMembers = rosterMembers(baseline);
   const memberDraft = !!preview && JSON.stringify(originalMembers.map(member => member.bot)) !== JSON.stringify(target) && !['saved', 'unknown'].includes(mutation.phase);
-  useSettingsDraft(memberDraft);
-  const leave = () => { navigation.registry.set('recipe-members', memberDraft); navigation.leave(onClose); };
+  useLayoutEffect(() => {
+    navigation.registry.set('recipe-members', memberDraft);
+    return () => navigation.registry.set('recipe-members', false);
+  }, [navigation.registry, memberDraft]);
+  const leave = () => navigation.leave(onClose);
   const reviewTarget = pending && applying ? pending.target : target;
   const invalidLegacyEdit = originalMembers.length > limit && (selected.length >= originalMembers.length || selected.some(row => !originalMembers.some(member => member.bot.botId === row.bot.botId && member.bot.botCreatedAt === row.bot.botCreatedAt)));
   const exportRecipe = () => {

@@ -1,9 +1,15 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode, type RefObject } from 'react';
+import type { MenuState } from '@deepseek-ai/dsh-client-ui-input-trigger/client';
 import { MenuSurface, observeComposition } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { createGroupTrigger, GROUP_COMMAND_SOURCE, type GroupCommandSource } from '../group-trigger.js';
 import { reconcileMentionBindings, type MentionTarget, type MentionBinding } from '../group-mentions.js';
 import styles from '../styles/groups.module.css';
+
+const emptyMenu: MenuState = { open: false, hit: null, generation: 0, groups: [], highlight: null };
+const subscribeEmptyMenu = () => () => {};
+const getEmptyMenu = () => emptyMenu;
+
 export function GroupComposerInput({ sessionId, text, bindings, targets, inputRef, commands, commandLauncher, onCommandMenuOpenChange, onChange, onSubmit, t }: {
   sessionId: string; text: string; bindings: MentionBinding[]; targets: MentionTarget[]; inputRef: RefObject<HTMLTextAreaElement>;
   /** Entries of the leading '/' menu; absent leaves '/' as plain text. */
@@ -16,23 +22,38 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
   const latest = useRef({ text, bindings, targets, commands, onChange, t }); latest.current = { text, bindings, targets, commands, onChange, t };
   const containerRef = useRef<HTMLDivElement>(null);
   const revision = useRef(0), composing = useRef(false), composition = useRef<ReturnType<typeof observeComposition>>(), menuId = useId();
-  const [bridge] = useState(() => createGroupTrigger(sessionId, () => latest.current.targets, (span, memberId, insertion) => {
-    const current = latest.current;
-    if (span.draftRev !== revision.current) return false;
-    if (memberId !== undefined && memberId !== 'everyone' && !current.targets.some(member => member.id === memberId)) return false;
-    const next = current.text.slice(0, span.start) + insertion + current.text.slice(span.end);
-    const nextBindings = reconcileMentionBindings(current.text, next, current.bindings).filter(binding => !(binding.start === span.start || (binding.start < 0 && binding.text === insertion.trimEnd())));
-    if (memberId !== undefined) nextBindings.push({ start: span.start, end: span.start + insertion.trimEnd().length, text: insertion.trimEnd(), memberId });
-    revision.current++; current.onChange(next, nextBindings);
-    queueMicrotask(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(span.start + insertion.length, span.start + insertion.length); });
-    return true;
-  }, () => latest.current.commands, () => latest.current.t('groups.everyone')));
-  useEffect(() => { const input = inputRef.current; if (!input) return; composition.current = observeComposition(input.ownerDocument); return () => { composition.current?.dispose(); bridge.dispose(); }; }, [bridge, inputRef]);
+  const [ownedBridge, setOwnedBridge] = useState<{ sessionId: string; bridge: ReturnType<typeof createGroupTrigger> }>();
+  useEffect(() => {
+    const created = createGroupTrigger(sessionId, () => latest.current.targets, (span, memberId, insertion) => {
+      const current = latest.current;
+      if (span.draftRev !== revision.current) return false;
+      if (memberId !== undefined && memberId !== 'everyone' && !current.targets.some(member => member.id === memberId)) return false;
+      const next = current.text.slice(0, span.start) + insertion + current.text.slice(span.end);
+      const nextBindings = reconcileMentionBindings(current.text, next, current.bindings).filter(binding => !(binding.start === span.start || (binding.start < 0 && binding.text === insertion.trimEnd())));
+      if (memberId !== undefined) nextBindings.push({ start: span.start, end: span.start + insertion.trimEnd().length, text: insertion.trimEnd(), memberId });
+      revision.current++; current.onChange(next, nextBindings);
+      queueMicrotask(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(span.start + insertion.length, span.start + insertion.length); });
+      return true;
+    }, () => latest.current.commands, () => latest.current.t('groups.everyone'));
+    setOwnedBridge({ sessionId, bridge: created });
+    return () => created.dispose();
+  }, [sessionId, inputRef]);
+  const bridge = ownedBridge?.sessionId === sessionId ? ownedBridge.bridge : undefined;
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const observer = observeComposition(input.ownerDocument);
+    composition.current = observer;
+    return () => {
+      observer.dispose();
+      if (composition.current === observer) composition.current = undefined;
+    };
+  }, [inputRef]);
   useEffect(() => {
     if (!commandLauncher) return;
     commandLauncher.current = () => {
       const input = inputRef.current;
-      bridge.toggleCommands(input?.selectionStart ?? latest.current.text.length, revision.current);
+      bridge?.toggleCommands(input?.selectionStart ?? latest.current.text.length, revision.current);
       // Keyboard arbitration runs in the textarea, as with a typed '/'.
       input?.focus({ preventScroll: true });
     };
@@ -40,16 +61,16 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
   }, [bridge, commandLauncher, inputRef]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Text changes require measuring the controlled textarea after render.
   useEffect(() => { const input = inputRef.current; if (input) { input.style.height = 'auto'; input.style.height = `${Math.min(144, Math.max(56, input.scrollHeight))}px`; } }, [text, inputRef]);
-  const menu = useSyncExternalStore(bridge.controller.menu.subscribe, bridge.controller.menu.getSnapshot);
+  const menu = useSyncExternalStore(bridge?.controller.menu.subscribe ?? subscribeEmptyMenu, bridge?.controller.menu.getSnapshot ?? getEmptyMenu, bridge?.controller.menu.getSnapshot ?? getEmptyMenu);
   const rosterKey = JSON.stringify(targets);
   const lastRoster = useRef(rosterKey);
   useEffect(() => {
     if (lastRoster.current === rosterKey) return;
     lastRoster.current = rosterKey;
-    bridge.controller.refreshOpenMenu();
+    bridge?.controller.refreshOpenMenu();
   }, [bridge, rosterKey]);
   useEffect(() => { if (menu.open && menu.highlight) document.getElementById(`${menuId}-${menu.highlight.source}-${menu.highlight.index}`)?.scrollIntoView?.({ block: 'nearest' }); }, [menu, menuId]);
-  const track = () => { const input = inputRef.current; if (input) bridge.track(latest.current.text, input.selectionStart, revision.current); };
+  const track = () => { const input = inputRef.current; if (input) bridge?.track(latest.current.text, input.selectionStart, revision.current); };
   const commandMenu = menu.hit?.trigger === '/';
   const rows: ReactNode[] = [];
   for (const group of menu.groups) {
@@ -65,7 +86,7 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
         return <button type="button" role="option" key={item.name} id={`${menuId}-${group.source}-${index}`}
           data-group-command={command ? item.name : undefined}
           aria-selected={menu.highlight?.source === group.source && menu.highlight.index === index}
-          onMouseDown={event => event.preventDefault()} onMouseEnter={() => bridge.controller.hover(group.source, index)} onClick={() => bridge.controller.pick(group.source, index)}>
+          onMouseDown={event => event.preventDefault()} onMouseEnter={() => bridge?.controller.hover(group.source, index)} onClick={() => bridge?.controller.pick(group.source, index)}>
           {Icon && <span className={styles.commandIcon} aria-hidden="true"><Icon size={16} /></span>}
           <strong>{item.label ?? item.name}</strong>
           {command && item.label && item.label !== item.name && <small className={styles.commandAlias}>{item.name}</small>}
@@ -93,13 +114,13 @@ export function GroupComposerInput({ sessionId, text, bindings, targets, inputRe
       onBlur={event => {
         const next = event.relatedTarget;
         if (next instanceof Node && containerRef.current?.contains(next)) return;
-        bridge.controller.dismiss();
+        bridge?.controller.dismiss();
       }}
-      onChange={event => { const next = event.target.value; revision.current++; onChange(next, reconcileMentionBindings(text, next, bindings)); bridge.track(next, event.target.selectionStart, revision.current); }}
+      onChange={event => { const next = event.target.value; revision.current++; onChange(next, reconcileMentionBindings(text, next, bindings)); bridge?.track(next, event.target.selectionStart, revision.current); }}
       onKeyDown={event => {
         if (composition.current?.guards(event.nativeEvent) || composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
         const key = ({ ArrowDown: 'down', ArrowUp: 'up', Enter: 'enter', Tab: event.shiftKey ? 'tabBack' : 'tab', Escape: 'escape' } as const)[event.key as 'Enter'];
-        if (key && bridge.controller.arbitrate(key, false) !== 'pass') { event.preventDefault(); return; }
+        if (key && bridge && bridge.controller.arbitrate(key, false) !== 'pass') { event.preventDefault(); return; }
         if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSubmit(); }
       }}
     /></label>

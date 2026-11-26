@@ -100,6 +100,7 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
         })) as [SegmentedTab<typeof snapshot.input.view>, ...SegmentedTab<typeof snapshot.input.view>[]]}
       />
     </div>
+    <div id={`${uid}-panel`} role="tabpanel" aria-labelledby={`${uid}-${snapshot.input.view}`}>
     <form onSubmit={e => { e.preventDefault(); catalog.select({ query, cursor: undefined, revision: undefined }); }}>
       <label>{t('memory.search')}<input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>
       <button className={styles.button} type="submit">{t('memory.search')}</button>
@@ -154,5 +155,6 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
       <button type="button" className={styles.button} disabled={!snapshot.next || busy} onClick={() => catalog.nextPage()}>
         {t('memory.nextPage')}</button>
     </div>}
+    </div>
   </section>;
 }

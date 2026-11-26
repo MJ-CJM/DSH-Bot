@@ -154,9 +154,18 @@ export function WorkspaceMessage({ node, sessionId, actions, bots, executionBrid
   const quoted = snapshot.view?.messages.find(message => message.id === node.data.message.replyTo) ?? (historicQuote?.id === node.data.message.replyTo ? historicQuote : undefined);
   const quotedLoading = Boolean(node.data.message.replyTo && !quoted && quoteResolvedId !== node.data.message.replyTo);
   useEffect(() => {
-    let active = true;
-    if (publicInput && node.data.message.replyTo && !quoted) void actions.quotedMessage(node.data.group, node.data.message.replyTo).then(message => { if (active) { setHistoricQuote(message); setQuoteResolvedId(node.data.message.replyTo); } }).catch(() => { if (active) setQuoteResolvedId(node.data.message.replyTo); });
-    return () => { active = false; };
+    if (!publicInput || !node.data.message.replyTo || quoted) return;
+    const controller = new AbortController();
+    const replyTo = node.data.message.replyTo;
+    void actions.quotedMessage(node.data.group, replyTo, controller.signal).then(message => {
+      if (!controller.signal.aborted) {
+        setHistoricQuote(message);
+        setQuoteResolvedId(replyTo);
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setQuoteResolvedId(replyTo);
+    });
+    return () => { controller.abort(); };
   }, [actions, node.data.group, node.data.message.replyTo, quoted, publicInput]);
   const [jumpUnavailable, setJumpUnavailable] = useState(false);
   const jump = (id: string) => {

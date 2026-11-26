@@ -20,7 +20,7 @@ import { RosterManagement } from './RosterManagement.js';
 import { memoryOnlyIntent, singleMemoryReference } from '../../shared/group-memory-intent.js';
 import { isGroupDelegation, matchAddressedBot, matchGroupAddress, relayNeedsTopic } from '../../shared/addressed-bot.js';
 import { resolveGroupMentions } from '../group-mentions.js';
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { GROUP_ATTACHMENT_LIMIT, GROUP_TEXT_MAX_BYTES, groupKey, groupViewSchema, type GroupSummary, type GroupView, type GroupSend, type GroupRecord } from '../../shared/groups.js';
 import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
@@ -71,6 +71,13 @@ const draftErrorText = {
 } as const satisfies Record<NonNullable<GroupDraft['errorCode']>, string>;
 const keyOf = (b: BotRecord) => ({ botId: b.id, botCreatedAt: b.createdAt });
 const subscribeNoPermission = (_listener: () => void) => () => {};
+const subscribeNoGroupView = (_listener: () => void) => () => {};
+const emptyGroupViewSnapshot: ReturnType<ReturnType<GroupActions['createView']>['getSnapshot']> = {
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const getEmptyGroupView = () => emptyGroupViewSnapshot;
 /** Icon and copy of each '/' row, following the native composer menu's icons. */
 const COMMAND_FACE = {
   file: { icon: IconPaperclipOutlineRegular, label: 'groups.commandFile', hint: 'groups.commandFileHint' },
@@ -124,6 +131,13 @@ export function GroupsPanel({
   const [creating, setCreating] = useState(initialCreate);
   const [created, setCreated] = useState<GroupRecord>();
   const createdRef = useRef<GroupRecord>();
+  useEffect(() => {
+    if (!visible && !initialCreate) {
+      setCreating(false);
+      createdRef.current = undefined;
+      setCreated(undefined);
+    }
+  }, [visible, initialCreate]);
   const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(actions.turnExpansion),
   );
@@ -148,7 +162,7 @@ export function GroupsPanel({
             onSelect={group => { navigation.leave(() => select(group)); }}
             onDelete={group => { setDeletedName(undefined); setDeleting(group); }}
             onOpen={(group, signal) => actions.open(groupKey(group), signal)}
-            onCreate={() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); }}
+            onCreate={() => navigation.leave(() => { createdRef.current = undefined; setCreated(undefined); setCreating(true); })}
             onRefresh={() => { void actions.catalog.refresh(); }} t={t} />
         </nav>}
         <div className={styles.content}>
@@ -294,7 +308,7 @@ export function GroupEditor({
     : members.length <= limit);
   const [cwd, setCwd] = useState('');
   const initialDraft = useRef(JSON.stringify([name, mode, members, cwd, onDemand]));
-  useSettingsDraft(JSON.stringify([name, mode, members, cwd, onDemand]) !== initialDraft.current);
+  useSettingsDraft(!creationSaved && JSON.stringify([name, mode, members, cwd, onDemand]) !== initialDraft.current);
   const leave = useSettingsLeave();
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -472,15 +486,22 @@ export function GroupConversation({
   onOpenSession(id: string): Promise<void>;
 } & Localized) {
   const [statisticsSent, setStatisticsSent] = useState<{ turnId: string; followup: boolean; sequence: number }>();
-  const [catalog] = useState(() => workspace ? actions.messageView(groupKey(summary.group)) : actions.createView(groupKey(summary.group)));
-  useEffect(() => () => { if (!workspace) catalog.dispose(); }, [catalog, workspace]);
-  const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
+  const sharedCatalog = useMemo(() => workspace ? actions.messageView({ groupId, groupCreatedAt }) : undefined, [actions, workspace, groupId, groupCreatedAt]);
+  const [ownedCatalog, setOwnedCatalog] = useState<{ id: string; createdAt: number; source: ReturnType<GroupActions['createView']> }>();
+  useEffect(() => {
+    if (workspace) { setOwnedCatalog(undefined); return; }
+    const source = actions.createView({ groupId, groupCreatedAt });
+    setOwnedCatalog({ id: groupId, createdAt: groupCreatedAt, source });
+    return () => source.dispose();
+  }, [actions, workspace, groupId, groupCreatedAt]);
+  const catalog = workspace ? sharedCatalog : (ownedCatalog?.id === groupId && ownedCatalog.createdAt === groupCreatedAt ? ownedCatalog.source : undefined);
+  const snapshot = useSyncExternalStore(catalog?.subscribe ?? subscribeNoGroupView, catalog?.getSnapshot ?? getEmptyGroupView, catalog?.getSnapshot ?? getEmptyGroupView);
   const view = snapshot.view;
   const automaticGroup = Boolean(view?.group.supergroup ?? summary.group.supergroup);
   const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
   const focusRequest = workspace && runRequest?.sessionId === summary.group.rootSessionId ? runRequest : undefined;
   const focusMessageId = focusRequest?.source?.messageId ?? (focusRequest && view?.turns.find(row => row.id === focusRequest.turnId)?.inputMessageId);
-  const { id: groupId, createdAt: groupCreatedAt } = summary.group;
   useEffect(() => {
     if (!focusRequest || !focusMessageId) return;
     const { requestId } = focusRequest;
@@ -518,7 +539,7 @@ export function GroupConversation({
       .markRead(groupKey(view.group), readSeq, view.readRevision)
       .then(unwrapGroup)
       .then(async () => {
-        if (active) await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
+        if (active) await Promise.all([...(catalog ? [catalog.refresh()] : []), actions.catalog.refresh()]);
       })
       .catch(() => {});
     return () => {
@@ -617,7 +638,7 @@ export function GroupConversation({
     actions.patchDraft(rootId, value => ({ ...value, errorCode: undefined, errorDiagnostic: undefined }));
     try {
       await work();
-      await Promise.all([catalog.refresh(), actions.catalog.refresh()]);
+      await Promise.all([...(catalog ? [catalog.refresh()] : []), actions.catalog.refresh()]);
     } catch (error) {
       const diagnostic = safeErrorCode(error);
       const fallback = classifyError(error, options);
@@ -661,7 +682,7 @@ export function GroupConversation({
   const quoteExcerpt = needsTopic && replyTo && (!via || replyAuthor === via) ? groupMessagePreview(replyTo?.text) : '';
   const updateTopic = (text: string) => {
     if (!topicKey) return;
-    actions.patchDraft(rootId, value => ({ ...value, relayTopic: { key: topicKey, text } }));
+    actions.patchDraft(rootId, value => clearDefinitiveError({ ...value, relayTopic: { key: topicKey, text } }));
     setGuestIssue(undefined);
   };
   const resolveMentions = (text: string) => resolveGroupMentions(text, mentionTargets, mentions, sharedDraft.mentionBindings ?? []);
@@ -765,7 +786,10 @@ export function GroupConversation({
     if (resolved.issues.length) return;
     const addressedMember = addressed?.kind === 'match' && memberBots.includes(addressed.bot);
     const mentionMissingTarget = !automaticGroup && !round && !sharedDraft.followup && !sharedDraft.memoryStatusOnly && !memoryIntent && !guest && !addressedMember && !replyAuthor && view.group.mode === 'mention' && resolved.memberIds.length === 0;
-    if (mentions.some(id => !resolved.memberIds.includes(id)) || (sharedDraft.followup && (uploads.length || resolved.memberIds.length || replyTo))) { setError(true); return; }
+    if (mentions.some(id => !resolved.memberIds.includes(id)) || (sharedDraft.followup && (uploads.length || resolved.memberIds.length || replyTo))) {
+      actions.patchDraft(rootId, value => ({ ...value, error: true, errorCode: 'send-invalid', errorDiagnostic: undefined }));
+      return;
+    }
     const reference = replyTo ?? suggestedQuote;
     const base = {
       expectedMembershipRevision: view.group.membershipRevision,
@@ -811,42 +835,41 @@ export function GroupConversation({
       try {
         ({ turnId } = await actions.send(groupKey(view.group), pending.request, dispatchLifetime.current.signal));
       } catch (cause) {
+        const confirmFreshView = (): Promise<GroupView | undefined> => {
+          const signal = dispatchLifetime.current.signal;
+          if (signal.aborted || !alive.current) return Promise.resolve(undefined);
+          const pendingView = actions.remote().view(groupKey(view.group), {});
+          void pendingView.catch(() => {});
+          return new Promise<GroupView | undefined>(resolve => {
+            const finish = (value?: GroupView) => {
+              signal.removeEventListener('abort', onAbort);
+              resolve(value);
+            };
+            const onAbort = () => finish(undefined);
+            signal.addEventListener('abort', onAbort, { once: true });
+            if (signal.aborted) { onAbort(); return; }
+            void pendingView.then(
+              result => {
+                if (signal.aborted || !alive.current) { finish(undefined); return; }
+                try { finish(groupViewSchema.parse(unwrapGroup(result))); }
+                catch { finish(undefined); }
+              },
+              () => finish(undefined),
+            );
+          });
+        };
         if (!automaticGroup && !pending.request.followup && hasOperationCode(cause, 'conflict')) {
-          await catalog.refresh();
-          const snapshot = catalog.getSnapshot();
-          const fresh = snapshot.view;
-          // Only release the idempotency key after an authoritative rejection and
-          // an updated roster with no recorded turn for this exact operation.
-          if (!snapshot.error && fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt &&
+          const fresh = await confirmFreshView();
+          // Only release the idempotency key after THIS live remote.view() call succeeds
+          // while mounted and proves an updated roster with no recorded turn for this exact operation.
+          if (fresh && fresh.group.id === view.group.id && fresh.group.createdAt === view.group.createdAt &&
               fresh.group.membershipRevision > pending.request.expectedMembershipRevision &&
               !fresh.turns.some(turn => turn.operationId === pending.request.operationId)) {
             actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
               ? { ...current, operation: undefined, errorCode: 'membership-changed' } : current);
+            void catalog?.refresh();
           }
         } else if (isPendingRetry && !automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) {
-          const signal = dispatchLifetime.current.signal;
-          const confirmFreshView = (): Promise<GroupView | undefined> => {
-            if (signal.aborted || !alive.current) return Promise.resolve(undefined);
-            const pendingView = actions.remote().view(groupKey(view.group), {});
-            void pendingView.catch(() => {});
-            return new Promise<GroupView | undefined>(resolve => {
-              const finish = (value?: GroupView) => {
-                signal.removeEventListener('abort', onAbort);
-                resolve(value);
-              };
-              const onAbort = () => finish(undefined);
-              signal.addEventListener('abort', onAbort, { once: true });
-              if (signal.aborted) { onAbort(); return; }
-              void pendingView.then(
-                result => {
-                  if (signal.aborted || !alive.current) { finish(undefined); return; }
-                  try { finish(groupViewSchema.parse(unwrapGroup(result))); }
-                  catch { finish(undefined); }
-                },
-                () => finish(undefined),
-              );
-            });
-          };
           const fresh = await confirmFreshView();
           const recorded = fresh?.turns.some(turn => turn.operationId === pending.request.operationId ||
             turn.followups?.some(row => row.operationId === pending.request.operationId));
@@ -859,12 +882,12 @@ export function GroupConversation({
               ['completed', 'partial', 'cancelled', 'idle', 'recovery_needed'].includes(targetTurn.state);
             actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
               ? { ...current, operation: undefined, errorCode: targetEnded ? 'followup-ended' : 'send-unavailable' } : current);
-            void catalog.refresh();
+            void catalog?.refresh();
           }
         } else if (!isPendingRetry && isDefinitivePreDispatchRejection(cause) && (!automaticGroup || !hasOperationCode(cause, 'unavailable'))) {
           actions.patchDraft(rootId, current => current.operation?.request.operationId === pending.request.operationId
             ? { ...current, operation: undefined } : current);
-          if (!automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) void catalog.refresh();
+          if (!automaticGroup && pending.request.followup && hasOperationCode(cause, 'unavailable')) void catalog?.refresh();
         }
         throw cause;
       }
@@ -882,7 +905,7 @@ export function GroupConversation({
         if (alive.current) setFilesOverLimit(false);
     }, { isFollowup: Boolean(pending.request.followup), mentionMissingTarget, isRetry: isPendingRetry }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
   };
-  if (!view)
+  if (!catalog || !view)
     return (
       <p role={snapshot.error ? 'alert' : 'status'}>
         {t(snapshot.error ? 'groups.disconnected' : 'groups.loading')}
@@ -1097,6 +1120,7 @@ function GroupManager({ summary, actions, bots, t, onOpenBot, visible, onDelete 
   onOpenBot?(bot: BotRecord): void; visible?: boolean; onDelete(group: GroupRecord): void;
 }) {
   const [editing, setEditing] = useState<GroupView>();
+  useEffect(() => { if (!visible) setEditing(undefined); }, [visible]);
   return <><GroupOverview summary={summary} actions={actions} bots={bots} onOpenBot={onOpenBot}
     onEdit={setEditing} onDelete={onDelete} visible={visible} t={t} />
     {editing && <GroupRosterEditor bots={bots} actions={actions} initial={editing} t={t} onClose={() => setEditing(undefined)} />}</>;

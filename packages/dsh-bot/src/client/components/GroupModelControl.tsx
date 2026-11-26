@@ -194,6 +194,7 @@ function Control({ group, members = [], bots = [], actions, models, disabled, op
       }} />
     {open && loadError && <span role="alert" className={styles.srOnly}>{t('groups.modelLoadFailed')}</span>}
     {saveError && <span role="alert" className={styles.modelError}>{t('groups.modelSaveFailed')}
-      <Button variant="ghost" size="sm" disabled={busy || disabled || (failed.current?.expectedModelRevision !== (current.modelRevision ?? 0))} onClick={() => { if (failed.current) void save(failed.current.selection, failed.current); }}>{t('groups.modelRetry')}</Button></span>}
+      <Button variant="ghost" size="sm" disabled={busy || disabled || (failed.current?.expectedModelRevision !== (current.modelRevision ?? 0))} onClick={() => { if (failed.current) void save(failed.current.selection, failed.current); }}>{t('groups.modelRetry')}</Button>
+      <Button variant="ghost" size="sm" data-model-error-dismiss="" aria-label={t('actions.close') || 'Close'} disabled={busy} onClick={() => { failed.current = undefined; setSaveError(false); }}>{t('actions.close') || '×'}</Button></span>}
   </span>;
 }

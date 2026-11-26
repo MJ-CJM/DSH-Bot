@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { IntegrationActions } from '../integrations-state.js';
 import { useSettingsDraft } from './SettingsNavigation.js';
@@ -19,6 +19,13 @@ export function CredentialEditor({
   const [secret, setSecret] = useState('');
   useSettingsDraft(Boolean(secret));
   const [credentialInfo, setCredentialInfo] = useState<'configured' | 'missing' | 'readonly'>();
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   useEffect(() => {
     if (!active) {
       setSecret('');
@@ -43,13 +50,14 @@ export function CredentialEditor({
         </label>
         <button
           type="button"
-          disabled={!nativeCredentials || !credential}
+          disabled={busy || !nativeCredentials || !credential}
           onClick={() => {
+            if (busy || !nativeCredentials || !credential) return;
             void perform(async () => {
-              const result = await nativeCredentials?.describe([credential]);
+              const result = await nativeCredentials.describe([credential]);
               if (!result?.ok) throw new Error('Credential provider unavailable');
               const info = result.value[credential];
-              setCredentialInfo(info?.writable === false ? 'readonly' : info?.configured ? 'configured' : 'missing');
+              if (alive.current) setCredentialInfo(info?.writable === false ? 'readonly' : info?.configured ? 'configured' : 'missing');
             });
           }}
         >
@@ -57,14 +65,17 @@ export function CredentialEditor({
         </button>
         <button
           type="button"
-          disabled={!nativeCredentials || !credential || !secret || credentialInfo === 'readonly'}
+          disabled={busy || !nativeCredentials || !credential || !secret || credentialInfo === 'readonly'}
           onClick={() => {
+            if (busy || !nativeCredentials || !credential || !secret || credentialInfo === 'readonly') return;
             const value = secret;
-            setSecret('');
             void perform(async () => {
-              const result = await nativeCredentials?.set(credential, value);
+              const result = await nativeCredentials.set(credential, value);
               if (!result?.ok) throw new Error('Credential provider unavailable');
-              setCredentialInfo('configured');
+              if (alive.current) {
+                setSecret('');
+                setCredentialInfo('configured');
+              }
             });
           }}
         >

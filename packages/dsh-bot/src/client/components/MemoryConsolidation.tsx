@@ -7,21 +7,59 @@ import type { MemoryPanelProps } from './MemoryPanel.js';
 import { formatDateTime } from '../format.js';
 import styles from '../styles/bots.module.css';
 
+const definitiveRejectionCodes = new Set([
+  'bot/conflict',
+  'bot/invalid',
+  'bot/not-found',
+  'memory/consolidation-limit',
+  'memory/disabled',
+  'memory/invalid',
+  'memory/not-found',
+  'memory/rejected',
+  'memory/too-large',
+  'gateway/input-invalid',
+  'dsh-bot/conflict',
+  'dsh-bot/invalid',
+  'dsh-bot/not-found',
+  'dsh-bot/unsupported',
+  'dsh-bot/approval-denied',
+]);
+
+type ConsolidationError = 'changed' | 'limit' | 'secret' | 'invalid' | 'rejected' | 'unknown' | 'load';
+
+function rejectionError(code: string): ConsolidationError {
+  if (code === 'memory/consolidation-limit') return 'limit';
+  if (code === 'memory/rejected') return 'secret';
+  if (code === 'memory/too-large') return 'invalid';
+  if (['bot/conflict', 'bot/not-found', 'memory/not-found', 'dsh-bot/conflict', 'dsh-bot/not-found'].includes(code)) return 'changed';
+  return 'rejected';
+}
+
 export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { binding: SharedMemoryBinding; botId: string; defaultRoute?: { provider: string; model: string }; t: MemoryPanelProps['t'] }) {
   const [view, setView] = useState<z.output<typeof consolidationViewSchema>>(), [sources, setSources] = useState<ManagedMemoryPage>();
   const [selected, setSelected] = useState<string[]>([]), [provider, setProvider] = useState(defaultRoute?.provider ?? ''), [model, setModel] = useState(defaultRoute?.model ?? '');
   const [routeEdited, setRouteEdited] = useState(false);
   useEffect(() => { if (!routeEdited) { setProvider(defaultRoute?.provider ?? ''); setModel(defaultRoute?.model ?? ''); } }, [defaultRoute?.provider, defaultRoute?.model, routeEdited]);
-  const [edits, setEdits] = useState<Record<string, string>>({}), [busy, setBusy] = useState(false), [error, setError] = useState<'changed' | 'limit' | 'unknown' | 'load'>();
+  const [edits, setEdits] = useState<Record<string, string>>({}), [busy, setBusy] = useState(false), [error, setError] = useState<ConsolidationError>();
   const pending = useRef<ConsolidationInput | ConsolidationDecision>(), alive = useRef(true), locked = useRef(false);
   const routeFields = <><label>{t('memory.consolidation.provider')}<input value={provider} onChange={e => { setRouteEdited(true); setProvider(e.target.value); }} /></label>
     <label>{t('memory.consolidation.model')}<input value={model} onChange={e => { setRouteEdited(true); setModel(e.target.value); }} /></label></>;
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Switching Bots resets any prior Bot's pending operation and status.
+  useEffect(() => { pending.current = undefined; setView(undefined); setSources(undefined); setError(undefined); }, [botId]);
   const load = async () => {
     const [status, rows] = await Promise.all([binding.remote().consolidationStatus(botId),
       binding.remote().query({ botId, scope: 'private', view: 'facts', limit: 50 })]);
     if (!status.ok || !rows.ok) throw new Error('Unavailable');
     if (alive.current) {
+      const current = pending.current;
+      if (current) {
+        if (!status.value.enabled) pending.current = undefined;
+        else if ('runId' in current) {
+          const matched = status.value.runs.find(row => row.id === current.runId);
+          if (!matched || matched.decisionId === current.operationId || ['accepted', 'rejected', 'expired', 'revoked'].includes(matched.state)) pending.current = undefined;
+        } else if (status.value.runs.some(row => row.id === current.operationId)) pending.current = undefined;
+      }
       setView(status.value); setSources(rows.value);
       const available = new Set(rows.value.rows.map(row => row.version.versionId));
       setSelected(previous => previous.filter(id => available.has(id)));
@@ -36,12 +74,12 @@ export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { bindi
         const reply = 'runId' in input ? await binding.remote().decideConsolidation(input) : await binding.remote().consolidate(input);
         if (!reply.ok) {
           const code = reply.error.code;
-          if (code !== 'bot/conflict' && code !== 'memory/consolidation-limit') throw reply.error;
-          // The Host rejected the old revision before dispatch or commit.
+          if (!definitiveRejectionCodes.has(code)) throw reply.error;
+          // The Host definitively rejected the request before dispatch or commit.
           pending.current = undefined;
           if (alive.current) setView(undefined);
           await load();
-          if (alive.current) setError(code === 'bot/conflict' ? 'changed' : 'limit');
+          if (alive.current) setError(rejectionError(code));
           return;
         }
         pending.current = undefined; await binding.refresh();
@@ -80,7 +118,15 @@ export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { bindi
           onClick={() => void run({ operationId: crypto.randomUUID(), runId: row.id, botId, expectedRevision: view.revision, action,
             ...(action === 'accept' && edits[row.id] !== undefined ? { editedContent: edits[row.id] } : {}) })}>{t(`memory.consolidation.${action}`)}</button>)}</>}
     </section>)}
-    {error && <p role="alert">{t(error === 'changed' ? 'memory.consolidation.changed' : error === 'limit' ? 'memory.consolidation.limit' : error === 'load' ? 'memory.loadError' : 'memory.consolidation.error')}</p>}
+    {error && <p role="alert">{t(
+      error === 'changed' ? 'memory.consolidation.changed'
+        : error === 'limit' ? 'memory.consolidation.limit'
+        : error === 'secret' ? 'memory.secretRejected'
+        : error === 'invalid' ? 'memory.contentInvalid'
+        : error === 'rejected' ? 'memory.saveError'
+        : error === 'load' ? 'memory.loadError'
+        : 'memory.consolidation.error',
+    )}</p>}
     {pending.current && <button type="button" className={styles.button} disabled={busy} onClick={() => void run(pending.current)}>{t('memory.consolidation.reconcile')}</button>}
   </details>;
 }

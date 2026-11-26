@@ -4,15 +4,30 @@ import { useSettingsDraft } from './SettingsNavigation.js';
 import dialogStyles from '../styles/bots.module.css';
 import styles from '../styles/background-work.module.css';
 import css from '../styles/background-work.module.css?inline';
-import { useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useState, useSyncExternalStore } from 'react';
 import type { BotRecord } from '../../shared/schema.js';
 import type { BackgroundActions, BackgroundTask } from '../background-work-state.js';
 export type BackgroundKey = `background.${'title' | 'hint' | 'empty' | 'refresh' | 'open' | 'stop' | 'stopAll' | 'stopConfirm' | 'supplement' | 'queue' | 'steer' | 'input' | 'running' | 'inactive' | 'unknown' | 'error' | 'recovery' | 'runningOnly'}`;
+const emptyTasksSnapshot: ReturnType<ReturnType<BackgroundActions['forBot']>['catalog']['getSnapshot']> = {
+  tasks: [],
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const subscribeEmptyTasks = () => () => {};
+const getEmptyTasks = () => emptyTasksSnapshot;
 export function BackgroundTasksPanel({ bot, actions, t }: {
   bot: BotRecord; actions: BackgroundActions; t: (key: BackgroundKey) => string;
 }) {
-  const source = useMemo(() => actions.forBot({ id: bot.id, createdAt: bot.createdAt }), [actions, bot.id, bot.createdAt]);
-  const state = useSyncExternalStore(source.catalog.subscribe, source.catalog.getSnapshot);
+  const [owned, setOwned] = useState<{ id: string; createdAt: number; source: ReturnType<BackgroundActions['forBot']> }>();
+  useEffect(() => {
+    const created = actions.forBot({ id: bot.id, createdAt: bot.createdAt });
+    setOwned({ id: bot.id, createdAt: bot.createdAt, source: created });
+    void created.catalog.refresh();
+    return () => created.dispose();
+  }, [actions, bot.id, bot.createdAt]);
+  const source = owned?.id === bot.id && owned.createdAt === bot.createdAt ? owned.source : undefined;
+  const state = useSyncExternalStore(source?.catalog.subscribe ?? subscribeEmptyTasks, source?.catalog.getSnapshot ?? getEmptyTasks, source?.catalog.getSnapshot ?? getEmptyTasks);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmStopAll, setConfirmStopAll] = useState(false);
@@ -25,7 +40,6 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
     return value && value !== key ? value : fallback;
   };
   useSettingsDraft(!!text.trim() || busy);
-  useEffect(() => { void source.catalog.refresh(); return () => source.dispose(); }, [source]);
   const perform = async (action: () => Promise<void>) => {
     setError(false); setBusy(true);
     try { await action(); } catch { setError(true); } finally { setBusy(false); }
@@ -35,21 +49,21 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
     <h3>{t('background.title')}</h3>
     <p>{t('background.hint')}</p>
     {(state.error || state.tasks.some(task => task.running === undefined)) && <p>{t('background.recovery')}</p>}
-    <Button type="button" disabled={busy} onClick={() => { void perform(() => source.catalog.refresh()); }}>{t('background.refresh')}</Button>
-    <Button type="button" disabled={busy || !state.tasks.some(task => task.running !== false && task.address.mode === 'continuable')}
+    <Button type="button" disabled={busy || !source} onClick={() => { if (source) void perform(() => source.catalog.refresh()); }}>{t('background.refresh')}</Button>
+    <Button type="button" disabled={busy || !source || !state.tasks.some(task => task.running !== false && task.address.mode === 'continuable')}
       onClick={() => setConfirmStopAll(true)}>{t('background.stopAll')}</Button>
     {(error || state.error) && <p role="alert">{t('background.error')}</p>}
     {state.loaded && !state.tasks.length && <p>{t('background.empty')}</p>}
     <ul>{state.tasks.map(task => <li key={task.address.childSessionId}>
       <span>{task.label} · {t(task.running === true ? 'background.running' : task.running === false ? 'background.inactive' : 'background.unknown')}</span>{' '}
-      <Button type="button" disabled={busy} onClick={() => { void perform(() => source.open(task)); }}>{t('background.open')}</Button>{' '}
+      <Button type="button" disabled={busy || !source} onClick={() => { if (source) void perform(() => source.open(task)); }}>{t('background.open')}</Button>{' '}
       {task.address.mode === 'continuable' && <>
         <Button type="button" disabled={busy || task.running !== true} onClick={() => { setSelected(task); setText(''); }}>{t('background.supplement')}</Button>{' '}
-        <Button type="button" disabled={busy} onClick={() => { void perform(() => source.stop(task)); }}>{t('background.stop')}</Button>
+        <Button type="button" disabled={busy || !source} onClick={() => { if (source) void perform(() => source.stop(task)); }}>{t('background.stop')}</Button>
       </>}
       {task.running !== true && <small>{t('background.runningOnly')}</small>}
     </li>)}</ul>
-    {selected && <form onSubmit={event => { event.preventDefault(); void perform(async () => {
+    {selected && <form onSubmit={event => { event.preventDefault(); if (!source) return; void perform(async () => {
       await source.supplement(selected, text, delivery); setSelected(undefined); setText('');
     }); }}>
       <label>{t('background.input')} · {selected.label}<textarea required value={text} onChange={event => setText(event.target.value)} /></label>
@@ -63,9 +77,9 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
       </div>
       <footer className={dialogStyles.dialogFooter}>
         <Button disabled={busy} onClick={() => setConfirmStopAll(false)}>{actionLabel('actions.cancel', 'Cancel')}</Button>
-        <Button className={dialogStyles.dangerButton} disabled={busy} onClick={() => {
+        <Button className={dialogStyles.dangerButton} disabled={busy || !source} onClick={() => {
           setConfirmStopAll(false);
-          void perform(() => source.stopAll());
+          if (source) void perform(() => source.stopAll());
         }}>{t('background.stopAll')}</Button>
       </footer>
     </Modal>}

@@ -623,8 +623,12 @@ describe('Issue #60: accessibility and destructive confirmation modals', () => {
     });
     const editorTabs = [...element.querySelectorAll<HTMLButtonElement>('[role="tablist"] [role="tab"]')];
     expect(editorTabs).toHaveLength(2);
-    expect(editorTabs[0]!.getAttribute('aria-controls')).toContain('-settings-panel');
+    const settingsPanelId = editorTabs[0]!.getAttribute('aria-controls');
+    expect(settingsPanelId).toContain('-settings-panel');
+    expect(document.getElementById(settingsPanelId!)?.getAttribute('role')).toBe('tabpanel');
     await click(editorTabs[1]!);
+    const memoryEditorPanelId = editorTabs[1]!.getAttribute('aria-controls');
+    expect(document.getElementById(memoryEditorPanelId!)?.getAttribute('role')).toBe('tabpanel');
     expect(element.querySelector('[data-memory-content]')).not.toBeNull();
 
     const select = vi.fn();
@@ -655,7 +659,16 @@ describe('Issue #60: accessibility and destructive confirmation modals', () => {
     });
     const memoryTabs = [...element.querySelectorAll<HTMLButtonElement>('[role="tablist"] [role="tab"]')];
     expect(memoryTabs).toHaveLength(5);
-    expect(memoryTabs.every((tab) => Boolean(tab.id && tab.getAttribute('aria-controls')))).toBe(true);
+    for (const tab of memoryTabs) {
+      const panelId = tab.getAttribute('aria-controls');
+      expect(tab.id).toBeTruthy();
+      expect(panelId).toBeTruthy();
+      const panel = document.getElementById(panelId!);
+      expect(panel).not.toBeNull();
+      expect(panel?.getAttribute('role')).toBe('tabpanel');
+    }
+    const activePanel = document.getElementById(memoryTabs[0]!.getAttribute('aria-controls')!);
+    expect(activePanel?.getAttribute('aria-labelledby')).toBe(memoryTabs[0]!.id);
     await click(memoryTabs[1]!);
     expect(select).toHaveBeenCalledWith({ view: 'journal', cursor: undefined, revision: undefined });
   });

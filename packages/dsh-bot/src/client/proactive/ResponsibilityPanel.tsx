@@ -1,6 +1,7 @@
 import { Button, Input } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsLocale } from "@deepseek-ai/dsh-client-ui-slots";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useSettingsDraft } from "../components/SettingsNavigation.js";
 import { sameBot, type BotKey } from "../../shared/identity.js";
 import {
 	responsibilityDraftSchema,
@@ -99,6 +100,7 @@ export function ResponsibilityPanel({
 	const [editing, setEditing] = useState<Responsibility>();
 	const [createdId, setCreatedId] = useState<string>();
 	const [busy, setBusy] = useState(false);
+	useSettingsDraft(Boolean(draft) || busy);
 	const [status, setStatus] = useState<"loading" | "ready" | "unavailable">(
 		"loading",
 	);
