@@ -25,7 +25,7 @@ export function ManagementHeader({ title, selector, actions, description, level 
       {selector && (!shared || contextSelector) && (
         <label className={styles.selector}>
           {t('integrations.bot')}
-          <select aria-label={t('integrations.bot')} value={selector.value} onChange={(event) => { const id = event.target.value; leave(() => selector.onChange(id)); }}>
+          <select aria-label={t('integrations.bot')} value={selector.value} onChange={(event) => { const id = event.target.value; if (id !== selector.value) leave(() => selector.onChange(id)); }}>
             <option value="" disabled>{t('settings.chooseBot')}</option>
             {selector.bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}{selector.bots.filter(b => b.name === bot.name).length > 1 ? ` (${bot.id})` : ''}</option>)}
           </select>

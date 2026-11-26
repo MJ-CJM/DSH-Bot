@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import { groupKey, type GroupView } from '../../shared/groups.js';
@@ -9,7 +9,7 @@ import { teamRecipeInputSchema, type TeamRecipe, type TeamPreview } from '../../
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
 import styles from '../styles/groups.module.css';
 import rosterCss from '../styles/roster.module.css?inline';
-import { useSettingsDraft, useSettingsNavigation } from './SettingsNavigation.js';
+import { SettingsDrafts, useSettingsNavigation } from './SettingsNavigation.js';
 import { MemberChangeReview, RosterSaveNotice, rosterAddedMembers, rosterMemberName, rosterMembers, useRosterSave } from './RosterManagement.js';
 
 function parseRecipe(input: unknown): TeamRecipe {
@@ -69,8 +69,11 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
   const applying = mutation.phase !== 'idle' && mutation.phase !== 'failed';
   const originalMembers = rosterMembers(baseline);
   const memberDraft = !!preview && JSON.stringify(originalMembers.map(member => member.bot)) !== JSON.stringify(target) && !['saved', 'unknown'].includes(mutation.phase);
-  useSettingsDraft(memberDraft);
-  const leave = () => { navigation.registry.set('recipe-members', memberDraft); navigation.leave(onClose); };
+  useLayoutEffect(() => {
+    navigation.registry.set('recipe-members', memberDraft);
+    return () => navigation.registry.set('recipe-members', false);
+  }, [navigation.registry, memberDraft]);
+  const leave = () => navigation.leave(onClose);
   const reviewTarget = pending && applying ? pending.target : target;
   const invalidLegacyEdit = originalMembers.length > limit && (selected.length >= originalMembers.length || selected.some(row => !originalMembers.some(member => member.bot.botId === row.bot.botId && member.bot.botCreatedAt === row.bot.botCreatedAt)));
   const exportRecipe = () => {
@@ -79,7 +82,7 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
     const link = document.createElement('a'); link.href = url; link.download = 'dsh-bot-team.json'; link.click();
     URL.revokeObjectURL(url);
   };
-  return <><section className={`${styles.settingsOverview} ${styles.teamRecipes}`} role="dialog" aria-label={t('teams.title')} data-team-recipes="">
+  return <SettingsDrafts.Provider value={navigation.registry}><section className={`${styles.settingsOverview} ${styles.teamRecipes}`} role="dialog" aria-label={t('teams.title')} data-team-recipes="">
     <style>{rosterCss}</style>
     <h3>{t('teams.title')}</h3>
     <p>{t('teams.safe')}</p>
@@ -146,5 +149,5 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
       <Button onClick={() => { setBaseline(mutation.latest!); mutation.reset(); }}>{t('groups.roster.reviewLatest')}</Button>
     </section>}
     <Button disabled={busy || mutation.phase === 'saving'} onClick={leave}>{t('groups.close')}</Button>
-  </section>{navigation.confirmation}</>;
+  </section>{navigation.confirmation}</SettingsDrafts.Provider>;
 }

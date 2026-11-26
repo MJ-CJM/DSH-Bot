@@ -6,7 +6,7 @@ import { hasOperationCode } from '../../shared/operation-errors.js';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
-import type { CollaborationActions } from '../collaboration-state.js';
+import { EMPTY_BOARD, type CollaborationActions } from '../collaboration-state.js';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import css from '../styles/integrations.module.css?inline';
 import styles from '../styles/integrations.module.css';
@@ -27,11 +27,25 @@ export function CollaborationPanel({ actions, bots, onOpenSession, t }: Collabor
     </section>
   );
 }
+const emptyBoardSnapshot: ReturnType<ReturnType<CollaborationActions['createBoard']>['getSnapshot']> = {
+  ...EMPTY_BOARD,
+  loading: true,
+  loaded: false,
+  pollIntervalMs: 0,
+};
+const subscribeEmptyBoard = () => () => {};
+const getEmptyBoard = () => emptyBoardSnapshot;
+
 function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: CollaborationPanelProps & { bot: BotRecord; onBotChange(id: string): void }) {
   const key = useMemo(() => ({ botId: bot.id, botCreatedAt: bot.createdAt }), [bot.id, bot.createdAt]);
-  const catalog = useMemo(() => actions.createBoard(key), [actions, key]);
-  useEffect(() => () => catalog.dispose(), [catalog]);
-  const data = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+  const [owned, setOwned] = useState<{ key: typeof key; source: ReturnType<CollaborationActions['createBoard']> }>();
+  useEffect(() => {
+    const source = actions.createBoard(key);
+    setOwned({ key, source });
+    return () => source.dispose();
+  }, [actions, key]);
+  const catalog = owned?.key === key ? owned.source : undefined;
+  const data = useSyncExternalStore(catalog?.subscribe ?? subscribeEmptyBoard, catalog?.getSnapshot ?? getEmptyBoard, catalog?.getSnapshot ?? getEmptyBoard);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [blockedBy, setBlockedBy] = useState<string[]>([]);
@@ -56,14 +70,14 @@ function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: Collaborat
     try {
       const r = await fn();
       if (!r.ok) throw r.error;
-      await catalog.refresh();
+      await catalog?.refresh();
     } catch (e) {
       if (alive.current) {
         setError(
           hasOperationCode(e, 'conflict') ? 'conflict' : hasOperationCode(e, 'recovery-needed') ? 'recovery' : 'failed',
         );
       }
-      await catalog.refresh();
+      await catalog?.refresh();
     } finally {
       writing.current = false;
       if (alive.current) setBusy(false);
@@ -75,7 +89,7 @@ function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: Collaborat
       <ManagementHeader title={t('team.title')} selector={{ bots, value: bot.id, onChange: onBotChange }} actions={<Button
         type="button"
         onClick={() => {
-          void catalog.refresh();
+          void catalog?.refresh();
         }}
       >
         {t('bots.refresh')}

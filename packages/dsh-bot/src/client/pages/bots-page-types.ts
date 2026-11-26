@@ -64,6 +64,7 @@ export interface BotsPageInjected extends ChatLauncherActions {
   onCountMemories(id: string): Promise<number>;
   createMemoryPanel(id: string): Omit<MemoryPanelProps, 'bot' | 't'> & { dispose(): void };
   onRefresh(): Promise<void>;
+  getCatalogSnapshot?: BotCatalog['getSnapshot'];
   onPollInterval(value: number): void;
   onCreate(input: BotCreateInput): Promise<void>;
   onCreateForChat?(input: BotCreateInput, operationId: string, language: 'en' | 'zh'): Promise<void>;
