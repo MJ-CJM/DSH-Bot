@@ -550,7 +550,7 @@ export class Supergroup {
     controller.signal.addEventListener('abort', () => signal.removeEventListener('abort', abort), { once: true });
     const check = () => this.verifyAuthority(this.read(work.id), agent, messageId, revisions, controller.signal, groupInput, peerInputDigest, true);
     return { controller, text, revisions, generation: this.revocationGeneration, configEpoch: this.configEpoch, turnIds: [], detach: () => signal.removeEventListener('abort', abort), authority: { workId: work.id, origin: agent, messageId, ...(groupInput ? { groupInput } : {}), owner: work.owner,
-      ...((work.materials?.length || work.resumes?.some(row => row.messageId === messageId)) ? { projectInput: (value: string) => this.support.project(this.read(work.id), agent, messageId, value) } : {}),
+      ...((work.materials?.length || work.resumes?.some(row => row.messageId === messageId)) ? { projectInput: (value: string) => this.support.project(this.read(work.id), agent, messageId, value, true) } : {}),
       readers: work.readers, expiresAt: work.expiresAt, check, maxRequests: this.config().maxRequests,
       reserveRequest: () => this.reserveWorkRequest(work.id), requestsUsed: () => this.read(work.id).collaboration?.requests ?? 0 } };
   }

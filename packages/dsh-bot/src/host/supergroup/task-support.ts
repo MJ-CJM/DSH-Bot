@@ -60,9 +60,9 @@ export class TaskSupport {
       || receipt.contentDigest !== hash(message.content) || receipt.originalDigest !== this.original(work, agent).digest) return;
     return { receipt, original: this.original(work, agent).text };
   }
-  async project(work: SupergroupWork, agent: Agent, messageId: string, raw: string) {
+  async project(work: SupergroupWork, agent: Agent, messageId: string, raw: string, snapshot = false) {
     const resumed = this.continuation(work, agent, messageId);
-    return this.text(work, resumed ? `${resumed.original}\n\n${raw}` : raw);
+    return this.text(work, resumed ? `${resumed.original}\n\n${raw}` : raw, snapshot);
   }
   connectionFailed(owner: SupergroupWork['owner'], agent: Agent, messageId: string) {
     const connectors = this.ctx.get('dshBotConnectors'), runtime = connectors?.runtime() ?? [];

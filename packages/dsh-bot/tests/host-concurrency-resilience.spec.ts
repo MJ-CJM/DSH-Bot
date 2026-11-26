@@ -251,7 +251,7 @@ describe('Issue #56 Fix 1: Registry <-> MemoryKernel AB-BA deadlock prevention',
       await f.ctx.plugin(SessionStore).await();
       await f.ctx.plugin(SessionTitle, { fallbackMaxWords: 10, fallbackMaxBytes: 128, maxTitleBytes: 256 }).await();
       const { registry, stop } = await f.start({
-        supergroup: SupergroupConfig({ enabled: true, maxMembers: 4, maxExperts: 8, maxRequests: 16, timeoutMs: 60_000, allowedBotIds: [] }),
+        supergroup: SupergroupConfig({ enabled: true, maxMembers: 4, maxExperts: 8, maxRequests: 16, timeoutMs: 60_000, allowedBotIds: ['alpha', 'beta'] }),
       });
       const alphaBot = await registry.create({ id: 'alpha', name: 'Alpha' });
       const betaBot = await registry.create({ id: 'beta', name: 'Beta' });
@@ -456,6 +456,284 @@ describe('Issue #56 Fix 1: Registry <-> MemoryKernel AB-BA deadlock prevention',
       releaseTurn.resolve();
       await supergroup.close();
       await invokeTask.catch(() => {});
+      await workDomain.close();
+      await mains.close();
+      await stop();
+    });
+  });
+
+  it('completes concurrent Registry memory mutation and ManagedOutlets beforeAttempt with Supergroup task materials without deadlocking', async () => {
+    await withFacility(async (f) => {
+      await f.ctx.plugin(SessionProjections).await();
+      await f.ctx.plugin(SessionStore).await();
+      await f.ctx.plugin(SessionTitle, { fallbackMaxWords: 10, fallbackMaxBytes: 128, maxTitleBytes: 256 }).await();
+      const { registry, stop } = await f.start({
+        supergroup: SupergroupConfig({ enabled: true, maxMembers: 4, maxExperts: 8, maxRequests: 16, timeoutMs: 60_000, allowedBotIds: ['alpha', 'beta'] }),
+      });
+      const alphaBot = await registry.create({ id: 'alpha', name: 'Alpha' });
+      const betaBot = await registry.create({ id: 'beta', name: 'Beta' });
+      const gammaBot = await registry.create({ id: 'gamma', name: 'Gamma' });
+      const alphaKey = { botId: alphaBot.id, botCreatedAt: alphaBot.createdAt };
+      const betaKey = { botId: betaBot.id, botCreatedAt: betaBot.createdAt };
+
+      const liveAgents = new Map<string, Agent>();
+      const sessionRows: Array<{ sessionId: SessionId; updatedAt: number; running: boolean; blank: boolean; agentAvailable: boolean }> = [];
+      f.ctx.provide('agents', { get: (id: string) => liveAgents.get(id) } as unknown as Context['agents']);
+      f.ctx.provide('sessionController', {
+        list: async () => ({ items: sessionRows }),
+        create: async ({ agentPreset }: { agentPreset?: string }) => {
+          const id = SessionId(`main-${agentPreset ?? randomUUID()}`);
+          const session = f.ctx.sessions.create(id, {
+            meta: { createdAt: Math.max(Date.now(), alphaBot.createdAt, betaBot.createdAt), agentPreset },
+          });
+          sessionRows.push({ sessionId: session.id, updatedAt: Date.now(), running: false, blank: false, agentAvailable: true });
+          return { sessionId: session.id };
+        },
+        rename: async ({ sessionId, title }: { sessionId: SessionId; title: string }) => {
+          const session = need(f.ctx.sessions.get(sessionId));
+          const accepted = f.ctx.sessionTitle.rename(session, title);
+          return { title: accepted.title, seq: accepted.eventSeq };
+        },
+      } as unknown as Context['sessionController']);
+      vi.spyOn(f.ctx.sessions, 'flush').mockResolvedValue(true);
+      await f.workspaces();
+
+      const mains = new MainSessions(f.ctx, registry);
+      await mains.start();
+      registry.mainSessions = mains;
+
+      const alphaMain = await mains.open(alphaBot.id, alphaBot.createdAt);
+      const alphaSession = need(f.ctx.sessions.get(alphaMain.sessionId as SessionId));
+      const human = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Coordinate report with materials' }] });
+      alphaSession.append('user/message', human, { surfaceOp: 'append' });
+      const origin = { id: alphaSession.id, session: alphaSession, status: 'idle' } as unknown as Agent;
+      liveAgents.set(alphaSession.id, origin);
+      bindings.set(origin, alphaKey);
+
+      const workDomain = await f.ctx.storageDomain.open(supergroupDomain);
+      let capturedAuthority: SupergroupAuthority | undefined;
+      let holdSecondTurn = false;
+      const continueAuthorityCaptured = deferred();
+      const releaseContinueTurn = deferred();
+      const sgGroup = {
+        id: 'sg-materials-1',
+        createdAt: 1,
+        revision: 1,
+        membershipRevision: 1,
+        name: 'SG Materials',
+        mode: 'natural' as const,
+        rootSessionId: 'root-sg-materials-1',
+      };
+      const stubGroups = {
+        setExpertHandler: () => () => {},
+        createSupergroup: async (_value: unknown, authority: SupergroupAuthority) => {
+          capturedAuthority = authority;
+          return sgGroup;
+        },
+        refreshSupergroupAuthority: async (_key: unknown, authority: SupergroupAuthority) => {
+          capturedAuthority = authority;
+          if (holdSecondTurn) continueAuthorityCaptured.resolve();
+        },
+        view: async () => ({
+          group: sgGroup,
+          members: [
+            { id: 'm-alpha', enabled: true, bot: alphaKey },
+            { id: 'm-beta', enabled: true, bot: betaKey },
+          ],
+          turns: [{ id: 'turn-1', state: 'completed', revision: 1 }],
+          deliveries: [{ id: 'turn-1:0', turnId: 'turn-1', memberId: 'm-beta', bot: betaKey, state: 'completed' }],
+          messages: [{ id: 'msg-1', seq: 1, turnId: 'turn-1', speaker: { bot: betaKey, name: 'Beta' }, text: 'Initial answer', at: 1 }],
+        }),
+        sendSupergroup: async () => ({ id: 'turn-1', state: 'completed', revision: 1 }),
+        waitForTurn: async () => {
+          if (holdSecondTurn) await releaseContinueTurn.promise;
+        },
+        cancel: async () => {},
+        drain: async () => {},
+      } as unknown as Groups;
+      const supergroup = new Supergroup(f.ctx, registry, stubGroups, workDomain);
+      await supergroup.start();
+      const outlets = need(registry.memoryOutlets);
+      await outlets.inherit(sgGroup.rootSessionId, {
+        readers: [alphaKey, betaKey],
+        originTrust: 'candidate',
+        sourceVersions: [],
+        restrictions: [],
+        grants: [],
+      });
+      await outlets.inherit(alphaSession.id, {
+        readers: [alphaKey, betaKey],
+        originTrust: 'candidate',
+        sourceVersions: [],
+        restrictions: [],
+        grants: [],
+      });
+
+      // 1) Initial Supergroup start completes so task materials can be admitted.
+      const started = (await supergroup.invoke(
+        origin,
+        { action: 'start', memberIds: [alphaBot.id, betaBot.id] },
+        new AbortController().signal,
+      )) as { workId: string; state: string };
+      expect(started.state).toBe('completed');
+      const supportView1 = await supergroup.taskSupport(started.workId);
+      const inputSource = need(supportView1.inputs.find((row) => row.messageId === human.id));
+      const supportView2 = await supergroup.addMaterial({
+        workId: started.workId,
+        expectedRevision: supportView1.revision,
+        operationId: 'mat-file-1',
+        question: 'Inspect attached spec',
+        source: { kind: 'file', name: 'spec.md', text: 'Projected spec material for review' },
+      });
+      await supergroup.addMaterial({
+        workId: started.workId,
+        expectedRevision: supportView2.revision,
+        operationId: 'mat-input-1',
+        question: 'Cross-check original question',
+        source: { kind: 'input-text', messageId: inputSource.messageId, version: inputSource.version },
+      });
+
+      // 2) Append a new human follow-up message and continue Supergroup so Supergroup.runtime() produces a real authority with projectInput.
+      const followUpHuman = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Continue with attached materials' }] });
+      alphaSession.append('user/message', followUpHuman, { surfaceOp: 'append' });
+      holdSecondTurn = true;
+      const continueTask = supergroup.invoke(
+        origin,
+        { action: 'continue', workId: started.workId },
+        new AbortController().signal,
+      );
+      await withTimeout(continueAuthorityCaptured.promise, 'material supergroup authority capture');
+      const authority = need(capturedAuthority);
+      expect(authority.projectInput).toBeTypeOf('function');
+
+      const group = groupRecordSchema.parse({
+        ...sgGroup,
+        operationId: 'op-materials-1',
+        createDigest: 'digest',
+        updatedAt: 1,
+        schemaVersion: 1,
+        rootPresetId: 'dsh-bot-group-root',
+        cwd: f.root,
+        archived: false,
+        state: 'ready',
+        supergroup: supergroupMetadata(authority),
+      });
+      const groupState = {
+        check() {},
+        ctx: f.ctx,
+        registry,
+        bot: (key: typeof alphaKey) => registry.get(key.botId),
+        botSnapshot: async (key: typeof alphaKey) => {
+          const row = registry.botSnapshot(key.botId, key.botCreatedAt);
+          if (!row) throw new Error('conflict');
+          return row;
+        },
+      } as unknown as GroupState;
+
+      const envelope = outlets.draft(
+        'group-result',
+        alphaKey,
+        alphaSession.id,
+        'deadlock-materials-check',
+        { kind: 'bot', bot: alphaKey },
+        JSON.stringify({ ok: true }),
+      );
+      const flowId = await outlets.admit(envelope);
+
+      const enteredBeforeAttempt = deferred();
+      const releaseBeforeAttempt = deferred();
+      const enteredRegistryQueue = deferred();
+      let admitted: Awaited<ReturnType<typeof validateSupergroupAuthority>> | undefined;
+
+      // Hold MemoryKernel.tail via ManagedOutlets.dispatch beforeAttempt calling validateSupergroupAuthority -> projectInput.
+      const dispatchTask = outlets.dispatch(
+        flowId,
+        () => 'DISPATCHED_WITH_MATERIALS',
+        new AbortController().signal,
+        async () => {
+          enteredBeforeAttempt.resolve();
+          await releaseBeforeAttempt.promise;
+          await authority.check();
+          admitted = await validateSupergroupAuthority(groupState, authority, group);
+        },
+      );
+      await enteredBeforeAttempt.promise;
+
+      // Simultaneously hold DshBotRegistry.tail waiting on MemoryKernel.tail.
+      const registryTask = registry.manageMemory(async (memory) => {
+        enteredRegistryQueue.resolve();
+        return memory.kernel.serial(() => 'KERNEL_ACQUIRED_AFTER_MATERIALS_DISPATCH');
+      });
+      await enteredRegistryQueue.promise;
+
+      let queuedGetSettled = false;
+      const queuedGet = registry.get(alphaBot.id).then((row) => {
+        queuedGetSettled = true;
+        return row;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(queuedGetSettled).toBe(false);
+
+      const removeTask = registry.remove(gammaBot.id);
+      const getSpy = vi.spyOn(registry, 'get');
+      const getCallsBeforeRelease = getSpy.mock.calls.length;
+
+      releaseBeforeAttempt.resolve();
+      await withTimeout(
+        Promise.all([
+          expect(dispatchTask).resolves.toBe('DISPATCHED_WITH_MATERIALS'),
+          expect(registryTask).resolves.toBe('KERNEL_ACQUIRED_AFTER_MATERIALS_DISPATCH'),
+          expect(queuedGet).resolves.toMatchObject({ id: 'alpha' }),
+          expect(removeTask).resolves.toBeUndefined(),
+        ]),
+        'concurrent material projection dispatch and registry mutations',
+      );
+      expect(getSpy.mock.calls.length).toBe(getCallsBeforeRelease);
+      getSpy.mockRestore();
+
+      expect(admitted?.projected).toBe(true);
+      expect(admitted?.text).toContain('Projected spec material for review');
+      expect(admitted?.text).toContain('spec.md');
+      expect(admitted?.text).toContain(`session:${alphaSession.id}#message=${human.id}`);
+
+      // Verify snapshot projectInput preserves material digest, sourceVersion, reader list, owner, and live reader checks.
+      const projectInput = need(authority.projectInput);
+      const worksTable = workDomain.table('works');
+      const savedWork = need(worksTable.get(started.workId));
+      await worksTable.put(started.workId, {
+        ...savedWork,
+        materials: savedWork.materials?.map((m, idx) => (idx === 0 ? { ...m, digest: 'tampered-digest' } : m)),
+      });
+      await expect(projectInput('Check')).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+
+      await worksTable.put(started.workId, {
+        ...savedWork,
+        materials: savedWork.materials?.map((m) => (m.kind === 'input-text' ? { ...m, sourceVersion: 'stale-version' } : m)),
+      });
+      await expect(projectInput('Check')).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+
+      await worksTable.put(started.workId, {
+        ...savedWork,
+        materials: savedWork.materials?.map((m, idx) => (idx === 0 ? { ...m, readers: [alphaKey] } : m)),
+      });
+      await expect(projectInput('Check')).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+
+      // Restore valid materials, then verify owner live-main and reader existence still fail closed.
+      await worksTable.put(started.workId, savedWork);
+      const projSpy = vi
+        .spyOn(f.ctx.sessionProjections, 'snapshot')
+        .mockReturnValue({ values: { agentPreset: 'standard' } } as ReturnType<Context['sessionProjections']['snapshot']>);
+      await expect(projectInput('Check')).rejects.toMatchObject({ code: 'dsh-bot/unavailable' });
+      projSpy.mockRestore();
+
+      await registry.remove(betaBot.id);
+      await expect(projectInput('Check')).rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+
+      bindings.delete(origin);
+      releaseContinueTurn.resolve();
+      await supergroup.close();
+      await continueTask.catch(() => {});
       await workDomain.close();
       await mains.close();
       await stop();
