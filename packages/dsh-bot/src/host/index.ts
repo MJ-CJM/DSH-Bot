@@ -35,6 +35,7 @@ import { startShadow } from './shadow/service.js';
 import { Supergroup, supergroupDomain } from './supergroup/service.js';
 import { SupergroupRemote, SUPERGROUP_HOST } from './supergroup/remote.js';
 import { onlySupergroupChanged } from './supergroup/config.js';
+import { redactedErrorMetadata } from './common/operations.js';
 export const Config = RegistryConfig.volatile();
 export { DshBotRegistry };
 export const name = 'dsh-bot';
@@ -70,13 +71,19 @@ export function apply(ctx: Context, config: ReturnType<typeof Config>): void {
     applied = next;
     if (supergroupHot) {
       registry.config.supergroup = structuredClone(next.supergroup);
-      void supergroup?.configChanged().catch(error => ctx.logger.error('[dsh-bot] Supergroup settings update failed', error));
+      void supergroup?.configChanged().catch(error => ctx.logger.error('[dsh-bot] Supergroup settings update failed', {
+        phase: 'supergroup-config-update', ...redactedErrorMetadata(error),
+      }));
       ctx.emit('dsh-bot/supergroup-changed');
     } else if (hot) {
-      void proactive.replace().catch(error => ctx.logger.error('[dsh-bot] proactive settings update failed', error));
+      void proactive.replace().catch(error => ctx.logger.error('[dsh-bot] proactive settings update failed', {
+        phase: 'proactive-config-update', ...redactedErrorMetadata(error),
+      }));
     } else {
       proactive.stopAdmission();
-      void ctx.fiber.restart().catch(error => ctx.logger.error('[dsh-bot] settings restart failed', error));
+      void ctx.fiber.restart().catch(error => ctx.logger.error('[dsh-bot] settings restart failed', {
+        phase: 'settings-restart', ...redactedErrorMetadata(error),
+      }));
     }
   }), 'dsh-bot: native volatile settings');
   ctx.effect(() => ctx.typert.register(AUTOMATION_HOST), 'dsh-bot: native schedule contract');
@@ -261,7 +268,7 @@ export function apply(ctx: Context, config: ReturnType<typeof Config>): void {
     })
     .catch((error) => {
       status = { state: 'failed', reason: 'startup-failed' };
-      ctx.logger.error('[dsh-bot] startup failed', error);
+      ctx.logger.error('[dsh-bot] startup failed', { phase: 'startup', ...redactedErrorMetadata(error) });
     });
   ctx.effect(
     () => async () => {

@@ -9,6 +9,7 @@ import {
   followUpFactSchema, followUpIngestSchema, subjectKey, type FollowUpFact, type FollowUpPolicy, type Subject,
 } from '../../shared/proactive/follow-up.js';
 import { groupFollowUpFact } from './follow-up-facts.js';
+import { redactedErrorMetadata } from '../common/operations.js';
 import type { ProactiveService } from './service.js';
 
 declare module '@deepseek-ai/cordis' {
@@ -241,7 +242,7 @@ export class FollowUpEvents {
       let fact = scan?.latest;
       if (title && (latest?.type === 'turn/start' || latest?.type === 'turn/end')) {
         const condition: FollowUpFact['condition'] = latest.type === 'turn/start' ? { kind: 'tracking' }
-          : latest.data.reason.kind === 'error' ? { kind: 'failed', reason: latest.data.reason.error.message.slice(0, 500) || 'error' }
+          : latest.data.reason.kind === 'error' ? { kind: 'failed', reason: redactedErrorMetadata(latest.data.reason.error).errorCode ?? 'error' }
           : latest.data.reason.kind === 'completed' ? { kind: 'closed', reason: 'resolved' }
           : latest.data.reason.kind === 'aborted' ? { kind: 'closed', reason: 'cancelled' }
           : { kind: 'failed', nativeEndReason: latest.data.reason.kind === 'interrupted' || latest.data.reason.kind === 'blocked' ||

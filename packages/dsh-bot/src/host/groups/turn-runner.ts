@@ -22,7 +22,7 @@ import { ReasoningEffortId, createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { SubagentActivation, SubagentResult } from '@deepseek-ai/dsh-subagent';
 import type { GroupDelivery, GroupTurn, GroupSpeaker } from '../../shared/groups.js';
 import { OperationError, need, digest } from '../common/operations.js';
-import { groupContext } from './routing.js';
+import { groupContext, groupParticipantLabel } from './routing.js';
 import { compatibleActivationSpec } from '../common/subagent-activation.js';
 
 import { blocks, textOf, terminal } from './model.js';
@@ -160,7 +160,7 @@ export class GroupTurnRunner {
       this.state.members(g).filter(m => m.enabled && m.removedAt === undefined).map(async (d) => {
         try {
           const b = await this.state.bot(d.bot);
-          return `${b.name} (botId=${b.id}, memberId=${d.id})`;
+          return groupParticipantLabel(b, d.id);
         } catch {
           return d.bot.botId;
         }

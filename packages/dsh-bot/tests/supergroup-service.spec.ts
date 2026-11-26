@@ -720,3 +720,126 @@ test('claimed input before Session append projects only its exact owner receipt 
     expect(f.service.continuationInstruction(f.agent)).toBe('');
   } finally { await f.service.close(); }
 });
+
+test('authorizeCollaboration never leaks active runtime or timer on budget, member-limit, or authority failure, and cleans up on finish (#57)', async () => {
+  const f = await fixture(), hooks = collaborationHooks(f.service);
+  const internal = f.service as unknown as { active: Map<string, { timer?: ReturnType<typeof setTimeout> }> };
+  const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+  const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+  try {
+    // 1. Authority check throws before inserting into active or arming timer (and without creating work).
+    const origGet = f.registry.get.bind(f.registry);
+    let getCalls = 0;
+    f.registry.get = async (id: string) => {
+      getCalls++;
+      const bot = await origGet(id);
+      return getCalls > 1 && id === 'beta' ? { ...bot, updatedAt: bot.updatedAt + 1 } : bot;
+    };
+    const beforeAuth = setTimeoutSpy.mock.calls.length;
+    await expect(hooks.authorizeCollaboration(f.agent, 'beta', 'auth-fail', signal(), 'args'))
+      .rejects.toMatchObject({ code: 'dsh-bot/conflict' });
+    expect(internal.active.size).toBe(0);
+    expect(f.table.size).toBe(0);
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeAuth);
+    f.registry.get = origGet;
+
+    // 2. Successful authorization arms one timer, and finishCollaboration cleans up runtime + timer immediately.
+    f.config.supergroup.maxMembers = 2;
+    f.config.supergroup.maxRequests = 2;
+    const beforeOk = setTimeoutSpy.mock.calls.length;
+    const beforeClears = clearTimeoutSpy.mock.calls.length;
+    const scope = await hooks.authorizeCollaboration(f.agent, 'beta', 'ok-call', signal(), 'args');
+    expect(internal.active.size).toBe(1);
+    expect(internal.active.get(scope.workId)?.timer).toBeDefined();
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeOk + 1);
+    await hooks.finishCollaboration(scope, completedCollaboration(scope));
+    expect(internal.active.size).toBe(0);
+    expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(beforeClears);
+    expect(scope.signal.aborted).toBe(true);
+
+    // 3. Member limit exceeded on next call after finish: zero leaked runtime, zero new timers.
+    const beforeMember = setTimeoutSpy.mock.calls.length;
+    await expect(hooks.authorizeCollaboration(f.agent, 'gamma', 'over-members', signal(), 'args'))
+      .rejects.toMatchObject({ code: 'dsh-bot/member-limit' });
+    expect(internal.active.size).toBe(0);
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeMember);
+
+    // 4. Budget exhausted on subsequent call after finish: zero leaked runtime, zero new timers.
+    const second = await hooks.authorizeCollaboration(f.agent, 'beta', 'second-call', signal(), 'args');
+    await hooks.finishCollaboration(second, completedCollaboration(second));
+    expect(internal.active.size).toBe(0);
+    const beforeBudget = setTimeoutSpy.mock.calls.length;
+    await expect(hooks.authorizeCollaboration(f.agent, 'beta', 'over-budget', signal(), 'args'))
+      .rejects.toMatchObject({ code: 'dsh-bot/budget-exhausted' });
+    expect(internal.active.size).toBe(0);
+    expect(setTimeoutSpy.mock.calls.length).toBe(beforeBudget);
+  } finally {
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+    await f.service.close();
+  }
+});
+
+test('collaboration deadline timer guards missing work without throwing uncaught exceptions (#57)', async () => {
+  vi.useFakeTimers();
+  const f = await fixture(), hooks = collaborationHooks(f.service);
+  const warn = vi.fn();
+  Object.assign(f.ctx, { logger: { warn } });
+  const internal = f.service as unknown as { active: Map<string, unknown> };
+  try {
+    f.config.supergroup.timeoutMs = 1000;
+    const scope = await hooks.authorizeCollaboration(f.agent, 'beta', 'deadline-missing', signal(), 'args');
+    expect(internal.active.size).toBe(1);
+    // Simulate missing work record when deadline fires.
+    f.table.delete(scope.workId);
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(internal.active.size).toBe(0);
+    expect(scope.signal.aborted).toBe(true);
+    expect(warn).toHaveBeenCalledWith('[dsh-bot] Supergroup collaboration deadline check failed', {
+      workId: scope.workId, phase: 'collaboration-deadline', errorCode: 'dsh-bot/not-found', errorName: 'RemoteError',
+    });
+  } finally {
+    vi.useRealTimers();
+    await f.service.close();
+  }
+});
+
+test('configChanged uses Promise.allSettled to isolate per-work cancellation errors and still invalidates registry (#57)', async () => {
+  const f = await fixture(), hooks = collaborationHooks(f.service);
+  const warn = vi.fn();
+  Object.assign(f.ctx, { logger: { warn } });
+  let invalidations = 0;
+  f.registry.invalidate = () => { invalidations++; };
+  const internal = f.service as unknown as {
+    active: Map<string, unknown>;
+    cancelCurrent: (id: string, reason: string, expectedRevision?: number) => Promise<void>;
+  };
+  try {
+    const first = await hooks.authorizeCollaboration(f.agent, 'beta', 'work-one', signal(), 'a');
+    f.human('human-two', 'Second independent task');
+    const second = await hooks.authorizeCollaboration(f.agent, 'beta', 'work-two', signal(), 'b');
+    expect(internal.active.size).toBe(2);
+
+    const sentinel = 'CONFIG-CHANGED-POISONED-SENTINEL';
+    const poisoned = Object.assign(new Error(`cancel failed: ${sentinel}`), {
+      name: `Poisoned-${sentinel}`,
+      code: `POISONED-${sentinel}`,
+    });
+    const origCancel = internal.cancelCurrent.bind(f.service);
+    vi.spyOn(internal, 'cancelCurrent').mockImplementation(async (id, reason, expected) => {
+      if (id === first.workId) throw poisoned;
+      return origCancel(id, reason, expected);
+    });
+
+    const beforeInvalidations = invalidations;
+    f.config.supergroup.enabled = false;
+    await expect(f.service.configChanged()).resolves.toBeUndefined();
+    expect(second.signal.aborted).toBe(true);
+    expect(f.table.get(second.workId)?.state).toBe('cancelled');
+    expect(invalidations).toBeGreaterThan(beforeInvalidations);
+    expect(warn).toHaveBeenCalledWith('[dsh-bot] Supergroup work cancellation failed during config update', {
+      workId: first.workId, phase: 'config-changed', errorName: 'unknown',
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(sentinel);
+  } finally { await f.service.close(); }
+});

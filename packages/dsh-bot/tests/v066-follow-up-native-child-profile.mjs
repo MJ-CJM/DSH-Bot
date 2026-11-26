@@ -122,9 +122,9 @@ export function apply(ctx, config) {
           assert.equal(header.origin, 'subagent');
           const end = events.findLast(event => event.type === 'turn/end');
           assert.equal(end?.data.reason.kind, { failed: 'error', completed: 'completed', cancelled: 'aborted' }[outcome]);
-          const condition = outcome === 'failed' ? { kind: 'failed', reason: end.data.reason.error.message }
+          const condition = outcome === 'failed' ? { kind: 'failed', reason: 'INVALID_REQUEST' }
             : { kind: 'closed', reason: outcome === 'completed' ? 'resolved' : 'cancelled' };
-          if (outcome === 'failed') assert.ok(condition.reason.includes(nativeError));
+          if (outcome === 'failed') assert.ok(!condition.reason.includes(nativeError));
           const card = await wait(async () => {
             const current = await cardFor(id);
             return current?.condition.kind === condition.kind && current;

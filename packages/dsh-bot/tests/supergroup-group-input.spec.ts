@@ -287,3 +287,48 @@ test('mode changes notify owner watchers even when no work or delivery is active
     expect(f.invalidations).toBe(before + 2); expect(f.sent).toEqual([]); expect(f.followups).toEqual([]);
   } finally { await f.service.close(); }
 });
+
+test('scheduleGroupInput does not leave work permanently running when support.text throws (#57)', async () => {
+  const f = await fixture();
+  try {
+    const sentinel = 'SUPERGROUP-TEXT-FAIL-SENTINEL';
+    const poisoned = Object.assign(new Error(`support.text failed: ${sentinel}`), {
+      name: `Poisoned-${sentinel}`,
+      code: `POISONED-${sentinel}`,
+    });
+    const support = (f.service as unknown as { support: { text: (...args: unknown[]) => Promise<string> } }).support;
+    vi.spyOn(support, 'text').mockRejectedValueOnce(poisoned);
+    const accepted = await f.send('support-text-fail', 'Valid group input');
+    expect(accepted.receipt.state).toBe('queued');
+    await f.wait(() => f.current().groupInputs[0]?.state === 'unknown');
+    expect(f.current().state).toBe('completed');
+    expect(f.current().groupInputs[0]).toMatchObject({ state: 'unknown', reason: 'owner-or-input-unavailable' });
+    expect((f.service as unknown as { active: Map<string, unknown> }).active.size).toBe(0);
+    expect(f.sent).toEqual([]);
+    expect(f.warn).toHaveBeenCalledWith('[dsh-bot] Supergroup scheduled group input failed before execution', {
+      workId: 'work', groupId: 'group', phase: 'schedule-group-input', errorName: 'unknown',
+    });
+    expect(JSON.stringify(f.warn.mock.calls)).not.toContain(sentinel);
+  } finally { await f.service.close(); }
+});
+
+test('scheduleGroupInput reverts work state and cleans runtime if failure occurs after persisting running (#57)', async () => {
+  const f = await fixture();
+  try {
+    const internal = f.service as unknown as {
+      active: Map<string, unknown>;
+      runtime: (...args: unknown[]) => unknown;
+    };
+    const sentinel = 'POST-PUT-RUNTIME-FAIL-SENTINEL';
+    vi.spyOn(internal, 'runtime').mockImplementationOnce(() => {
+      throw new Error(`runtime setup failed: ${sentinel}`);
+    });
+    await f.send('post-put-fail', 'Input hitting post-put failure');
+    await f.wait(() => f.current().groupInputs[0]?.state === 'unknown');
+    expect(f.current().state).toBe('completed');
+    expect(f.current().groupInputs[0]).toMatchObject({ state: 'unknown', reason: 'owner-or-input-unavailable' });
+    expect(internal.active.size).toBe(0);
+    expect(f.sent).toEqual([]);
+    expect(JSON.stringify(f.warn.mock.calls)).not.toContain(sentinel);
+  } finally { await f.service.close(); }
+});

@@ -7,6 +7,7 @@ import { composeBotPreset, ensureBotSkillsDirectory } from '../composer.js';
 import { RegistryLifecycle } from './lifecycle.js';
 import type { Lease } from './types.js';
 import { sameBotConfig, messageOf } from './identity.js';
+import { redactedErrorMetadata } from '../common/operations.js';
 
 export abstract class RegistryPresets extends RegistryLifecycle {
   /** Only retained disposer handles establish ownership; a prefix is not ownership. */
@@ -36,7 +37,9 @@ export abstract class RegistryPresets extends RegistryLifecycle {
             await this.acquire(definition, bot);
           } catch (error) {
             this.diagnostics.set(bot.id, messageOf(error));
-            this.ctx.logger.error(`[dsh-bot] reconcile failed bot=${bot.id}: ${messageOf(error)}`);
+            this.ctx.logger.error('[dsh-bot] reconcile failed', {
+              botId: bot.id, phase: 'reconcile', ...redactedErrorMetadata(error),
+            });
             throw error;
           }
         }
