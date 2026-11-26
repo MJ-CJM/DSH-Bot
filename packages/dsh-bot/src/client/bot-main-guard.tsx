@@ -4,6 +4,7 @@ import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotCatalog } from './state.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import styles from './styles/groups.module.css';
 import css from './styles/groups.module.css?inline';
 
@@ -27,9 +28,9 @@ export function registerBotMainGuard(ctx: Context, catalog: BotCatalog, onDetail
       const preset = owner.sessionId && sessions?.list.getSnapshot().byId[owner.sessionId]?.projectionValues?.agentPreset;
       return unavailableBotMain(owner, catalog.getSnapshot().entries, preset ?? undefined);
     },
-  }, ({ matched, t }: { matched: { botId: string } } & PropsLocale<'dsh-bot'>) =>
-    <section className={`${styles.panel} ${styles.workspace} ${styles.fallbackComposer}`} data-bot-main-unavailable={matched.botId}>
-      <style>{css}</style>
+  }, ({ matched, t }: { matched: { botId: string } } & PropsLocale<'dsh-bot'>) => {
+    useStyleSheet('groups', css);
+    return <section className={`${styles.panel} ${styles.workspace} ${styles.fallbackComposer}`} data-bot-main-unavailable={matched.botId}>
       <div className={styles.fallbackCard}>
         <p role="status" className={styles.fallbackMessage}>{t('chat.identityUnavailable')}</p>
         <div className={styles.bar}>
@@ -37,6 +38,7 @@ export function registerBotMainGuard(ctx: Context, catalog: BotCatalog, onDetail
           <Button variant="ghost" size="sm" onClick={() => onDetails(matched.botId)}>{t('chat.profile')}</Button>
         </div>
       </div>
-    </section>,
+    </section>;
+  },
   )), 'dsh-bot: scoped unavailable Bot composer');
 }

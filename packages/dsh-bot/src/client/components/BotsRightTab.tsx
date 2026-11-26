@@ -12,6 +12,7 @@ import { botSessionRows, sortBotEntries } from '../activity-view.js';
 import { useChatLauncher, type ChatLauncherActions } from '../chat-launcher.js';
 import type { BotCatalog } from '../state.js';
 import { BotList } from './BotList.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/right-tab.module.css';
 import css from '../styles/right-tab.module.css?inline';
 import listCss from '../styles/bots.module.css?inline';
@@ -84,12 +85,10 @@ export function BotsRightTab({
       if (!lifetime.current?.signal.aborted) setBusy(false);
     }
   };
+  useStyleSheet('right-tab', css);
+  useStyleSheet('bots', listCss);
   return (
     <section className={styles.tab} data-bots-right-tab="" aria-label={t('rightTab.title')}>
-      <style data-dsh-bot-right-styles="">
-        {css}
-        {listCss}
-      </style>
       <header className={styles.header}>
         <strong>{t('rightTab.title')}</strong>
         <Button

@@ -5,6 +5,7 @@ import type { MemoryPanelProps } from './MemoryPanel.js';
 import styles from '../styles/bots.module.css';
 import previewStyles from '../styles/forget.module.css';
 import previewCss from '../styles/forget.module.css?inline';
+import { useStyleSheet } from '../use-style-sheet.js';
 
 export interface ForgetActions {
   preview(selection: ForgetSelection): Promise<Preview>;
@@ -40,9 +41,9 @@ export function ForgetPreview({ memoryId, actions, close, t, contribution = fals
     } catch { if (current === life.current) { setFailed(true); setPreview(undefined); } }
     finally { if (current === life.current) { active.current = false; setBusy(false); } }
   }
+  useStyleSheet('forget', previewCss);
   return <fieldset className={styles.notice} aria-label={t('forget.title')}>
     <legend>{t(contribution ? 'shared.forgetContribution' : 'forget.title')}</legend>
-    <style data-dsh-bot-forget-styles="">{previewCss}</style>
     {contribution && <p>{t('shared.contributionNotice')}</p>}
     <label className={previewStyles.option}><input name={group} type="radio" checked={mode === 'version'} disabled={busy || contribution}
       onChange={() => { setMode('version'); setPreview(undefined); }} /><span>{t('forget.version')}</span></label>

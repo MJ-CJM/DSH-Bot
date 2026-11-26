@@ -10,6 +10,7 @@ import type { GroupRecallBinding } from '../group-recall.js';
 import styles from '../styles/bots.module.css';
 import panel from '../styles/memory.module.css';
 import css from '../styles/memory.module.css?inline';
+import { useStyleSheet } from '../use-style-sheet.js';
 import { MemoryList } from './MemoryList.js';
 import { MemorySearchControls } from './MemorySearchControls.js';
 import { BotAvatar } from './BotAvatar.js';
@@ -149,9 +150,9 @@ export function MemoryPanel({ bot, catalog, onSave, onUpdate, onRemove, onOpenSe
   }
 
 
+  useStyleSheet('memory', css);
   return (
     <section data-memory-embedded={embedded || undefined} className={panel.panel} aria-label={t('memory.title')}>
-      <style data-dsh-bot-memory-styles="">{css}</style>
       {!embedded && <div className={styles.actions}>
         <BotAvatar bot={bot} size={32} />
         <strong>{bot.name}</strong>

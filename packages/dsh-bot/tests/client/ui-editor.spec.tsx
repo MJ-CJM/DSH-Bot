@@ -250,13 +250,14 @@ describe('Bots editor, explicit launch and lifecycle', () => {
   });
 
   it('owns the built CSS through React across redraw, page exit, plugin unload and repeated hot reload', async () => {
-    const styleCount = () => document.querySelectorAll('style[data-dsh-bot-styles]').length;
+    const styleCount = () => document.head.querySelectorAll('style[data-dsh-bot-style="bots"]').length;
     const plugin = loadBuiltClient();
     // Factory evaluation itself creates no style elements.
     expect(styleCount()).toBe(0);
     const app = await mount([bot()], 'en', undefined, {}, plugin);
     expect(styleCount()).toBe(1);
-    const style = app.container.querySelector('style[data-dsh-bot-styles]');
+    expect(app.container.querySelector('style')).toBeNull();
+    const style = document.head.querySelector('style[data-dsh-bot-style="bots"]');
     expect(style?.textContent).toContain('.bots_page');
     expect(app.container.querySelector('section')?.className).toContain('bots_page');
     await refreshBots(app);
@@ -267,7 +268,7 @@ describe('Bots editor, explicit launch and lifecycle', () => {
     await app.remountPage();
     expect(styleCount()).toBe(1);
     for (let i = 0; i < 3; i++) {
-      const previous = app.container.querySelector('style[data-dsh-bot-styles]');
+      const previous = document.head.querySelector('style[data-dsh-bot-style="bots"]');
       await app.reloadPlugin(loadBuiltClient());
       expect(previous?.isConnected).toBe(false);
       expect(styleCount()).toBe(1);

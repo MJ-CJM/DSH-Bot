@@ -9,6 +9,7 @@ import { teamRecipeInputSchema, type TeamRecipe, type TeamPreview } from '../../
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
 import { formatList } from '../format.js';
 import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/groups.module.css';
 import groupsCss from '../styles/groups.module.css?inline';
 import rosterCss from '../styles/roster.module.css?inline';
@@ -87,8 +88,9 @@ export function TeamRecipes({ view, actions, bots = [], onClose, onSaved, t }: {
     const link = document.createElement('a'); link.href = url; link.download = 'dsh-bot-team.json'; link.click();
     URL.revokeObjectURL(url);
   };
+  useStyleSheet('groups', groupsCss);
+  useStyleSheet('roster', rosterCss);
   return <SettingsDrafts.Provider value={navigation.registry}><Modal title={t('teams.title')} busy={busy || mutation.phase === 'saving'} onClose={leave} t={t}>
-    <style>{groupsCss}{rosterCss}</style>
     <div className={dialogStyles.editorBody}>
     <section className={`${styles.settingsOverview} ${styles.teamRecipes}`} data-team-recipes="">
     <p>{t('teams.safe')}</p>

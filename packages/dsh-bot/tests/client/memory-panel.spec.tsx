@@ -94,13 +94,14 @@ describe('MemoryPanel with React and external catalog doubles', () => {
     await click(button(app.container, t['memory.sourceSession']));
     expect(app.onOpenSession).toHaveBeenCalledWith('session-origin');
     expect(app.listeners.size).toBe(1);
-    expect(app.container.querySelectorAll('style[data-dsh-bot-memory-styles]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('style[data-dsh-bot-style="memory"]')).toHaveLength(1);
+    expect(app.container.querySelector('style')).toBeNull();
     await app.publish({ records: [record({ content: 'Changed by another client' })] });
     expect(app.container.textContent).toContain('Changed by another client');
-    expect(app.container.querySelectorAll('style[data-dsh-bot-memory-styles]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('style[data-dsh-bot-style="memory"]')).toHaveLength(1);
     await app.dispose();
     expect(app.listeners.size).toBe(0);
-    expect(document.querySelectorAll('style[data-dsh-bot-memory-styles]')).toHaveLength(0);
+    expect(document.head.querySelectorAll('style[data-dsh-bot-style="memory"]')).toHaveLength(0);
   });
 
   it('delegates submitted search and pagination, disables navigation during loading and distinguishes errors from empty results', async () => {
@@ -315,13 +316,13 @@ describe('MemoryPanel integrated with the public Client slots', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(app.remote.methods.memory.list).toHaveBeenCalledTimes(2);
     await click(button(dialog, t['detail.settings']));
-    expect(app.container.querySelector('style[data-dsh-bot-memory-styles]')).not.toBeNull();
+    expect(document.head.querySelector('style[data-dsh-bot-style="memory"]')).not.toBeNull();
     await click(button(dialog, t['detail.memory']));
     expect(app.remote.methods.memory.list).toHaveBeenCalledTimes(2);
     await click(button(app.container, 'Back to My Bots'));
     await act(async () => { app.ctx.emit('connection/reset'); await vi.advanceTimersByTimeAsync(15_000); });
     expect(app.remote.methods.memory.list).toHaveBeenCalledTimes(2);
-    expect(app.container.querySelector('style[data-dsh-bot-memory-styles]')).toBeNull();
+    expect(document.head.querySelector('style[data-dsh-bot-style="memory"]')).toBeNull();
     await app.dispose();
     expect(vi.getTimerCount()).toBe(0);
   });

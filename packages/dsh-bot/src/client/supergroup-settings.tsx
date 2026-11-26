@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { Button, Switch } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
+import { useStyleSheet } from './use-style-sheet.js';
 import settingsCss from './styles/integrations.module.css?inline';
 import styles from './styles/integrations.module.css';
 
@@ -79,10 +80,10 @@ export function supergroupStatusLabel({ phase, enabled }: SettingsSnapshot) {
 
 type SettingsProps = { source: SupergroupSettingsSource } & PropsLocale<'dsh-bot'>;
 export function SupergroupSettingsPanel({ source, snapshot, t }: SettingsProps & { snapshot: SettingsSnapshot }) {
+  useStyleSheet('integrations', settingsCss);
   const { enabled, phase } = snapshot;
   const failed = phase === 'readError' || phase === 'saveError';
   return <section className={styles.panel} data-supergroup-settings="" aria-label={t('supergroup.settingsTitle')}>
-    <style>{settingsCss}</style>
     <h3>{t('supergroup.settingsTitle')}</h3>
     <p>{t('supergroup.settingsScope')}</p>
     <div className={styles.switchRow}>

@@ -2,6 +2,7 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Modal } from './Modal.js';
 import { useSettingsDraft } from './SettingsNavigation.js';
 import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/background-work.module.css';
 import css from '../styles/background-work.module.css?inline';
 import { useEffect, useId, useState, useSyncExternalStore } from 'react';
@@ -19,6 +20,7 @@ const getEmptyTasks = () => emptyTasksSnapshot;
 export function BackgroundTasksPanel({ bot, actions, t }: {
   bot: BotRecord; actions: BackgroundActions; t: (key: BackgroundKey) => string;
 }) {
+  useStyleSheet('background-work', css);
   const [owned, setOwned] = useState<{ id: string; createdAt: number; source: ReturnType<BackgroundActions['forBot']> }>();
   useEffect(() => {
     const created = actions.forBot({ id: bot.id, createdAt: bot.createdAt });
@@ -45,7 +47,6 @@ export function BackgroundTasksPanel({ bot, actions, t }: {
     try { await action(); } catch { setError(true); } finally { setBusy(false); }
   };
   return <section className={styles.panel} aria-label={t('background.title')}>
-    <style>{css}</style>
     <h3>{t('background.title')}</h3>
     <p>{t('background.hint')}</p>
     {(state.error || state.tasks.some(task => task.running === undefined)) && <p>{t('background.recovery')}</p>}

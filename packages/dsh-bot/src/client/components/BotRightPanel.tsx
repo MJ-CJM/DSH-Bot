@@ -12,6 +12,7 @@ import { WorkMaterials, type WorkMaterialsActions } from '../work-materials.js';
 import { BotAvatar } from './BotAvatar.js';
 import { MessageOverviewPanel, type MessageActions } from './MessageOverview.js';
 import { RetainedPanel } from './RetainedPanel.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/bot-panel.module.css';
 import css from '../styles/bot-panel.module.css?inline';
 
@@ -73,15 +74,15 @@ export interface BotPreviewInjected extends BotRightPanelInjected {
 /** The native modal owns Escape, focus restoration and close chrome. */
 export function BotPreview({ usePreview, onClose, onOpenInSidebar, ...props }: InjectFace<BotPreviewInjected> & PropsLocale<'dsh-bot'>) {
   const preview = usePreview(value => value);
+  useStyleSheet('bot-panel', css, Boolean(preview));
   if (!preview) return null;
-  return <>
-    <style>{css}</style>
+  return (
     <Modal open title={props.t('botPanel.title')} closeLabel={props.t('actions.close')} onClose={onClose}
       className={styles.preview} contentClassName={styles.previewContent}>
       <BotPanelContent {...props} key={preview.revision} sessionId={preview.sessionId}
         navigation={{ params: preview, revision: preview.revision }} visible compact onOpenInSidebar={onOpenInSidebar} />
     </Modal>
-  </>;
+  );
 }
 
 type BotPanelContentProps = Omit<BotRightPanelProps, 'useTabInfo'> & {
@@ -91,6 +92,7 @@ type BotPanelContentProps = Omit<BotRightPanelProps, 'useTabInfo'> & {
   onOpenInSidebar?(section: BotPanelSection): void;
 };
 function BotPanelContent({ sessionId, navigation, visible, compact, onOpenInSidebar, useCatalog, proactiveWork, followUp, workMaterials, messages, onOpenSession, onStart, onOpenSettings, onOpenMemory, onOpenWork, t }: BotPanelContentProps) {
+  useStyleSheet('bot-panel', css);
   const snapshot = useCatalog(value => value);
   const entry = panelEntry(snapshot.entries, sessionId, navigation.params);
   const [section, setSection] = useState<BotPanelSection>(() => requestedSection(navigation.params) ?? 'overview');
@@ -110,7 +112,7 @@ function BotPanelContent({ sessionId, navigation, visible, compact, onOpenInSide
   }
   if (!entry || !owner) {
     const loading = !snapshot.loaded && !snapshot.error;
-    return <section className={`${styles.panel} ${compact ? styles.previewPanel : ''}`} data-bot-panel="" aria-label={t('botPanel.title')}><style>{css}</style>
+    return <section className={`${styles.panel} ${compact ? styles.previewPanel : ''}`} data-bot-panel="" aria-label={t('botPanel.title')}>
       <p role="status" className={styles.notice}>{t(loading ? 'bots.loading' : navigation.params ? 'botPanel.missing' : 'botPanel.empty')}</p>
     </section>;
   }
@@ -132,7 +134,6 @@ function BotPanelContent({ sessionId, navigation, visible, compact, onOpenInSide
       : followUp?.openSession(origin, signal),
   };
   return <section className={`${styles.panel} ${compact ? styles.previewPanel : ''}`} data-bot-panel={bot.id} aria-label={t('botPanel.title')}>
-    <style>{css}</style>
     <header className={styles.header}>
       <BotAvatar bot={bot} size={compact ? 40 : 56} />
       <div className={styles.identity}>

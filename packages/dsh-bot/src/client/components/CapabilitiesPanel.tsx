@@ -6,10 +6,12 @@ import { useEffect, useMemo, useState } from 'react';
 import type { BotRecord } from '../../shared/schema.js';
 import type { ModelActions } from '../model-catalog-state.js';
 import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/capabilities.module.css';
 import css from '../styles/capabilities.module.css?inline';
 export type CapabilityKey = `capabilities.${'title' | 'refresh' | 'online' | 'offline' | 'loadedSkills' | 'ownSkills' | 'configuredDirs' | 'tools' | 'toolsHint' | 'unavailable' | 'empty' | 'new' | 'edit' | 'remove' | 'removeConfirm' | 'name' | 'content' | 'save' | 'cancel' | 'error' | 'saved' | 'modelCatalog' | 'modelManual' | 'modelUnavailable' | 'modelUnknown' | 'modelLoaded' | 'modelDefault' | 'chooseDirectory' | 'catalogModel' | 'reasoningDefault' | 'skillHint' | 'skillDescription' | 'browser' | 'browserBlocked' | 'browserConnector' | 'voice' | 'voiceSetup' | 'voiceReady' | 'voiceNotReady' | 'dataFlow' | 'flowRestricted' | 'flowScoped' | 'flowUnavailable' | 'freshConversation' | 'freshConfirm' | 'freshHint' | 'freshError'}`;
 export function CapabilitiesPanel({ bot, actions, t, expanded = false }: { expanded?: boolean; bot: BotRecord; actions: ModelActions; t: (key: CapabilityKey) => string }) {
+  useStyleSheet('capabilities', css);
   const identity = `${bot.id}/${bot.createdAt}`;
   const epoch = useMemo(() => ({ live: true, identity }), [identity]);
   useEffect(() => { epoch.live = true; return () => { epoch.live = false; }; }, [epoch]);
@@ -55,7 +57,7 @@ export function CapabilitiesPanel({ bot, actions, t, expanded = false }: { expan
   };
   return <details className={styles.panel} open={expanded || undefined}>
     <summary>{t('capabilities.title')}</summary>
-    <style>{css}</style><section aria-label={t('capabilities.title')}>
+    <section aria-label={t('capabilities.title')}>
     <Button type="button" disabled={busy} onClick={() => { void run(async () => { const value = await actions.inspect(bot); if (isCurrent()) setData(value); }); }}>{t('capabilities.refresh')}</Button>
     {error && <p role="alert">{t('capabilities.error')}</p>}{saved && <p role="status">{t('capabilities.saved')}</p>}
     {data && <>

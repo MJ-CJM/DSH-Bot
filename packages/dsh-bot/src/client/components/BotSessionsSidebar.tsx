@@ -12,6 +12,7 @@ import { type ChatLauncherActions, useChatLauncher } from '../chat-launcher.js';
 import { BotIdentity } from './BotIdentity.js';
 import { WhaleGlyph } from './WhaleGlyph.js';
 import { Modal } from './Modal.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/sidebar.module.css';
 import identityCss from '../styles/identity.module.css?inline';
 import css from '../styles/sidebar.module.css?inline';
@@ -122,9 +123,11 @@ export function BotSessionsSidebar({
       })
       .finally(() => setBusy(false));
   };
+  useStyleSheet('sidebar', css);
+  useStyleSheet('identity', identityCss);
+  useStyleSheet('bots', modalCss, open || Boolean(chat.dialog));
   return (
     <>
-      <style data-dsh-bot-sidebar-styles="">{css + identityCss}</style>
       <button
         type="button"
         className={styles.trigger}
@@ -165,7 +168,6 @@ export function BotSessionsSidebar({
           />
         )}
       </button>
-      {(open || chat.dialog) && <style data-dsh-bot-sidebar-dialog-styles="">{modalCss}</style>}
       {open && !chat.dialog && (
         <Modal
           title={t('sidebar.sessions')}

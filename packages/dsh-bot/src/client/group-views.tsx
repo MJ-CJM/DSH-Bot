@@ -11,6 +11,7 @@ import type { ExecutionBridge } from './group-execution.js';
 import type { GroupOverviewSection } from './components/GroupOverview.js';
 import { GroupRosterEditor } from './components/GroupsPanel.js';
 import { GroupOverview } from './components/GroupOverview.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import styles from './styles/groups.module.css';
 import css from './styles/groups.module.css?inline';
 
@@ -76,6 +77,7 @@ type ViewProps = PropsRuntime<'conversation.view'> & PropsLocale<'dsh-bot'> & {
 export function GroupWorkspaceView({ summary, actions, bots, executionBridge, managementViews = defaultGroupManagementViews, onOpenBot, onAskBot,
   viewRequest, openView, completeViewRequest, t }: ViewProps) {
   useLayoutEffect(() => managementViews.acquire(summary.group.rootSessionId), [managementViews, summary.group.rootSessionId]);
+  useStyleSheet('groups', css);
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
   const runRequest = useSyncExternalStore(actions.runRequests.subscribe, actions.runRequests.getSnapshot);
   const [editing, setEditing] = useState<GroupView>();
@@ -100,7 +102,6 @@ export function GroupWorkspaceView({ summary, actions, bots, executionBridge, ma
     }
   }, [viewRequest, completeViewRequest, focusRun]);
   return <section className={`${styles.panel} ${styles.managementPanel}`} data-group-view={GROUP_MANAGEMENT_VIEW}>
-    <style>{css}</style>
     <GroupOverview summary={summary} actions={actions}
       bots={botState.entries.map(row => row.bot)} onOpenBot={onOpenBot} onAskBot={onAskBot}
       onEdit={setEditing}

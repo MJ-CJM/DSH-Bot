@@ -30,6 +30,7 @@ import { formatList, formatNumber } from '../format.js';
 import { BotAvatar } from './BotAvatar.js';
 import { Modal } from './Modal.js';
 import dialogStyles from '../styles/bots.module.css';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
 const sendErrors = ['memory-text-required', 'mention-not-member', 'guest-ambiguous', 'guest-unavailable', 'guest-changed', 'relay-topic-required', 'member-limit', 'group-data-blocked', 'conflict'] as const;
@@ -149,9 +150,9 @@ export function GroupsPanel({
     const identity = { id: group.id, createdAt: group.createdAt };
     setSelected(identity); onSelectGroup?.(identity); setCreating(false);
   };
+  useStyleSheet('groups', css);
   return (
     <SettingsDrafts.Provider value={navigation.registry}><section className={styles.panel} aria-label={t('groups.title')}>
-      <style>{css}</style>
       {!initialCreate && <h2>{t('groups.title')}</h2>}
       {list.error && <p role="alert">{t('groups.disconnected')}</p>}
       {deletedName && <p role="status">{t('groups.deleted', { name: deletedName })}</p>}
@@ -905,6 +906,7 @@ export function GroupConversation({
         if (alive.current) setFilesOverLimit(false);
     }, { isFollowup: Boolean(pending.request.followup), mentionMissingTarget, isRetry: isPendingRetry }).finally(() => actions.patchDraft(rootId, value => ({ ...value, sending: false })));
   };
+  useStyleSheet('groups', css, Boolean(catalog && view));
   if (!catalog || !view)
     return (
       <p role={snapshot.error ? 'alert' : 'status'}>
@@ -921,7 +923,6 @@ export function GroupConversation({
   );
   return (
     <article className={`${styles.conversation} ${workspace ? `${styles.panel} ${styles.workspace}` : ''}`} aria-label={view.group.name} data-workspace-group-composer={workspace ? view.group.rootSessionId : undefined}>
-      <style>{css}</style>
       {view.group.state === 'ready' && !view.group.archived && !view.hasEarlier && !view.messages.length && !view.turns.length && <p role="status" data-group-empty-conversation="">{t('groups.emptyConversation')}</p>}
       {overMemberLimit && <p role="status">{t('groups.memberLimitBlocked', { limit })}</p>}
       {(error || snapshot.error) && <p role="alert">{t(error ? draftErrorText[sharedDraft.errorCode ?? 'conflict'] : 'groups.disconnected', {

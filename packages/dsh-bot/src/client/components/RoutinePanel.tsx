@@ -6,6 +6,7 @@ import type { BotRecord } from '../../shared/schema.js';
 import type { LegacyEntry } from '../../shared/native-schedule.js';
 import type { RoutineActions, NativeTask, LegacyNativeTask } from '../automation-state.js';
 import { Modal } from './Modal.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from '../styles/routines.module.css';
 import css from '../styles/routines.module.css?inline';
 type T = PropsLocale<'dsh-bot'>['t'];
@@ -91,10 +92,10 @@ export function RoutinePanel({
     setNotice('');
     setDialog(next);
   }
+  useStyleSheet('routines', css);
   const record = records.find((r) => r.id === selected);
   return (
     <section className={styles.panel} data-routine-panel={botId ?? 'overview'} aria-label={t('routine.title')}>
-      <style>{css}</style>
       <ManagementHeader title={t('routine.title')} level={3} description={t('routine.hint')} actions={
         <button type="button" disabled={busy} onClick={() => { void actions.catalog.refresh(); }}>{t('bots.refresh')}</button>
       } t={t} />

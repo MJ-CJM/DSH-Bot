@@ -297,7 +297,7 @@ describe('Issue #60: UI & visual bug fixes', () => {
         />,
       );
     });
-    expect(element.querySelector('style')).not.toBeNull();
+    expect(document.head.querySelector('style[data-dsh-bot-style="groups"]')).not.toBeNull();
     expect(element.querySelector('section')?.className).toContain('fallbackComposer');
 
     // registerBotMainGuard fallback composer
@@ -314,11 +314,11 @@ describe('Issue #60: UI & visual bug fixes', () => {
     const GuardComponent = registered[0]?.component;
     expect(GuardComponent).toBeDefined();
     await act(async () => {
-      root.render(GuardComponent!({ matched: { botId: 'alpha' }, t }));
+      root.render(GuardComponent ? <GuardComponent matched={{ botId: 'alpha' }} t={t} /> : null);
     });
     const guardSection = element.querySelector('[data-bot-main-unavailable="alpha"]');
     expect(guardSection?.className).toContain('fallbackComposer');
-    expect(guardSection?.querySelector('style')).not.toBeNull();
+    expect(document.head.querySelector('style[data-dsh-bot-style="groups"]')).not.toBeNull();
     await guardCtx.fiber.dispose();
 
     // GroupSessionHover inline theme tokens

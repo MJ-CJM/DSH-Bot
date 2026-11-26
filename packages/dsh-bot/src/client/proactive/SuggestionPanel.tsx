@@ -45,6 +45,7 @@ import type {
 	SuggestionRequest,
 } from "../../shared/proactive/remote-contract.js";
 import styles from "../styles/detail.module.css";
+import { useStyleSheet } from "../use-style-sheet.js";
 import workspaceStyles from "./workspace.module.css";
 import workspaceCss from "./workspace.module.css?inline";
 import type { WorkContinuationRequest } from '../../shared/proactive/work.js';
@@ -252,6 +253,7 @@ export function SuggestionPanel({
 	const changeRule = (input: FeedbackAction) =>
 		void act(() => actions.feedback({ commandId: crypto.randomUUID(), input }));
 
+	useStyleSheet('proactive-workspace', workspaceCss, state !== 'disabled');
 	if (state === "disabled") return null;
 	const { localFeed, localFeedScope } = status ?? {};
   const globalControl = control && <Button variant="ghost" disabled={pending} onClick={() => void act(() =>
@@ -267,7 +269,6 @@ export function SuggestionPanel({
 			data-proactive-suggestions=""
 			className={`${styles.section} ${workspaceStyles.content}`}
 		>
-			<style>{workspaceCss}</style>
 			<h2>{t("proactive.title")}</h2>
 			<p>{t("proactive.scope")}</p>
       {route && !control?.paused && actions.submitDocument && <DocumentTask key={`${bot.id}:${bot.createdAt}`} owner={{ botId: bot.id, botCreatedAt: bot.createdAt }} submit={actions.submitDocument} refresh={refresh} t={t} />}

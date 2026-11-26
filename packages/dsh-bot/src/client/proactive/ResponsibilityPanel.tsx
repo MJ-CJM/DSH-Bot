@@ -16,6 +16,7 @@ import {
 	type ResponsibilityView,
 } from "../../shared/proactive/responsibility.js";
 import { formatDateTime } from "../format.js";
+import { useStyleSheet } from "../use-style-sheet.js";
 import styles from "./responsibility.module.css";
 import styleText from "./responsibility.module.css?inline";
 
@@ -257,10 +258,10 @@ export function ResponsibilityPanel({
 	const changeLimit = (key: keyof ResponsibilityLimits, value: string) => {
 		if (draft) change({ limits: { ...draft.limits, [key]: Number(value) } });
 	};
+	useStyleSheet('proactive-responsibility', styleText);
 	const disabled = busy || !!pendingRequest.current || status !== "ready";
 	return (
 		<section className={styles.panel} aria-label={t("responsibility.title")}>
-			<style>{styleText}</style>
 			<div className={styles.actions}>
 				<h2>{t("responsibility.title")}</h2>
 				<Button variant="ghost" disabled={busy} onClick={() => void refresh()}>

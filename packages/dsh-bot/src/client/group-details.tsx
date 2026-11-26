@@ -14,6 +14,7 @@ import { GroupMembersList, GroupOverview } from './components/GroupOverview.js';
 import { GroupRosterEditor } from './components/GroupsPanel.js';
 import { SettingsDrafts, useSettingsNavigation } from './components/SettingsNavigation.js';
 import { WorkMaterials, type WorkMaterialsActions } from './work-materials.js';
+import { useStyleSheet } from './use-style-sheet.js';
 import css from './styles/groups.module.css?inline';
 import styles from './styles/groups.module.css';
 
@@ -101,6 +102,7 @@ function GroupMaterials({ summary, actions, t }: { summary: GroupSummary; action
 
 function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigin, stopWork, openBot, close, t }: Dependencies &
   { summary: GroupSummary; close(): void } & PropsLocale<'dsh-bot'>) {
+  useStyleSheet('groups', css);
   const botState = useSyncExternalStore(bots.subscribe, bots.getSnapshot);
   const [section, setSection] = useState<Section>('details');
   const [editing, setEditing] = useState<GroupView>();
@@ -114,7 +116,6 @@ function GroupDetails({ summary, actions, bots, work, executionBridge, openOrigi
   const labels = { details: 'botMode.details', activity: 'botPanel.tasks', materials: 'botMode.materials', members: 'groups.members', settings: 'simple.groupSettings' } as const;
   const tabs = sections.map(value => ({ value, label: t(labels[value]), id: `${uid}-${value}`, panelId: `${uid}-panel` })) as [SegmentedTab<Section>, ...SegmentedTab<Section>[]];
   return <SettingsDrafts.Provider value={navigation.registry}><section className={`${styles.panel} ${styles.overview} ${styles.groupDetails}`} data-group-details={group.id} aria-label={t('botMode.detailsAndMaterials')}>
-    <style>{css}</style>
     <header className={styles.overviewHeader}><GroupAvatar size={40} members={members.filter(member => member.removedAt === undefined)} bots={records} />
       <div className={styles.overviewIdentity}><h3>{group.name}</h3><p>{t('navigation.memberCount', { count: members.filter(member => member.removedAt === undefined).length })}</p></div>
       <Button variant="ghost" size="sm" onClick={() => navigation.leave(close)}>{t('actions.close')}</Button>

@@ -9,6 +9,7 @@ import { sameBot } from '../../shared/identity.js';
 import type { GroupActions } from '../groups-state.js';
 import { latestMemberDelivery } from '../group-management.js';
 import { formatList } from '../format.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import { Modal } from './Modal.js';
 import { MemberChangeReview, memberEditingReason, rosterMemberName, rosterMembers, RosterSaveNotice, useRosterSave } from './RosterManagement.js';
 import styles from '../styles/bots.module.css';
@@ -17,6 +18,7 @@ import styles from '../styles/bots.module.css';
 export function MemberRemovalDialog({ view, member, bots, actions, onClose, t }: {
   view: GroupView; member: GroupMember; bots: readonly BotRecord[]; actions: GroupActions; onClose(): void;
 } & PropsLocale<'dsh-bot'>) {
+  useStyleSheet('roster', css);
   const persisted = actions.memberEdits?.get(JSON.stringify(groupKey(view.group)));
   const [baseline, setBaseline] = useState(persisted?.view ?? view);
   const [target, setTarget] = useState(() => persisted?.target ?? rosterMembers(view).filter(row => !sameBot(row.bot, member.bot)).map(row => row.bot));
@@ -27,7 +29,6 @@ export function MemberRemovalDialog({ view, member, bots, actions, onClose, t }:
   const delivery = latestMemberDelivery(baseline, member.id, row => sameBot(row.bot, member.bot));
   const running = delivery && ['pending', 'starting', 'running'].includes(delivery.state);
   return <Modal title={t('groups.roster.removeTitle', { name: rosterMemberName(baseline, member.bot, bots) })} busy={mutation.phase === 'saving'} onClose={onClose} t={t}>
-    <style>{css}</style>
     <div className={styles.editorBody} data-member-removal="">
       <p>{baseline.group.name}</p>
       {!exists && <p role="status">{t('groups.roster.alreadyRemoved')}</p>}

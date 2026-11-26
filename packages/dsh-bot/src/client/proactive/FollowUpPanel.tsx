@@ -5,6 +5,7 @@ import { subjectKey, type FollowUpAction, type FollowUpCard, type FollowUpOrigin
 import { GroupFollowUpContinue, type GroupFollowUpMember, type GroupFollowUpTransport } from './GroupFollowUpContinue.js';
 import { useFollowUpCatalog, useFollowUpVisibility, type FollowUpCommand, type FollowUpSource } from './follow-up-state.js';
 import { formatDateTime } from '../format.js';
+import { useStyleSheet } from '../use-style-sheet.js';
 import styles from './follow-up.module.css';
 import css from './follow-up.module.css?inline';
 
@@ -120,8 +121,8 @@ function ScopedPanel({ source, subject, mode, active = true, editable = true, na
     void run({ kind: 'card', input: { commandId: crypto.randomUUID(), subject, cardId: row.id,
       expectedRevision: row.revision, expectedPolicyRevision: policy.revision, action } });
   };
+  useStyleSheet('proactive-follow-up', css);
   return <section data-follow-up={mode} aria-labelledby={titleId} className={styles.section}>
-    <style>{css}</style>
     <header className={styles.header}>
       <div><h3 id={titleId}>{t('followUp.title')}</h3><p role="status">{t(statusText)}</p></div>
       {editable && (status?.state === 'disabled' || ready) && <Button size="sm" variant={enabled ? 'ghost' : 'primary'} disabled={!canChange}

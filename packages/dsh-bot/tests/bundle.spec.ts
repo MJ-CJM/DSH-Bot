@@ -156,16 +156,21 @@ describe('built bundle contract', () => {
     ].join('|')})$`);
     expect(dependencySources.every((path: string) => publicDependency.test(path))).toBe(true);
     expect(payload.sources.some((path: string) => /\/(?:host|spikes)\//.test(path))).toBe(false);
-    const generatedLine = source.split('\n').findIndex((line) => line.startsWith('function BotsIcon('));
+    const marker = '"dsh-bot: sidebar entry"';
+    const markerIndex = source.indexOf(marker);
+    expect(markerIndex).toBeGreaterThan(0);
+    const markerPrefix = source.slice(0, markerIndex).split('\n');
+    const generatedLine = markerPrefix.length - 1;
+    const generatedColumn = (markerPrefix.at(-1) ?? '').length;
     expect(generatedLine).toBeGreaterThan(0);
-    const entry = new SourceMap(payload).findEntry(generatedLine, 0);
+    const entry = new SourceMap(payload).findEntry(generatedLine, generatedColumn);
     if (!('originalSource' in entry) || !('originalLine' in entry)) {
-      throw new Error('Icon declaration is not mapped to its original source');
+      throw new Error('Client registration marker is not mapped to its original source');
     }
     expect(entry.originalSource).toMatch(/src\/client\/index\.tsx$/);
     const sourceIndex = payload.sources.indexOf(entry.originalSource);
     const originalLines = payload.sourcesContent[sourceIndex].split('\n');
-    expect(originalLines[entry.originalLine]).toContain('function BotsIcon(');
+    expect(originalLines[entry.originalLine]).toContain("'dsh-bot: sidebar entry'");
   });
 
   it('ships component-owned theme CSS without literal colors or embedded shared runtimes', () => {
@@ -185,7 +190,14 @@ describe('built bundle contract', () => {
       expect(palette.has(match[0].toLowerCase())).toBe(true);
     }
     expect(payload.sources.some((path: string) => /node_modules\/(@deepseek-ai\/cordis|react(?:-dom)?|zod)\//.test(path))).toBe(false);
-    expect(source).not.toContain('document.createElement("style")');
+    // Only the ref-counted useStyleSheet helper may create <style> elements; no bundler/dependency side-effect injections.
+    const styleCreates = [...source.matchAll(/createElement\(["']style["']\)/g)];
+    expect(styleCreates.length).toBeLessThanOrEqual(1);
+    for (const match of styleCreates) {
+      const prefix = source.slice(0, match.index), lines = prefix.split('\n');
+      const entry = map.findEntry(lines.length - 1, (lines.at(-1) ?? '').length);
+      expect('originalSource' in entry && entry.originalSource).toMatch(/src\/client\/use-style-sheet\.ts$/);
+    }
   });
 
   it('exports matching bilingual resources and an SVG within the icon limit', () => {

@@ -8,6 +8,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { BotRecord } from '../../shared/schema.js';
 import { EMPTY_BOARD, type CollaborationActions } from '../collaboration-state.js';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
+import { useStyleSheet } from '../use-style-sheet.js';
 import css from '../styles/integrations.module.css?inline';
 import styles from '../styles/integrations.module.css';
 export interface CollaborationPanelProps extends PropsLocale<'dsh-bot'> {
@@ -16,10 +17,10 @@ export interface CollaborationPanelProps extends PropsLocale<'dsh-bot'> {
   onOpenSession(id: string): Promise<void>;
 }
 export function CollaborationPanel({ actions, bots, onOpenSession, t }: CollaborationPanelProps) {
+  useStyleSheet('integrations', css);
   const { bot, select: setSelected } = useSettingsBot(bots);
   return (
     <section className={styles.panel} aria-label={t('team.title')}>
-      <style>{css}</style>
       {!bot && <ManagementHeader title={t('team.title')} selector={{ bots, value: '', onChange: setSelected }} t={t} />}
       {bot && (
         <Board key={`${bot.id}:${bot.createdAt}`} actions={actions} bot={bot} bots={bots} onBotChange={setSelected} onOpenSession={onOpenSession} t={t} />
@@ -235,10 +236,10 @@ function Board({ actions, bot, bots, onBotChange, onOpenSession, t }: Collaborat
   );
 }
 export function ImPanel({ actions, t }: { actions: CollaborationActions } & PropsLocale<'dsh-bot'>) {
+  useStyleSheet('integrations', css);
   const data = useSyncExternalStore(actions.im.subscribe, actions.im.getSnapshot, actions.im.getSnapshot);
   return (
     <section className={styles.panel} aria-label={t('im.title')}>
-      <style>{css}</style>
       <ManagementHeader title={t('im.title')} actions={<Button
         type="button"
         onClick={() => {
