@@ -4,6 +4,7 @@ import type { consolidationViewSchema, ConsolidationDecision, ConsolidationInput
 import type { ManagedMemoryPage } from '../../shared/memory-management.js';
 import type { SharedMemoryBinding } from './SharedMemoryPanel.js';
 import type { MemoryPanelProps } from './MemoryPanel.js';
+import { formatDateTime } from '../format.js';
 import styles from '../styles/bots.module.css';
 
 const definitiveRejectionCodes = new Set([
@@ -110,7 +111,7 @@ export function MemoryConsolidation({ binding, botId, defaultRoute, t }: { bindi
       {row.content && <><p>{t('memory.consolidation.candidateNotice')}</p>
         <textarea aria-label={t('memory.consolidation.candidate')} value={edits[row.id] ?? row.content} maxLength={2048}
           disabled={busy || !!pending.current} onChange={e => setEdits({ ...edits, [row.id]: e.target.value })} />
-        <p>{t('memory.consolidation.expires')}: {new Date(row.expiresAt).toLocaleString()}</p>
+        <p>{t('memory.consolidation.expires')}: {formatDateTime(row.expiresAt, t('activity.locale'))}</p>
         <details><summary>{t('memory.consolidation.sources')}</summary>{row.sourceIds.map(id => <p key={id}>
           {sources?.rows.find(s => s.version.versionId === id)?.payload.content ?? t('memory.consolidation.sourceChanged')}</p>)}</details>
         {(['accept', 'reject'] as const).map(action => <button type="button" key={action} className={styles.button} disabled={busy || !!pending.current}

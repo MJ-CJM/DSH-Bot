@@ -200,23 +200,28 @@ export function RoutinePanel({
               )}
             </p>
             {error && <p role="alert">{error}</p>}
-            <button
-              type="button"
-              disabled={busy || !writable}
-              onClick={() => {
-                void perform(
-                  () =>
-                    dialog.kind === 'run'
-                      ? actions.runNow(dialog.record, dialog.operationId as string)
-                      : dialog.kind === 'legacy'
-                        ? actions.deleteLegacy(dialog.record.id)
-                        : actions.remove(dialog.record),
-                  dialog.kind === 'run',
-                );
-              }}
-            >
-              {t('routine.confirm')}
-            </button>
+            <div className={styles.actions}>
+              <button type="button" disabled={busy} onClick={() => setDialog(undefined)}>
+                {t('actions.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={busy || !writable}
+                onClick={() => {
+                  void perform(
+                    () =>
+                      dialog.kind === 'run'
+                        ? actions.runNow(dialog.record, dialog.operationId as string)
+                        : dialog.kind === 'legacy'
+                          ? actions.deleteLegacy(dialog.record.id)
+                          : actions.remove(dialog.record),
+                    dialog.kind === 'run',
+                  );
+                }}
+              >
+                {t('routine.confirm')}
+              </button>
+            </div>
           </div>
         </Modal>
       )}

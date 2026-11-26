@@ -4,6 +4,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { GroupDelivery, GroupKey, GroupRecord, GroupTurn, GroupViewDelivery } from '../../shared/groups.js';
 import { groupExportReviewStatus } from '../../shared/group-export-review.js';
 import { type GroupActions, unwrapGroup } from '../groups-state.js';
+import { formatList } from '../format.js';
 import styles from '../styles/groups.module.css';
 
 type Preview = { token: string; deliveryRevision: number; flowId: string; groupName: string; recipients: { name: string }[]; content: string };
@@ -55,7 +56,7 @@ export function GroupExportReview({ group, delivery, actions, disabled, t }: {
       setPreview(result); setReviewed(`${delivery.id}/${result.deliveryRevision}/${result.flowId}`);
     }); }}>{t('groups.export.review')}</button>}
     {current && <>
-      <p>{t('groups.export.scope', { group: current.groupName, members: current.recipients.map(row => row.name).join('、') })}</p>
+      <p>{t('groups.export.scope', { group: current.groupName, members: formatList(current.recipients.map(row => row.name), t('activity.locale')) })}</p>
       <p>{t('groups.export.notice')}</p><p>{t('groups.export.policySettingsHint')}</p>
       {/* biome-ignore lint/a11y/noNoninteractiveTabindex: The complete scrollable export must be keyboard-readable before approval. */}
       <pre className={styles.exportBody} tabIndex={0}>{current.content}</pre>

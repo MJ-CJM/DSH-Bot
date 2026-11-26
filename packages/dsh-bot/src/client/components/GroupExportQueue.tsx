@@ -8,6 +8,7 @@ import { hasOperationCode } from '../../shared/operation-errors.js';
 import type { GroupMethods } from '../../shared/groups-contract.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { type GroupActions, unwrapGroup } from '../groups-state.js';
+import { formatList } from '../format.js';
 import styles from '../styles/groups.module.css';
 
 type Preview = Extract<Awaited<ReturnType<GroupMethods['reviewExport']>>, { ok: true }>['value'];
@@ -275,7 +276,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
           <div className={styles.exportQueueHeader}><h4>{t('groups.export.round', { round: view.turns.findIndex(row => row.id === turnId) + 1 })}</h4>
             {!list.batch && batchButton(candidatesFor(turnId).filter(row => list.ids.includes(row.id)))}</div>
           {question && <p className={styles.exportQueueQuestion}>{question}</p>}
-          {common && <><p>{t('groups.export.scope', { group: common.groupName, members: common.recipients.map(reader => reader.name).join('、') })}</p>
+          {common && <><p>{t('groups.export.scope', { group: common.groupName, members: formatList(common.recipients.map(reader => reader.name), t('activity.locale')) })}</p>
             <p>{t('groups.export.notice')}</p></>}
           {turnRows.map(delivery => {
             const item = current(delivery), preview = item.preview, receipt = item.receipt;
@@ -300,7 +301,7 @@ export function GroupExportQueue({ view, bots, actions, t }: {
               {!receipt && !preview && !item.processing && <button type="button" disabled={busy || view.group.archived} onClick={() => { void review(delivery); }}>{reviewLabel}</button>}
               {!receipt && preview && <>
                 {!list.batch && <><p>{recipient ? t('groups.relay.handoffScope', { sender: preview.recipients[0]?.name }) :
-                  t('groups.export.scope', { group: preview.groupName, members: preview.recipients.map(row => row.name).join('、') })}</p>
+                  t('groups.export.scope', { group: preview.groupName, members: formatList(preview.recipients.map(row => row.name), t('activity.locale')) })}</p>
                 <p>{recipient ? t('groups.relay.handoffNotice', { sender: recipient.name }) : t('groups.export.notice')}</p></>}
                 {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Complete private reply is keyboard-readable plain text, never Markdown. */}
                 <pre tabIndex={0} className={styles.exportBody}>{preview.content}</pre>

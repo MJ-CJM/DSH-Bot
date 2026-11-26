@@ -184,7 +184,7 @@ describe('Area 4: Stuck, swallowed, and misdirected client state errors', () => 
     // Switch back to alpha, open existing preapproved policy: scope checkbox and test-send checkbox must be independent!
     await act(async () => { botSelect.value = 'alpha'; botSelect.dispatchEvent(new Event('change', { bubbles: true })); });
     await click(button(element, en.ui['notifications.policies']));
-    await click(button(element, 'pol-1 · in-app · v1'));
+    await click(button(element, `pol-1 · ${en.ui['notifications.channel.in-app']} · v1`));
     const scopeBox = field(element, en.ui['notifications.confirmScope']) as HTMLInputElement;
     const sendBox = field(element, en.ui['notifications.confirmSend']) as HTMLInputElement;
     expect(scopeBox.checked).toBe(false);
@@ -602,6 +602,6 @@ describe('Area 5: WorkspaceMessage AbortSignal & StrictMode catalog/trigger life
     const m7 = mountNode();
     await act(async () => m7.root.render(<StrictMode><ComposerHarness /></StrictMode>));
     await fill(field(m7.element, en.ui['groups.message']), '@');
-    await vi.waitFor(() => expect(Array.from(m7.element.querySelectorAll('[role="option"] strong'), el => el.textContent)).toEqual(['everyone', 'Alpha']));
+    await vi.waitFor(() => expect(Array.from(m7.element.querySelectorAll('[role="option"] strong'), el => el.textContent)).toEqual([en.ui['groups.everyone'], 'Alpha']));
   });
 });

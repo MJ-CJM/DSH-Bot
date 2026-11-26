@@ -139,8 +139,8 @@ export function ConnectorEditor({
         <label>
           {t('connectors.transport')}
           <select value={transport} onChange={(e) => setTransport(e.target.value as typeof transport)}>
-            <option>streamable-http</option>
-            <option>stdio</option>
+            <option value="streamable-http">{t('connectors.transport.streamable-http')}</option>
+            <option value="stdio">{t('connectors.transport.stdio')}</option>
           </select>
         </label>
         <label htmlFor={`${uid}-ConnectorEditor-4`}>

@@ -173,9 +173,12 @@ describe('Bot conversations through the supported sidebar footer action', () => 
     await click(button(app.sidebar, app.dictionary['sidebar.manage']));
     expect(app.selectPanel).toHaveBeenCalledExactlyOnceWith('dsh-bot');
     await app.show();
-    const titleAction = app.sidebar.querySelector<HTMLButtonElement>('dialog h2 button');
+    expect(app.sidebar.querySelector('dialog h2 button')).toBeNull();
+    const titleAction = [...app.sidebar.querySelectorAll<HTMLButtonElement>('dialog header button')]
+      .find((item) => item.textContent === app.dictionary['sidebar.manage']);
     expect(titleAction?.title).toBe(app.dictionary['sidebar.manage']);
-    if (!titleAction) throw new Error('Missing title management action');
+    expect(titleAction?.getAttribute('aria-label')).toBeNull();
+    if (!titleAction) throw new Error('Missing header management action');
     await click(titleAction);
     expect(app.selectPanel).toHaveBeenCalledTimes(2);
     expect(app.selectPanel).toHaveBeenLastCalledWith('dsh-bot');

@@ -767,7 +767,8 @@ describe('Area 3: All 7 SettingsNavigation draft guards', () => {
     await act(async () => tMount.root.render(<TeamParent />));
     await vi.waitFor(() => expect(tMount.element.querySelector('[data-team-preview]')).toBeTruthy());
     await click(button(tMount.element, en.ui['groups.close']));
-    await click(button(requireValue(tMount.element.querySelector('dialog')), en.ui['navigation.keepEditing']));
+    const dialogs = [...tMount.element.querySelectorAll('dialog')];
+    await click(button(requireValue(dialogs[dialogs.length - 1]), en.ui['navigation.keepEditing']));
     // Restore role-1 back to beta so memberDraft becomes false.
     const roleSelect = requireValue(tMount.element.querySelector<HTMLSelectElement>('select[aria-label="Peer"]'));
     await act(async () => {

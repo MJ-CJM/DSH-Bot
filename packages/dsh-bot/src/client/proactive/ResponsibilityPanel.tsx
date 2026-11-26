@@ -15,6 +15,7 @@ import {
 	type ResponsibilitySource,
 	type ResponsibilityView,
 } from "../../shared/proactive/responsibility.js";
+import { formatDateTime } from "../format.js";
 import { useStyleSheet } from "../use-style-sheet.js";
 import styles from "./responsibility.module.css";
 import styleText from "./responsibility.module.css?inline";
@@ -326,7 +327,7 @@ export function ResponsibilityPanel({
 					</p>
 					<p>
 						{t("responsibility.reset", {
-							at: new Date(usage.resetsAt).toLocaleString(),
+							at: formatDateTime(usage.resetsAt, t("activity.locale")),
 						})}
 					</p>
 					{!usage.measurementComplete && (

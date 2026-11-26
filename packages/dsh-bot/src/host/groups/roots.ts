@@ -12,6 +12,11 @@ import { OperationError, need } from '../common/operations.js';
 
 import { terminal } from './model.js';
 import type { GroupState, GroupRoot } from './state.js';
+
+export function groupRootPresetName(locale = Intl.DateTimeFormat().resolvedOptions().locale): string {
+  return /^zh\b/i.test(locale) ? zh.ui['groups.presetName'] : en.ui['groups.presetName'];
+}
+
 export class GroupRoots {
   constructor(private state: GroupState) {}
   async start() {
@@ -22,7 +27,7 @@ export class GroupRoots {
           () =>
             owner.agentPresets.register({
               id: GROUP_ROOT_PRESET,
-              name: `${zh.ui['groups.presetName']} / ${en.ui['groups.presetName']}`,
+              name: groupRootPresetName(),
               plugins: [{ id: 'group-root-guard', name: 'dsh-botgroup/group-root-guard' }],
             }),
           'dsh-bot: group root preset',

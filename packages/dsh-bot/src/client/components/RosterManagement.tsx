@@ -7,6 +7,7 @@ import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import { hasOperationCode } from '../../shared/operation-errors.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { unwrapGroup, type GroupActions } from '../groups-state.js';
+import { formatList } from '../format.js';
 import { BotAvatar } from './BotAvatar.js';
 import { SettingsDrafts, useSettingsNavigation } from './SettingsNavigation.js';
 import type { GroupMethods } from '../../shared/groups-contract.js';
@@ -34,11 +35,11 @@ export function MemberChangeReview({ view, target, bots, t }: {
 } & Localized) {
   const added = rosterAddedMembers(view, target);
   const removed = rosterMembers(view).filter(member => !target.some(key => sameBot(key, member.bot)));
-  const names = (keys: readonly BotKey[]) => keys.map(key => {
+  const names = (keys: readonly BotKey[]) => formatList(keys.map(key => {
     const name = rosterMemberName(view, key, bots);
     const candidates = [...rosterMembers(view).map(member => member.bot), ...target];
     return candidates.some(other => !sameBot(other, key) && rosterMemberName(view, other, bots) === name) ? `${name} · ${key.botId}` : name;
-  }).join('、');
+  }), t('activity.locale'));
   return <div className={styles.review} data-member-change-review="">
     {added.length > 0 && <><p>{t('groups.roster.addSummary', { names: names(added) })}</p>
       <p>{t('groups.roster.historyScope', { names: names(added) })}</p></>}
@@ -226,7 +227,7 @@ export function RosterManagement({ initial, actions, bots, onClose, t }: {
         </li>)}</ul>
         {!candidates.length && <p>{t('groups.roster.noCandidates')}</p>}
       </section>
-      {mutation.phase === 'conflict' && latest && <section data-roster-conflict=""><h3>{t('groups.roster.currentRoster')}</h3><p>{rosterMembers(latest).map(member => rosterMemberName(latest, member.bot, bots)).join('、')}</p>
+      {mutation.phase === 'conflict' && latest && <section data-roster-conflict=""><h3>{t('groups.roster.currentRoster')}</h3><p>{formatList(rosterMembers(latest).map(member => rosterMemberName(latest, member.bot, bots)), t('activity.locale'))}</p>
         <MemberChangeReview view={latest} target={target} bots={bots} t={t} />
         <Button onClick={() => { if (latest) { setBaseline(latest); mutation.reset(); } }}>{t('groups.roster.reviewLatest')}</Button></section>}
       <RosterSaveNotice mutation={mutation} t={t} />

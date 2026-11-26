@@ -96,8 +96,8 @@ export function MessageCard({ node, sessionId, t, onOpenBot, onShowStatus, group
     {open && !s.groupRelayReceipt && <div id={bodyId} className={styles.body}>
       <p className={styles.content}>{content}</p>
       <p className={styles.caption}>{t('messages.data')}</p>
-      <p className={styles.caption} title={`${s.threadId}${s.replyTo ? ` · replyTo: ${s.replyTo}` : ''}`} data-message-thread={s.threadId}>
-        {t('messages.thread')}: {s.threadId.slice(0, 8)}{s.replyTo ? ` · replyTo: ${s.replyTo.slice(0, 8)}` : ''}
+      <p className={styles.caption} title={`${s.threadId}${s.replyTo ? ` · ${t('messages.replyTo')}: ${s.replyTo}` : ''}`} data-message-thread={s.threadId}>
+        {t('messages.thread')}: {s.threadId.slice(0, 8)}{s.replyTo ? ` · ${t('messages.replyTo')}: ${s.replyTo.slice(0, 8)}` : ''}
       </p>
       {onShowStatus && <button type="button" className={styles.link} onClick={() => onShowStatus(sent ? s.from.botId : s.to.botId)}>{t('messages.status')}</button>}
     </div>}

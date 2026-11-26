@@ -19,6 +19,7 @@
   min-width: 0;
 }
 .header p, .notice, .meta { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.section [role="alert"], .notice[role="alert"] { color: var(--dsw-alias-state-error-primary); }
 .rows { display: grid; gap: 8px; width: 100%; margin: 0; padding: 0; list-style: none; }
 .row {
   display: flex;

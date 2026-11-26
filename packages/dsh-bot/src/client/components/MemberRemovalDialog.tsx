@@ -8,6 +8,7 @@ import css from '../styles/roster.module.css?inline';
 import { sameBot } from '../../shared/identity.js';
 import type { GroupActions } from '../groups-state.js';
 import { latestMemberDelivery } from '../group-management.js';
+import { formatList } from '../format.js';
 import { useStyleSheet } from '../use-style-sheet.js';
 import { Modal } from './Modal.js';
 import { MemberChangeReview, memberEditingReason, rosterMemberName, rosterMembers, RosterSaveNotice, useRosterSave } from './RosterManagement.js';
@@ -37,7 +38,7 @@ export function MemberRemovalDialog({ view, member, bots, actions, onClose, t }:
       {target.length < 2 && <p role="status">{t('groups.roster.minimum')}</p>}
       <RosterSaveNotice mutation={mutation} t={t} />
       {mutation.phase === 'conflict' && latest && <section data-roster-conflict=""><h3>{t('groups.roster.currentRoster')}</h3>
-        <p>{rosterMembers(latest).map(row => rosterMemberName(latest, row.bot, bots)).join('、')}</p>
+        <p>{formatList(rosterMembers(latest).map(row => rosterMemberName(latest, row.bot, bots)), t('activity.locale'))}</p>
         <Button onClick={() => {
           if (!latest) return;
           setBaseline(latest);

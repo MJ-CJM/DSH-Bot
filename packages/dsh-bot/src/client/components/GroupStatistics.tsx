@@ -6,6 +6,7 @@ import type { BotRecord } from '../../shared/schema.js';
 import type { ExecutionBridge } from '../group-execution.js';
 import { type GroupActivityFocus, guestQuestionStatus } from '../group-management.js';
 import { aggregateStatistics, cachePercent, contextPercent, defaultStatisticsTurn, groupStatisticsWorkers, loadingStatistics, readStatisticsOnce, statisticsDeliveries, tokenTotal, type ChildStatistics } from '../group-statistics.js';
+import { formatDateTime, formatNumber } from '../format.js';
 import { turnExportStatus } from './GroupExportReview.js';
 import styles from '../styles/groups.module.css';
 
@@ -70,7 +71,7 @@ function useGroupTotals(bridge: ExecutionBridge, parentId: string, rows: GroupRo
   if (!enabled) return [];
   return rows.map(row => row.live ? liveValues[live.indexOf(row)] ?? loadingStatistics : settled.current.get(row.childId) ?? loadingStatistics);
 }
-const number =(value: number) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
+const number = (value: number, locale: string) => formatNumber(value, locale, { maximumFractionDigits: 1 });
 /**
  * The native composer's compact token count (517 / 12.2K / 1.2M), spelled by the
  * shared common `number.*` vocabulary so group and native statistics read alike.
@@ -86,28 +87,30 @@ export const TURN_DOT: Record<GroupTurn['state'], StateDotState> = {
 };
 /** First non-empty line with runs of whitespace folded, so a pasted log does not fill a menu row. */
 export const questionLine = (text: string) => text.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).find(Boolean) ?? '';
-const clock = (at: number) => {
+const clock = (at: number, locale: string) => {
   const date = new Date(at), today = date.toDateString() === new Date().toDateString();
-  return new Intl.DateTimeFormat(undefined, today ? { hour: '2-digit', minute: '2-digit' } : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
+  return formatDateTime(date, locale, today ? { hour: '2-digit', minute: '2-digit' } : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 const LATEST = '__latest', GROUP = '__group';
 type UsageView = Pick<ChildStatistics, 'modelSelection' | 'pressure'> & { usage?: ChildStatistics['usage'] | undefined; activity?: { turns: number; steps: number } | undefined };
 /** `aggregate` sums several sessions: no single model or context estimate applies. */
 function UsageDetails({ value, aggregate = false, t }: { value: UsageView; aggregate?: boolean } & Localized) {
+  const locale = t('activity.locale');
   const context = aggregate ? undefined : contextPercent(value);
   return <dl className={styles.statisticsDetails}>
     {!aggregate && value.modelSelection?.lastUsed && <><dt>{t('statistics.model')}</dt><dd>{value.modelSelection.lastUsed.provider} / {value.modelSelection.lastUsed.model}</dd></>}
     {value.activity && <><dt>{t('statistics.activity')}</dt><dd>{t('statistics.counts', value.activity)}</dd></>}
     {value.usage && tokenTotal(value.usage) > 0 ? <>
-      <dt>{t('statistics.input')}</dt><dd>{number(value.usage.uncachedInputTokens)}</dd>
-      <dt>{t('statistics.read')}</dt><dd>{number(value.usage.cacheReadTokens)}</dd>
-      <dt>{t('statistics.write')}</dt><dd>{number(value.usage.cacheWriteTokens)}</dd>
-      <dt>{t('statistics.output')}</dt><dd>{number(value.usage.outputTokens)}</dd>
+      <dt>{t('statistics.input')}</dt><dd>{number(value.usage.uncachedInputTokens, locale)}</dd>
+      <dt>{t('statistics.read')}</dt><dd>{number(value.usage.cacheReadTokens, locale)}</dd>
+      <dt>{t('statistics.write')}</dt><dd>{number(value.usage.cacheWriteTokens, locale)}</dd>
+      <dt>{t('statistics.output')}</dt><dd>{number(value.usage.outputTokens, locale)}</dd>
     </> : <><dt>{t('statistics.usage')}</dt><dd>{t('statistics.noUsage')}</dd></>}
-    {!aggregate && <><dt>{t('statistics.context')}</dt><dd>{context === undefined ? t('statistics.noEstimate') : t('statistics.contextEstimate', { percent: number(context) })}</dd></>}
+    {!aggregate && <><dt>{t('statistics.context')}</dt><dd>{context === undefined ? t('statistics.noEstimate') : t('statistics.contextEstimate', { percent: number(context, locale) })}</dd></>}
   </dl>;
 }
 export function GroupMemberStatistics({ bridge, parentId, workers, t }: { bridge: ExecutionBridge; parentId: string; workers: Worker[] } & Localized) {
+  const locale = t('activity.locale');
   const values = useStatistics(bridge, parentId, workers);
   const sum = aggregateStatistics(values), single = workers.length === 1;
   const value = values[0] ?? loadingStatistics;
@@ -122,12 +125,12 @@ export function GroupMemberStatistics({ bridge, parentId, workers, t }: { bridge
     {missing ? <span>{t(`statistics.${missing}`)}</span> : <>
       {!single && <span>{t('statistics.executions', { count: workers.length })}</span>}
       {mode === 'detailed' && sum.activity && <span>{t('statistics.counts', sum.activity)}</span>}
-      {single && value.activity && value.activity.decodeMs > 0 && <span title={t('statistics.speed')}>{number(value.activity.decodeTokens / (value.activity.decodeMs / 1000))} tok/s</span>}
+      {single && value.activity && value.activity.decodeMs > 0 && <span title={t('statistics.speed')}>{number(value.activity.decodeTokens / (value.activity.decodeMs / 1000), locale)} tok/s</span>}
       {sum.usage && tokenTotal(sum.usage) > 0 ? <>
         {mode === 'detailed' && <span>{compactTokens(tokenTotal(sum.usage), t)} tok</span>}
-        {cache !== undefined && <span>{t('statistics.cache', { percent: number(cache) })}</span>}
+        {cache !== undefined && <span>{t('statistics.cache', { percent: number(cache, locale) })}</span>}
       </> : <span>{t('statistics.noUsage')}</span>}
-      {single && <span title={t('statistics.lastEstimate')}>{context === undefined ? t('statistics.noEstimate') : t('statistics.contextEstimate', { percent: number(context) })}</span>}
+      {single && <span title={t('statistics.lastEstimate')}>{context === undefined ? t('statistics.noEstimate') : t('statistics.contextEstimate', { percent: number(context, locale) })}</span>}
       {partial && <span>{t('statistics.incomplete')}</span>}
       <button type="button" className={styles.statPill} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>{t('statistics.details')}</button>
       {open && <Modal open title={t('statistics.details')} closeLabel={t('actions.close')} description={t('statistics.scope')}
@@ -183,9 +186,10 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
     : !workers.length || workers.every(({ delivery }) => !delivery.childSessionId || ['pending', 'starting'].includes(delivery.state)) ? 'waiting'
     : values.some(value => value.state === 'loading') ? 'loading' : !sum.readable ? 'unavailable' : 'noUsage';
   const other = whole ? 0 : view.turns.filter(row => row.id !== turn?.id && ['accepted', 'running', 'paused'].includes(row.state)).length;
+  const locale = t('activity.locale');
   const text = (row: GroupTurn) => {
     const message = view.messages.find(message => message.id === row.inputMessageId);
-    return message?.text.trim() ? message.text : `${t(message?.attachments?.length ? 'groups.attachments' : 'statistics.historical')} · ${new Date(row.createdAt).toLocaleString()}`;
+    return message?.text.trim() ? message.text : `${t(message?.attachments?.length ? 'groups.attachments' : 'statistics.historical')} · ${formatDateTime(row.createdAt, locale)}`;
   };
   const title = (row: GroupTurn) => questionLine(text(row));
   const label = (d: GroupDelivery) => bots.find(bot => bot.id === d.bot.botId && bot.createdAt === d.bot.botCreatedAt)?.name ??
@@ -208,7 +212,7 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
       ...recent.map(row => ({ id: row.id, icon: <StateDot state={TURN_DOT[row.state]} />,
         label: <span className={styles.questionOption} data-statistics-question={row.id}>
           <span className={styles.questionTitle} title={title(row)}>{title(row)}</span>
-          <span className={styles.questionMeta}>{[clock(row.createdAt), guestQuestionStatus(view, row, t) ?? t(`statistics.status.${row.state}`), (names.get(row.id) ?? []).join(', ')].filter(Boolean).join(' · ')}</span>
+          <span className={styles.questionMeta}>{[clock(row.createdAt, locale), guestQuestionStatus(view, row, t) ?? t(`statistics.status.${row.state}`), (names.get(row.id) ?? []).join(', ')].filter(Boolean).join(' · ')}</span>
         </span> }))];
   };
   const current = whole ? t('statistics.wholeGroup') : turn ? title(turn) : '';
@@ -222,11 +226,11 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
     if (own.some(value => value.state === 'loading')) return t('statistics.loading');
     if (!usage) return t(total.readable ? 'statistics.noUsage' : 'statistics.unavailable');
     const hit = cachePercent(usage);
-    return [`${compactTokens(tokenTotal(usage), t)} tok`, hit === undefined ? '' : t('statistics.cache', { percent: number(hit) })].filter(Boolean).join(' · ');
+    return [`${compactTokens(tokenTotal(usage), t)} tok`, hit === undefined ? '' : t('statistics.cache', { percent: number(hit, locale) })].filter(Boolean).join(' · ');
   };
   return <div className={styles.statisticsBar} data-group-statistics-bar data-statistics-turn={whole ? undefined : turn?.id} data-statistics-scope={whole ? 'group' : 'question'}>
     {/* Portaled so the panel's bordered-button default never reaches the native rows; it opens upward from the page foot. */}
-    <Menu open={menu} onClose={() => setMenu(false)} portal side="top" className={styles.questionAnchor} listClassName={styles.questionMenu}
+    <Menu open={menu} onClose={() => setMenu(false)} portal autoFocus side="top" className={styles.questionAnchor} listClassName={styles.questionMenu}
       selectedId={whole ? GROUP : pinned ? turn?.id : LATEST}
       anchor={<button type="button" className={`${styles.statPill} ${styles.questionTrigger}`} title={current || undefined}
         aria-label={`${t('statistics.select')}: ${shown}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
@@ -245,7 +249,7 @@ export function GroupStatisticsBar({ view, bridge, sent, focusRequest, active = 
         <IconDatabaseOutlineRegular />
         {tokenCount !== undefined && <span data-group-token-total={tokenCount}>{compactTokens(tokenCount, t)} tok</span>}
         {tokenCount !== undefined && cache !== undefined && <span className={`${styles.statSep} ${styles.statisticsWide}`} aria-hidden="true">·</span>}
-        {cache !== undefined && <span className={styles.statisticsWide}>{t('statistics.cache', { percent: number(cache) })}</span>}
+        {cache !== undefined && <span className={styles.statisticsWide}>{t('statistics.cache', { percent: number(cache, locale) })}</span>}
       </span>}
       {!receiptOnly && tokenCount === undefined && !sum.reported && <span className={styles.statItem}>{t(`statistics.${emptyState}`)}</span>}
       {!receiptOnly && partial && <span className={`${styles.statItem} ${styles.statisticsWide}`}>{t('statistics.incomplete')} · {coverage}</span>}
