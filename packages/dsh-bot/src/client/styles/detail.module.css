@@ -11,6 +11,7 @@
 .page button { min-height: 44px; }
 .section { padding-block: 16px; }
 .section h2 { margin: 0 0 12px; font-size: 18px; }
+.notice { margin: 0 0 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 1.5; }
 .persona { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 75ch; }
 .facts { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr); gap: 12px; max-width: 48rem; }
 .facts dt { color: var(--dsw-alias-label-secondary); }

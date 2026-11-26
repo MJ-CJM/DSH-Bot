@@ -74,9 +74,17 @@ export function BotEditor({
   const [provider, setProvider] = useState(bot?.model?.provider ?? '');
   const [modelId, setModelId] = useState(bot?.model?.model ?? '');
   const [reasoning, setReasoning] = useState(bot?.model?.reasoningEffort ?? '');
+  const [customModelMode, setCustomModelMode] = useState<'auto' | 'on' | 'off'>('auto');
   const [modelCatalog, setModelCatalog] = useState<{ providers: ModelCatalogData['providers']; error?: unknown }>();
   const [efforts, setEfforts] = useState<{ id: string; name: string }[]>([]);
   const cap = (key: CapabilityKey) => t(key as Parameters<typeof t>[0]);
+  const catalogHasModel = Boolean(
+    provider &&
+      modelId &&
+      modelCatalog?.providers.some((route) => route.id === provider && route.models.some((model) => model.id === modelId)),
+  );
+  const hasCustomModelValue = Boolean((provider || modelId) && !catalogHasModel);
+  const showCustomModelInputs = !models || customModelMode === 'on' || (customModelMode === 'auto' && hasCustomModelValue);
   useEffect(() => {
     if (!models) return;
     const update = () => setModelCatalog(models.catalog.getSnapshot());
@@ -102,7 +110,52 @@ export function BotEditor({
   const disabled = busy || saving || picking;
   const draftValue = JSON.stringify([name, avatar, avatarColor, avatarVariant, description, defaultCwd, persona, suffix, complete, template, modelEnabled, provider, modelId, reasoning, extraDirs, memory, injectLimit, deny]);
   const initialDraft = useRef(draftValue);
-  useSettingsDraft(embedded && (draftValue !== initialDraft.current || disabled));
+  const dirty = draftValue !== initialDraft.current;
+  useSettingsDraft(embedded && (dirty || disabled));
+
+  const resetDraft = () => {
+    const nextName = duplicate && bot ? t('editor.copyName', { name: bot.name }) : (bot?.name ?? '');
+    const nextAvatar = bot?.avatar;
+    const nextAvatarColor = bot?.avatarColor;
+    const nextAvatarVariant = bot?.avatarVariant ?? (bot ? 'classic' : 'auto');
+    const nextDefaultCwd = bot?.defaultCwd ?? '';
+    const nextDescription = bot?.description ?? '';
+    const nextPersona = bot?.persona.prefix ?? '';
+    const nextModelEnabled = Boolean(bot?.model);
+    const nextProvider = bot?.model?.provider ?? '';
+    const nextModelId = bot?.model?.model ?? '';
+    const nextReasoning = bot?.model?.reasoningEffort ?? '';
+    const nextExtraDirs = bot?.skills.extraDirs.join('\n') ?? '';
+    const nextSuffix = bot?.persona.suffix ?? '';
+    const nextComplete = bot?.persona.complete ?? false;
+    const nextTemplate = bot?.template ?? 'standard';
+    const nextMemory = bot?.memory.enabled ?? true;
+    const nextInjectLimit = String(bot?.memory.injectLimit ?? 20);
+    const nextDeny = bot?.tools.deny.join('\n') ?? '';
+    setName(nextName);
+    setAvatar(nextAvatar);
+    setAvatarColor(nextAvatarColor);
+    setAvatarVariant(nextAvatarVariant);
+    setDefaultCwd(nextDefaultCwd);
+    setDescription(nextDescription);
+    setPersona(nextPersona);
+    setModelEnabled(nextModelEnabled);
+    setProvider(nextProvider);
+    setModelId(nextModelId);
+    setReasoning(nextReasoning);
+    setCustomModelMode('auto');
+    setExtraDirs(nextExtraDirs);
+    setSuffix(nextSuffix);
+    setComplete(nextComplete);
+    setTemplate(nextTemplate);
+    setMemory(nextMemory);
+    setInjectLimit(nextInjectLimit);
+    setDeny(nextDeny);
+    setErrors({});
+    setFailure(false);
+    setPickFailed(false);
+    initialDraft.current = JSON.stringify([nextName, nextAvatar, nextAvatarColor, nextAvatarVariant, nextDescription, nextDefaultCwd, nextPersona, nextSuffix, nextComplete, nextTemplate, nextModelEnabled, nextProvider, nextModelId, nextReasoning, nextExtraDirs, nextMemory, nextInjectLimit, nextDeny]);
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -263,6 +316,7 @@ export function BotEditor({
     setSaving(true);
     try {
       await onSave(result.data);
+      if (embedded && mounted.current) initialDraft.current = draftValue;
     } catch {
       if (mounted.current) setFailure(true);
     } finally {
@@ -323,8 +377,6 @@ export function BotEditor({
           disabled={disabled}
           t={t}
         />}
-        {!editing && <p className={styles.hint}>{text('chat.firstMessage')}</p>}
-        <details data-compatibility-settings="" open={editing}><summary>{t('detail.modelAndWorkspace')}</summary>
         <label className={styles.field}>
           {t('editor.description')}
           <textarea
@@ -334,7 +386,9 @@ export function BotEditor({
             disabled={disabled}
           />
         </label>
-        <details><summary>{t('detail.advancedMigration')}</summary>
+        {!editing && <p className={styles.hint}>{text('chat.firstMessage')}</p>}
+        <details data-compatibility-settings="" open={editing}><summary>{t('detail.modelAndWorkspace')}</summary>
+        <details data-bot-persona-settings=""><summary>{t('detail.personaSettings')}</summary>
         <label className={styles.field}>
           {t('editor.persona')}
           <textarea
@@ -383,7 +437,7 @@ export function BotEditor({
               {models && <label className={styles.field}>{cap('capabilities.catalogModel')}
                 <select value={JSON.stringify([provider, modelId])} onChange={event => {
                   const [nextProvider, nextModel] = JSON.parse(event.target.value) as [string, string];
-                  setProvider(nextProvider); setModelId(nextModel); setReasoning('');
+                  setProvider(nextProvider); setModelId(nextModel); setReasoning(''); setCustomModelMode('auto');
                 }}>
                   <option value={JSON.stringify([provider, modelId])}>{provider && modelId ? `${provider} / ${modelId}` : cap('capabilities.modelDefault')}</option>
                   {(modelCatalog?.providers ?? []).map(route => <optgroup key={route.id} label={route.name}>
@@ -392,14 +446,29 @@ export function BotEditor({
                 </select>
                 <span className={styles.hint}>{cap(modelCatalog?.error || modelCatalog?.providers.some(route => route.id === provider && !route.available) ? 'capabilities.modelUnavailable' : modelCatalog?.providers.some(route => route.id === provider && route.models.some(model => model.id === modelId)) ? 'capabilities.modelLoaded' : 'capabilities.modelUnknown')}</span>
               </label>}
-              <label className={styles.field}>
-                {t('manage.provider')}
-                <input value={provider} onChange={(e) => setProvider(e.target.value)} />
-              </label>
-              <label className={styles.field}>
-                {t('manage.modelId')}
-                <input value={modelId} onChange={(e) => setModelId(e.target.value)} />
-              </label>
+              {models && (
+                <label className={styles.checkboxField}>
+                  <input
+                    type="checkbox"
+                    data-bot-custom-model-toggle=""
+                    checked={showCustomModelInputs}
+                    onChange={(event) => setCustomModelMode(event.target.checked ? 'on' : 'off')}
+                  />
+                  {t('manage.customModel')}
+                </label>
+              )}
+              {showCustomModelInputs && (
+                <>
+                  <label className={styles.field}>
+                    {t('manage.provider')}
+                    <input value={provider} onChange={(e) => setProvider(e.target.value)} />
+                  </label>
+                  <label className={styles.field}>
+                    {t('manage.modelId')}
+                    <input value={modelId} onChange={(e) => setModelId(e.target.value)} />
+                  </label>
+                </>
+              )}
               <label className={styles.field}>
                 {t('manage.reasoning')}
                 <input list={`${uid}-reasoning-values`} value={reasoning} onChange={(e) => setReasoning(e.target.value)} />
@@ -509,7 +578,7 @@ export function BotEditor({
             {t('editor.cwdPermissions')}
           </p>
         </section>
-        <details><summary>{t('detail.advancedMigration')}</summary>
+        <details data-bot-memory-tools-settings=""><summary>{t('detail.memoryAndTools')}</summary>
         <div className={styles.formRow}>
           <label className={styles.checkboxField}>
             <input
@@ -556,11 +625,21 @@ export function BotEditor({
         </details>
       </div>
       </fieldset>
-      {!editing && !duplicate && <p role="note" className={styles.hint}>{t('onboarding.createNotice')}</p>}
+      {!editing && !duplicate && (
+        <p role="note" className={`${styles.hint} ${styles.dialogNotice}`}>
+          {t('onboarding.createNotice')}
+        </p>
+      )}
       <footer className={styles.dialogFooter}>
-        <button type="button" className={styles.button} onClick={onCancel} disabled={disabled}>
-          {t('actions.cancel')}
-        </button>
+        {embedded ? (
+          <button type="button" className={styles.button} onClick={resetDraft} disabled={disabled || !dirty}>
+            {t('editor.reset')}
+          </button>
+        ) : (
+          <button type="button" className={styles.button} onClick={onCancel} disabled={disabled}>
+            {t('actions.cancel')}
+          </button>
+        )}
         <button type="submit" className={styles.primaryButton} disabled={disabled}>
           {disabled ? t('editor.saving') : editing ? t('editor.save') : text(creationSaved ? 'chat.openChat' : 'chat.createAndChat')}
         </button>

@@ -266,13 +266,22 @@ export function GroupOverview({ summary, actions, bots, onOpenBot, onEdit, onDel
       {onEdit && <MemberEditAction view={view} onEdit={onEdit} disabled={busy || !!snapshot.error || !canEditMembers(view)} t={t} />}
       {editingReason && <p role="status">{t(editingReason)}</p>}
       {compactSettings ? <details><summary>{t('botMode.advanced')}</summary><GroupSettingsView view={view} bots={bots} t={t} /></details> : <GroupSettingsView view={view} bots={bots} t={t} />}
-      {!view.group.supergroup && <label><input type="checkbox" checked={view.group.onDemand ?? false} disabled={busy || view.group.archived || view.group.mode !== 'natural'} onChange={event => {
-        const onDemand = event.currentTarget.checked; setBusy(true); setError(false);
-        void actions.remote().edit(groupKey(view.group), { expectedRevision: view.group.revision, expectedMembershipRevision: view.group.membershipRevision,
-          name: view.group.name, mode: view.group.mode, members: members.map(member => member.bot), onDemand,
-        }).then(result => { unwrapGroup(result); return Promise.all([catalog.refresh(), actions.catalog.refresh()]); }).catch(() => setError(true)).finally(() => setBusy(false));
-      }} />{t('teams.onDemand')}</label>}
-      <p>{t(view.group.supergroup ? 'simple.automaticTeam' : 'teams.onDemandHint')}</p>
+      {view.group.supergroup ? (
+        <p>{t('simple.automaticTeam')}</p>
+      ) : view.group.mode === 'natural' ? (
+        <>
+          <label className={styles.onDemandToggle}>
+            <input type="checkbox" checked={view.group.onDemand ?? false} disabled={busy || view.group.archived} onChange={event => {
+              const onDemand = event.currentTarget.checked; setBusy(true); setError(false);
+              void actions.remote().edit(groupKey(view.group), { expectedRevision: view.group.revision, expectedMembershipRevision: view.group.membershipRevision,
+                name: view.group.name, mode: view.group.mode, members: members.map(member => member.bot), onDemand,
+              }).then(result => { unwrapGroup(result); return Promise.all([catalog.refresh(), actions.catalog.refresh()]); }).catch(() => setError(true)).finally(() => setBusy(false));
+            }} />{t('teams.onDemand')}</label>
+          <p>{t('teams.onDemandHint')}</p>
+        </>
+      ) : (
+        <p className={styles.modeHint} data-group-ondemand-note="">{t('teams.onDemandNaturalOnly')}</p>
+      )}
       {!showHeader && <Button variant="outline" onClick={() => setTeamsOpen(true)}>{t('teams.title')}</Button>}
       {!showHeader && <Button variant="outline" disabled={busy} onClick={() => (onDelete ?? setDeleting)(view.group)}>{t('groups.delete')}</Button>}
     </RetainedPanel>

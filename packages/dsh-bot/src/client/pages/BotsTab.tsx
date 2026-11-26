@@ -52,7 +52,12 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
     onTargetReached(requestId);
   }, [panel, targetKind, requestId, onTargetReached]);
   const [settingsPanel, setSettingsPanel] = useState<SettingsSection>('profile');
-  const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
+  const [profileMounted, setProfileMounted] = useState(false);
+  const [more, setMore] = useState(false);
+  const profileActive = panel === 'settings' && settingsPanel === 'profile';
+  useEffect(() => {
+    if (profileActive) setProfileMounted(true);
+  }, [profileActive]);
   const uid = useId(), { t } = page, navigation = useSettingsNavigation(t);
   const { selected, showDetail, tab, busy } = model;
   if (tab === 'management' || !showDetail || !selected) return null;
@@ -87,7 +92,7 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
           subject={{ kind: 'bot', bot: { botId: bot.id, botCreatedAt: bot.createdAt } }} mode="summary" active={panel === 'overview'}
           onShowAll={() => { setPanel('work'); document.getElementById(`${uid}-work`)?.focus(); }} t={t} /></div>}
         <section data-bot-persona={bot.id} className={detailStyles.section}>
-          <Button variant="ghost" onClick={() => { setPanel('settings'); setSettingsPanel('profile'); setEditing(true); model.cancelNavigation(); }}>{t('card.edit')}</Button>
+          <Button variant="ghost" onClick={() => { setPanel('settings'); setSettingsPanel('profile'); model.cancelNavigation(); }}>{t('card.edit')}</Button>
           <h2>{t('persona.title')}</h2><p className={detailStyles.persona}>{bot.persona.prefix || t('persona.empty')}</p>
           {page.onEditPersona && <Button variant="ghost" disabled={busy || model.navigating || !model.ready} onClick={() => navigation.leave(() => { void model.navigate(async () => { await page.onEditPersona?.(bot); }, 'errors.start'); })}>{t('persona.edit')}</Button>}
           <dl className={detailStyles.facts}><dt>{t('manage.model')}</dt><dd>{bot.model ? `${bot.model.provider} / ${bot.model.model}` : t('capabilities.modelDefault')}</dd>
@@ -113,11 +118,16 @@ export function BotsTab({ page, model }: { page: BotsPageProps; model: BotsPageM
       <RetainedPanel active={panel === 'settings'} id={`${uid}-settings-panel`} labelledBy={`${uid}-settings`}>
         <div className={detailStyles.settingsNav}>{settingsSections.map(key => <Button key={key} variant="ghost" aria-pressed={settingsPanel === key} onClick={() => setSettingsPanel(key)}>{t(`detail.${key}`)}</Button>)}</div>
         <RetainedPanel active={settingsPanel === 'profile'}>
-          {editing ? <BotEditor key={`${bot.id}:${bot.createdAt}`} embedded bot={bot} avatarWarning={selected.status?.warnings?.includes('avatar/invalid')} models={page.models} busy={busy}
-            onEnsureHome={page.onEnsureHome} onEnsureBotsWorkspace={page.onEnsureBotsWorkspace} onPickDirectory={page.onPickDirectory}
-            onCancel={() => navigation.leave(() => setEditing(false))}
-            onSave={async input => { setSaving(true); try { await page.onUpdate(bot.id, input); if (live.current) { setEditing(false); model.setToast({ text: t('bots.saveSuccess'), error: false }); } } finally { if (live.current) setSaving(false); } }} t={t} /> :
-            <div className={detailStyles.section}><h2>{t('detail.profile')}</h2><p>{t('bots.newSessionsNotice')}</p><Button onClick={() => setEditing(true)}>{t('card.edit')}</Button></div>}
+          {(profileActive || profileMounted) && (
+            <div className={detailStyles.section} data-bot-profile-editor="">
+              <h2>{t('detail.profile')}</h2>
+              <p className={detailStyles.notice}>{t('bots.newSessionsNotice')}</p>
+              <BotEditor key={`${bot.id}:${bot.createdAt}`} embedded bot={bot} avatarWarning={selected.status?.warnings?.includes('avatar/invalid')} models={page.models} busy={busy}
+                onEnsureHome={page.onEnsureHome} onEnsureBotsWorkspace={page.onEnsureBotsWorkspace} onPickDirectory={page.onPickDirectory}
+                onCancel={() => {}}
+                onSave={async input => { setSaving(true); try { await page.onUpdate(bot.id, input); if (live.current) { model.setToast({ text: t('bots.saveSuccess'), error: false }); } } finally { if (live.current) setSaving(false); } }} t={t} />
+            </div>
+          )}
         </RetainedPanel>
         {page.models && <RetainedPanel active={settingsPanel === 'capabilities'}><CapabilitiesPanel expanded bot={bot} actions={page.models} t={t} /></RetainedPanel>}
         {page.integrations && <>

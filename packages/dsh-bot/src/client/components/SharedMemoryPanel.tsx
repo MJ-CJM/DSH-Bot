@@ -12,6 +12,7 @@ import { MemoryConflicts } from './MemoryConflicts.js';
 import { ForgetPreview, type ForgetActions } from './ForgetPreview.js';
 import { MemoryCleanupStatus } from './MemoryCleanupStatus.js';
 import styles from '../styles/bots.module.css';
+import memoryStyles from '../styles/memory.module.css';
 
 export interface SharedMemoryBinding { catalog: SharedMemoryCatalog; remote(): DshBotMemoryRemoteMethods; refresh(): Promise<void> }
 export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
@@ -117,11 +118,58 @@ export function SharedMemoryPanel({ binding, scope, botId, statuses, t }: {
     {preview && !confirming && <p role="status">{t('shared.previewChanged')}</p>}
     {confirming && preview && <fieldset aria-label={t('shared.confirm')} disabled={busy}>
       <legend>{t(scope === 'quarantine' ? 'shared.assign' : 'shared.confirm')}</legend>
-      <p>{confirming.payload.content}</p>
-      <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({
-        subject: confirming.payload.subject, factKey: confirming.payload.factKey,
-        qualifiers: confirming.payload.qualifiers, valid: confirming.payload.valid,
-      }, null, 2)}</pre>
+      <dl className={memoryStyles.confirmSummary} data-shared-confirm-summary="">
+        <div>
+          <dt>{t('shared.confirmAction')}</dt>
+          <dd>{t(scope === 'quarantine' ? 'shared.assign' : 'shared.confirm')}</dd>
+        </div>
+        <div>
+          <dt>{t('shared.confirmTarget')}</dt>
+          <dd>{t(scope === 'quarantine' ? 'shared.scope.legacy' : 'shared.scope.shared')}</dd>
+        </div>
+        <div>
+          <dt>{t('shared.content')}</dt>
+          <dd className={memoryStyles.content}>{confirming.payload.content}</dd>
+        </div>
+        {confirming.payload.subject && (
+          <div>
+            <dt>{t('shared.subject')}</dt>
+            <dd>{confirming.payload.subject}</dd>
+          </div>
+        )}
+        {confirming.payload.factKey && (
+          <div>
+            <dt>{t('shared.factKey')}</dt>
+            <dd>{confirming.payload.factKey}</dd>
+          </div>
+        )}
+        <div>
+          <dt>{t('shared.qualifiers')}</dt>
+          <dd>
+            {Object.keys(confirming.payload.qualifiers ?? {}).length > 0 ? (
+              <ul className={memoryStyles.tags}>
+                {Object.entries(confirming.payload.qualifiers ?? {}).map(([k, v]) => (
+                  <li key={k}>{k}: {v}</li>
+                ))}
+              </ul>
+            ) : (
+              t('capabilities.empty')
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>{t('shared.valid')}</dt>
+          <dd>
+            {typeof confirming.payload.valid?.from === 'number'
+              ? new Date(confirming.payload.valid.from).toLocaleString(t('activity.locale'))
+              : t('shared.unknown')}
+            {' → '}
+            {typeof confirming.payload.valid?.to === 'number'
+              ? new Date(confirming.payload.valid.to).toLocaleString(t('activity.locale'))
+              : t('shared.unbounded')}
+          </dd>
+        </div>
+      </dl>
       <p>{t(scope === 'quarantine' ? 'shared.assignNotice' : 'shared.confirmNotice')}</p>
       <button type="button" className={styles.primaryButton} onClick={() => { void perform(async () => {
         const result = await binding.remote().confirm({ id: confirming.version.memoryId, versionId: confirming.version.versionId, expectedRevision: preview.revision,

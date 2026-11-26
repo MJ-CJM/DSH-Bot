@@ -26,6 +26,7 @@ import { GROUP_ATTACHMENT_LIMIT, GROUP_TEXT_MAX_BYTES, groupKey, groupViewSchema
 import { GROUP_MEMBER_LIMIT } from '../../shared/group-limits.js';
 import type { BotRecord } from '../../shared/schema.js';
 import { GroupRouteUnavailable, type GroupActions, type GroupDraft, unwrapGroup } from '../groups-state.js';
+import { formatBytes } from '../format-bytes.js';
 import { BotAvatar } from './BotAvatar.js';
 import styles from '../styles/groups.module.css';
 import css from '../styles/groups.module.css?inline';
@@ -297,6 +298,8 @@ export function GroupEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<'conflict' | 'member-limit'>();
   const memberHintId = useId();
+  const modeHintId = useId();
+  const saveHintId = useId();
   const intent = useRef({
     operationId: `create:${crypto.randomUUID()}`,
     signature: '',
@@ -312,6 +315,26 @@ export function GroupEditor({
     setMembers(next);
     setConfirmed(false);
   };
+  const botDisplayName = (b: BotRecord) =>
+    bots.some((other) => (other.id !== b.id || other.createdAt !== b.createdAt) && other.name === b.name)
+      ? `${b.name} · ${b.id}`
+      : b.name;
+  const memberDisplayName = (k: ReturnType<typeof keyOf>) => {
+    const matched = bots.find((b) => b.id === k.botId && b.createdAt === k.botCreatedAt);
+    if (!matched) return `${t('groups.unavailable')} · ${k.botId}`;
+    return botDisplayName(matched);
+  };
+  const saveDisabled = busy || !confirmed || (!creationSaved && !canSaveMembers);
+  const saveRequirements: string[] = [];
+  if (!busy && !creationSaved && !canSaveMembers) {
+    if (legacyOverLimit) saveRequirements.push(t('groups.saveRequirement.reduceLegacy', { limit }));
+    else if (members.length < 2) saveRequirements.push(t('groups.saveRequirement.minMembers'));
+    else saveRequirements.push(t('groups.saveRequirement.maxMembers', { limit }));
+  }
+  if (!busy && !confirmed) {
+    saveRequirements.push(t('groups.saveRequirement.historyConsent'));
+  }
+  const requirementSeparator = t('activity.locale').startsWith('zh') ? '；' : '; ';
   return (
     <form
       ref={editorForm}
@@ -319,13 +342,13 @@ export function GroupEditor({
       aria-label={t(initial ? 'groups.edit' : 'groups.create')}
       onSubmit={(e) => {
         e.preventDefault();
-        if (busy || !confirmed || (!creationSaved && !canSaveMembers)) return;
+        if (saveDisabled) return;
         setBusy(true);
         setError(undefined);
         const input = {
           name: name.trim() || members.map(key => bots.find(bot => bot.id === key.botId && bot.createdAt === key.botCreatedAt)?.name ?? key.botId).join('、').slice(0, 120),
           mode,
-          onDemand,
+          ...(mode === 'natural' ? { onDemand } : {}),
           members,
           ...(cwd ? { cwd } : {}),
           historyConfirmed: true as const,
@@ -347,7 +370,7 @@ export function GroupEditor({
       {error && <p role="alert">{t(creationSaved ? 'groups.createdOpenFailed' : error === 'member-limit' ? 'groups.memberLimitFailed' : 'groups.conflict', { limit })}</p>}
       <label>
         {t('groups.name')}
-        <input disabled={busy || creationSaved} value={creationSaved ? createdName ?? name : name} onChange={(e) => setName(e.target.value)} />
+        <input disabled={busy || creationSaved} placeholder={t('groups.namePlaceholder')} value={creationSaved ? createdName ?? name : name} onChange={(e) => setName(e.target.value)} />
       </label>
       <fieldset aria-describedby={memberHintId}>
         <legend>{t('groups.members')}</legend>
@@ -366,7 +389,7 @@ export function GroupEditor({
                 }}
               />
               <BotAvatar bot={b} size={24} />
-              {b.name} ({b.id})
+              {botDisplayName(b)}
             </label>
           );
         })}
@@ -375,33 +398,34 @@ export function GroupEditor({
       {!initial && <GroupWorkspaceField cwd={cwd} onChange={setCwd} workspaces={workspaces} onPickDirectory={onPickDirectory}
         disabled={busy || Boolean(creationSaved)} t={t} />}
       <details className={styles.advanced}><summary>{t('groups.advanced')}</summary>
-      <label><input type="checkbox" checked={onDemand} disabled={busy || creationSaved || mode !== 'natural'} onChange={event => setOnDemand(event.target.checked)} />{t('teams.onDemand')}</label>
         <label>
-        {t('groups.mode')}
-        <select disabled={busy || creationSaved} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-          <option value="natural">{t('groups.natural')}</option>
-          <option value="mention">{t('groups.mention')}</option>
-          <option value="round-robin">{t('groups.round-robin')}</option>
-        </select>
-      </label>
+          {t('groups.mode')}
+          <select aria-describedby={modeHintId} disabled={busy || creationSaved} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+            <option value="natural">{t('groups.natural')}</option>
+            <option value="mention">{t('groups.mention')}</option>
+            <option value="round-robin">{t('groups.round-robin')}</option>
+          </select>
+        </label>
+        <p id={modeHintId} className={styles.modeHint} data-group-mode-hint="">{t(`groups.modeHint.${mode}`)}</p>
+        {mode === 'natural' && (
+          <div className={styles.onDemandGroup} data-group-ondemand-field="">
+            <label className={styles.onDemandToggle}>
+              <input type="checkbox" checked={onDemand} disabled={busy || creationSaved} onChange={event => setOnDemand(event.target.checked)} />
+              {t('teams.onDemand')}
+            </label>
+            <p className={styles.modeHint}>{t('teams.onDemandHint')}</p>
+          </div>
+        )}
       <ol>
-        {members.map((k, i) => (
+        {members.map((k, i) => {
+          const label = memberDisplayName(k);
+          return (
           <li key={`${k.botId}:${k.botCreatedAt}`}>
-            {bots.find((b) => b.id === k.botId && b.createdAt === k.botCreatedAt)?.name ??
-              t('groups.unavailable')}{' '}
-            ({k.botId})
-            <button
-              type="button"
-              disabled={busy || creationSaved}
-              aria-label={`${t('groups.removeMember')} ${k.botId}`}
-              onClick={() => change(members.filter((m) => m !== k))}
-            >
-              {t('groups.removeMember')}
-            </button>
+            {label}
             <button
               type="button"
               disabled={busy || creationSaved || i === 0}
-              aria-label={`${t('groups.moveUp')} ${k.botId}`}
+              aria-label={`${t('groups.moveUp')} ${label}`}
               onClick={() => {
                 const next = [...members];
                 [next[i - 1], next[i]] = [next[i] as typeof k, next[i - 1] as typeof k];
@@ -410,8 +434,29 @@ export function GroupEditor({
             >
               {t('groups.moveUp')}
             </button>
+            <button
+              type="button"
+              disabled={busy || creationSaved || i === members.length - 1}
+              aria-label={`${t('groups.moveDown')} ${label}`}
+              onClick={() => {
+                const next = [...members];
+                [next[i], next[i + 1]] = [next[i + 1] as typeof k, next[i] as typeof k];
+                change(next);
+              }}
+            >
+              {t('groups.moveDown')}
+            </button>
+            <button
+              type="button"
+              disabled={busy || creationSaved}
+              aria-label={`${t('groups.removeMember')} ${label}`}
+              onClick={() => change(members.filter((m) => m !== k))}
+            >
+              {t('groups.removeMember')}
+            </button>
           </li>
-        ))}
+          );
+        })}
       </ol>
       </details>
       <p>{t('groups.capabilities')}</p>
@@ -425,8 +470,13 @@ export function GroupEditor({
         />
         {t('groups.historyConsent')}
       </label>
+      {saveRequirements.length > 0 && (
+        <p id={saveHintId} role="status" className={styles.saveHint} data-group-save-hint="">
+          {t('groups.saveRequirements', { reasons: saveRequirements.join(requirementSeparator) })}
+        </p>
+      )}
       <div className={styles.bar}>
-        <button type="submit" disabled={busy || !confirmed || (!creationSaved && !canSaveMembers)}>
+        <button type="submit" disabled={saveDisabled} aria-describedby={saveRequirements.length > 0 ? saveHintId : undefined}>
           {t(creationSaved ? 'groups.open' : 'integrations.save')}
         </button>
         <button type="button" disabled={busy} onClick={() => leave(onCancel)}>
@@ -1015,7 +1065,7 @@ export function GroupConversation({
         {(filesOverLimit || uploads.length > GROUP_ATTACHMENT_LIMIT) && <p role="alert">{t('groups.attachmentLimit', { limit: GROUP_ATTACHMENT_LIMIT })}</p>}
         {uploads.length > 0 && <ul className={styles.attachments} aria-label={t('groups.attachments')}>
           {uploads.map(upload => <li key={upload.id}>
-            <span>{upload.name} · {upload.bytes.toLocaleString()} B · {t(`groups.${upload.state}`)}</span>
+            <span>{upload.name} · {formatBytes(upload.bytes, t('activity.locale'))} · {t(`groups.${upload.state}`)}</span>
             <button type="button" disabled={busy} aria-label={t('groups.removeAttachment', { name: upload.name })} onClick={() => {
               setFilesOverLimit(false);
               uploadControllers.current.get(upload.id)?.abort();

@@ -144,6 +144,7 @@ export function BotsRightTab({
             void activate(id);
           }}
           compact
+          showActivateAction
           t={t}
           disabled={busy || !catalog.loaded || catalog.loading || Boolean(catalog.error) || sessions.phase !== 'ready'}
         />

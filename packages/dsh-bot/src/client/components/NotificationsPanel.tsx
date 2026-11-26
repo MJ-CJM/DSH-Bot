@@ -248,9 +248,18 @@ export function NotificationsPanel(props: IntegrationPanelProps) {
               }}
             />
           </label>
-          <p>
-            {policy.targetRef ?? 'in-app'} · {policy.scopeDigest}
+          <p data-notification-test-target="">
+            {t('notifications.testTarget', {
+              target: policy.targetRef ?? t('notifications.inApp'),
+              channel: policy.channel,
+            })}
           </p>
+          <details data-notification-scope-details="">
+            <summary>{t('settings.diagnostics')}</summary>
+            <p>
+              {t('notifications.scopeDigestLabel')}: <code>{policy.scopeDigest}</code>
+            </p>
+          </details>
           <label>
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
             {t('notifications.confirmSend')}
