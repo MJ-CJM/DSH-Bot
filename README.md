@@ -10,11 +10,11 @@
 
 **下载与安装：** [DSH 插件社区](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/) · [GitHub 发布](https://github.com/MJ-CJM/DSH-Bot/releases) · [安装指南](#安装与兼容性)
 
-**本版本：0.7.4（npm 包名 `dsh-botgroup`）。** 功能与验收范围见 [0.7.4 发布说明](docs/releases/v0.7.4.md)。[更新记录](CHANGELOG.md)。公开发布状态和下载版本以 [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) 与 [npm latest](https://www.npmjs.com/package/dsh-botgroup) 为准。
+**本版本：0.7.5（npm 包名 `dsh-botgroup`）。** 功能与验收范围见 [0.7.5 发布说明](docs/releases/v0.7.5.md)。[更新记录](CHANGELOG.md)。公开发布状态和下载版本以 [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) 与 [npm latest](https://www.npmjs.com/package/dsh-botgroup) 为准。
 
-### 统一管理群成员
+### 群聊也能使用已配置工具
 
-可从群目录、管理页和右侧成员栏进入同一个「管理成员」，添加、移出或排序并在保存前核对变更。移出保留 Bot、私聊、私有记忆和群历史；只有新增成员才确认新读者的历史范围。见 [0.7.4 发布说明](docs/releases/v0.7.4.md)。
+普通群成员、自动协作成员和受邀 Bot 可使用已配置的搜索、网页读取、文件、Shell 和 MCP 工具。Bot 工具禁用、群根会话审批策略和宿主沙箱继续生效；需要批准时仍由原生审批入口确认，等待期间撤销会阻止执行。群发送、保存恢复和编辑流程也有改进。见 [0.7.5 发布说明](docs/releases/v0.7.5.md)。
 
 ![个人 Bot 工作区示例](packages/dsh-bot/assets/showcase/zh-bots.png)
 
@@ -33,10 +33,11 @@
 
 ## 常用功能在哪里
 
-0.7.4 重点完善统一成员管理、移出确认、完整名单和成员变更后的状态同步。完整变化见 [0.7.4 发布说明](docs/releases/v0.7.4.md)。
+0.7.5 改进群工具与审批、发送和保存恢复、Bot／群编辑、界面无障碍、客户端性能与 Host 并发稳定性。完整变化见 [0.7.5 发布说明](docs/releases/v0.7.5.md)。
 
 | 想做什么 | 入口与行为 |
 | --- | --- |
+| 在群里使用搜索、文件、Shell 或 MCP | 复用对应 Bot 已配置的工具，遵守原生审批与沙箱；私有结果仍按现有回传权限检查。 |
 | 在群里问群外 Bot | 普通群中直接问对方，或请指定成员代问并回群答复；展开转问可核对实际问答原文。 |
 | 审核与阅读群回复 | 同轮回复集中预览、按勾选范围批准本次发送；逐条或整轮展开、收起，保留阅读位置。 |
 | 把群消息记下来 | 输入「只记下来：……」，或从 `+` 选择「只记录记忆」；各成员分别保存私有记忆，群里只报告状态。 |
@@ -94,8 +95,8 @@ Supergroup 复用 DSH 原生子任务、模型、工具和审批能力。已有 
 
 | 范围 | 当前说明 |
 | --- | --- |
-| 本版本 | `0.7.4`；公开状态与可下载附件以 [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) 和 [npm](https://www.npmjs.com/package/dsh-botgroup) 为准。 |
-| 插件安装包 | `dsh-botgroup-0.7.4.tgz`；同一 Release 内的固定名 `dsh-bot.tgz` 为同字节别名。 |
+| 本版本 | `0.7.5`；公开状态与可下载附件以 [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) 和 [npm](https://www.npmjs.com/package/dsh-botgroup) 为准。 |
+| 插件安装包 | `dsh-botgroup-0.7.5.tgz`；同一 Release 内的固定名 `dsh-bot.tgz` 为同字节别名。 |
 | 推荐目标 | 官方 macOS arm64 DSH **0.2.2-rc.5 + 官方 web-app + 一个 dsh-botgroup 产品包**。本版同包验证与升级结果见发布说明。 |
 | 其他宿主 | 声明范围为 `>=0.2.1-rc.2 <0.3.0`，开发依赖锁定 `0.2.1-rc.2`；范围不代表所有版本或平台实测。 |
 
@@ -105,7 +106,7 @@ Supergroup 复用 DSH 原生子任务、模型、工具和审批能力。已有 
 
 打开 [DSH 插件社区中的 DSH-Bot](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/)，查看插件介绍、下载入口与 npm 安装信息。安装前核对页面所示版本，并阅读对应 GitHub Release 的兼容说明。
 
-公开 npm 包名为 **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**；产品品牌、插件 ID 与数据目录仍为 DSH-Bot／`dsh-bot`。本版本对应的版本包为 `dsh-botgroup-0.7.4.tgz`。固定下载名 `dsh-bot.tgz` 指向实际 latest 发布的原包，下载后请核对版本。
+公开 npm 包名为 **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**；产品品牌、插件 ID 与数据目录仍为 DSH-Bot／`dsh-bot`。本版本对应的版本包为 `dsh-botgroup-0.7.5.tgz`。固定下载名 `dsh-bot.tgz` 指向实际 latest 发布的原包，下载后请核对版本。
 
 打开对应 [Release](https://github.com/MJ-CJM/DSH-Bot/releases)，阅读它自己的兼容说明，下载插件 tgz 和同一 Release 的校验文件。macOS 校验示例：
 
@@ -117,7 +118,7 @@ shasum -a 256 -c dsh-bot.tgz.sha256
 
 ### 升级与迁移
 
-本版安装和迁移条件见 [0.7.4 发布说明](docs/releases/v0.7.4.md)。请用对应包的校验和验证下载，再在已验证的宿主组合中安装。
+本版安装和迁移条件见 [0.7.5 发布说明](docs/releases/v0.7.5.md)。请用对应包的校验和验证下载，再在已验证的宿主组合中安装。
 
 从旧 `dsh-bot` 包迁移时，先停止 Host 并备份完整 profile 和数据，通过原生插件管理移除旧包，再安装 `dsh-botgroup`。启动前检查 profile 的 `cordis.patch.yml`：原 `id: dsh-bot` 覆盖行若带 `name: dsh-bot`，仅改成 `name: dsh-botgroup`，保留 id、config 与 dataDir；没有 name 的行无需新增。不要同时保留两个包依赖或 bundle；自定义包含层／模板中的旧包引用需另行核对。[迁移说明](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7)。
 
@@ -125,7 +126,7 @@ shasum -a 256 -c dsh-bot.tgz.sha256
 
 ## 验证与边界
 
-公开安装包校验和、隔离 Host／浏览器验收及升级验证以 [0.7.4 发布说明](docs/releases/v0.7.4.md) 为准。
+公开安装包校验和、隔离 Host／浏览器验收及升级验证以 [0.7.5 发布说明](docs/releases/v0.7.5.md) 为准。
 
 真实付费模型的专业质量、外部账号认证、外部 IM 收发及未来宿主自动适配未由这些检查证明。任务依赖本地 Host 运行；当前不提供云端常驻、系统退出后的持续执行或系统／手机推送。不确定的执行结果不会自动重放。
 

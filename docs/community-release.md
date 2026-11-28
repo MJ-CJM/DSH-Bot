@@ -1,6 +1,6 @@
 # 社区发布与候选准备
 
-当前公开稳定版为 [v0.7.3](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.3)（2026-11-23），npm 包为 [dsh-botgroup@0.7.3](https://www.npmjs.com/package/dsh-botgroup/v/0.7.3)。下载入口见 [DSH 插件社区](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/)，精确原包、校验和与验收范围见 [0.7.3 发布说明](releases/v0.7.3.md)。
+公开发布状态与可下载版本以 [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) 和 [npm latest](https://www.npmjs.com/package/dsh-botgroup) 为准，每次发版重新核对，源码版本号或本地候选不代表已公开发布。此次 0.7.5 准备采用已核对的公开 [v0.7.4](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.7.4)／[dsh-botgroup@0.7.4](https://www.npmjs.com/package/dsh-botgroup/v/0.7.4) 作为升级基线。下载入口见 [DSH 插件社区](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/)，各版本的精确原包、校验和与验收范围见对应发布说明；本轮见 [0.7.5 发布准备](releases/v0.7.5.md)。
 
 ## 本地检查与唯一候选
 
@@ -31,7 +31,7 @@ MIT 许可证及第三方告知须保留。包内只包含 files 白名单；不
 
 开发依赖参考锁定 DSH `0.2.1-rc.2`。使用仓库隔离 `DSH_HOME="$PWD/.dsh-dev"` 和 `scripts/dsh`；各实际运行器进一步隔离 profile／存储，完整 Host 串行运行。源码检查、真实 Host＋合成模型、Browser、桌面及真实模型质量分别报告。
 
-当前原生工作区版本只打包 `dsh-botgroup` 产品，目标为官方 rc.5 + 官方 web-app；0.7.3 的同包 Host、浏览器、冷启动与公开 0.7.2 升级结果见[发版验收](verification/v073-release.md)。后续候选继续使用同一冻结包验证相应组合。隔离 profile 安装/定向回退工具见[迁移说明](verification/native-workspace-migration.md)。缺少最终同包证据时保持未验收，不因打包成功公布支持。
+当前原生工作区版本只打包 `dsh-botgroup` 产品，目标为官方 rc.5 + 官方 web-app；此前 0.7.4 的同包 Host、浏览器、冷启动与公开 0.7.3 升级结果见[历史发版验收](verification/v074-release.md)。后续候选继续使用同一冻结包验证相应组合。隔离 profile 安装/定向回退工具见[迁移说明](verification/native-workspace-migration.md)。缺少最终同包证据时保持未验收，不因打包成功公布支持。
 
 以下是 11 月 16 日 0.7.0 旧候选的历史复现流程，保留旧适配构建工具以便核查，不作为新候选的安装前提。该候选使用 `scripts/openmaus-regression.mjs --include-review` 验证精确产品／适配 tgz；通过明确的 `--artifact`、`--compat`、`--app` 及两个 SHA 参数输入。官方 rc.3 适配使用独立 `dsh-bot-web-app`；普通产品包不替代原生 Client。新适配构建使用下列完整命令（先将官方应用放入仓库隔离目录，output 必须是新目录），记录精确 ASAR SHA，保留原生许可证及完整文件清单。
 
