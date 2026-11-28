@@ -2010,6 +2010,10 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 
 原生 spawn 默认把子任务审批固定为 `never`，不会自动沿用群根的 `ask`。DSH-Bot 对准确有效的正常群成员，通过公开 `approval.overrideOf(root.session)` 和 `approval.config.policy` 读取 owner 的群策略，再以公开 `approval.setPolicy(child, policy)` 同步 `ask / never`；首次入场及 `agent/pre-step` 均核对，覆盖同一成员续办。仅同步审批策略，不修改继承的沙箱，也不自动批准。最终工具执行还核对根身份与当前策略，审批等待期间根切换为 `never` 时，旧批准不能继续执行。额外 required 群权限 context 明确这一产品策略，保留原生上下文。未调用声明为私有的 `effectivePolicy`，也未把群根伪造成开放模型 turn 代理审批。
 
+PR #69 复审补充：原生 `ToolBash` 可在工具 body 内请求沙箱提权，发生在 `tools/execute` 前置检查之后。因此成员 scope 还注册公开 `approval/request` prepend waterfall：进入时固定准确根 Agent、策略及公开 `approval/policy` 事件版本，等待 answerer 返回后、原生 `ApprovalService.request()` 返回前再次核对。根策略往返变化、reservation 失效、根替换、取消或 effect 卸载均使旧批准失效；等待期间的下一次 pre-step 刷新不能重新授权旧请求。失效的 `allowed-once` 转为 `rejected`，取消转为 `cancelled`，由原生 `approval/decided` 记录最终结果，随后原生工具自行拒绝执行。该 hook 与其它资源一起纳入 `agent.ctx.effect`，不包装私有审批方法、不修改 DSH 源码。
+
+新增精确锁定的开发测试依赖 `@deepseek-ai/dsh-tool-bash@0.2.1-rc.2`，用于实际原生 ToolBash + ToolRuntime + ApprovalService 的审批等待回归；不增加插件运行时依赖。模拟 Shell 执行器的单测与官方 Host 的真实文件副作用检查分别记录在验证报告中。
+
 锁定的 DSH `SandboxExecutionPolicy.workspaceRoot` 指定可写工作区，不能作为禁止读取其他 Bot 私聊目录的操作系统边界。文件、Shell 等可能读取本地私有来源的工具在执行前收窄当前数据读者，回群仍走已有准确正文授权；搜索和网页读取保留当前读者，不清除已有私有或撤销标签。MCP 沿用目标审批和未知来源处理，不承诺任意 Shell 或第三方工具的数据防外泄。传统后台委派和主会话处理队友消息的既有用途限制不变。
 
 连接器通过 Cordis 公开 `Context.extend(meta)` 为本次原生 `mcp.apply` 提供工具注册包装，只观察公开 `ToolRuntime.register` 及返回的 disposer，登记该原生连接器实际注册的定义。重连产生新定义时更新归属，旧代 disposer 不移除新定义；未通过该注册路径的同名工具不能借用连接器权限。原 Agent scope、原生资源和卸载生命周期保留。
