@@ -92,13 +92,17 @@ describe('B6b product boundary wiring (UNIT: native transport doubles, real JSON
       Object.assign(f.registry, x.registry(), { memoryAdmission: { assertAllowed() {} } });
       const { agent } = f.createAgent('clean'), calls = vi.fn(async () => ({ text: 'UNTRUSTED_CONNECTOR_RESPONSE' }));
       const definition = { id: 'fixture', revision: 1, serverName: 'fixture', enabled: true, transport: 'stdio', command: 'synthetic' };
+      const connectorTool = defineTool({ name: 'mcp__fixture__send', description: 'Synthetic connector',
+        parameters: {}, output: { schema: { type: 'object', additionalProperties: true }, render: () => [] }, execute: calls });
       f.ctx.provide('dshBotConnectors', { runtime: () => [{ sessionId: 'clean', assignmentId: 'assignment', state: 'ready' }],
         assignments: () => [{ id: 'assignment', enabled: true, connectorId: 'fixture', desiredRevision: 1 }],
-        definitions: () => [definition] } as unknown as Context['dshBotConnectors']);
+        definitions: () => [definition],
+        ownsTool: (owner: Agent, assignmentId: string, name: string) => owner === agent && assignmentId === 'assignment' &&
+          name === connectorTool.name && owner.ctx.tools.get(name, owner) === connectorTool,
+      } as unknown as Context['dshBotConnectors']);
       const off = f.ctx.on('approval/request', async () => 'allowed-once');
       protectDataFlow(agent, alpha, f.registry);
-      const release = agent.ctx.tools.register(defineTool({ name: 'mcp__fixture__send', description: 'Synthetic connector',
-        parameters: {}, output: { schema: { type: 'object', additionalProperties: true }, render: () => [] }, execute: calls }));
+      const release = agent.ctx.tools.register(connectorTool);
       const run = (name: string) => agent.ctx.tools.execute({ agent, name, arguments: {}, callId: ToolCallId(crypto.randomUUID()),
         signal: new AbortController().signal });
       expect((await run('mcp__fixture__send')).isError).toBe(false); expect(calls).toHaveBeenCalledTimes(1);

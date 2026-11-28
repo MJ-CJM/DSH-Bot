@@ -50,15 +50,15 @@ describe('native execution: real ToolRuntime + native provider doubles + real JS
     await expect(x.flow.admit(other)).rejects.toThrow();
   }));
 
-  it('retains explicit group audience and never promotes private/unknown ingress to shared', async () => fixture(async (x, f) => {
+  it('narrows local file results to the owning Bot and never promotes unknown ingress to shared', async () => fixture(async (x, f) => {
     for (const [id, readers] of [['group-child', [alpha, beta]], ['unknown-child', []]] as const) {
       const { agent } = f.createAgent(id);
       await x.flow.inherit(id, { readers: [...readers], originTrust: 'user_confirmed', sourceVersions: [], restrictions: [], grants: [] });
       agent.ctx.tools.register(tool('read')); protectDataFlow(agent, alpha, f.registry);
       expect((await execute(agent, 'read')).isError).toBe(false);
-      expect(x.flow.label(id).readers).toEqual(readers); expect(x.flow.label(id).originTrust).toBe('candidate');
+      expect(x.flow.label(id).readers).toEqual(id === 'group-child' ? [alpha] : readers); expect(x.flow.label(id).originTrust).toBe('candidate');
       if (id === 'group-child') await expect(x.flow.admit(x.flow.draft('group-result', alpha, id, 'group',
-        { kind: 'group', groupId: 'g', groupCreatedAt: 1, members: [alpha, beta] }, 'RESULT'))).resolves.toBeTypeOf('string');
+        { kind: 'group', groupId: 'g', groupCreatedAt: 1, members: [alpha, beta] }, 'RESULT'))).rejects.toThrow('authorization');
     }
     const { agent } = f.createAgent('clean'); agent.ctx.tools.register(tool('read')); protectDataFlow(agent, alpha, f.registry);
     expect((await execute(agent, 'read')).isError).toBe(false); expect(x.flow.label('clean').readers).toEqual([alpha]);

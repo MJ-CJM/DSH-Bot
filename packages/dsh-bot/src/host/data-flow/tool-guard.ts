@@ -1,3 +1,4 @@
+import { registerWorkerExternalCapabilities } from '../groups/worker-capabilities.js';
 import { isAdmittedSupergroupInput } from '../supergroup/input-capability.js';
 import { graphCapability } from './graph-capability.js';
 import { connectorDestination, connectorDispatch } from './connector-boundary.js';
@@ -42,6 +43,7 @@ export function protectDataFlow(agent: Agent, bot: BotKey, registry: DshBotRegis
   const legacy = !flow.kernel.domain.table('flow_sessions').get(agent.session.id) &&
     agent.session.snapshotEvents().some(e => ['user/message', 'assistant/message', 'tool/result'].includes(e.type));
   return agent.ctx.effect(() => {
+    const releaseExternal = registerWorkerExternalCapabilities(agent, name => native.candidate(name) ? native.owns(name) : Boolean(connectorDestination(agent, name)));
     const off = agent.ctx.on('agent/pre-step', async (payload, next) => {
       native.capture();
       const persisted = flow.kernel.domain.table('flow_sessions').get(agent.session.id);
@@ -92,6 +94,6 @@ export function protectDataFlow(agent: Agent, bot: BotKey, registry: DshBotRegis
         await flow.inherit(agent.session.id, unknownLabel());
       return value;
     }, { prepend: true });
-    return () => { off(); guard(); result(); };
+    return () => { releaseExternal(); off(); guard(); result(); };
   }, 'dsh-bot: retained data-flow guard');
 }

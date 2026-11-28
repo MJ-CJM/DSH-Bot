@@ -43,15 +43,20 @@ rc.2 的公开 ToolDefinition **没有 publisher/package 来源认证字段**。
 这明确收窄了旧版“所有未审计工具一律阻断”的保证：native 模式不能承诺对任意 curl、脚本、文件副作用进行逐字数据防外泄。
 本机共享目录本身也不是 Bot 文件隔离沙箱。希望恢复旧阻断的部署可设置 restricted。
 
-工具派发前将当前来源降为 candidate，但保留当前 readers、sourceVersions、restrictions 和 grants；
-原来 readers=shared 的新读入收窄为当前 Bot，已有明确群 audience 保留，unknown readers=[] 保持为空。
-因此未知文件/网页不会成为 shared 记忆，私有记忆不会因工具执行扩大 audience，同 Bot 子任务与明确群任务仍能回到原范围。
+工具派发前将当前来源降为 candidate，合并时保留 sourceVersions、restrictions 和已有授权约束。
+原来 readers=shared 的新读入收窄为当前 Bot；搜索和网页读取保留已有明确群 audience。
+文件、Shell、技能及后台命令输出等可能读取本地私有来源的工具进一步将读者收窄到当前 Bot，unknown readers=[] 保持为空。
+因此私有记忆不会因工具执行扩大 audience；群成员读到本地文件后的结果沿用已有准确正文授权再回群。
 revoked/pending-cleanup/secret 来源硬拒绝；内核不可读、所有权丢失和取消也不能执行。
 
 `send_message` 除原生精确 live caller/亲子授权外，还要求目标有受管 session 标签，且目标 audience 不宽于当前来源。
 发送前向目标继承来源 lineage；未知目标或跨范围目标拒绝，防止绕过 bot_delegate 的受检结果回传。
 其他跨 Bot 消息、共享记忆发布、图谱准确调用能力和受管 connector 保留原有精确范围/授权检查。
 无论 native 工具是否成功都不自动将读到的内容保存/发布为 shared memory。
+
+正常群成员、自动协作成员和受邀 Bot 使用此同一执行策略，并可挂载分配给自身的 MCP 工具。
+群工具保护在模型目录、实际调用和异步等待后的最终派发处重新核对存活 reservation；
+记忆专用回合、受限跟进和失效任务仍不开放通用工具。具体变更与运行证据见[群工具权限验证](../verification/group-tool-permissions.md)。
 
 ## 验证证据与边界
 

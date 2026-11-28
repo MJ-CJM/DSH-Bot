@@ -218,7 +218,7 @@ describe('built bundle contract', () => {
         'bot_supergroup.collaborationGuidance', 'bot_supergroup.collaborationRevoked', 'bot_supergroup.description', 'bot_supergroup.identity', 'bot_supergroup.instructions',
         'bot_supergroup.messageDraftInstructions', 'bot_supergroup.messageEmptyReply', 'bot_supergroup.messageFailed', 'bot_supergroup.messageNotified', 'bot_supergroup.messageReceiverInstructions',
         'bot_supergroup.scope', 'bot_supergroup.taskQuestion', 'bot_supergroup.textToolBoundary', 'bot_supergroup.unadmittedInput',
-        'dataFlow.export.approval', 'dataFlow.message.approval', 'group_message.description', 'group_message.expertGuidance', 'schedule.guidance',
+        'dataFlow.export.approval', 'dataFlow.message.approval', 'group_message.approvalGuidance', 'group_message.description', 'group_message.expertGuidance', 'schedule.guidance',
       ]);
       for (const value of Object.values(dictionary)) expect(value.trim()).not.toBe('');
     }

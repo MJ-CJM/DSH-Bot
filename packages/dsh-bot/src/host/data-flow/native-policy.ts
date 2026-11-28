@@ -1,3 +1,4 @@
+import { assertWorkerExecution } from '../groups/worker-capabilities.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools';
 import type { BotKey } from '../../shared/identity.js';
@@ -15,18 +16,15 @@ import { canReadLabel } from './labels.js';
  * Creation of children remains managed by bot_delegate, which records their audience before startup.
  * run_code remains closed: its transport and all nested dispatches need a separate audit.
  */
-export const NATIVE_TOOL_NAMES = [
-  'read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh',
-  'web_search', 'web_fetch', 'skill', 'present', 'job_output', 'job_list', 'job_kill',
-  'schedule_create', 'schedule_list', 'schedule_update', 'schedule_delete',
-  'list_agents', 'send_message', 'interrupt_agent', 'ask_user_question', 'todo_write',
-  'get_goal', 'create_goal', 'update_goal', 'bot_manage',
-] as const;
+export { NATIVE_TOOL_NAMES } from './native-tools.js';
+import { NATIVE_TOOL_NAMES } from './native-tools.js';
 
 /** Host registration is trusted, not third-party plugin isolation. rc.2 exposes exact definitions
  * via tools.get, but no public publisher identity. Pin all visible definitions once after preset
  * initialization (first pre-step, or first direct dispatch); reject subsequent shadow/replacements.
  */
+const privateSourceTools = new Set(['write', 'edit', 'read', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'skill', 'job_output']);
+
 export function nativePolicy(agent: Agent, bot: BotKey, registry: DshBotRegistry, flow: ManagedOutlets) {
   let definitions: Map<string, ToolDefinition> | undefined;
   const enabled = () => registry.config?.nativeToolPolicy !== 'restricted';
@@ -47,6 +45,7 @@ export function nativePolicy(agent: Agent, bot: BotKey, registry: DshBotRegistry
   const assertAllowed = (exec: ToolExecution) => {
     exec.signal.throwIfAborted();
     if (exec.agent !== agent || !owns(exec.name)) throw new Error('Native tool identity changed or unavailable');
+    assertWorkerExecution(agent, exec.name);
     flow.kernel.assertReadable(); flow.kernel.assertOwnership();
     const label = flow.label(agent.session.id);
     if (label.restrictions.some(r => ['revoked', 'pending-cleanup', 'secret'].includes(r)))
@@ -61,9 +60,9 @@ export function nativePolicy(agent: Agent, bot: BotKey, registry: DshBotRegistry
     },
     async dispatch<T>(exec: ToolExecution, next: () => Promise<T>): Promise<T> {
       const label = assertAllowed(exec);
-      // Same trusted execution audience, candidate content. Never broaden an unknown or private
-      // audience to shared; group children retain their explicit group audience for checked return.
-      await flow.inherit(agent.session.id, { ...label, readers: label.readers === 'shared' ? [bot] : label.readers,
+      // File, shell and job results can contain the Bot's private data. Narrow before
+      // execution so group return must pass the existing exact-content approval boundary.
+      await flow.inherit(agent.session.id, { ...label, readers: privateSourceTools.has(exec.name) || label.readers === 'shared' ? [bot] : label.readers,
         originTrust: 'candidate' });
       if (exec.name === 'send_message') {
         const args = exec.arguments as { agent_id?: unknown };

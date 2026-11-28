@@ -771,6 +771,9 @@ describe('Issue #56 Fix 2: ConcurrentGroups.deliver() resumed (prior) protocol-2
             parentSession: input.request.parent.session.id,
             agentPreset: input.request.agentPreset,
           });
+          // Match the native worker's injected services and policy-notice surface.
+          Object.assign(worker.value, { inject: vi.fn() });
+          await worker.scope.ctx.plugin({ inject: ['tools', 'systemPrompt', 'approval'], apply(ctx) { worker.value.ctx = ctx; } }).await();
           await f.ctx.serial(scopeTarget(worker.agent, worker.agent), 'agent/created', {
             agent: worker.agent,
             source: 'startup',
@@ -861,6 +864,9 @@ describe('Issue #56 Fix 2: ConcurrentGroups.deliver() resumed (prior) protocol-2
             parentSession: input.request.parent.session.id,
             agentPreset: input.request.agentPreset,
           });
+          // Match the native worker's injected services and policy-notice surface.
+          Object.assign(worker.value, { inject: vi.fn() });
+          await worker.scope.ctx.plugin({ inject: ['tools', 'systemPrompt', 'approval'], apply(ctx) { worker.value.ctx = ctx; } }).await();
           await f.ctx.serial(scopeTarget(worker.agent, worker.agent), 'agent/created', {
             agent: worker.agent,
             source: 'startup',

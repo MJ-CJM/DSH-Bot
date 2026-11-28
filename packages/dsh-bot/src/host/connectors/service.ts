@@ -1,3 +1,4 @@
+import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
 import { hasOperationCode } from '../../shared/operation-errors.js';
 import { access, constants } from 'node:fs/promises';
 import type { Context } from '@deepseek-ai/cordis';
@@ -23,7 +24,7 @@ interface Live {
   bot: BotKey;
   entries: Map<
     string,
-    { status: ConnectorRuntime; definition?: Connector; child?: Child; requested: boolean; epoch: number }
+    { status: ConnectorRuntime; definition?: Connector; child?: Child; tools?: Map<string, ToolDefinition>; requested: boolean; epoch: number }
   >;
   stopped: boolean;
   tail: Promise<unknown>;
@@ -60,6 +61,13 @@ export class Connectors {
             : 0,
       })),
     );
+  }
+  /** Exact native definitions discovered for this Session and connector generation. */
+  ownsTool(agent: Agent, assignmentId: string, name: string): boolean {
+    const live = [...this.live].find(value => value.agent === agent && !value.stopped);
+    const entry = live?.entries.get(assignmentId), definition = entry?.tools?.get(name);
+    return !this.stopping && entry?.status.state === 'ready' && definition !== undefined &&
+      agent.ctx.tools.get(name, agent) === definition;
   }
   async assertBot(bot: BotKey) {
     const row = await this.registry.get(bot.botId);
@@ -382,8 +390,32 @@ export class Connectors {
           name: 'dsh-bot-private-mcp',
           inject: ['tools'],
           async apply(owner: Context) {
+            // Observe only registrations made by this native MCP instance. Its public
+            // register/disposer calls also identify legitimate reconnect generations;
+            // a same-name registration elsewhere never acquires this ownership.
+            const tools = owner.tools;
+            const trackedTools = new Proxy(tools, {
+              get(target, property, receiver) {
+                if (property !== 'register') return Reflect.get(target, property, receiver);
+                return (definition: ToolDefinition) => {
+                  e.tools ??= new Map();
+                  const owned = e.tools, previous = owned.get(definition.name);
+                  owned.set(definition.name, definition);
+                  let unregister: () => void;
+                  try { unregister = tools.register(definition); }
+                  catch (error) {
+                    if (previous) owned.set(definition.name, previous); else owned.delete(definition.name);
+                    throw error;
+                  }
+                  return () => {
+                    if (owned.get(definition.name) === definition) owned.delete(definition.name);
+                    unregister();
+                  };
+                };
+              },
+            });
             await mcp.apply(
-              owner,
+              owner.extend({ tools: trackedTools }),
               mcp.Config(
                 d.transport === 'stdio'
                   ? {

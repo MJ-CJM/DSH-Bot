@@ -133,6 +133,9 @@ describe('natural groups — real ToolRuntime and persistent JSON, native activa
           parentSession: input.request.parent.session.id, agentPreset: input.request.agentPreset });
         expect(getGroupWorkerBinding(worker.agent)?.audience).toEqual([alpha, beta]);
         expect(getGroupWorkerBinding(worker.agent)?.modelSelection).toEqual(index === 2 ? selected : memberSelected);
+        // Match the native worker's injected services and policy-notice surface.
+        Object.assign(worker.value, { inject: vi.fn() });
+        await worker.scope.ctx.plugin({ inject: ['tools', 'systemPrompt', 'approval'], apply(ctx) { worker.value.ctx = ctx; } }).await();
         await f.ctx.serial(scopeTarget(worker.agent, worker.agent), 'agent/created', { agent: worker.agent, source: 'startup' });
         worker.agent.session.append('turn/start', { turn: 0 }); worker.agent.session.append('step/start', { turn: 0, step: 0 });
         expect(isOwnedGroupTool(worker.agent, 'group_message')).toBe(true);
@@ -186,6 +189,9 @@ describe('natural group safety and bounded continuation', () => {
         const worker = f.createAgent(input.childId); scopes.push(worker.scope);
         worker.value.session = Session.create(input.childId, undefined, { version: 4, id: input.childId, createdAt: Date.now(), isSeeded: false,
           parentSession: input.request.parent.session.id, agentPreset: input.request.agentPreset });
+        // Match the native worker's injected services and policy-notice surface.
+        Object.assign(worker.value, { inject: vi.fn() });
+        await worker.scope.ctx.plugin({ inject: ['tools', 'systemPrompt', 'approval'], apply(ctx) { worker.value.ctx = ctx; } }).await();
         await f.ctx.serial(scopeTarget(worker.agent, worker.agent), 'agent/created', { agent: worker.agent, source: 'startup' });
         const result = await worker.agent.ctx.tools.execute({ agent: worker.agent, name: 'group_message',
           arguments: { action: 'skip' }, callId: ToolCallId('skip'), signal: new AbortController().signal });
@@ -207,6 +213,9 @@ describe('natural group safety and bounded continuation', () => {
         const worker = f.createAgent(input.childId); workers.push(worker);
         worker.value.session = Session.create(input.childId, undefined, { version: 4, id: input.childId, createdAt: Date.now(), isSeeded: false,
           parentSession: input.request.parent.session.id, agentPreset: input.request.agentPreset });
+        // Match the native worker's injected services and policy-notice surface.
+        Object.assign(worker.value, { inject: vi.fn() });
+        await worker.scope.ctx.plugin({ inject: ['tools', 'systemPrompt', 'approval'], apply(ctx) { worker.value.ctx = ctx; } }).await();
         await f.ctx.serial(scopeTarget(worker.agent, worker.agent), 'agent/created', { agent: worker.agent, source: 'startup' });
         const send = (to: string, call: string) => worker.agent.ctx.tools.execute({ agent: worker.agent, name: 'group_message',
           arguments: { action: 'send', to, text: 'question', requestReply: true }, callId: ToolCallId(call), signal: new AbortController().signal });
@@ -229,6 +238,9 @@ describe('natural group safety and bounded continuation', () => {
         const worker = f.createAgent(input.childId); workers.push(worker);
         worker.value.session = Session.create(input.childId, undefined, { version: 4, id: input.childId, createdAt: Date.now(), isSeeded: false,
           parentSession: input.request.parent.session.id, agentPreset: input.request.agentPreset });
+        // Match the native worker's injected services and policy-notice surface.
+        Object.assign(worker.value, { inject: vi.fn() });
+        await worker.scope.ctx.plugin({ inject: ['tools', 'systemPrompt', 'approval'], apply(ctx) { worker.value.ctx = ctx; } }).await();
         await f.ctx.serial(scopeTarget(worker.agent, worker.agent), 'agent/created', { agent: worker.agent, source: 'startup' });
         const result = await worker.agent.ctx.tools.execute({ agent: worker.agent, name: 'group_message',
           arguments: { action: 'send', to: need(members[1]).id, text: 'please answer', requestReply: true }, callId: ToolCallId('ask'), signal: new AbortController().signal });

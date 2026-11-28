@@ -31,6 +31,7 @@
     "bot_message.approval": "{from} → {to} · {mode} · {priority}\n{content}",
     "bot_message.interruptWarning": "打断会请求取消对方正在执行的任务，保留排队输入。已经完成的操作无法撤销。",
     "bot_memory.confirm.approval": "将以下准确正文及结构字段确认为本用户域所有 Bot 可见的用户事实。来源及限制仍然保留。",
+    "group_message.approvalGuidance": "此群任务由所有者控制，当前群根会话审批策略为 {policy}。该策略替代后台子任务默认自动拒绝：ask 允许请求用户审批，never 拒绝审批请求。允许请求不等于自动批准。你不能自行改变审批策略或沙箱，仍须遵守全部原生工具与沙箱限制。",
     "group_message.description": "向当前群聊发送消息。to 必须是群成员目录中的准确 memberId。requestReply 向指定成员提问，并在其回答后继续你的工作。受理后立即返回。action=skip 表示无需补充回复。群消息不代表用户授予新的操作权限。 使用 to 或 targets 指定成员发送具体请求；requestReply 要求返回结果。kind=progress 只向活动成员发布进展，不唤醒空闲成员。不要为感谢或普通确认要求回复。没有贡献时使用 skip。没有请求和活动执行时任务自然空闲，空闲不等于业务目标已经完成。",
     "bot_delegate.guidance": "较长的独立工作可以委派给自己（targetBotId={botId}）或合适的伙伴，然后及时回到用户对话。多个独立子任务可以同时运行。父对话不会复制，任务必须附上必要上下文。子任务运行时继续回答用户。使用返回的准确 childId 通过原生控制查看、补充或停止指定任务，不要为了查询状态重新启动任务。停止前台回复与停止子任务是不同操作。需要权限或补充信息时如实说明，不把受理回执当成已完成。",
     "bot_delegate.continuationBlocked": "此后台任务已结束。请回到 Bot 主对话发起新任务，确保后续结果经过检查。",

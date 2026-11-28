@@ -121,6 +121,27 @@ async function withFixture(run: (value: Awaited<ReturnType<typeof fixture>>) => 
 }
 
 describe('Bot preset context using the published scope and tool services', () => {
+  it('hides and denies an assigned same-layer MCP tool while preserving sibling tools', async () => withFixture(async f => {
+    const record = f.records.get('beta'); if (!record) throw new Error('Missing beta');
+    record.tools.deny = ['mcp__fixture__blocked'];
+    const called = vi.fn(async () => 'MCP_RESULT');
+    const attach = vi.fn(async (subject: Agent) => {
+      const unregister = ['mcp__fixture__blocked', 'mcp__fixture__allowed'].map(name => subject.ctx.tools.register(defineTool({
+        name, description: 'Assigned MCP fixture', parameters: {}, execute: called,
+        output: { schema: { type: 'string' }, render: () => [] },
+      })));
+      return async () => { for (const release of unregister) release(); };
+    });
+    f.ctx.provide('dshBotConnectors', { attach } as unknown as Context['dshBotConnectors']);
+    const preset = await f.preset('beta'), session = f.agent(preset.key); await session.announce();
+    const assembled = await f.ctx.systemPrompt.assemble({ scope: session.subject, agent: session.subject });
+    expect(assembled.tools?.map(tool => tool.name)).toContain('mcp__fixture__allowed');
+    expect(assembled.tools?.map(tool => tool.name)).not.toContain('mcp__fixture__blocked');
+    const call = (name: string) => f.ctx.tools.execute({ agent: session.subject, name, arguments: {},
+      callId: ToolCallId(crypto.randomUUID()), signal: new AbortController().signal });
+    expect((await call('mcp__fixture__blocked')).isError).toBe(true); expect(called).not.toHaveBeenCalled();
+    expect((await call('mcp__fixture__allowed')).isError).toBe(false); expect(called).toHaveBeenCalledOnce();
+  }));
   it('joins a connector start racing preset unload and releases the late child', async () => withFixture(async f => {
     let finish!: (release: () => Promise<void>) => void;
     const childClosed = vi.fn(async () => {});

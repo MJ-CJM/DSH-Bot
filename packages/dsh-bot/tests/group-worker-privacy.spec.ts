@@ -52,7 +52,8 @@ it('isolates group members, guests and resumed sessions in the native tool runti
           callId: ToolCallId(crypto.randomUUID()), signal: new AbortController().signal });
         called.mockClear();
         for (const name of generalTools) {
-          expect(agent.ctx.tools.get(name, agent), name).toBeUndefined();
+          if (!['member', 'guest'].includes(mode) || !['bash', 'read', 'grep'].includes(name))
+            expect(agent.ctx.tools.get(name, agent), name).toBeUndefined();
           expect((await execute(name)).isError, name).toBe(true);
         }
         for (const name of ['fixture_local_fs', 'bot_memory_search'])

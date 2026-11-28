@@ -462,6 +462,9 @@ describe('U06/U07 native-boundary fixtures with real JSON sidecars', () => {
           isSeeded: false, origin: 'subagent', parentSession: input.request.parent.session.id, agentPreset: input.request.agentPreset });
         const { agent, scope, value } = f.createAgent(childId);
         value.session = session;
+        // Match the native worker's injected services and policy-notice surface.
+        Object.assign(value, { inject: vi.fn() });
+        await scope.ctx.plugin({ inject: ['tools', 'systemPrompt', 'approval'], apply(ctx) { value.ctx = ctx; } }).await();
         try { await f.ctx.serial(scopeTarget(agent, agent), 'agent/created', { agent, source: 'startup' }); }
         catch (error) { startupFailure = error; await scope.dispose(); throw error; }
         worker = agent;

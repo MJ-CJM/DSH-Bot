@@ -2,7 +2,7 @@ import { protectOnboarding } from './onboarding/guard.js';
 import { protectDelegateContinuation } from './delegate/continuation.js';
 import { outlets, protectDataFlow } from './data-flow/tool-guard.js';
 import { getGroupWorkerBinding, groupWorkerMode, hasGroupParent, isSupergroupWorker, protectGroupWorker } from './groups/worker-tool.js';
-import { groupWorkerPermits, protectWorkerCapabilities, registerWorkerCapability } from './groups/worker-capabilities.js';
+import { executionWorkerMode, groupWorkerPermits, protectWorkerCapabilities, registerWorkerCapability } from './groups/worker-capabilities.js';
 import { getScopedCollaborationBinding, protectScopedCollaboration } from './supergroup/collaboration.js';
 import { BOT_GROUP_RECALL_TOOL_NAME, installLiveGroupRecall, protectGroupRecall } from './groups/recall-tool.js';
 import { registerMessageTool } from './messaging/tool.js';
@@ -140,6 +140,7 @@ export function apply(ctx: Context, config: Config): void {
       const groupBinding = getGroupWorkerBinding(agent);
       const groupChild = hasGroupParent(agent);
       const workerMode = groupBinding && groupWorkerMode(agent, groupBinding);
+      const executionWorker = executionWorkerMode(workerMode);
       const canRegister = (name: string) => !groupChild || groupWorkerPermits(workerMode, name);
       protectGroupWorker(agent);
       if (groupBinding?.guestQuestion) {
@@ -222,10 +223,27 @@ export function apply(ctx: Context, config: Config): void {
           releases.push(agent.ctx.systemPrompt.context({ name: 'dsh-bot:root-instructions', order: memorySectionOrder,
             required: true, interpolate: false, text: rootInstructionNotice }));
           // Do not silently ignore unknown, same-layer or reserved tool names.
-          if (deny.length) releases.push(agent.ctx.tools.restrict({ deny }));
+          const inheritedDeny = deny.filter(name => !name.startsWith('mcp__'));
+          if (inheritedDeny.length) releases.push(agent.ctx.tools.restrict({ deny: inheritedDeny }));
+          // Native restrict only masks inherited definitions; MCP tools occupy a child layer.
+          // Apply the exact Bot deny policy to presentation and every dispatch layer as well.
+          const denied = new Set(deny);
+          releases.push(agent.ctx.tools.guard(exec => denied.has(exec.name) && agent.ctx.tools.get(exec.name, agent) !== undefined
+            ? 'Tool denied by Bot settings' : undefined));
+          releases.push(agent.ctx.on('tools/execute', async (exec, next) => {
+            if (denied.has(exec.name) && agent.ctx.tools.get(exec.name, agent) !== undefined)
+              throw new Error('Tool denied by Bot settings');
+            return next();
+          }, { prepend: true }));
+          releases.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+            const result = await next();
+            if (!Array.isArray(result.tools)) return result;
+            const tools = result.tools.filter(tool => !denied.has(tool.name));
+            return tools.length === result.tools.length ? result : { ...result, tools };
+          }, { prepend: true }));
           // The public restriction filters inherited tools. Local checked
           // collaboration tools are registered below; drafts register none.
-          if (cleanTask) releases.push(agent.ctx.tools.restrict({ allow: [] }));
+          if (cleanTask && !executionWorker) releases.push(agent.ctx.tools.restrict({ allow: [] }));
           releases.push(
             agent.ctx.systemPrompt.section({
               name: 'dsh-bot:home',
@@ -372,9 +390,12 @@ export function apply(ctx: Context, config: Config): void {
       // Publish cleanup before the asynchronous MCP start. A preset can unload
       // while agent/created is awaiting discovery; teardown must join that start.
       agents.set(agent, cleanup);
-      starting = cleanTask || groupChild ? undefined : connectors?.attach(agent, binding);
+      starting = (cleanTask || groupChild) && !executionWorker ? undefined : connectors?.attach(agent, binding);
       try {
         await starting;
+        for (const name of deny.filter(name => name.startsWith('mcp__') && (!(cleanTask || groupChild) || executionWorker))) {
+          if (!agent.ctx.tools.get(name, agent)) throw new Error(`Bot deny names unavailable connector tool ${name}`);
+        }
         if (stopped) throw new DshBotError('bot/unavailable', 'Bot context is unloading');
       } catch (error) {
         await cleanup();

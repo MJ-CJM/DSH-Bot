@@ -1,3 +1,4 @@
+import { NATIVE_TOOL_NAMES } from '../data-flow/native-tools.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools';
 import { OperationError } from '../common/operations.js';
@@ -12,6 +13,19 @@ const toolsByMode: Record<GroupWorkerMode, readonly string[]> = {
 };
 const definitions = new WeakMap<Agent, Set<ToolDefinition>>();
 const protectedAgents = new WeakSet<Agent>();
+const executionGuards = new WeakMap<Agent, (name: string) => boolean>();
+const externalCapabilities = new WeakMap<Agent, (name: string) => boolean>();
+export const executionWorkerMode = (mode: GroupWorkerMode | undefined): boolean =>
+  mode === 'member' || mode === 'guest' || mode === 'supergroup';
+/** Only the retained data-flow guard may admit native definitions and managed connectors. */
+export function registerWorkerExternalCapabilities(agent: Agent, permits: (name: string) => boolean) {
+  externalCapabilities.set(agent, permits);
+  return () => { if (externalCapabilities.get(agent) === permits) externalCapabilities.delete(agent); };
+}
+/** Recheck after asynchronous persistence/approval, immediately before the real tool dispatch. */
+export function assertWorkerExecution(agent: Agent, name: string) {
+  if (protectedAgents.has(agent) && !executionGuards.get(agent)?.(name)) throw new OperationError('approval-denied');
+}
 export const groupWorkerPermits = (mode: GroupWorkerMode | undefined, name: string): boolean =>
   mode !== undefined && toolsByMode[mode].includes(name);
 
@@ -29,15 +43,16 @@ export function ownsWorkerCapability(agent: Agent, name: string): boolean {
 }
 
 /** The agent owns the guard through unload and loss of the worker reservation. */
-export function protectWorkerCapabilities(agent: Agent, currentMode: () => GroupWorkerMode | undefined) {
+export function protectWorkerCapabilities(agent: Agent, currentMode: () => GroupWorkerMode | undefined, initialMode = currentMode(), executionPermitted = () => true) {
   if (protectedAgents.has(agent)) return;
   const permits = (name: string) => {
     const mode = currentMode();
-    if (!groupWorkerPermits(mode, name)) return false;
-    return ownsWorkerCapability(agent, name);
+    if (groupWorkerPermits(mode, name) && ownsWorkerCapability(agent, name)) return true;
+    return executionWorkerMode(mode) && executionPermitted() && externalCapabilities.get(agent)?.(name) === true;
   };
   agent.ctx.effect(() => {
-    const mask = agent.ctx.tools.restrict({ allow: [] });
+    const mask = agent.ctx.tools.restrict({ allow: executionWorkerMode(initialMode)
+      ? NATIVE_TOOL_NAMES.filter(name => agent.ctx.tools.get(name, agent) !== undefined) : [] });
     // rc.2 has selectable PTC presentation. rc.5 moved presentation off ToolRuntime.
     // Dispatch and nested-call isolation are enforced independently on both hosts.
     const presentation = agent.ctx.tools.presentAs?.('native');
@@ -54,7 +69,8 @@ export function protectWorkerCapabilities(agent: Agent, currentMode: () => Group
       const result = await next();
       return Array.isArray(result.tools) ? { ...result, tools: result.tools.filter(tool => permits(tool.name)) } : result;
     }, { prepend: true });
+    executionGuards.set(agent, permits);
     protectedAgents.add(agent);
-    return () => { protectedAgents.delete(agent); prompt(); dispatch(); guard(); prepare(); presentation?.(); mask(); };
+    return () => { protectedAgents.delete(agent); executionGuards.delete(agent); prompt(); dispatch(); guard(); prepare(); presentation?.(); mask(); };
   }, 'dsh-bot: group worker tool isolation');
 }
