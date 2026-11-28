@@ -2002,8 +2002,20 @@ V051 setup 最终真实 Host 通过：`.dsh-dev/groups-workspace/1793260808752-2
 - 群输入先读取准确同代 `groups/view` 以确定普通群或 Supergroup，再核对自动工作的原 group/work 地址；未知分类不回退到普通发送。原生审批／问题优先占据 composer；只有目录精确 root 或原生 group-root preset 证明的会话可挂群输入。未提交的路由读取在 composer 卸载时失效，已提交写入仍核对原回执，不以取消读取推断写入失败。
 - `GroupSummary.exportPendingCount` 是可选的安全计数投影：只包含仍可直接拒绝的 held 回传，不读取预览正文。读者失效或过期仍可计入可安全丢弃项；已归档、已交付、缺失 flow 和尚未重建的旧 native-failure 不计入。该计数不发布、不重建、不清理任何正文。源码回归与同包运行证据分别记录。
 
-## 群后台与 Bot 互问的读取边界（2026-11-22）
+## 群后台与 Bot 互问的工具边界（2026-11-28，#68）
 
-锁定的 DSH `SandboxExecutionPolicy.workspaceRoot` 指定可写工作区。其公开策略没有“禁止读取其他 Bot 的私聊目录”这一项。群后台使用原生 `agent.ctx.tools.restrict({ allow: [] })` 移除继承工具，并在自己的 Agent scope 上注册 `tools/pre-execute`、`tools.guard` 和 `tools/execute` 检查。允许的工具必须是本插件绑定到这个 Agent 的同一个 ToolDefinition，且仍有当前任务的有效授权。宿主同级新增工具或同名工具不能获得授权。rc.2 的群子会话可用 `tools.presentAs('native')` 直接展示这些能力。桌面 rc.5 的工具服务已移除此呈现接口，仍由相同的执行检查实施隔离。
+正常群成员、自动协作成员和受邀 Bot 复用单 Bot 的 `nativeToolPolicy` 与已分配 MCP 连接器。群执行仍先核对准确的 reservation、成员身份和当前用途；原生工具通过既有 `nativePolicy` 固定公开 `tools.get(name, agent)` 返回的 ToolDefinition，连接器通过已有目标与代际校验。未登记工具、同名替换及未分配连接器不会因来自群聊而获准。群消息与记忆工具继续核对本插件实际注册的定义。原生审批、Bot deny、沙箱及数据范围检查继续执行。
 
-普通群成员可使用群消息、本 Bot 的记忆操作及已受控的群跟进工具。只记录记忆的回合允许保存、搜索和列举自己的记忆。外部受邀 Bot 可按需搜索、列举自身记忆，其私有内容仍由原有回传授权处理。访客不自动注入记忆。群后台不挂载通用文件、Shell 或 MCP 连接器。已失去 reservation 的历史子会话不会恢复工具权限。传统后台委派只返回文本，作用域受控的自动互问沿用其通信工具。正在处理队友消息的主会话回合仅能用自己的受控通信和记忆查询工具，独立的用户私聊回合沿用宿主权限。后者的通用文件能力仍受操作系统账号的读权限约束。
+初次安装保护时，群工具尚未完成注册，因此初始继承工具的可见性按准确 reservation 判断；模型工具目录和每次实际调用均重新核对存活授权。原生来源持久化或 MCP 审批等待之后，底层执行前再次检查任务是否仍有效。Bot deny 同时覆盖继承和本地连接器工具。只记录记忆、受限跟进、失去 reservation 或初始化失败的群子会话仍保持封闭。受邀 Bot 仍不自动注入私有记忆，只保留其原有显式查询能力。
+
+原生 spawn 默认把子任务审批固定为 `never`，不会自动沿用群根的 `ask`。DSH-Bot 对准确有效的正常群成员，通过公开 `approval.overrideOf(root.session)` 和 `approval.config.policy` 读取 owner 的群策略，再以公开 `approval.setPolicy(child, policy)` 同步 `ask / never`；首次入场及 `agent/pre-step` 均核对，覆盖同一成员续办。仅同步审批策略，不修改继承的沙箱，也不自动批准。最终工具执行还核对根身份与当前策略，审批等待期间根切换为 `never` 时，旧批准不能继续执行。额外 required 群权限 context 明确这一产品策略，保留原生上下文。未调用声明为私有的 `effectivePolicy`，也未把群根伪造成开放模型 turn 代理审批。
+
+PR #69 复审补充：原生 `ToolBash` 可在工具 body 内请求沙箱提权，发生在 `tools/execute` 前置检查之后。因此成员 scope 还注册公开 `approval/request` prepend waterfall：进入时固定准确根 Agent、策略及公开 `approval/policy` 事件版本，等待 answerer 返回后、原生 `ApprovalService.request()` 返回前再次核对。根策略往返变化、reservation 失效、根替换、取消或 effect 卸载均使旧批准失效；等待期间的下一次 pre-step 刷新不能重新授权旧请求。失效的 `allowed-once` 转为 `rejected`，取消转为 `cancelled`，由原生 `approval/decided` 记录最终结果，随后原生工具自行拒绝执行。该 hook 与其它资源一起纳入 `agent.ctx.effect`，不包装私有审批方法、不修改 DSH 源码。
+
+新增精确锁定的开发测试依赖 `@deepseek-ai/dsh-tool-bash@0.2.1-rc.2`，用于实际原生 ToolBash + ToolRuntime + ApprovalService 的审批等待回归；不增加插件运行时依赖。模拟 Shell 执行器的单测与官方 Host 的真实文件副作用检查分别记录在验证报告中。
+
+锁定的 DSH `SandboxExecutionPolicy.workspaceRoot` 指定可写工作区，不能作为禁止读取其他 Bot 私聊目录的操作系统边界。文件、Shell 等可能读取本地私有来源的工具在执行前收窄当前数据读者，回群仍走已有准确正文授权；搜索和网页读取保留当前读者，不清除已有私有或撤销标签。MCP 沿用目标审批和未知来源处理，不承诺任意 Shell 或第三方工具的数据防外泄。传统后台委派和主会话处理队友消息的既有用途限制不变。
+
+连接器通过 Cordis 公开 `Context.extend(meta)` 为本次原生 `mcp.apply` 提供工具注册包装，只观察公开 `ToolRuntime.register` 及返回的 disposer，登记该原生连接器实际注册的定义。重连产生新定义时更新归属，旧代 disposer 不移除新定义；未通过该注册路径的同名工具不能借用连接器权限。原 Agent scope、原生资源和卸载生命周期保留。
+
+群内容的有效已交付副本可在准确正文和目标的一次授权后交给 MCP；授权前仍核对副本来源、epoch、策略版本和限制，授权不能恢复失效来源或扩大群内读者。复用公开 `tools.restrict`、`tools.guard`、`tools/pre-execute`、`tools/execute`、`system-prompt/assemble` 和现有连接器生命周期；无新增 DSH 内部接口依赖。实际运行与限制见[群工具权限验证](verification/group-tool-permissions.md)。

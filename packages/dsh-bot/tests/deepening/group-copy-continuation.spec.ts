@@ -18,7 +18,7 @@ it('uses only approved published copies in later work, preserves private readers
     await expect(x.flow.admit(next)).resolves.toBeTypeOf('string');
     expect(x.flow.label('private').readers).toEqual([alpha]);
     await expect(x.flow.admit({ ...next, binding: { ...next.binding, target: { ...target, groupId: 'another' } } })).rejects.toThrow('audience');
-    await expect(x.flow.admit({ ...next, binding: { ...next.binding, target: { kind: 'external', destination: 'elsewhere' } } })).rejects.toThrow('audience');
+    await expect(x.flow.admit({ ...next, binding: { ...next.binding, target: { kind: 'external', destination: 'elsewhere' } } })).rejects.toThrow('authorization');
     await x.f.alpha.update(x.privateId, { content: 'UPDATED_PRIVATE_SOURCE' });
     // Updating the original does not retroactively erase the already approved immutable copy.
     await expect(x.flow.admit(next)).resolves.toBeTypeOf('string');

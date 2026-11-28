@@ -1,3 +1,4 @@
+import { installWorkerApproval, workerApprovalMatches } from './worker-approval.js';
 import en from '../../../locale/en.json' with { type: 'json' };
 import { sameBot, type BotKey } from '../../shared/identity.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -8,7 +9,7 @@ import type { GroupModelSelection } from '../../shared/groups.js';
 import type { GroupState } from './state.js';
 import type { GroupTurnRunner } from './turn-runner.js';
 import { checkSupergroup, reserveSupergroupRequest } from './supergroup-admission.js';
-import { protectWorkerCapabilities, registerWorkerCapability, type GroupWorkerMode } from './worker-capabilities.js';
+import { executionWorkerMode, protectWorkerCapabilities, registerWorkerCapability, type GroupWorkerMode } from './worker-capabilities.js';
 export interface WorkerBinding { turnId: string; deliveryId: string; childId: string; rootId: string; presetId: string; resumeAllowed?: boolean; approvedInputs?: Set<string>; restrictedInputId?: string; modelSelection?: GroupModelSelection; guestQuestion?: true; guestIdentity?: { bot: BotKey; revision: number }; audience: BotKey[]; automaticSupergroup?: boolean; isActive?: () => boolean; agent?: Agent }
 const bindings = new WeakMap<Agent, WorkerBinding>();
 const modes = new WeakMap<WorkerBinding, { mode: GroupWorkerMode; state: GroupState }>();
@@ -51,6 +52,18 @@ export function protectGroupWorker(agent: Agent) {
     const binding = getGroupWorkerBinding(agent);
     const policy = binding && modes.get(binding);
     return policy && !policy.state.stopped && workerStates.has(policy.state) && isLiveGroupWorker(agent) ? policy.mode : undefined;
+  }, (() => { const binding = getGroupWorkerBinding(agent); return binding && groupWorkerMode(agent, binding); })(),
+  () => workerApprovalMatches(agent));
+}
+function activateWorkerMode(agent: Agent, binding: WorkerBinding, mode: GroupWorkerMode, state: GroupState) {
+  modes.set(binding, { mode, state });
+  if (!executionWorkerMode(mode)) return;
+  installWorkerApproval(agent, () => {
+    if (!isLiveGroupWorker(agent) || state.stopped || state.workers.get(binding.childId) !== binding ||
+      groupWorkerMode(agent, binding) !== mode) return;
+    const rootId = agent.session.header.parentSession; if (!rootId) return;
+    const parent = state.ctx.get('agents')?.get(rootId);
+    return parent?.id === binding.rootId && parent.session.id === binding.rootId ? parent : undefined;
   });
 }
 /** Only exact inputs admitted by the group bridge retain the shared label. */
@@ -114,14 +127,14 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
       const bot = await state.bot(delivery.bot);
       const mode = groupWorkerMode(agent, binding);
       if (!mode) return;
-      if (turn.guestQuestion || turn.memoryStatusOnly) { modes.set(binding, { mode, state }); return; }
+      if (turn.guestQuestion || turn.memoryStatusOnly) { activateWorkerMode(agent, binding, mode, state); return; }
       if (group?.supergroup) agent.ctx.effect(() => agent.ctx.on('agent/request', async ({ agent: requesting }, next) => {
         if (requesting !== agent || !isLiveGroupWorker(agent)) throw new OperationError('approval-denied');
         await checkSupergroup(state, group);
         await reserveSupergroupRequest(state, group);
         return next();
       }, { prepend: true }), 'dsh-bot: supergroup native request budget');
-      if (bot.tools.deny.includes('group_message')) { modes.set(binding, { mode, state }); return; }
+      if (bot.tools.deny.includes('group_message')) { activateWorkerMode(agent, binding, mode, state); return; }
       bindings.set(agent, binding);
       const live = () => binding.agent === agent && !state.stopped && state.workers.get(agent.session.id) === binding &&
         !state.cancelledTurns.has(binding.turnId) && Boolean(binding.isActive?.());
@@ -161,7 +174,7 @@ export function installWorkerTools(state: GroupState, runner: GroupTurnRunner) {
         return () => { offDirectory(); definitions.delete(agent); bindings.delete(agent); unregister(); releases.delete(release); };
       }, 'dsh-bot: group worker tool');
       releases.add(release);
-      modes.set(binding, { mode, state });
+      activateWorkerMode(agent, binding, mode, state);
     });
     return () => { workerStates.delete(state); off(); for (const release of releases) release(); releases.clear(); };
   }, 'dsh-bot: owned group workers');

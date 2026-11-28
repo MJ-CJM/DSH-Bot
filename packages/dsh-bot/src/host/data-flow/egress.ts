@@ -20,7 +20,7 @@ export class EgressChecker {
   constructor(readonly kernel: MemoryKernel, readonly grants: OnceGrants,
     private readonly currentBot: (key: BotKey) => boolean) {}
   /** Published copies retain destination and revocation provenance, not the source's private readers. */
-  checkGroupCopies(ids: readonly string[], target: FlowBinding['target']): void {
+  checkGroupCopies(ids: readonly string[], target: FlowBinding['target'], exactExternalGrant = false): void {
     const visited = new Set<string>(), pending = [...ids];
     while (pending.length) {
       const id = pending.pop(); if (!id || visited.has(id)) continue; visited.add(id);
@@ -31,12 +31,15 @@ export class EgressChecker {
         (row.grantUse && !this.kernel.snapshot.grantUses.has(row.grantUse))) throw new Error('Group copy unavailable');
       const audience = e.binding.target;
       const permitted = (bot: BotKey) => audience.members.some(m => isDeepStrictEqual(m, bot));
-      if (target.kind === 'group' ? target.groupId !== audience.groupId || target.groupCreatedAt !== audience.groupCreatedAt || !target.members.every(permitted)
-        : target.kind !== 'bot' || !permitted(target.bot)) throw new Error('Group copy audience changed');
+      if (target.kind !== 'external' && (target.kind === 'group' ? target.groupId !== audience.groupId || target.groupCreatedAt !== audience.groupCreatedAt || !target.members.every(permitted)
+        : target.kind !== 'bot' || !permitted(target.bot))) throw new Error('Group copy audience changed');
       // Epoch cleanup redacts the envelope. Ordinary source updates cannot revoke an already disclosed immutable copy.
       if (e.label.restrictions.some(r => ['secret', 'revoked', 'pending-cleanup'].includes(r))) throw new Error('Restricted group copy');
       pending.push(...e.label.groupCopies ?? []);
     }
+    // A valid immutable group copy can leave its audience only with approval of
+    // this exact payload and endpoint. Validate every copy before requesting it.
+    if (ids.length && target.kind === 'external' && !exactExternalGrant) throw new ExportAuthorizationRequired();
   }
   check(envelope: EgressEnvelope, grant?: OnceGrant, admitted?: string, signal?: AbortSignal): void {
     if (this.stopped) throw new Error('Egress checker stopped');
@@ -64,12 +67,12 @@ export class EgressChecker {
     const lineage = b.sourceVersions.length ? new MemoryLineage(this.kernel).label(b.sourceVersions) : sessionLabel;
     if (!lineage) throw new Error('Unknown egress lineage');
     const effective = mergeLabels(l, lineage, ...(sessionLabel ? [sessionLabel] : []));
-    this.checkGroupCopies(effective.groupCopies ?? [], b.target);
+    // Validate the supplied exact grant before it can authorize a group-copy export.
+    if (grant) this.grants.check(grant, b, envelope.content, admitted);
+    this.checkGroupCopies(effective.groupCopies ?? [], b.target, Boolean(grant));
     if (lineage.sourceVersions.some(id => !b.sourceVersions.includes(id)) ||
       effective.sourceVersions.some(id => !b.sourceVersions.includes(id)) ||
       effective.restrictions.some(r => ['revoked', 'pending-cleanup', 'secret'].includes(r))) throw new Error('Restricted egress source');
-    // A supplied grant must match even when the route would otherwise be allowed.
-    if (grant) this.grants.check(grant, b, envelope.content, admitted);
     const readable = b.target.kind === 'bot' && canReadLabel(effective, b.target.bot);
     const group = b.target.kind === 'group' && b.target.members.every(key => canReadLabel(effective, key));
     const inDomain = b.target.kind === 'shared' && effective.readers === 'shared';
