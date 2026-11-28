@@ -10,11 +10,11 @@ English · [中文](README.md)
 
 **Download and install:** [DSH plugin community](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/) · [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) · [Installation guide](#installation-and-compatibility)
 
-**This version: 0.7.4 (npm package: `dsh-botgroup`).** See the [0.7.4 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.4.md) for features and verification scope. [Changelog](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md). Check [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) and [npm latest](https://www.npmjs.com/package/dsh-botgroup) for publication status and the available download version.
+**This version: 0.7.5 (npm package: `dsh-botgroup`).** See the [0.7.5 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.5.md) for features and verification scope. [Changelog](https://github.com/MJ-CJM/DSH-Bot/blob/main/CHANGELOG.md). Check [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) and [npm latest](https://www.npmjs.com/package/dsh-botgroup) for publication status and the available download version.
 
-### One place to manage group members
+### Configured tools in group work
 
-Open the same **Manage members** dialog from the group directory, management page or right member sidebar. Add, remove or reorder members and review changes before saving. Removal preserves Bots, private chats, private memory and group history; adding a member requires confirmation of the new reader’s history access. See the [0.7.4 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.4.md).
+Ordinary group members, automatic collaborators and invited Bots can use their configured search, web, file, Shell and MCP tools. Bot tool restrictions, the group root’s approval policy and native sandbox remain in force. Requests needing approval use the native approval UI; revocation while waiting blocks execution. Sending, save recovery and editing flows are also improved. See the [0.7.5 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.5.md).
 
 ![Personal Bot workspace example](https://raw.githubusercontent.com/MJ-CJM/DSH-Bot/main/packages/dsh-bot/assets/showcase/en-bots.png)
 
@@ -33,10 +33,11 @@ Chat requires an available DSH model, and model services may charge for usage. F
 
 ## Find everyday features
 
-0.7.4 focuses on unified member management, removal confirmation, complete rosters and consistent state after membership changes. See the [0.7.4 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.4.md) for details.
+0.7.5 improves group tools and approvals, sending and save recovery, Bot/group editing, accessibility, client performance and Host concurrency. See the [0.7.5 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.5.md) for details.
 
 | What you want to do | Where and what happens |
 | --- | --- |
+| Use search, files, Shell or MCP in a group | Use the selected Bot’s configured tools under native approval and sandbox rules; private results still pass checked return boundaries. |
 | Ask a Bot outside the group | In an ordinary group, ask the Bot directly or ask a member to consult it and report back. Expand the relay to inspect the actual exchange. |
 | Review and read group replies | Preview and select replies from the same round, then approve this send. Fold individual replies or the whole round while keeping your reading position. |
 | Record a group message as memory | Use “Just note this down: …” or select **Record memory only** from `+`. Members save separate private memories; the group receives status only. |
@@ -94,8 +95,8 @@ Native background tasks, result review, ordinary schedules, Bot messages, and op
 
 | Scope | Current status |
 | --- | --- |
-| This version | `0.7.4`; check [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) and [npm](https://www.npmjs.com/package/dsh-botgroup) for publication status and available assets. |
-| Plugin archive | `dsh-botgroup-0.7.4.tgz`; `dsh-bot.tgz` within the same Release is a byte-identical alias. |
+| This version | `0.7.5`; check [GitHub Releases](https://github.com/MJ-CJM/DSH-Bot/releases) and [npm](https://www.npmjs.com/package/dsh-botgroup) for publication status and available assets. |
+| Plugin archive | `dsh-botgroup-0.7.5.tgz`; `dsh-bot.tgz` within the same Release is a byte-identical alias. |
 | Recommended target | Official macOS arm64 **DSH 0.2.2-rc.5 + official web-app + one dsh-botgroup product package**. See the release notes for package-specific verification and upgrade results. |
 | Other hosts | Declared range: `>=0.2.1-rc.2 <0.3.0`; development dependencies remain pinned to `0.2.1-rc.2`. This does not establish testing on every version or platform. |
 
@@ -105,7 +106,7 @@ The native design needs no replacement web-app, three-Client adapter package or 
 
 Open [DSH-Bot in the DSH plugin community](https://awesome-dsh-plugin.com/p/MJ-CJM/DSH-Bot--packages-dsh-bot/) for the plugin listing, download entry and npm installation information. Check the version shown there against the matching GitHub Release before installing.
 
-The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The archive for this version is `dsh-botgroup-0.7.4.tgz`. The fixed download name `dsh-bot.tgz` points to the actual latest release archive; check the version after downloading.
+The public npm package is **[dsh-botgroup](https://www.npmjs.com/package/dsh-botgroup)**. The DSH-Bot product brand, plugin ID and data directory remain DSH-Bot/`dsh-bot`. The archive for this version is `dsh-botgroup-0.7.5.tgz`. The fixed download name `dsh-bot.tgz` points to the actual latest release archive; check the version after downloading.
 
 Open the relevant [Release](https://github.com/MJ-CJM/DSH-Bot/releases), read its compatibility notes, and download the plugin tgz and checksum file from that same release. On macOS, for example:
 
@@ -117,7 +118,7 @@ In DSH, use **Plugins → Add plugin → Install third-party plugin**, select th
 
 ### Upgrade and migration
 
-See the [0.7.4 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.4.md) for installation and migration requirements. Verify the download using the matching checksum and install in the validated host configuration.
+See the [0.7.5 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.5.md) for installation and migration requirements. Verify the download using the matching checksum and install in the validated host configuration.
 
 To migrate from the old `dsh-bot` package, stop the Host and back up the complete profile and data. Remove the old package through native plugin management, then install `dsh-botgroup`. Before restarting, inspect the profile's `cordis.patch.yml`: if the original `id: dsh-bot` override has `name: dsh-bot`, change only that name to `dsh-botgroup`. Keep its ID, config and dataDir; do not add a name where none exists. Keep only one package dependency/bundle selected, and review old references in custom includes/templates separately. See the [migration notes](https://github.com/MJ-CJM/DSH-Bot/releases/tag/v0.6.7).
 
@@ -125,7 +126,7 @@ Before upgrading, back up the original profile and complete data and keep the st
 
 ## Validation and limits
 
-See the [0.7.4 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.4.md) for the published archive checksum, isolated Host and browser checks, and upgrade validation.
+See the [0.7.5 release notes](https://github.com/MJ-CJM/DSH-Bot/blob/main/docs/releases/v0.7.5.md) for the published archive checksum, isolated Host and browser checks, and upgrade validation.
 
 These checks do not establish real paid-model quality, external account authentication, external IM messaging or automatic compatibility with future hosts. Tasks need a running local Host. Cloud hosting, execution after system exit, and system/mobile push are not provided. Uncertain execution outcomes are not automatically replayed.
 
